@@ -1664,8 +1664,10 @@ async def setup_server(interaction: discord.Interaction):
 async def on_ready():
     client.add_view(TicketCreateView())
     client.add_view(TicketCloseView())
-    await tree.sync()
+    synced = await tree.sync()
     print(f"Bot online: {client.user}  |  Guilds: {len(client.guilds)}")
+    # which commands Discord got: a command missing here means an old build is deployed
+    print(f"Slash commands ({len(synced)}): {', '.join(sorted(c.name for c in synced))}")
     print(f"API: {API_URL}")
     print(f"Default role: {DEFAULT_ROLE_NAME}")
 
