@@ -93,6 +93,20 @@ def price_lines() -> str:
         lines.append("")
     return "\n".join(lines)
 PAYMENT_METHODS = ["Crypto", "PayPal", "Revolut", "Other"]
+
+# the "Features" field of the #prices embed (/post_prices and /setup_server); a Discord field holds 1024 characters
+FEATURES_TEXT = (
+    "• **Resolver** — learns every enemy's desync, jitter and defensive AA, shows its angle in the hitlog *(specter)*\n"
+    "• **Ragebot+** — backtrack optimization, extended backtrack, smart multipoint, resolver safety, "
+    "dormant aimbot, DT guard *(nightly+)*\n"
+    "• **Tuning** — air / noscope hit chance, weapon profiles, peek assist, quick peek options, force shot *(nightly+)*\n"
+    "• **Anti-aim** — 7 presets, state builder *(nightly+)*, defensive AA *(nightly+)*, adaptive anti-bruteforce, "
+    "manual / freestanding, roll, fake lag modes\n"
+    "• **Visuals** — watermark, hitlog, keybinds & spectators, crosshair indicators, custom scope, damage marker, "
+    "manual arrows, bullet tracers\n"
+    "• **Misc** — animation breaker, clan tag, kill say, buy bot, aspect ratio, thirdperson\n"
+    "• **Configs** — loadouts, cloud configs, import / export, auto-save"
+)
 LOGO_URL = _env("SPECTER_LOGO_URL", "")
 BUY_CONTACT = _env("BUY_CONTACT", "@owner")
 
@@ -1338,11 +1352,12 @@ async def post_prices(interaction: discord.Interaction):
         value=(
             "• *Versions* — `beta` | `nightly` | `specter`\n"
             "• *Status* — fully updated for 2026\n"
-            "• *Features* — ragebot, resolver, anti-aim, builder, visuals\n"
             "• *Platform* — gamesense"
         ),
         inline=False,
     )
+
+    embed.add_field(name="\u2728 Features", value=FEATURES_TEXT, inline=False)
 
     embed.add_field(
         name="Still Have Questions?",
@@ -1567,6 +1582,7 @@ async def setup_server(interaction: discord.Interaction):
             "• *Status* — fully updated for 2026\n"
             "• *Platform* — gamesense"
         ), inline=False)
+        e.add_field(name="\u2728 Features", value=FEATURES_TEXT, inline=False)
         if LOGO_URL:
             e.set_image(url=LOGO_URL)
         e.set_footer(text="Specter \U0001f319 • gamesense lua")
