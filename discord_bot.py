@@ -73,11 +73,10 @@ PLAN_TO_ROLE = {
 }
 
 # ── Prices (edit these to match your pricing) ────────────────────────
-# "lifetime_was": the old lifetime price, shown struck through (half price sale); remove it to end the sale
 SPECTER_PRICES = {
-    "beta":    {"monthly": "$8",  "lifetime": "$20", "lifetime_was": "$40"},
-    "nightly": {"monthly": "$15", "lifetime": "$40", "lifetime_was": "$75"},
-    "specter": {"monthly": "$25", "lifetime": "$55", "lifetime_was": "$120"},
+    "beta":    {"monthly": "$8",  "lifetime": "$20"},
+    "nightly": {"monthly": "$15", "lifetime": "$40"},
+    "specter": {"monthly": "$25", "lifetime": "$55"},
 }
 
 
@@ -90,9 +89,7 @@ def price_lines() -> str:
         if p.get("monthly"):
             lines.append(f"○ `1 month` — {p['monthly']}")
         if p.get("lifetime"):
-            was = f"~~{p['lifetime_was']}~~ " if p.get("lifetime_was") else ""
-            sale = "  ·  **half price**" if p.get("lifetime_was") else ""
-            lines.append(f"○ `lifetime` — {was}**{p['lifetime']}**{sale}")
+            lines.append(f"○ `lifetime` — {p['lifetime']}")
         lines.append("")
     return "\n".join(lines)
 PAYMENT_METHODS = ["Crypto", "PayPal", "Revolut", "Other"]
