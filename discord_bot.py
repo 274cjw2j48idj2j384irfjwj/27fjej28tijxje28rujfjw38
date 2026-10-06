@@ -1416,16 +1416,7 @@ async def post_howto(interaction: discord.Interaction):
         inline=False,
     )
     embed.add_field(
-        name="Step 2 — Load the Script",
-        value=(
-            "1. Open **gamesense** (CS2)\n"
-            "2. Go to **Lua** tab and load the **Specter Loader**\n"
-            "3. Navigate to **AA > Anti-aimbot angles**"
-        ),
-        inline=False,
-    )
-    embed.add_field(
-        name="Step 3 — Register / Login",
+        name="Step 2 — Register / Login",
         value=(
             "1. Paste your **license key** in the key field\n"
             "2. Choose a **username** and **password**\n"
@@ -1608,12 +1599,7 @@ async def setup_server(interaction: discord.Interaction):
             "Purchase a plan in #prices or from staff.\n"
             "Use `/redeem <key>` to get your role."
         ), inline=False)
-        e.add_field(name="Step 2 — Load the Script", value=(
-            "1. Open **gamesense** (CS2)\n"
-            "2. Go to **Lua** tab and load the **Specter Loader**\n"
-            "3. Navigate to **AA > Anti-aimbot angles**"
-        ), inline=False)
-        e.add_field(name="Step 3 — Register / Login", value=(
+        e.add_field(name="Step 2 — Register / Login", value=(
             "1. Paste your **license key**\n"
             "2. Choose a **username** and **password**\n"
             "3. Click **Register** (first time) or **Login**\n"
