@@ -1149,7 +1149,7 @@ async def post_loader(
             "1. Download `specter_loader.lua` below\n"
             "2. Put it into your **CS:GO folder** (where `csgo.exe` is): gamesense loads Lua scripts from there\n"
             "3. In gamesense open the **Lua** tab, refresh the list and load **specter_loader**\n"
-            "4. Go to **AA > Anti-aimbot angles**, paste your key, pick a username & password\n"
+            "4. Go to **AA > Anti-aimbot angles**, copy your key and click **Paste key** (Ctrl+V does not work in gamesense text fields), pick a username & password\n"
             "5. **Register** the first time, **Login** after that. Your HWID locks on first use\n\n"
             "The script itself is downloaded from our server every time you log in, so this file only changes "
             "when we post a new one here.\n"
@@ -1245,7 +1245,7 @@ async def redeem(interaction: discord.Interaction, key: str):
         value=(
             "1. Open gamesense and load the loader\n"
             "2. Go to **AA > Anti-aimbot angles**\n"
-            "3. Paste your key, pick a username & password\n"
+            "3. Copy your key, click **Paste key**, pick a username & password\n"
             "4. Click **Register** (first time) or **Login**\n"
             "5. Your HWID locks on first use"
         ),
@@ -1431,7 +1431,7 @@ async def post_howto(interaction: discord.Interaction):
     embed.add_field(
         name="Step 2 — Register / Login",
         value=(
-            "1. Paste your **license key** in the key field\n"
+            "1. Copy your **license key** and click **Paste key** (Ctrl+V does not work in gamesense)\n"
             "2. Choose a **username** and **password**\n"
             "3. Click **Register** (first time) or **Login**\n"
             "4. Your HWID locks on first activation"
@@ -1614,7 +1614,7 @@ async def setup_server(interaction: discord.Interaction):
             "Use `/redeem <key>` to get your role."
         ), inline=False)
         e.add_field(name="Step 2 — Register / Login", value=(
-            "1. Paste your **license key**\n"
+            "1. Copy your **license key** and click **Paste key** (Ctrl+V does not work in gamesense)\n"
             "2. Choose a **username** and **password**\n"
             "3. Click **Register** (first time) or **Login**\n"
             "4. Your HWID locks on first activation"
