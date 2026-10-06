@@ -107,10 +107,8 @@ local function url_encode(s)
 end
 
 -- ── AUTH STATE ───────────────────────────────────────────────────────
-local auth_ok   = false
-local auth_user = nil
-local auth_key  = nil
 local auth_plan = nil
+local script_running = false        -- set once the script runs: it can not be unloaded, so the login menu stays hidden
 
 -- ── STATUS ───────────────────────────────────────────────────────────
 local status_msg = "Ready."
@@ -205,6 +203,7 @@ local function load_from_server(key, hwid, on_plan)
                 return
             end
 
+            if script_running then return end       -- a second click while the first download ran
             info("Downloaded "..#body2.." bytes, starting...")
             local fn, lerr = (rawget(_G,"loadstring") or rawget(_G,"load") or load)(body2, "@specter_cloud")
             if not fn then
@@ -219,8 +218,7 @@ local function load_from_server(key, hwid, on_plan)
                 return
             end
             rawset(_G, "_specter_loader_loaded", true)
-            auth_ok   = true
-            auth_key  = key
+            script_running = true
             auth_plan = plan
             set_status(100,255,160, "Specter loaded! ["..plan.."]")
             info("Specter loaded successfully! Plan: "..plan)
@@ -250,7 +248,6 @@ local function do_register(key, name, pw)
     local hwid = get_hwid()
 
     load_from_server(key, hwid, function(plan)
-        auth_user = name
         auth_plan = plan
         users[nl] = { display_name=name, pw_hash=hash_pw(pw), key=key, hwid=hwid, plan=plan }
         db_write(DB_USERS, users)
@@ -278,7 +275,6 @@ local function do_login(name, pw)
     if u.hwid ~= hwid then set_status(255,60,60,"Account locked to another machine."); return end
 
     load_from_server(u.key, hwid, function(plan)
-        auth_user = u.display_name
         auth_plan = plan
         u.plan = plan
         db_write(DB_USERS, users)
@@ -302,7 +298,6 @@ local function try_restore()
     set_status(150,200,255, "Restoring session: "..u.display_name.."...")
     info("Restoring session for "..u.display_name.."...")
     load_from_server(sess.key, hwid, function(plan)
-        auth_user = u.display_name
         auth_plan = plan
         u.plan = plan
         db_write(DB_USERS, users)
@@ -313,18 +308,25 @@ local function try_restore()
 end
 
 -- ── PUI MENU ─────────────────────────────────────────────────────────
-local grp_fl  = pui.group('AA','Fake lag')
-local grp_aa  = pui.group('AA','Anti-aimbot angles')
-local grp_oth = pui.group('AA','Other')
+-- every item of the login menu is kept: once the script runs (its own menu is in the same tabs) they are hidden
+local form = {}
+local function group(tab, name)
+    local g = pui.group(tab, name)
+    local function add(kind)
+        return function(_, ...) local e = g[kind](g, ...); form[#form + 1] = e; return e end
+    end
+    return { label = add("label"), textbox = add("textbox"), button = add("button") }
+end
+local grp_fl  = group('AA','Fake lag')
+local grp_aa  = group('AA','Anti-aimbot angles')
+local grp_oth = group('AA','Other')
 pui.macros.dot = '\v•  \r'
 
 grp_fl:label('      S  P  E  C  T  E  R')
 grp_fl:label('\f<dot>\ac8c8c8ffAuthentication')
 grp_fl:label(' ')
 
-local fl_user   = grp_fl:label('\f<dot>User:   \ac8c8c8ff—')
-local fl_status = grp_fl:label('\f<dot>Auth:   \aff6060ff✗ Not logged in')
-local fl_plan   = grp_fl:label('\f<dot>Plan:   \ac8c8c8ff—')
+grp_fl:label('\f<dot>Auth:   \aff6060ff✗ Not logged in')
 grp_fl:label(' ')
 grp_fl:label('\f<dot>\ac8c8c8ffspec_key  spec_hwid  spec_plan  spec_logout')
 
@@ -339,7 +341,6 @@ grp_aa:label(' ')
 
 local btn_register = grp_aa:button('Register')
 local btn_login    = grp_aa:button('Login')
-local btn_logout   = grp_aa:button('Logout')
 
 grp_aa:label(' ')
 local lbl_status = grp_aa:label('\f<dot>\ac8c8c8ffReady.')
@@ -385,37 +386,23 @@ btn_login:set_callback(function()
     do_login(inp_name:get(), inp_pw:get())
 end)
 
-btn_logout:set_callback(function()
-    db_write(DB_SESSION,nil)
-    auth_ok=false; auth_user=nil; auth_key=nil; auth_plan=nil
-    set_status(160,160,200,"Logged out.")
-    warn("Logged out.")
-end)
-
+local form_hidden = false
 client.set_event_callback('paint_ui', function()
-    lbl_status:set('\f<dot>\a'.._sf('%02x%02x%02xff',status_r,status_g,status_b)..status_msg)
-    if auth_ok and auth_user then
-        fl_user:set('\f<dot>User:   \a82c3ffff'..auth_user)
-        fl_status:set('\f<dot>Auth:   \a60ff90ff✓ Logged in')
-        local plan_colors = { debug='\aff5050ff', specter='\a82c3ffff', nightly='\aff82a0ff', beta='\ac882ffff' }
-        fl_plan:set('\f<dot>Plan:   '..(plan_colors[auth_plan] or '\ac8c8c8ff')..(auth_plan or '—'))
-    else
-        fl_user:set('\f<dot>User:   \ac8c8c8ff—')
-        fl_status:set('\f<dot>Auth:   \aff6060ff✗ Not logged in')
-        fl_plan:set('\f<dot>Plan:   \ac8c8c8ff—')
+    if form_hidden then return end
+    if script_running then
+        for i = 1, #form do pcall(function() form[i]:set_visible(false) end) end
+        form_hidden = true
+        return
     end
-    pcall(function() btn_logout:set_enabled(auth_ok) end)
-    pcall(function() btn_login:set_enabled(not auth_ok) end)
-    pcall(function() btn_register:set_enabled(not auth_ok) end)
-    pcall(function() btn_paste:set_enabled(not auth_ok) end)
+    lbl_status:set('\f<dot>\a'.._sf('%02x%02x%02xff',status_r,status_g,status_b)..status_msg)
 end)
 
 -- ── CONSOLE COMMANDS ─────────────────────────────────────────────────
 client.set_event_callback("console_input", function(cmd)
     local t = cmd:match("^%s*(.-)%s*$")
     if t=="spec_logout" then
-        db_write(DB_SESSION,nil); auth_ok=false; auth_user=nil; auth_key=nil; auth_plan=nil
-        set_status(160,160,200,"Logged out."); warn("Logged out."); return true
+        db_write(DB_SESSION,nil)
+        set_status(160,160,200,"Logged out."); warn("Logged out: the next load asks for a login again."); return true
     end
     local k = t:match("^spec_key%s+(.+)$")
     if k then put_key(k, "command"); return true end

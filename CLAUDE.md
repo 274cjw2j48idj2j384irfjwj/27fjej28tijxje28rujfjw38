@@ -13,7 +13,8 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   integrity monitor, every feature unlocked. Never edit it by hand, never turn it back into a loader
 - `specter_loader.lua` — Production loader (auth + cloud fetch from server)
   gamesense textboxes take no Ctrl+V: the "Paste key" button reads the clipboard (`gamesense/clipboard`, else the same
-  vgui2 VGUI_System010 calls through ffi with pcall), `spec_key <key>` in the console also sets it. `python3 tests/loader_paste.py`
+  vgui2 VGUI_System010 calls through ffi with pcall), `spec_key <key>` in the console also sets it. Once the script runs the whole login
+  menu is hidden (the script's menu is in the same tabs; `spec_logout` in the console). `python3 tests/loader_menu.py`
 - `specter_dev_loader.lua` — DEV loader for the owners: no login / key / HWID / server. Put it into the gamesense lua folder once; it
   downloads the newest `specter_dev.lua` from GitHub raw on every load (SOURCES list: main first, then the `dev` branch), saves it
   as `specter_dev_cache.lua` and falls back to that copy offline. `python3 tests/dev_loader.py` tests it. `specter_dev.lua` itself stays
