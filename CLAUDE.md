@@ -40,6 +40,9 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   reach it. (For a while only the cloud got the changes and the dev build stayed old: the owners kept seeing bugs that were
   already fixed, e.g. "res 0° / bt 0t" in the hitlog.)
 - The dev build is just the normal code: the owners said many times that it needs no login, no checks and no loader. Do not add any.
+- No dead code (owners, Oct 2026: "nincs benne junk code"): luacheck on the dev build reports nothing but unused callback
+  arguments / loop variables and shadowing (no unused locals, values or functions). The owners' own copy is the dev build without
+  comments (the same stripping as `/script_upload`, `strip_lua_comments` in discord_bot.py).
 - Also update `server.js` when the change adds/changes API endpoints or auth globals, and `specter_loader.lua` when it affects the
   auth globals or the loading flow.
 

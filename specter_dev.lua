@@ -740,9 +740,6 @@ LPH_NO_VIRTUALIZE(function ()
                 TOL = math.floor(num(t.tol, TUNE_DEFAULT.tol, 6, 20) + 0.5)
                 RDECAY = num(t.rdecay, TUNE_DEFAULT.rdecay, 0.8, 0.998)
             end
-            resolver.get_tune = function()
-                return { forget = FORGET, p_hit = P_HIT, decay = DECAY, tol = TOL, rdecay = RDECAY }
-            end
 
             local A = {}                      -- angle of each bin
             for i = 1, NB do A[i] = (i - 1) * STEP - 60 end
@@ -771,12 +768,6 @@ LPH_NO_VIRTUALIZE(function ()
                 local ok, v = pcall(item.get, item)
                 if not ok or v == nil then return default end
                 return v
-            end
-
-            local function log(fmt, ...)
-                local item = config.resolver and config.resolver.log
-                if not (item and item:get() == true) then return end
-                c_logger.log("%s", string.format(fmt, ...))
             end
 
             -- ── helpers ────────────────────────────────────────────────────────────
@@ -3001,7 +2992,7 @@ LPH_NO_VIRTUALIZE(function ()
             end
 
             if ui.type(item.ref) == "hotkey" then
-                local active, mode, key = item:rawget()
+                local _, mode, key = item:rawget()
 
                 return {e_hotkey_mode[mode], key}
             end
@@ -5840,7 +5831,6 @@ LPH_NO_VIRTUALIZE(function ()
                         end
 
                         local throw_time = entity_get_prop(wpn, 'm_fThrowTime')
-                        local angles = vector(client.camera_angles())
 
                         local ascending, descending = cmd.forwardmove > 0, cmd.forwardmove < 0
                         local moving_none = cmd.sidemove == 0
@@ -7033,7 +7023,7 @@ LPH_NO_VIRTUALIZE(function ()
                     local yaw_modifier_randomize = data.modifier_randomize
 
                     if yaw_modifier_randomize then
-                        local base_random = 0
+                        local base_random
                         if yaw_modifier_randomize > 0 then
                             base_random = client.random_int(modifier_offset-yaw_modifier_randomize, modifier_offset+yaw_modifier_randomize)
                         else
@@ -11186,7 +11176,6 @@ LPH_NO_VIRTUALIZE(function ()
                 local function seg(t, c, f) return { t, c[1], c[2], c[3], f or "" } end
                 local function sep() return { "  \194\183  ", 85, 85, 96, "" } end
                 local function mk(kind, label, icon, name, detail, meta, short)
-                    local r, g, b = visuals.hitlog_color(kind)
                     local segs = { seg(name, W, "b"), sep() }
                     for _, d in ipairs(detail) do segs[#segs + 1] = d end
                     return { kind = kind, label = label, icon = icon, segs = segs, meta = meta, short = short,
@@ -12721,7 +12710,6 @@ LPH_NO_VIRTUALIZE(function ()
                     local name = entity_get_player_name(attacker) or '?'
                     local units = math_floor((dist or 0) + 0.5)
                     local kr, kg, kb = visuals.hitlog_color('evade')
-                    local ar, ag, ab = config.visuals.watermark_color:get()
                     if config.miscellaneous.event_logger:get() then
                         c_logger.event('EVADED', kr, kg, kb, {
                             { { clean_name(attacker), 'w' } },
@@ -12776,7 +12764,6 @@ LPH_NO_VIRTUALIZE(function ()
                     local dead = left <= 0
                     if dead then label = label .. ' KILL' end
                     local kr, kg, kb = visuals.hitlog_color(kind)
-                    local ar, ag, ab = config.visuals.watermark_color:get()
 
                     if config.miscellaneous.event_logger:get() then
                         c_logger.event(dead and label or string.upper(verb), kr, kg, kb, {
@@ -12990,7 +12977,7 @@ LPH_NO_VIRTUALIZE(function ()
 
                 for enemy = 1, globals.maxplayers() do
                     if entity.get_classname(enemy) == "CCSPlayer" and entity.is_enemy(enemy) and entity.is_dormant(enemy) then
-                        local ok, x1, y1, x2, y2, alpha = pcall(entity.get_bounding_box, enemy)
+                        local ok, _, _, _, _, alpha = pcall(entity.get_bounding_box, enemy)
                         local esp = entity.get_esp_data(enemy) or {}
                         local alive = (esp.health == nil) or (esp.health > 0)
                         local hp = tonumber(esp.health) or 100
@@ -13000,7 +12987,7 @@ LPH_NO_VIRTUALIZE(function ()
                                 local px, py, pz
                                 if DORMANT_STAND[box] then px, py, pz = dormant_point(me, enemy, d, box) end
                                 if px then
-                                    local ok2, ent, dmg = pcall(client.trace_bullet, me, ex, ey, ez, px, py, pz, true)
+                                    local ok2, _, dmg = pcall(client.trace_bullet, me, ex, ey, ez, px, py, pz, true)
                                     dmg = ok2 and tonumber(dmg) or 0
                                     -- a kill first, then the damage; a fresh position (alpha) counts a little
                                     local need = math.min(min_dmg, hp)
@@ -14949,7 +14936,6 @@ LPH_NO_VIRTUALIZE(function ()
         end
 
         function callbacks.net_update_end()
-            local tick = globals_tickcount()
             player:net_update_end()
             miscellaneous:net_update_end()
             if aa_stealer then

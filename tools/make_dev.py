@@ -31,7 +31,7 @@ _USER_NAME = _auth_data.user
 -- ── END DEV BUILD ─────────────────────────────────────────────────────"""
 
 # the monitor's guards in the callbacks (they are all of these two shapes)
-GUARD = re.compile(r"^\s*if _integrity( and not _integrity\.is_ok\(\))? then (return end|_integrity\.check\(tick\) end)\s*$")
+GUARD = re.compile(r"^\s*if _integrity( and not _integrity\.is_ok\(\))? then (return end|_integrity\.check\((tick|globals_tickcount\(\))\) end)\s*$")
 
 
 def find_marker(lines, prefix, start=0):
