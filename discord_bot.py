@@ -73,11 +73,28 @@ PLAN_TO_ROLE = {
 }
 
 # ── Prices (edit these to match your pricing) ────────────────────────
+# "lifetime_was": the old lifetime price, shown struck through (half price sale); remove it to end the sale
 SPECTER_PRICES = {
-    "beta":    {"monthly": "$8",  "lifetime": "$40"},
-    "nightly": {"monthly": "$15", "lifetime": "$75"},
-    "specter": {"monthly": "$25", "lifetime": "$120"},
+    "beta":    {"monthly": "$8",  "lifetime": "$20", "lifetime_was": "$40"},
+    "nightly": {"monthly": "$15", "lifetime": "$40", "lifetime_was": "$75"},
+    "specter": {"monthly": "$25", "lifetime": "$55", "lifetime_was": "$120"},
 }
+
+
+def price_lines() -> str:
+    """The price list of the #prices embed (/post_prices and /setup_server)."""
+    lines = []
+    for plan_name in ["beta", "nightly", "specter"]:
+        p = SPECTER_PRICES.get(plan_name, {})
+        lines.append(f"*{plan_name} version*")
+        if p.get("monthly"):
+            lines.append(f"○ `1 month` — {p['monthly']}")
+        if p.get("lifetime"):
+            was = f"~~{p['lifetime_was']}~~ " if p.get("lifetime_was") else ""
+            sale = "  ·  **half price**" if p.get("lifetime_was") else ""
+            lines.append(f"○ `lifetime` — {was}**{p['lifetime']}**{sale}")
+        lines.append("")
+    return "\n".join(lines)
 PAYMENT_METHODS = ["Crypto", "PayPal", "Revolut", "Other"]
 LOGO_URL = _env("SPECTER_LOGO_URL", "")
 BUY_CONTACT = _env("BUY_CONTACT", "@owner")
@@ -1304,19 +1321,9 @@ async def post_prices(interaction: discord.Interaction):
 
     embed = discord.Embed(title="Prices", color=0x82C3FF)
 
-    gs_lines = []
-    for plan_name in ["beta", "nightly", "specter"]:
-        p = SPECTER_PRICES.get(plan_name, {})
-        gs_lines.append(f"*{plan_name} version*")
-        if p.get("monthly"):
-            gs_lines.append(f"○ `1 month` — {p['monthly']}")
-        if p.get("lifetime"):
-            gs_lines.append(f"○ `lifetime` — {p['lifetime']}")
-        gs_lines.append("")
-
     embed.add_field(
         name="\U0001f319 Specter for GS",
-        value="\n".join(gs_lines),
+        value=price_lines(),
         inline=False,
     )
 
@@ -1561,17 +1568,8 @@ async def setup_server(interaction: discord.Interaction):
     posted = []
 
     if prices_ch and isinstance(prices_ch, discord.TextChannel):
-        gs_lines = []
-        for plan_name in ["beta", "nightly", "specter"]:
-            p = SPECTER_PRICES.get(plan_name, {})
-            gs_lines.append(f"*{plan_name} version*")
-            if p.get("monthly"):
-                gs_lines.append(f"○ `1 month` — {p['monthly']}")
-            if p.get("lifetime"):
-                gs_lines.append(f"○ `lifetime` — {p['lifetime']}")
-            gs_lines.append("")
         e = discord.Embed(title="Prices", color=0x82C3FF)
-        e.add_field(name="\U0001f319 Specter for GS", value="\n".join(gs_lines), inline=False)
+        e.add_field(name="\U0001f319 Specter for GS", value=price_lines(), inline=False)
         pay = [f"○ {m}" for m in PAYMENT_METHODS]
         if BUY_CONTACT:
             pay.append(f"○ Tag to buy: **{BUY_CONTACT}**")
