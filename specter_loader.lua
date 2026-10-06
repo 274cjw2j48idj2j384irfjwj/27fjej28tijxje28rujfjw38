@@ -68,6 +68,38 @@ local function db_read(k)
 end
 local function db_write(k,v) pcall(database.write,k,v) end
 
+-- gamesense textboxes take no Ctrl+V: the "Paste key" button reads the clipboard. The workshop library first (the script
+-- needs it anyway), else the same vgui2 calls it makes; nil when neither is there (then: spec_key <key> in the console)
+local clipboard_get do
+    local ok, lib = pcall(require, "gamesense/clipboard")
+    if ok and type(lib) == "table" and type(lib.get) == "function" then
+        clipboard_get = lib.get
+    else
+        pcall(function()
+            local ffi = require "ffi"
+            local sys = ffi.cast("void***", client.create_interface("vgui2.dll", "VGUI_System010") or error("no VGUI_System010"))
+            local count = ffi.cast("int(__thiscall*)(void*)", sys[0][7])
+            local read  = ffi.cast("int(__thiscall*)(void*, int, char*, int)", sys[0][11])
+            clipboard_get = function()
+                local n = count(sys)
+                if n <= 0 or n > 4096 then return nil end
+                local buf = ffi.new("char[?]", n + 1)
+                read(sys, 0, buf, n + 1)
+                return ffi.string(buf)
+            end
+        end)
+    end
+end
+
+-- the key out of whatever was copied (the Discord message, ```key```, spaces / new lines around it)
+local function key_from_text(t)
+    t = tostring(t or "")
+    local k = t:match("%w%w%w%w%w%w%-%w%w%w%w%w%w%-%w%w%w%w%w%w%-%w%w%w%w%w%w")
+    if k then return k end
+    t = t:gsub("[`%c]", " "):match("^%s*(%S+)") or ""
+    return t
+end
+
 local function url_encode(s)
     return tostring(s):gsub("([^%w%-_.~])", function(c)
         return _sf("%%%02X", string.byte(c))
@@ -294,10 +326,11 @@ local fl_user   = grp_fl:label('\f<dot>User:   \ac8c8c8ff—')
 local fl_status = grp_fl:label('\f<dot>Auth:   \aff6060ff✗ Not logged in')
 local fl_plan   = grp_fl:label('\f<dot>Plan:   \ac8c8c8ff—')
 grp_fl:label(' ')
-grp_fl:label('\f<dot>\ac8c8c8ffspec_hwid  spec_plan  spec_logout')
+grp_fl:label('\f<dot>\ac8c8c8ffspec_key  spec_hwid  spec_plan  spec_logout')
 
 grp_aa:label('\f<dot>License Key:')
 local inp_key  = grp_aa:textbox('\nKey',  '', false)
+local btn_paste = grp_aa:button('Paste key')
 grp_aa:label('\f<dot>Username:')
 local inp_name = grp_aa:textbox('\nUsername', '', false)
 grp_aa:label('\f<dot>Password:')
@@ -314,9 +347,11 @@ local lbl_status = grp_aa:label('\f<dot>\ac8c8c8ffReady.')
 grp_oth:label('\f<dot>How to use:')
 grp_oth:label('\f<dot>\ac8c8c8ff1. Get key from Discord')
 grp_oth:label('\f<dot>\ac8c8c8ff   (/redeem command)')
-grp_oth:label('\f<dot>\ac8c8c8ff2. Enter a username')
-grp_oth:label('\f<dot>\ac8c8c8ff3. Enter a password')
-grp_oth:label('\f<dot>\ac8c8c8ff4. Click Register')
+grp_oth:label('\f<dot>\ac8c8c8ff2. Copy it, click Paste key')
+grp_oth:label('\f<dot>\ac8c8c8ff   (or console: spec_key <key>)')
+grp_oth:label('\f<dot>\ac8c8c8ff3. Enter a username')
+grp_oth:label('\f<dot>\ac8c8c8ff4. Enter a password')
+grp_oth:label('\f<dot>\ac8c8c8ff5. Click Register')
 grp_oth:label(' ')
 grp_oth:label('\f<dot>\ac8c8c8ffNext time: just Login')
 grp_oth:label('\f<dot>\ac8c8c8ffor it auto-restores.')
@@ -324,6 +359,23 @@ grp_oth:label(' ')
 grp_oth:label('\f<dot>\ac8c8c8ffHWID locked on first use.')
 grp_oth:label(' ')
 grp_oth:label('\f<dot>\ac8c8c8ffPlans: debug > specter > nightly > beta')
+
+local function put_key(text, from)
+    local k = key_from_text(text)
+    if k == "" then set_status(255,120,50, "No key in the "..from.."."); warn("No key in the "..from.."."); return end
+    inp_key:set(k)
+    set_status(100,255,160, "Key pasted ("..k:sub(1, 6).."...). Now username + password, then Register.")
+    info("Key pasted: "..k:sub(1, 6).."...")
+end
+
+btn_paste:set_callback(function()
+    if not clipboard_get then
+        set_status(255,120,50, "Clipboard not readable: type spec_key <your key> in the console.")
+        return
+    end
+    local ok, text = pcall(clipboard_get)
+    put_key(ok and text, "clipboard")
+end)
 
 btn_register:set_callback(function()
     do_register(inp_key:get(), inp_name:get(), inp_pw:get())
@@ -355,6 +407,7 @@ client.set_event_callback('paint_ui', function()
     pcall(function() btn_logout:set_enabled(auth_ok) end)
     pcall(function() btn_login:set_enabled(not auth_ok) end)
     pcall(function() btn_register:set_enabled(not auth_ok) end)
+    pcall(function() btn_paste:set_enabled(not auth_ok) end)
 end)
 
 -- ── CONSOLE COMMANDS ─────────────────────────────────────────────────
@@ -364,6 +417,8 @@ client.set_event_callback("console_input", function(cmd)
         db_write(DB_SESSION,nil); auth_ok=false; auth_user=nil; auth_key=nil; auth_plan=nil
         set_status(160,160,200,"Logged out."); warn("Logged out."); return true
     end
+    local k = t:match("^spec_key%s+(.+)$")
+    if k then put_key(k, "command"); return true end
     if t=="spec_hwid" then info("HWID: "..get_hwid()); return true end
     if t=="spec_plan" then info("Plan: "..(auth_plan or "none")); return true end
 end)
