@@ -29,6 +29,8 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   install steps into #loader-download and deletes the bot's older loader posts there. `is_customer_loader` refuses anything but the
   production loader: the cloud script, the dev build and the dev loader run the whole script without a key
 - Railway: `Dockerfile` = license server, `Dockerfile.bot` = bot (service variable `RAILWAY_DOCKERFILE_PATH=Dockerfile.bot`)
+  A 429 at login (Cloudflare 1015: Discord bans the IP after too many logins, e.g. a crash loop that Railway restarts every
+  second) makes the bot wait in the process (5, 10, 20 .. 60 min) instead of exiting; the command sync runs once per start
 - `specter_resolver.lua` — STANDALONE desync resolver: one file, no login, no AA, no visuals, nothing but the resolver
   (menu: RAGE > Other > "Specter desync resolver"). Independent from `specter_cloud.lua` (own copy of the resolver code, own
   learning, own saved priors key). A change to one does not touch the other
