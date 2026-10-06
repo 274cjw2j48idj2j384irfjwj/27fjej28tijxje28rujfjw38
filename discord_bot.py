@@ -20,9 +20,11 @@ ENV VARS (set in Discord bot host or .env):
 """
 
 import os
+import io
 import json
 import base64
 import asyncio
+import hashlib
 import aiohttp
 import discord
 from discord import app_commands
@@ -563,7 +565,7 @@ async def setup_channels(interaction: discord.Interaction):
         embed.add_field(name="Already exist", value="\n".join(existed), inline=False)
     if failed:
         embed.add_field(name="Failed (perms)", value="\n".join(failed), inline=False)
-    embed.set_footer(text="Use /setup_tickets in #support-ticket, /post_prices in #prices, /post_rules in #rules")
+    embed.set_footer(text="Use /setup_tickets in #support-ticket, /post_prices in #prices, /post_rules in #rules, /post_loader for #loader-download")
     await interaction.followup.send(embed=embed, ephemeral=True)
 
 
@@ -901,6 +903,35 @@ async def key_sync(interaction: discord.Interaction):
         await interaction.followup.send("GitHub sync failed.", ephemeral=True)
 
 
+# ── GitHub file download (/script_upload, /post_loader) ─────────────
+
+class GitHubFetchError(Exception):
+    pass
+
+
+async def gh_fetch_file(path: str, branch: str = "") -> tuple[bytes, str]:
+    """A file of GITHUB_REPO at `branch` (default SCRIPT_BRANCH) -> (bytes, source text). Public repo: raw.githubusercontent;
+    with SCRIPT_TOKEN (private repo) the contents API with that read-only token."""
+    br = branch or SCRIPT_BRANCH
+    if SCRIPT_TOKEN:
+        url = f"{GH_API}/repos/{GITHUB_REPO}/contents/{path}?ref={br}"
+        headers = {"Authorization": f"Bearer {SCRIPT_TOKEN}", "Accept": "application/vnd.github.raw",
+                   "X-GitHub-Api-Version": "2022-11-28"}
+    else:
+        url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{br}/{path}"
+        headers = {}
+    async with aiohttp.ClientSession() as s:
+        async with s.get(url, headers=headers) as r:
+            if r.status != 200:
+                hint = ""
+                if r.status in (401, 403):
+                    hint = " (SCRIPT_TOKEN wrong or expired, or it has no read access to this repo)"
+                elif r.status == 404 and not SCRIPT_TOKEN:
+                    hint = " (private repo? set SCRIPT_TOKEN on the bot service)"
+                raise GitHubFetchError(f"GitHub: {r.status} for `{url.split('?')[0]}`{hint}")
+            return await r.read(), f"GitHub {GITHUB_REPO}@{br}"
+
+
 # ── /script_upload — put the cloud Lua on the license server ─────────
 
 def strip_lua_comments(src: str) -> str:
@@ -974,28 +1005,11 @@ async def script_upload(
             raw = await file.read()
             source = file.filename
         else:
-            br = branch or SCRIPT_BRANCH
-            if SCRIPT_TOKEN:
-                # private repo: the contents API with the read-only token, raw file body
-                url = f"{GH_API}/repos/{GITHUB_REPO}/contents/specter_cloud.lua?ref={br}"
-                headers = {"Authorization": f"Bearer {SCRIPT_TOKEN}", "Accept": "application/vnd.github.raw",
-                           "X-GitHub-Api-Version": "2022-11-28"}
-            else:
-                url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{br}/specter_cloud.lua"
-                headers = {}
-            async with aiohttp.ClientSession() as s:
-                async with s.get(url, headers=headers) as r:
-                    if r.status != 200:
-                        hint = ""
-                        if r.status in (401, 403):
-                            hint = " (SCRIPT_TOKEN wrong or expired, or it has no read access to this repo)"
-                        elif r.status == 404 and not SCRIPT_TOKEN:
-                            hint = " (private repo? set SCRIPT_TOKEN on the bot service)"
-                        await interaction.followup.send(f"GitHub: {r.status} for `{url.split('?')[0]}`{hint}", ephemeral=True)
-                        return
-                    raw = await r.read()
-            source = f"GitHub {GITHUB_REPO}@{br}"
+            raw, source = await gh_fetch_file("specter_cloud.lua", branch)
         text = raw.decode("utf-8")
+    except GitHubFetchError as e:
+        await interaction.followup.send(str(e), ephemeral=True)
+        return
     except Exception as e:
         await interaction.followup.send(f"Could not read the script: {e}", ephemeral=True)
         return
@@ -1029,6 +1043,107 @@ async def script_upload(
 
     log_embed = discord.Embed(title="Script Uploaded", color=0x82C3FF)
     log_embed.add_field(name="Plans", value=", ".join(plans), inline=True)
+    log_embed.add_field(name="Source", value=source, inline=True)
+    log_embed.add_field(name="By", value=interaction.user.mention, inline=True)
+    await log_action(interaction.guild, log_embed)
+
+
+# ── /post_loader — the customer loader in #loader-download ──────────
+
+LOADER_FILE = "specter_loader.lua"
+
+
+def is_customer_loader(text: str) -> bool:
+    """Only the production loader may go to customers: never the cloud script, the dev build or the dev loader
+    (those run the whole script without a key)."""
+    return ("_specter_loader_loaded" in text and "AUTH GATE" not in text and "DEV LOADER" not in text
+            and "[resolver:begin]" not in text and len(text) < 200_000)
+
+
+@tree.command(name="post_loader", description="Post the Specter loader (specter_loader.lua) for customers to download")
+@app_commands.describe(
+    file="specter_loader.lua (empty: taken from GitHub)",
+    branch="GitHub branch when no file is given (default: SCRIPT_BRANCH)",
+    channel="Where to post it (default: #loader-download, else this channel)",
+    replace="Delete the bot's older loader posts in that channel (default: yes)",
+)
+async def post_loader(
+    interaction: discord.Interaction,
+    file: discord.Attachment = None,
+    branch: str = "",
+    channel: discord.TextChannel = None,
+    replace: bool = True,
+):
+    if not is_admin(interaction):
+        await interaction.response.send_message("No permission.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if file is not None:
+            raw, source = await file.read(), file.filename
+        else:
+            raw, source = await gh_fetch_file(LOADER_FILE, branch)
+        text = raw.decode("utf-8")
+    except GitHubFetchError as e:
+        await interaction.followup.send(str(e), ephemeral=True)
+        return
+    except Exception as e:
+        await interaction.followup.send(f"Could not read the loader: {e}", ephemeral=True)
+        return
+
+    if not is_customer_loader(text):
+        await interaction.followup.send(
+            "This is not specter_loader.lua (the cloud script, the dev build and the dev loader are never posted). "
+            "Nothing posted.", ephemeral=True)
+        return
+
+    target = channel or discord.utils.get(interaction.guild.text_channels, name="loader-download") or interaction.channel
+    if not isinstance(target, discord.TextChannel):
+        await interaction.followup.send("Pick a text channel to post the loader in.", ephemeral=True)
+        return
+
+    removed = 0
+    if replace:
+        try:
+            async for msg in target.history(limit=50):
+                if msg.author.id == client.user.id and any(a.filename == LOADER_FILE for a in msg.attachments):
+                    await msg.delete()
+                    removed += 1
+        except discord.HTTPException:
+            pass
+
+    embed = discord.Embed(
+        title="\U0001f4e5 Specter Loader",
+        description=(
+            "**Install**\n"
+            "1. Download `specter_loader.lua` below\n"
+            "2. Put it into your **CS:GO folder** (where `csgo.exe` is): gamesense loads Lua scripts from there\n"
+            "3. In gamesense open the **Lua** tab, refresh the list and load **specter_loader**\n"
+            "4. Go to **AA > Anti-aimbot angles**, paste your key, pick a username & password\n"
+            "5. **Register** the first time, **Login** after that. Your HWID locks on first use\n\n"
+            "The script itself is downloaded from our server every time you log in, so this file only changes "
+            "when we post a new one here.\n"
+            "No key yet? See #prices. Problems? Open a ticket in #support-ticket."
+        ),
+        color=0x82C3FF,
+    )
+    embed.add_field(name="Updated", value=f"<t:{int(discord.utils.utcnow().timestamp())}:D>", inline=True)
+    embed.add_field(name="SHA-256", value=f"`{hashlib.sha256(raw).hexdigest()[:16]}`", inline=True)
+    embed.set_footer(text="Specter \U0001f319 • never share your key or the loader")
+    if LOGO_URL:
+        embed.set_thumbnail(url=LOGO_URL)
+    try:
+        await target.send(embed=embed, file=discord.File(io.BytesIO(raw), filename=LOADER_FILE))
+    except discord.HTTPException as e:
+        await interaction.followup.send(f"Could not post in {target.mention}: {e}", ephemeral=True)
+        return
+
+    note = f" ({removed} older post{'s' if removed != 1 else ''} removed)" if removed else ""
+    await interaction.followup.send(f"Loader posted in {target.mention}{note}. Source: {source}", ephemeral=True)
+
+    log_embed = discord.Embed(title="Loader Posted", color=0x82C3FF)
+    log_embed.add_field(name="Channel", value=target.mention, inline=True)
     log_embed.add_field(name="Source", value=source, inline=True)
     log_embed.add_field(name="By", value=interaction.user.mention, inline=True)
     await log_action(interaction.guild, log_embed)

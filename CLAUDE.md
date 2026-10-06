@@ -25,6 +25,9 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   `/setup_server` / `/setup_channels` build `CHANNEL_STRUCTURE` (existing channels are skipped, so `/setup_channels` adds a new
   category to a running server), incl. "⭐ Specter Hub": loader-download (Customer read-only, Staff writes), config-share (forum),
   script-help, showcase. A forum the server can not have (no Community) becomes a text channel (`create_setup_channel`)
+  `/post_loader` posts `specter_loader.lua` (an attachment or GitHub, same download as `/script_upload`: `gh_fetch_file`) with the
+  install steps into #loader-download and deletes the bot's older loader posts there. `is_customer_loader` refuses anything but the
+  production loader: the cloud script, the dev build and the dev loader run the whole script without a key
 - Railway: `Dockerfile` = license server, `Dockerfile.bot` = bot (service variable `RAILWAY_DOCKERFILE_PATH=Dockerfile.bot`)
 - `specter_resolver.lua` — STANDALONE desync resolver: one file, no login, no AA, no visuals, nothing but the resolver
   (menu: RAGE > Other > "Specter desync resolver"). Independent from `specter_cloud.lua` (own copy of the resolver code, own
