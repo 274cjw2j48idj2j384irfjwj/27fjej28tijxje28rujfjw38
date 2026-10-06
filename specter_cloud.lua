@@ -981,7 +981,10 @@ LPH_NO_VIRTUALIZE(function ()
             -- "no desync" (a body yaw near 0) has to be earned: almost every HvH player desyncs, and the feet model says ~0
             -- whenever the netvars show nothing (micromovement keeps the lower body yaw on the eye yaw). On a record whose
             -- computed body yaw is ~0, a near-0 angle is only given after a head hit near 0 on such records of this player in
-            -- this situation, or after 2 resolver misses away from 0 since the last hit (then it may really not desync)
+            -- this situation, or after 2 resolver misses away from 0 since the last hit (then it may really not desync).
+            -- Jitter records too (micromovement + fakelag: the feet model lands near 0 on half of them, they got 0 / +-12
+            -- against a real desync), there after 3 misses: the body side switches, misses on both sides are normal.
+            -- Defensive records are exempt (their computed body yaw is the angle of the flick)
             local function zero_of(key, ctx)
                 local m = memory_of(key)
                 m.zero = m.zero or {}
@@ -990,9 +993,9 @@ LPH_NO_VIRTUALIZE(function ()
                 return z
             end
             local function zero_allowed(key, ctx)
-                if ctx == "def" or ctx == "j+" or ctx == "j-" then return true end
+                if ctx == "def" then return true end
                 local z = zero_of(key, ctx)
-                return z.hits >= 0.3 or z.mp + z.mn >= 2
+                return z.hits >= 0.3 or z.mp + z.mn >= ((ctx == "j+" or ctx == "j-") and 3 or 2)
             end
             local function zero_result(key, ctx, v, hit)
                 local z = zero_of(key, ctx)

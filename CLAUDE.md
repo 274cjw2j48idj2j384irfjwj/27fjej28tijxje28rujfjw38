@@ -75,7 +75,11 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   the sim) sets FORGET / P_HIT / DECAY / TOL / RDECAY by our scoreboard ping ("Auto") or a manual value.
 - Zero rule: on a record whose computed body yaw is ~0 (|c| < `ZERO_MIN` 20: micromovement keeps the LBY on the eye yaw, the netvars
   show no desync) a near-0 angle is only given after a head hit near 0 on such records (`zero_of`) or 2 resolver misses away from 0
-  since the last hit; jitter / defensive records are exempt. It used to shoot the first shots of a new player at 0 / -12.
+  since the last hit (3 on jitter records `j+` / `j-`: the side switches, misses on both sides are normal); only defensive records
+  are exempt. It used to shoot the first shots of a new player at 0 / -12. Jitter was exempt too until the owners saw 0° on jitter
+  (Oct 2026): micromovement + fakelag put the feet model near 0 on half of the jitter records, new jitter players got 9-14% of their
+  first 10 shots near 0 in the sim (`micro_jitter` in tests/resolver_world.lua), now 1-3.5% with a higher hit rate. Not on records
+  with a big computed body yaw: a real ~0 body yaw happens there (jitter_choke 0.92 -> 0.47 when it was tried).
 - Size model: a resolver miss updates the size only as much as the side is sure (`|2 pi - 1|`): with a 50 / 50 side, misses used to eat
   the size (48 -> 8-20 deg, shots in the middle that hit neither side).
 - Sim (tests/resolver_world.lua, ceiling ~0.92): static / jitter / LBY / anti-brute / anti-miss / anti-shot 0.91-0.92, defensive 0.84-0.92,
@@ -90,7 +94,8 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   `mode` = "d" / "j", `method`, `model_name`, `phit` = confidence, `value`), `memory[key].hit_value[stance]` (aa stealer), `forced`,
   `stats_hook`. The tiers without the resolver get a stub with the same names.
 - Tests: `pip install lupa && python3 tests/resolver_regress.py` (hit rates per AA and ping, reaction delays, noise, inverted sign, options,
-  player list / release / Correction active restore, shot attribution, garbage netvars, 5 enemies, slot reuse, resets, last_log).
+  zero rule on 60 new jitter + micromovement players, player list / release / Correction active restore, shot attribution, garbage
+  netvars, 5 enemies, slot reuse, resets, last_log).
 - Load smoke test: `python3 tests/load_smoke.py [--dev-file] [--plan=nightly|beta|specter]`. Run it after every change that touches
   load-time code, the loaders, the auth gate or the resolver.
 

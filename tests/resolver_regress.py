@@ -11,6 +11,7 @@ This checks the learning and the player list handling, not the real game. Exit c
 Native alone (nothing forced) hits ~0.23 in this world; the ceiling is ~0.92 (6% spread misses + the tolerance).
 """
 import os
+import random
 import re
 import sys
 
@@ -127,6 +128,46 @@ for scn, need in (("choke_static", 0.70),):
 c = avg("lby_flick", dict(choke=6), 20, truth_pol=-1)
 print(f"   inverted sign lby_flick    {c:.2f}")
 check(c >= 0.88, f"inverted sign lby_flick: hit rate {c:.2f}")
+
+# ── zero rule: a near-0 angle has to be earned, on jitter records too ──────────
+# new players (a fresh script each) with a jitter AA and micromovement: the netvars show no desync, with fakelag the feet
+# model lands near 0 on many records. The first 10 shots of each: how many went near 0 while the target really desynced
+# (that was 9-14%), the hit rate; and players who do not desync must still be hit
+print("== zero rule: jitter + micromovement, 60 new players, first 10 shots")
+FIRST10 = lua('''function(acc)
+    return function(k, e, r, hit, ctl, S)
+        if r.applied == nil or acc.k >= 10 then return end
+        acc.k, acc.n = acc.k + 1, acc.n + 1
+        if hit then acc.h = acc.h + 1 end
+        if math.abs(r.applied) < 20 and math.abs(r.T) >= 30 then acc.z = acc.z + 1 end
+    end
+end''')
+
+
+def zero_pop(bodies, chokes, players=60):
+    rnd = random.Random(5)
+    acc = lua("function() return { n = 0, z = 0, h = 0, k = 0 } end")()
+    for i in range(players):
+        d = dict(amp=rnd.randint(15, 44), choke=rnd.randint(*chokes), body=rnd.choice(bodies), side=rnd.choice((1, -1)),
+                 size=rnd.randint(40, 58), seed=rnd.randint(1, 10 ** 6), center=rnd.randint(-10, 10))
+        if rnd.random() < 0.5:
+            d["hold"] = rnd.randint(1, 4)
+        else:
+            d["rhold"] = rnd.randint(2, 5)
+        acc.k = 0
+        s = run("micro_jitter", d, ticks=330, ping=rnd.choice((20, 40, 80)), seed=i + 1, on_shot=FIRST10(acc))
+        check(s.errors == 0 and not errors_of(s), f"micro_jitter{d}: errors {errors_of(s)[:2]}")
+    return acc.z / acc.n, acc.h / acc.n
+
+
+for name, bodies, chokes, max_zero, need in (("desync, choke 1-3", ("static", "opp", "same"), (1, 3), 0.02, 0.66),
+                                             ("desync, choke 6-14", ("static", "opp", "same"), (6, 14), 0.05, 0.46),
+                                             ("no desync, choke 1-3", ("none",), (1, 3), 1, 0.50),
+                                             ("no desync, choke 6-14", ("none",), (6, 14), 1, 0.35)):
+    z, h = zero_pop(bodies, chokes)
+    print(f"   {name:<22} near 0 on a real desync {z * 100:4.1f}%   hit {h:.2f}")
+    check(z <= max_zero, f"zero rule {name}: {z * 100:.1f}% of the shots near 0 on a real desync")
+    check(h >= need, f"zero rule {name}: hit rate of the first shots {h:.2f} < {need}")
 
 G0 = lua('''function(tick, ent, name)
     local r = (tick * 7 + ent * 13 + #name) % 19
