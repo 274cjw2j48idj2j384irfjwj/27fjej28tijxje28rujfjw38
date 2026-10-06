@@ -363,11 +363,13 @@ LPH_NO_VIRTUALIZE(function ()
             end)
 
             c_math.normalize_yaw = (function (a)
-                while a > 180 do
+                -- one step for any value: the old loops (minus 360 until <= 180) never ended on inf and ran for minutes
+                -- on a huge value (a bad memory read gives 1e12 .. 1e38), the game froze. Same result as the loops
+                if a ~= a or a == math.huge or a == -math.huge then return 0 end
+                if a > 540 or a < -540 then a = math.fmod(a, 360) end
+                if a > 180 then
                     a = a - 360
-                end
-
-                while a < -180 do
+                elseif a < -180 then
                     a = a + 360
                 end
 
@@ -893,9 +895,6 @@ LPH_NO_VIRTUALIZE(function ()
                 TOL = math.floor(num(t.tol, TUNE_DEFAULT.tol, 6, 20) + 0.5)
                 RDECAY = num(t.rdecay, TUNE_DEFAULT.rdecay, 0.8, 0.998)
             end
-            resolver.get_tune = function()
-                return { forget = FORGET, p_hit = P_HIT, decay = DECAY, tol = TOL, rdecay = RDECAY }
-            end
 
             local A = {}                      -- angle of each bin
             for i = 1, NB do A[i] = (i - 1) * STEP - 60 end
@@ -924,12 +923,6 @@ LPH_NO_VIRTUALIZE(function ()
                 local ok, v = pcall(item.get, item)
                 if not ok or v == nil then return default end
                 return v
-            end
-
-            local function log(fmt, ...)
-                local item = config.resolver and config.resolver.log
-                if not (item and item:get() == true) then return end
-                c_logger.log("%s", string.format(fmt, ...))
             end
 
             -- ── helpers ────────────────────────────────────────────────────────────
@@ -981,7 +974,14 @@ LPH_NO_VIRTUALIZE(function ()
             -- "no desync" (a body yaw near 0) has to be earned: almost every HvH player desyncs, and the feet model says ~0
             -- whenever the netvars show nothing (micromovement keeps the lower body yaw on the eye yaw). On a record whose
             -- computed body yaw is ~0, a near-0 angle is only given after a head hit near 0 on such records of this player in
-            -- this situation, or after 2 resolver misses away from 0 since the last hit (then it may really not desync)
+            -- this situation, or after 2 resolver misses away from 0 since the last hit (then it may really not desync).
+            -- Jitter records too (micromovement + fakelag: the feet model lands near 0 on half of them, they got 0 / +-12
+            -- against a real desync), there after 3 misses: the body side switches, misses on both sides are normal.
+            -- That near-0 try is one shot: when it misses too, the misses are counted again and each failed try doubles
+            -- how many it takes (2, 4, 8 .. 32): a target we keep missing for other reasons (lag comp breakers counted as
+            -- resolver misses) got a near-0 shot after every 2 misses. A player who sent every tick for the last 16
+            -- updates (no choke) can not desync at all: near 0 is fine there.
+            -- Defensive records are exempt (their computed body yaw is the angle of the flick)
             local function zero_of(key, ctx)
                 local m = memory_of(key)
                 m.zero = m.zero or {}
@@ -989,10 +989,11 @@ LPH_NO_VIRTUALIZE(function ()
                 if not z then z = { hits = 0, mp = 0, mn = 0 }; m.zero[ctx] = z end
                 return z
             end
-            local function zero_allowed(key, ctx)
-                if ctx == "def" or ctx == "j+" or ctx == "j-" then return true end
+            local function zero_allowed(key, ctx, p)
+                if ctx == "def" then return true end
+                if p and (p.nochoke or 0) >= 16 then return true end
                 local z = zero_of(key, ctx)
-                return z.hits >= 0.3 or z.mp + z.mn >= 2
+                return z.hits >= 0.3 or z.mp + z.mn >= ((ctx == "j+" or ctx == "j-") and 3 or 2) * 2 ^ math.min(z.tries or 0, 4)
             end
             local function zero_result(key, ctx, v, hit)
                 local z = zero_of(key, ctx)
@@ -1000,8 +1001,11 @@ LPH_NO_VIRTUALIZE(function ()
                 if hit then
                     z.hits = near and (z.hits + 1) or z.hits * 0.5
                     z.mp, z.mn = 0, 0
+                    if near then z.tries = 0 end
                 elseif near then
                     z.hits = z.hits * 0.6
+                    z.mp, z.mn = 0, 0
+                    z.tries = (z.tries or 0) + 1
                 elseif v > 0 then z.mp = z.mp + 1
                 else z.mn = z.mn + 1 end
             end
@@ -1296,7 +1300,7 @@ LPH_NO_VIRTUALIZE(function ()
                 try(c)
                 try(-c)
                 for i = 1, NB do try(A[i]) end
-                if best_p < 0 then return decide(b, c, pi, maxd, false) end
+                if best_p < 0 and nozero then return decide(b, c, pi, maxd, false) end
                 return math.floor(best + 0.5), best_p
             end
 
@@ -1631,6 +1635,7 @@ LPH_NO_VIRTUALIZE(function ()
                 -- lag compensation: more than 64 units between two records = the old records are gone on the server (teleport),
                 -- the aimbot can only shoot the newest one, extrapolated; misses on it are about the position, not the angle
                 p.choke = p.max_st and clamp(st - p.max_st - 1, 0, 64) or 0
+                p.nochoke = p.choke == 0 and (p.nochoke or 0) + 1 or 0     -- updates in a row without a choked tick
                 p.lc_rec = false
                 oz = finite(oz) and oz or 0
                 if p.last_o and p.max_st and st - p.max_st <= 32 then
@@ -1835,7 +1840,7 @@ LPH_NO_VIRTUALIZE(function ()
                             if pp then pi = pp end
                             if lp_ and lgain > best_gain then pi, period, p.layers_used, best_gain = lp_, nil, true, lgain end
                             if fp_ and fgain > best_gain then pi, period, p.layers_used, p.fs_used = fp_, nil, nil, true end
-                            local value, phit = decide(b, c, pi, p.maxd, math.abs(c) < ZERO_MIN and not zero_allowed(p.key, ctx))
+                            local value, phit = decide(b, c, pi, p.maxd, math.abs(c) < ZERO_MIN and not zero_allowed(p.key, ctx, p))
                             -- "Override size": the side from the resolver, the size from the menu
                             if option("override", false) == true then
                                 local side = value > 0 and 1 or (value < 0 and -1 or (pi >= 0.5 and 1 or -1))
@@ -3142,7 +3147,7 @@ LPH_NO_VIRTUALIZE(function ()
             end
 
             if ui.type(item.ref) == "hotkey" then
-                local active, mode, key = item:rawget()
+                local _, mode, key = item:rawget()
 
                 return {e_hotkey_mode[mode], key}
             end
@@ -4759,6 +4764,10 @@ LPH_NO_VIRTUALIZE(function ()
                     if not self.location then return nil end
                     local ok, command = pcall(self.location, self.vtbl, 0, command_number)
                     if not ok or command == nil or command == ffi.NULL then return nil end
+                    -- the slot of a real usercmd carries its own number: anything else is the wrong memory (a moved
+                    -- signature / vtable): its angles are garbage and writing its buttons would corrupt the game
+                    local okn, number = pcall(function() return command.command_number end)
+                    if not okn or number ~= command_number then return nil end
                     return command
                 end
             end
@@ -5977,7 +5986,6 @@ LPH_NO_VIRTUALIZE(function ()
                         end
 
                         local throw_time = entity_get_prop(wpn, 'm_fThrowTime')
-                        local angles = vector(client.camera_angles())
 
                         local ascending, descending = cmd.forwardmove > 0, cmd.forwardmove < 0
                         local moving_none = cmd.sidemove == 0
@@ -7170,7 +7178,7 @@ LPH_NO_VIRTUALIZE(function ()
                     local yaw_modifier_randomize = data.modifier_randomize
 
                     if yaw_modifier_randomize then
-                        local base_random = 0
+                        local base_random
                         if yaw_modifier_randomize > 0 then
                             base_random = client.random_int(modifier_offset-yaw_modifier_randomize, modifier_offset+yaw_modifier_randomize)
                         else
@@ -11323,7 +11331,6 @@ LPH_NO_VIRTUALIZE(function ()
                 local function seg(t, c, f) return { t, c[1], c[2], c[3], f or "" } end
                 local function sep() return { "  \194\183  ", 85, 85, 96, "" } end
                 local function mk(kind, label, icon, name, detail, meta, short)
-                    local r, g, b = visuals.hitlog_color(kind)
                     local segs = { seg(name, W, "b"), sep() }
                     for _, d in ipairs(detail) do segs[#segs + 1] = d end
                     return { kind = kind, label = label, icon = icon, segs = segs, meta = meta, short = short,
@@ -12858,7 +12865,6 @@ LPH_NO_VIRTUALIZE(function ()
                     local name = entity_get_player_name(attacker) or '?'
                     local units = math_floor((dist or 0) + 0.5)
                     local kr, kg, kb = visuals.hitlog_color('evade')
-                    local ar, ag, ab = config.visuals.watermark_color:get()
                     if config.miscellaneous.event_logger:get() then
                         c_logger.event('EVADED', kr, kg, kb, {
                             { { clean_name(attacker), 'w' } },
@@ -12913,7 +12919,6 @@ LPH_NO_VIRTUALIZE(function ()
                     local dead = left <= 0
                     if dead then label = label .. ' KILL' end
                     local kr, kg, kb = visuals.hitlog_color(kind)
-                    local ar, ag, ab = config.visuals.watermark_color:get()
 
                     if config.miscellaneous.event_logger:get() then
                         c_logger.event(dead and label or string.upper(verb), kr, kg, kb, {
@@ -13127,7 +13132,7 @@ LPH_NO_VIRTUALIZE(function ()
 
                 for enemy = 1, globals.maxplayers() do
                     if entity.get_classname(enemy) == "CCSPlayer" and entity.is_enemy(enemy) and entity.is_dormant(enemy) then
-                        local ok, x1, y1, x2, y2, alpha = pcall(entity.get_bounding_box, enemy)
+                        local ok, _, _, _, _, alpha = pcall(entity.get_bounding_box, enemy)
                         local esp = entity.get_esp_data(enemy) or {}
                         local alive = (esp.health == nil) or (esp.health > 0)
                         local hp = tonumber(esp.health) or 100
@@ -13137,7 +13142,7 @@ LPH_NO_VIRTUALIZE(function ()
                                 local px, py, pz
                                 if DORMANT_STAND[box] then px, py, pz = dormant_point(me, enemy, d, box) end
                                 if px then
-                                    local ok2, ent, dmg = pcall(client.trace_bullet, me, ex, ey, ez, px, py, pz, true)
+                                    local ok2, _, dmg = pcall(client.trace_bullet, me, ex, ey, ez, px, py, pz, true)
                                     dmg = ok2 and tonumber(dmg) or 0
                                     -- a kill first, then the damage; a fresh position (alpha) counts a little
                                     local need = math.min(min_dmg, hp)
@@ -15089,8 +15094,7 @@ LPH_NO_VIRTUALIZE(function ()
         end
 
         function callbacks.net_update_end()
-            local tick = globals_tickcount()
-            if _integrity then _integrity.check(tick) end
+            if _integrity then _integrity.check(globals_tickcount()) end
             if _integrity and not _integrity.is_ok() then return end
             player:net_update_end()
             miscellaneous:net_update_end()

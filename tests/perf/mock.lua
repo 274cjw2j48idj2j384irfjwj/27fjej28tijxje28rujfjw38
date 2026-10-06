@@ -252,7 +252,7 @@ function M.new(src, opts)
     entity.get_bounding_box = function(i) return 800, 300, 860, 460, 1 end
     entity.get_esp_data = function(i) return { alpha = 1, health = 100, flags = 0, weapon_id = 40 } end
     entity.set_prop = function() end
-    entity.get_prop = function(i, prop, idx)
+    local function real_get_prop(i, prop, idx)
         local e = ents[i]
         if not e then return nil end
         if i == RES then
@@ -294,6 +294,14 @@ function M.new(src, opts)
         if prop == "m_flNextAttack" then return 0 end
         return 0
     end
+    -- w.garbage (tests/freeze_guard.py): a value in place of the real one (inf / NaN / huge), nil = the real one
+    entity.get_prop = function(i, prop, idx)
+        if w.garbage then
+            local g = w.garbage(i, prop, idx)
+            if g ~= nil then return g end
+        end
+        return real_get_prop(i, prop, idx)
+    end
 
     -- ── client / globals / renderer / misc ──────────────────────────────────────
     -- real memory behind the ffi helpers: entity -> animstate / animation layers / studio header, a usercmd vtable,
@@ -315,12 +323,16 @@ function M.new(src, opts)
     end
     local seq_cb = ffi.cast("int(*)(void*, void*, int)", function() return 0 end)
     local usercmd = ffi.new("char[256]")
-    local get_cmd_cb = ffi.cast("void*(*)(void*, int, int)", function() return ffi.cast("void*", usercmd) end)
+    local get_cmd_cb = ffi.cast("void*(*)(void*, int, int)", function(_, _, number)
+        if not w.usercmd_wrong then ffi.cast("int*", usercmd + ffi.sizeof("void*"))[0] = number end
+        return ffi.cast("void*", usercmd)
+    end)
     local fake_vtable = ffi.new("void*[128]")
     fake_vtable[8] = ffi.cast("void*", get_cmd_cb)
     local fake_holder = ffi.new("void*[4]")
     fake_holder[0] = ffi.cast("void*", fake_vtable)
     keep[1], keep[2], keep[3], keep[4], keep[5] = fake_vtable, fake_holder, seq_cb, get_cmd_cb, usercmd
+    w.usercmd = usercmd
     local function sig_buffer(sig)
         if sig:sub(1, 3) == "\x55\x8B\xEC" then return ffi.cast("void*", seq_cb) end
         local b = ffi.new("char[64]")
@@ -506,7 +518,18 @@ function M.new(src, opts)
         if not list then return end
         local t0 = clock()
         for i = 1, #list do
+            local n = 0
+            if w.budget then
+                real_G.debug.sethook(function()
+                    n = n + 1
+                    if n > w.budget then
+                        real_G.debug.sethook()
+                        error("RUNAWAY (" .. w.budget .. "k instructions) in " .. name .. "\n" .. real_G.debug.traceback("", 2))
+                    end
+                end, "", 1000)
+            end
             local okc, e = pcall(list[i], ...)
+            if w.budget then real_G.debug.sethook() end
             if not okc then w.errors[#w.errors + 1] = name .. ": " .. tostring(e) end
         end
         w.timers[name] = (w.timers[name] or 0) + (clock() - t0)

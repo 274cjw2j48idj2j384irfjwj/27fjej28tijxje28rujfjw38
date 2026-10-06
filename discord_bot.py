@@ -20,9 +20,11 @@ ENV VARS (set in Discord bot host or .env):
 """
 
 import os
+import io
 import json
 import base64
 import asyncio
+import hashlib
 import aiohttp
 import discord
 from discord import app_commands
@@ -71,11 +73,28 @@ PLAN_TO_ROLE = {
 }
 
 # ── Prices (edit these to match your pricing) ────────────────────────
+# "lifetime_was": the old lifetime price, shown struck through (half price sale); remove it to end the sale
 SPECTER_PRICES = {
-    "beta":    {"monthly": "$8",  "lifetime": "$40"},
-    "nightly": {"monthly": "$15", "lifetime": "$75"},
-    "specter": {"monthly": "$25", "lifetime": "$120"},
+    "beta":    {"monthly": "$8",  "lifetime": "$20", "lifetime_was": "$40"},
+    "nightly": {"monthly": "$15", "lifetime": "$40", "lifetime_was": "$75"},
+    "specter": {"monthly": "$25", "lifetime": "$55", "lifetime_was": "$120"},
 }
+
+
+def price_lines() -> str:
+    """The price list of the #prices embed (/post_prices and /setup_server)."""
+    lines = []
+    for plan_name in ["beta", "nightly", "specter"]:
+        p = SPECTER_PRICES.get(plan_name, {})
+        lines.append(f"*{plan_name} version*")
+        if p.get("monthly"):
+            lines.append(f"○ `1 month` — {p['monthly']}")
+        if p.get("lifetime"):
+            was = f"~~{p['lifetime_was']}~~ " if p.get("lifetime_was") else ""
+            sale = "  ·  **half price**" if p.get("lifetime_was") else ""
+            lines.append(f"○ `lifetime` — {was}**{p['lifetime']}**{sale}")
+        lines.append("")
+    return "\n".join(lines)
 PAYMENT_METHODS = ["Crypto", "PayPal", "Revolut", "Other"]
 LOGO_URL = _env("SPECTER_LOGO_URL", "")
 BUY_CONTACT = _env("BUY_CONTACT", "@owner")
@@ -110,6 +129,15 @@ CHANNEL_STRUCTURE = [
         "category": "◉ Presentations",
         "channels": [
             {"name": "intro", "type": "text", "access": "member", "emoji": "\U0001f465", "topic": "Introduce yourself"},
+        ],
+    },
+    {
+        "category": "⭐ Specter Hub",
+        "channels": [
+            {"name": "loader-download", "type": "text", "access": "customer_readonly", "emoji": "\U0001f4e5", "topic": "Download the Specter loader here"},
+            {"name": "config-share",    "type": "forum", "access": "customer", "emoji": "\U0001f4c1", "topic": "Upload and share your configs"},
+            {"name": "script-help",     "type": "text",  "access": "customer", "emoji": "\U0001f527", "topic": "Script questions, issues, and troubleshooting"},
+            {"name": "showcase",        "type": "text",  "access": "customer", "emoji": "\U0001f3ac", "topic": "Show off your clips, screenshots, and highlights"},
         ],
     },
     {
@@ -254,6 +282,20 @@ async def find_or_create_role(guild: discord.Guild, name: str) -> discord.Role |
         return role
     except discord.Forbidden:
         return None
+
+
+async def create_setup_channel(guild: discord.Guild, ch: dict, category, overwrites: dict, reason: str):
+    """A channel of CHANNEL_STRUCTURE -> (channel, note). A forum the server can not have (forums need Community on in
+    Server Settings) becomes a text channel instead of stopping the whole setup."""
+    kw = dict(name=ch["name"], topic=ch.get("topic", ""), category=category, overwrites=overwrites, reason=reason)
+    if ch.get("type", "text") == "forum":
+        try:
+            return await guild.create_forum(**kw), ""
+        except discord.Forbidden:
+            raise
+        except discord.HTTPException:
+            return await guild.create_text_channel(**kw), " (text channel: forums need Community)"
+    return await guild.create_text_channel(**kw), ""
 
 
 # ── Ticket system (persistent views) ────────────────────────────────
@@ -484,13 +526,12 @@ async def setup_channels(interaction: discord.Interaction):
                     cat_name,
                     reason=f"Setup by {interaction.user}",
                 )
-            except discord.Forbidden:
+            except discord.HTTPException:
                 failed.append(f"Category: {cat_name}")
                 continue
 
         for ch in section["channels"]:
             ch_name = ch["name"]
-            ch_type = ch.get("type", "text")
             existing = discord.utils.get(guild.channels, name=ch_name, category=category)
             if existing:
                 existed.append(f"#{ch_name}")
@@ -510,6 +551,13 @@ async def setup_channels(interaction: discord.Interaction):
                 if staff_role:
                     overwrites[staff_role] = discord.PermissionOverwrite(
                         view_channel=True, send_messages=True, read_message_history=True)
+            elif ch.get("access") == "customer_readonly":
+                if customer_role:
+                    overwrites[customer_role] = discord.PermissionOverwrite(
+                        view_channel=True, send_messages=False, read_message_history=True)
+                if staff_role:
+                    overwrites[staff_role] = discord.PermissionOverwrite(
+                        view_channel=True, send_messages=True, read_message_history=True)
             elif ch.get("access") in access_map:
                 for role in access_map[ch["access"]]:
                     if role:
@@ -522,24 +570,9 @@ async def setup_channels(interaction: discord.Interaction):
                         view_channel=True, send_messages=True, read_message_history=True)
 
             try:
-                if ch_type == "forum":
-                    await guild.create_forum(
-                        name=ch_name,
-                        topic=ch.get("topic", ""),
-                        category=category,
-                        overwrites=overwrites,
-                        reason=f"Setup by {interaction.user}",
-                    )
-                else:
-                    await guild.create_text_channel(
-                        name=ch_name,
-                        topic=ch.get("topic", ""),
-                        category=category,
-                        overwrites=overwrites,
-                        reason=f"Setup by {interaction.user}",
-                    )
-                created.append(f"#{ch_name}")
-            except discord.Forbidden:
+                _, note = await create_setup_channel(guild, ch, category, overwrites, f"Setup by {interaction.user}")
+                created.append(f"#{ch_name}{note}")
+            except discord.HTTPException:
                 failed.append(f"#{ch_name}")
 
     embed = discord.Embed(title="\U0001f319 Channel Setup Complete", color=0x82C3FF)
@@ -549,7 +582,7 @@ async def setup_channels(interaction: discord.Interaction):
         embed.add_field(name="Already exist", value="\n".join(existed), inline=False)
     if failed:
         embed.add_field(name="Failed (perms)", value="\n".join(failed), inline=False)
-    embed.set_footer(text="Use /setup_tickets in #support-ticket, /post_prices in #prices, /post_rules in #rules")
+    embed.set_footer(text="Use /setup_tickets in #support-ticket, /post_prices in #prices, /post_rules in #rules, /post_loader for #loader-download")
     await interaction.followup.send(embed=embed, ephemeral=True)
 
 
@@ -887,6 +920,35 @@ async def key_sync(interaction: discord.Interaction):
         await interaction.followup.send("GitHub sync failed.", ephemeral=True)
 
 
+# ── GitHub file download (/script_upload, /post_loader) ─────────────
+
+class GitHubFetchError(Exception):
+    pass
+
+
+async def gh_fetch_file(path: str, branch: str = "") -> tuple[bytes, str]:
+    """A file of GITHUB_REPO at `branch` (default SCRIPT_BRANCH) -> (bytes, source text). Public repo: raw.githubusercontent;
+    with SCRIPT_TOKEN (private repo) the contents API with that read-only token."""
+    br = branch or SCRIPT_BRANCH
+    if SCRIPT_TOKEN:
+        url = f"{GH_API}/repos/{GITHUB_REPO}/contents/{path}?ref={br}"
+        headers = {"Authorization": f"Bearer {SCRIPT_TOKEN}", "Accept": "application/vnd.github.raw",
+                   "X-GitHub-Api-Version": "2022-11-28"}
+    else:
+        url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{br}/{path}"
+        headers = {}
+    async with aiohttp.ClientSession() as s:
+        async with s.get(url, headers=headers) as r:
+            if r.status != 200:
+                hint = ""
+                if r.status in (401, 403):
+                    hint = " (SCRIPT_TOKEN wrong or expired, or it has no read access to this repo)"
+                elif r.status == 404 and not SCRIPT_TOKEN:
+                    hint = " (private repo? set SCRIPT_TOKEN on the bot service)"
+                raise GitHubFetchError(f"GitHub: {r.status} for `{url.split('?')[0]}`{hint}")
+            return await r.read(), f"GitHub {GITHUB_REPO}@{br}"
+
+
 # ── /script_upload — put the cloud Lua on the license server ─────────
 
 def strip_lua_comments(src: str) -> str:
@@ -960,28 +1022,11 @@ async def script_upload(
             raw = await file.read()
             source = file.filename
         else:
-            br = branch or SCRIPT_BRANCH
-            if SCRIPT_TOKEN:
-                # private repo: the contents API with the read-only token, raw file body
-                url = f"{GH_API}/repos/{GITHUB_REPO}/contents/specter_cloud.lua?ref={br}"
-                headers = {"Authorization": f"Bearer {SCRIPT_TOKEN}", "Accept": "application/vnd.github.raw",
-                           "X-GitHub-Api-Version": "2022-11-28"}
-            else:
-                url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{br}/specter_cloud.lua"
-                headers = {}
-            async with aiohttp.ClientSession() as s:
-                async with s.get(url, headers=headers) as r:
-                    if r.status != 200:
-                        hint = ""
-                        if r.status in (401, 403):
-                            hint = " (SCRIPT_TOKEN wrong or expired, or it has no read access to this repo)"
-                        elif r.status == 404 and not SCRIPT_TOKEN:
-                            hint = " (private repo? set SCRIPT_TOKEN on the bot service)"
-                        await interaction.followup.send(f"GitHub: {r.status} for `{url.split('?')[0]}`{hint}", ephemeral=True)
-                        return
-                    raw = await r.read()
-            source = f"GitHub {GITHUB_REPO}@{br}"
+            raw, source = await gh_fetch_file("specter_cloud.lua", branch)
         text = raw.decode("utf-8")
+    except GitHubFetchError as e:
+        await interaction.followup.send(str(e), ephemeral=True)
+        return
     except Exception as e:
         await interaction.followup.send(f"Could not read the script: {e}", ephemeral=True)
         return
@@ -1015,6 +1060,107 @@ async def script_upload(
 
     log_embed = discord.Embed(title="Script Uploaded", color=0x82C3FF)
     log_embed.add_field(name="Plans", value=", ".join(plans), inline=True)
+    log_embed.add_field(name="Source", value=source, inline=True)
+    log_embed.add_field(name="By", value=interaction.user.mention, inline=True)
+    await log_action(interaction.guild, log_embed)
+
+
+# ── /post_loader — the customer loader in #loader-download ──────────
+
+LOADER_FILE = "specter_loader.lua"
+
+
+def is_customer_loader(text: str) -> bool:
+    """Only the production loader may go to customers: never the cloud script, the dev build or the dev loader
+    (those run the whole script without a key)."""
+    return ("_specter_loader_loaded" in text and "AUTH GATE" not in text and "DEV LOADER" not in text
+            and "[resolver:begin]" not in text and len(text) < 200_000)
+
+
+@tree.command(name="post_loader", description="Post the Specter loader (specter_loader.lua) for customers to download")
+@app_commands.describe(
+    file="specter_loader.lua (empty: taken from GitHub)",
+    branch="GitHub branch when no file is given (default: SCRIPT_BRANCH)",
+    channel="Where to post it (default: #loader-download, else this channel)",
+    replace="Delete the bot's older loader posts in that channel (default: yes)",
+)
+async def post_loader(
+    interaction: discord.Interaction,
+    file: discord.Attachment = None,
+    branch: str = "",
+    channel: discord.TextChannel = None,
+    replace: bool = True,
+):
+    if not is_admin(interaction):
+        await interaction.response.send_message("No permission.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if file is not None:
+            raw, source = await file.read(), file.filename
+        else:
+            raw, source = await gh_fetch_file(LOADER_FILE, branch)
+        text = raw.decode("utf-8")
+    except GitHubFetchError as e:
+        await interaction.followup.send(str(e), ephemeral=True)
+        return
+    except Exception as e:
+        await interaction.followup.send(f"Could not read the loader: {e}", ephemeral=True)
+        return
+
+    if not is_customer_loader(text):
+        await interaction.followup.send(
+            "This is not specter_loader.lua (the cloud script, the dev build and the dev loader are never posted). "
+            "Nothing posted.", ephemeral=True)
+        return
+
+    target = channel or discord.utils.get(interaction.guild.text_channels, name="loader-download") or interaction.channel
+    if not isinstance(target, discord.TextChannel):
+        await interaction.followup.send("Pick a text channel to post the loader in.", ephemeral=True)
+        return
+
+    removed = 0
+    if replace:
+        try:
+            async for msg in target.history(limit=50):
+                if msg.author.id == client.user.id and any(a.filename == LOADER_FILE for a in msg.attachments):
+                    await msg.delete()
+                    removed += 1
+        except discord.HTTPException:
+            pass
+
+    embed = discord.Embed(
+        title="\U0001f4e5 Specter Loader",
+        description=(
+            "**Install**\n"
+            "1. Download `specter_loader.lua` below\n"
+            "2. Put it into your **CS:GO folder** (where `csgo.exe` is): gamesense loads Lua scripts from there\n"
+            "3. In gamesense open the **Lua** tab, refresh the list and load **specter_loader**\n"
+            "4. Go to **AA > Anti-aimbot angles**, paste your key, pick a username & password\n"
+            "5. **Register** the first time, **Login** after that. Your HWID locks on first use\n\n"
+            "The script itself is downloaded from our server every time you log in, so this file only changes "
+            "when we post a new one here.\n"
+            "No key yet? See #prices. Problems? Open a ticket in #support-ticket."
+        ),
+        color=0x82C3FF,
+    )
+    embed.add_field(name="Updated", value=f"<t:{int(discord.utils.utcnow().timestamp())}:D>", inline=True)
+    embed.add_field(name="SHA-256", value=f"`{hashlib.sha256(raw).hexdigest()[:16]}`", inline=True)
+    embed.set_footer(text="Specter \U0001f319 • never share your key or the loader")
+    if LOGO_URL:
+        embed.set_thumbnail(url=LOGO_URL)
+    try:
+        await target.send(embed=embed, file=discord.File(io.BytesIO(raw), filename=LOADER_FILE))
+    except discord.HTTPException as e:
+        await interaction.followup.send(f"Could not post in {target.mention}: {e}", ephemeral=True)
+        return
+
+    note = f" ({removed} older post{'s' if removed != 1 else ''} removed)" if removed else ""
+    await interaction.followup.send(f"Loader posted in {target.mention}{note}. Source: {source}", ephemeral=True)
+
+    log_embed = discord.Embed(title="Loader Posted", color=0x82C3FF)
+    log_embed.add_field(name="Channel", value=target.mention, inline=True)
     log_embed.add_field(name="Source", value=source, inline=True)
     log_embed.add_field(name="By", value=interaction.user.mention, inline=True)
     await log_action(interaction.guild, log_embed)
@@ -1175,19 +1321,9 @@ async def post_prices(interaction: discord.Interaction):
 
     embed = discord.Embed(title="Prices", color=0x82C3FF)
 
-    gs_lines = []
-    for plan_name in ["beta", "nightly", "specter"]:
-        p = SPECTER_PRICES.get(plan_name, {})
-        gs_lines.append(f"*{plan_name} version*")
-        if p.get("monthly"):
-            gs_lines.append(f"○ `1 month` — {p['monthly']}")
-        if p.get("lifetime"):
-            gs_lines.append(f"○ `lifetime` — {p['lifetime']}")
-        gs_lines.append("")
-
     embed.add_field(
         name="\U0001f319 Specter for GS",
-        value="\n".join(gs_lines),
+        value=price_lines(),
         inline=False,
     )
 
@@ -1280,16 +1416,7 @@ async def post_howto(interaction: discord.Interaction):
         inline=False,
     )
     embed.add_field(
-        name="Step 2 — Load the Script",
-        value=(
-            "1. Open **gamesense** (CS2)\n"
-            "2. Go to **Lua** tab and load the **Specter Loader**\n"
-            "3. Navigate to **AA > Anti-aimbot angles**"
-        ),
-        inline=False,
-    )
-    embed.add_field(
-        name="Step 3 — Register / Login",
+        name="Step 2 — Register / Login",
         value=(
             "1. Paste your **license key** in the key field\n"
             "2. Choose a **username** and **password**\n"
@@ -1373,13 +1500,12 @@ async def setup_server(interaction: discord.Interaction):
         if not category:
             try:
                 category = await guild.create_category(cat_name, reason=f"Setup by {interaction.user}")
-            except discord.Forbidden:
+            except discord.HTTPException:
                 log_lines.append(f"❌ Category **{cat_name}** failed")
                 continue
 
         for ch in section["channels"]:
             ch_name = ch["name"]
-            ch_type = ch.get("type", "text")
             existing = discord.utils.get(guild.channels, name=ch_name, category=category)
             if existing:
                 if ch_name == "prices":     prices_ch = existing
@@ -1401,6 +1527,13 @@ async def setup_server(interaction: discord.Interaction):
                 if staff_role:
                     overwrites[staff_role] = discord.PermissionOverwrite(
                         view_channel=True, send_messages=True, read_message_history=True)
+            elif ch.get("access") == "customer_readonly":
+                if customer_role:
+                    overwrites[customer_role] = discord.PermissionOverwrite(
+                        view_channel=True, send_messages=False, read_message_history=True)
+                if staff_role:
+                    overwrites[staff_role] = discord.PermissionOverwrite(
+                        view_channel=True, send_messages=True, read_message_history=True)
             elif ch.get("access") in access_map:
                 for role in access_map[ch["access"]]:
                     if role:
@@ -1413,39 +1546,21 @@ async def setup_server(interaction: discord.Interaction):
                         view_channel=True, send_messages=True, read_message_history=True)
 
             try:
-                if ch_type == "forum":
-                    created_ch = await guild.create_forum(
-                        name=ch_name, topic=ch.get("topic", ""),
-                        category=category, overwrites=overwrites,
-                        reason=f"Setup by {interaction.user}")
-                else:
-                    created_ch = await guild.create_text_channel(
-                        name=ch_name, topic=ch.get("topic", ""),
-                        category=category, overwrites=overwrites,
-                        reason=f"Setup by {interaction.user}")
-                log_lines.append(f"✅ #{ch_name}")
+                created_ch, note = await create_setup_channel(guild, ch, category, overwrites, f"Setup by {interaction.user}")
+                log_lines.append(f"✅ #{ch_name}{note}")
                 if ch_name == "prices":     prices_ch = created_ch
                 if ch_name == "rules":      rules_ch  = created_ch
                 if ch_name == "how-to-use": howto_ch  = created_ch
                 if ch_name == "support-ticket": ticket_ch = created_ch
-            except discord.Forbidden:
+            except discord.HTTPException:
                 log_lines.append(f"❌ #{ch_name}")
 
     # 3. Post embeds in the right channels
     posted = []
 
     if prices_ch and isinstance(prices_ch, discord.TextChannel):
-        gs_lines = []
-        for plan_name in ["beta", "nightly", "specter"]:
-            p = SPECTER_PRICES.get(plan_name, {})
-            gs_lines.append(f"*{plan_name} version*")
-            if p.get("monthly"):
-                gs_lines.append(f"○ `1 month` — {p['monthly']}")
-            if p.get("lifetime"):
-                gs_lines.append(f"○ `lifetime` — {p['lifetime']}")
-            gs_lines.append("")
         e = discord.Embed(title="Prices", color=0x82C3FF)
-        e.add_field(name="\U0001f319 Specter for GS", value="\n".join(gs_lines), inline=False)
+        e.add_field(name="\U0001f319 Specter for GS", value=price_lines(), inline=False)
         pay = [f"○ {m}" for m in PAYMENT_METHODS]
         if BUY_CONTACT:
             pay.append(f"○ Tag to buy: **{BUY_CONTACT}**")
@@ -1484,12 +1599,7 @@ async def setup_server(interaction: discord.Interaction):
             "Purchase a plan in #prices or from staff.\n"
             "Use `/redeem <key>` to get your role."
         ), inline=False)
-        e.add_field(name="Step 2 — Load the Script", value=(
-            "1. Open **gamesense** (CS2)\n"
-            "2. Go to **Lua** tab and load the **Specter Loader**\n"
-            "3. Navigate to **AA > Anti-aimbot angles**"
-        ), inline=False)
-        e.add_field(name="Step 3 — Register / Login", value=(
+        e.add_field(name="Step 2 — Register / Login", value=(
             "1. Paste your **license key**\n"
             "2. Choose a **username** and **password**\n"
             "3. Click **Register** (first time) or **Login**\n"

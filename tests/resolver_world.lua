@@ -212,6 +212,51 @@ H.drivers = {
         d.sent = function(k) return k % (c + 1) == c end
         return d
     end,
+    -- jitter with micromovement: the eye yaw switches side every `hold` sent packets (o.rhold: a random 1..rhold), the lower
+    -- body yaw target the server sends is the eye yaw of the sent tick (micromovement), so the netvars show no desync and
+    -- with fakelag the feet model lands near 0 on many records. The true body yaw: body "static" (side * size), "opp" /
+    -- "same" (against / with the yaw offset), "none" (no desync: the server's own feet, moving = they follow the eye yaw
+    -- at 30 deg/s)
+    micro_jitter = function(o)
+        local c, amp, hold, body, size = o.choke or 6, o.amp or 30, o.hold or 1, o.body or "static", o.size or 58
+        local rnd = lcg(o.seed or 11)
+        local d = {}
+        local ys, left, bs, cur, feet, nb = 1, 0, o.side or 1, amp, nil, 0
+        local function packet()
+            left = left - 1
+            if left <= 0 then
+                ys = -ys
+                left = o.rhold and (1 + math.floor(rnd() * o.rhold)) or hold
+            end
+            cur = (o.center or 0) + ys * amp
+            if body == "opp" then bs = -ys elseif body == "same" then bs = ys end
+        end
+        function d.eye(k)
+            if k % (c + 1) == c then packet() end
+            if body == "none" then
+                feet = approach(cur, feet or cur, TI * 30)
+                local dd = norm(cur - feet)
+                if dd > 58 then feet = norm(cur - 58) elseif dd < -58 then feet = norm(cur + 58) end
+                nb = norm(cur - feet)
+            end
+            return cur
+        end
+        d.sent = function(k) return k % (c + 1) == c end
+        d.vel = function(k) return 1.1 end
+        d.net_lby = function(k, eye) return eye end
+        d.truth = function(k) if body == "none" then return nb end return bs * size end
+        return d
+    end,
+    -- no anti-aim at all (a legit / matchmaking player): every tick is sent, so no desync is possible; the eye yaw wanders
+    -- slowly and the true body yaw is the server's own feet logic (o.vel: running, else standing)
+    legit = function(o)
+        local amp, period = o.amp or 50, o.period or 200
+        local d = {}
+        function d.eye(k) return amp * math.sin(k / period * 2 * math.pi) end
+        d.sent = function(k) return true end
+        d.vel = function(k) return o.vel or 0 end
+        return d
+    end,
     -- eye yaw holds, then flicks away for one sent tick once per second
     lby_flick = function(o)
         local d = {}
@@ -299,7 +344,11 @@ local function enemy_advance(e, k, opts)
     if d.truth and not sh then raw = d.truth(k) end
     local pose = 0.5
     if opts.pose_real then pose = (raw + 60) / 120 end
-    e.net = { sim = st, eye = eye, pitch = sh and -89 or 89, vel = vel, flags = 1, duck = 0, lby = e.srv.lby, pose = pose }
+    -- d.net_lby: the lower body yaw target the server sends when it is not the one of the feet logic (micromovement keeps
+    -- it on the eye yaw of the sent tick, the netvars show no desync)
+    local lby = e.srv.lby
+    if d.net_lby then lby = d.net_lby(k, eye) end
+    e.net = { sim = st, eye = eye, pitch = sh and -89 or 89, vel = vel, flags = 1, duck = 0, lby = lby, pose = pose }
     if not sh then e.max_st = st end
     local r = { k = k, st = st, T = raw * e.truth_pol, shifted = sh ~= nil, applied = nil }
     e.rec[k] = r
