@@ -15,7 +15,7 @@ if not LPH_OBFUSCATED then
 end
 
 -- ██ THE LICENSE SERVER (Railway domain of the server service, no "/" at the end) ██
-local SERVER_URL = LPH_ENCSTR("https://specter-license-mh111.up.railway.app")
+local SERVER_URL = LPH_ENCSTR("https://specter-license-mh111-production.up.railway.app")
 
 -- ── LIBS ─────────────────────────────────────────────────────────────
 local http  = require "gamesense/http"
