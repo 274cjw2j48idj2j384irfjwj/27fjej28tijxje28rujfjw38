@@ -29,16 +29,26 @@ from discord import app_commands
 
 # ── Config ────────────────────────────────────────────────────────────
 
-DISCORD_TOKEN     = os.getenv("DISCORD_TOKEN", "")
-API_URL           = os.getenv("API_URL", "http://localhost:3000").rstrip("/")
-ADMIN_SECRET      = os.getenv("ADMIN_SECRET", "change_this_secret_now")
-ADMIN_ROLE_ID     = int(os.getenv("ADMIN_ROLE_ID", "0"))
-DEFAULT_ROLE_NAME = os.getenv("DEFAULT_ROLE_NAME", "Member")
-LOG_CHANNEL_ID    = int(os.getenv("LOG_CHANNEL_ID", "0"))
-GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
-GITHUB_REPO       = os.getenv("GITHUB_REPO", "274cjw2j48idj2j384irfjwj/27fjej28tijxje28rujfjw38")
-SCRIPT_BRANCH     = os.getenv("SCRIPT_BRANCH", "main")
-SCRIPT_TOKEN      = os.getenv("SCRIPT_TOKEN", "")
+def _env(name: str, default: str = "") -> str:
+    """A variable pasted as NAME=value or with quotes around it still works: both are cut off."""
+    v = (os.environ.get(name) or "").strip()
+    if v.startswith(name + "="):
+        v = v[len(name) + 1:].strip()
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+        v = v[1:-1].strip()
+    return v or default
+
+
+DISCORD_TOKEN     = _env("DISCORD_TOKEN", "")
+API_URL           = _env("API_URL", "http://localhost:3000").rstrip("/")
+ADMIN_SECRET      = _env("ADMIN_SECRET", "change_this_secret_now")
+ADMIN_ROLE_ID     = int(_env("ADMIN_ROLE_ID", "0"))
+DEFAULT_ROLE_NAME = _env("DEFAULT_ROLE_NAME", "Member")
+LOG_CHANNEL_ID    = int(_env("LOG_CHANNEL_ID", "0"))
+GITHUB_TOKEN      = _env("GITHUB_TOKEN", "")
+GITHUB_REPO       = _env("GITHUB_REPO", "274cjw2j48idj2j384irfjwj/27fjej28tijxje28rujfjw38")
+SCRIPT_BRANCH     = _env("SCRIPT_BRANCH", "main")
+SCRIPT_TOKEN      = _env("SCRIPT_TOKEN", "")
 
 VALID_PLANS     = ["beta", "nightly", "specter", "debug"]
 VALID_DURATIONS = ["lifetime", "1d", "7d", "14d", "30d", "90d"]
@@ -67,8 +77,8 @@ SPECTER_PRICES = {
     "specter": {"monthly": "$25", "lifetime": "$120"},
 }
 PAYMENT_METHODS = ["Crypto", "PayPal", "Revolut", "Other"]
-LOGO_URL = os.getenv("SPECTER_LOGO_URL", "")
-BUY_CONTACT = os.getenv("BUY_CONTACT", "@owner")
+LOGO_URL = _env("SPECTER_LOGO_URL", "")
+BUY_CONTACT = _env("BUY_CONTACT", "@owner")
 
 # ── Channel structure ────────────────────────────────────────────────
 CHANNEL_STRUCTURE = [

@@ -3,10 +3,19 @@ const cors    = require('cors')
 const crypto  = require('crypto')
 
 const app  = express()
-const PORT = process.env.PORT || 3000
 
-const ADMIN_SECRET  = process.env.ADMIN_SECRET  || 'change_this_secret_now'
-const SCRIPT_SECRET = process.env.SCRIPT_SECRET || 'change_this_script_secret_now'
+// a variable pasted as NAME=value or with quotes around it ("value") still works: both are cut off
+function env(name, fallback) {
+    let v = String(process.env[name] || '').trim()
+    if (v.startsWith(name + '=')) v = v.slice(name.length + 1).trim()
+    if (v.length >= 2 && ((v[0] === '"' && v[v.length - 1] === '"') || (v[0] === "'" && v[v.length - 1] === "'"))) v = v.slice(1, -1).trim()
+    return v || fallback
+}
+
+const PORT = env('PORT', 3000)
+
+const ADMIN_SECRET  = env('ADMIN_SECRET', 'change_this_secret_now')
+const SCRIPT_SECRET = env('SCRIPT_SECRET', 'change_this_script_secret_now')
 
 // ── PERSISTENT DB via Railway env var ────────────────────────────────────
 // Since Railway filesystem resets on redeploy, we store licenses in
@@ -20,8 +29,8 @@ const SCRIPT_SECRET = process.env.SCRIPT_SECRET || 'change_this_script_secret_no
 const { Redis } = require('@upstash/redis')
 
 const redis = new Redis({
-    url:   process.env.UPSTASH_REDIS_REST_URL,
-    token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    url:   env('UPSTASH_REDIS_REST_URL', ''),
+    token: env('UPSTASH_REDIS_REST_TOKEN', ''),
 })
 
 const DB_KEY = 'specter:licenses'
@@ -265,7 +274,7 @@ app.get('/script', async (req, res) => {
         `rawset(_G, "_auth_key",        ${JSON.stringify(key)})`,
         `rawset(_G, "_auth_hwid",       ${JSON.stringify(hwid)})`,
         `rawset(_G, "BUILD_VERSION",    ${JSON.stringify(plan)})`,
-        `rawset(_G, "_server_url",      ${JSON.stringify(process.env.PUBLIC_URL || '')})`,
+        `rawset(_G, "_server_url",      ${JSON.stringify(env('PUBLIC_URL', ''))})`,
     ].join('\n')
 
     // burn ticket
