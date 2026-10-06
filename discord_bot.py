@@ -21,6 +21,7 @@ ENV VARS (set in Discord bot host or .env):
 
 import os
 import io
+import time
 import json
 import base64
 import asyncio
@@ -1660,14 +1661,21 @@ async def setup_server(interaction: discord.Interaction):
 
 # ── Events ────────────────────────────────────────────────────────────
 
+_synced = False
+
+
 @client.event
 async def on_ready():
+    global _synced
     client.add_view(TicketCreateView())
     client.add_view(TicketCloseView())
-    synced = await tree.sync()
     print(f"Bot online: {client.user}  |  Guilds: {len(client.guilds)}")
-    # which commands Discord got: a command missing here means an old build is deployed
-    print(f"Slash commands ({len(synced)}): {', '.join(sorted(c.name for c in synced))}")
+    # on_ready runs again after a reconnect: the command sync (rate limited) only once per start
+    if not _synced:
+        _synced = True
+        synced = await tree.sync()
+        # which commands Discord got: a command missing here means an old build is deployed
+        print(f"Slash commands ({len(synced)}): {', '.join(sorted(c.name for c in synced))}")
     print(f"API: {API_URL}")
     print(f"Default role: {DEFAULT_ROLE_NAME}")
 
@@ -1678,4 +1686,18 @@ if __name__ == "__main__":
     if not DISCORD_TOKEN:
         print("ERROR: Set DISCORD_TOKEN environment variable.")
         raise SystemExit(1)
-    client.run(DISCORD_TOKEN)
+    # Too many logins from one IP (a crash loop: Railway restarts the bot within a second) and Discord's Cloudflare
+    # bans the IP for a while (429, error 1015). Every new try makes the ban longer, so wait here instead of exiting
+    discord.utils.setup_logging()           # once: client.run would add a log handler on every try
+    wait = 300
+    while True:
+        try:
+            client.run(DISCORD_TOKEN, log_handler=None)
+            break
+        except discord.HTTPException as e:
+            if e.status != 429:
+                raise
+            print(f"Discord rate limited this IP (429 / Cloudflare 1015). Next login in {wait // 60} min.", flush=True)
+            time.sleep(wait)
+            wait = min(wait * 2, 3600)
+            client.clear()
