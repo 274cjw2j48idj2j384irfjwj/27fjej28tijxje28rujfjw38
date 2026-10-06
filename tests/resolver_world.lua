@@ -247,6 +247,16 @@ H.drivers = {
         d.truth = function(k) if body == "none" then return nb end return bs * size end
         return d
     end,
+    -- no anti-aim at all (a legit / matchmaking player): every tick is sent, so no desync is possible; the eye yaw wanders
+    -- slowly and the true body yaw is the server's own feet logic (o.vel: running, else standing)
+    legit = function(o)
+        local amp, period = o.amp or 50, o.period or 200
+        local d = {}
+        function d.eye(k) return amp * math.sin(k / period * 2 * math.pi) end
+        d.sent = function(k) return true end
+        d.vel = function(k) return o.vel or 0 end
+        return d
+    end,
     -- eye yaw holds, then flicks away for one sent tick once per second
     lby_flick = function(o)
         local d = {}

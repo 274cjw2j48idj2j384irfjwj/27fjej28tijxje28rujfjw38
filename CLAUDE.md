@@ -36,8 +36,9 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 ## Editing Rules
 - Edit `specter_cloud.lua` only. Then run `python3 tools/make_dev.py` (rewrites `specter_dev.lua`) and commit both together.
   `python3 tests/load_smoke.py --dev-file` fails when the dev build is out of date.
-  Exception (owners, Oct 2026): the owners' private dev copy was ported into `specter_cloud.lua` and ONLY the cloud was uploaded;
-  `specter_dev.lua` was left as it was. Regenerate it only when the owners ask.
+  The owners play the dev build WITHOUT a loader (Oct 2026): `specter_dev.lua` is what they test in game, so every change has to
+  reach it. (For a while only the cloud got the changes and the dev build stayed old: the owners kept seeing bugs that were
+  already fixed, e.g. "res 0° / bt 0t" in the hitlog.)
 - The dev build is just the normal code: the owners said many times that it needs no login, no checks and no loader. Do not add any.
 - Also update `server.js` when the change adds/changes API endpoints or auth globals, and `specter_loader.lua` when it affects the
   auth globals or the loading flow.
@@ -82,7 +83,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - Zero rule: on a record whose computed body yaw is ~0 (|c| < `ZERO_MIN` 20: micromovement keeps the LBY on the eye yaw, the netvars
   show no desync) a near-0 angle is only given after a head hit near 0 on such records (`zero_of`) or 2 resolver misses away from 0
   since the last hit (3 on jitter records `j+` / `j-`: the side switches, misses on both sides are normal); only defensive records
-  are exempt. It used to shoot the first shots of a new player at 0 / -12. Jitter was exempt too until the owners saw 0° on jitter
+  are exempt. That near-0 try is ONE shot: a near-0 miss counts the misses again, and every failed try doubles the misses it takes
+  (`z.tries`, x2 .. x16; a near-0 hit resets it): a target we keep missing for other reasons got a near-0 shot after every 2 misses
+  (21% of its shots, now 8%). A player with no choked tick for 16 updates in a row (`p.nochoke`) can not desync: near 0 is allowed
+  (legit / no-AA players, first 10 shots 0.80-0.87 -> 0.93-1.00). It used to shoot the first shots of a new player at 0 / -12. Jitter was exempt too until the owners saw 0° on jitter
   (Oct 2026): micromovement + fakelag put the feet model near 0 on half of the jitter records, new jitter players got 9-14% of their
   first 10 shots near 0 in the sim (`micro_jitter` in tests/resolver_world.lua), now 1-3.5% with a higher hit rate. Not on records
   with a big computed body yaw: a real ~0 body yaw happens there (jitter_choke 0.92 -> 0.47 when it was tried).
@@ -100,7 +104,7 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   `mode` = "d" / "j", `method`, `model_name`, `phit` = confidence, `value`), `memory[key].hit_value[stance]` (aa stealer), `forced`,
   `stats_hook`. The tiers without the resolver get a stub with the same names.
 - Tests: `pip install lupa && python3 tests/resolver_regress.py` (hit rates per AA and ping, reaction delays, noise, inverted sign, options,
-  zero rule on 60 new jitter + micromovement players, player list / release / Correction active restore, shot attribution, garbage
+  zero rule on 60 new jitter + micromovement players, a never-hit target (<= 12% near 0), legit players, player list / release / Correction active restore, shot attribution, garbage
   netvars, 5 enemies, slot reuse, resets, last_log).
 - Load smoke test: `python3 tests/load_smoke.py [--dev-file] [--plan=nightly|beta|specter]`. Run it after every change that touches
   load-time code, the loaders, the auth gate or the resolver.
@@ -191,5 +195,6 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - `python3 tests/aa_redteam.py [preset ...]` (~35 min for all): the REAL anti-aim of the dev build runs in the mock game of
   `tests/perf/mock.lua`; what gamesense would do with the settings it writes is modelled per sent packet and becomes the enemy of
   `tests/resolver_world.lua`; the resolver of the repo (full / without the jitter split / fixed size; it does not track side switches) shoots at it, its hits / shots reach our anti brute-force.
-  Fails when the best attacker hits a preset / state above 0.60 (a forced side guess is ~0.47). Now: 0.36-0.51, mean 0.44 (was 0.63).
+  Fails when the best attacker hits a preset / state above 0.60 (a forced side guess is ~0.47). Now (the owners' AA in the dev
+  build, Oct 2026): 0.39-0.53, mean 0.48 (was 0.63; 0.44 with the old repo AA).
   It models the angles only, not the animation layers a real cheat also reads.

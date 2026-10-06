@@ -111,6 +111,8 @@ RATES = [
     ("jitter_delay", dict(period=5), 0.88), ("jitter_choke", dict(choke=3), 0.88), ("moving_jitter", {}, 0.88),
     ("jitter_random", {}, 0.85), ("jitter_rperiod", {}, 0.88), ("jitter_drift", {}, 0.88), ("jitter_multi", {}, 0.80),
     ("aa_sim", dict(scheme="current"), 0.85),
+    # no anti-aim (every tick sent: no desync possible), the body yaw is the server's own and often ~0
+    ("legit", {}, 0.85), ("legit", dict(vel=150), 0.85),
 ]
 print(f"{'scenario':<34}{'20ms':>7}{'80ms':>7}")
 for scn, d, need in RATES:
@@ -168,6 +170,22 @@ for name, bodies, chokes, max_zero, need in (("desync, choke 1-3", ("static", "o
     print(f"   {name:<22} near 0 on a real desync {z * 100:4.1f}%   hit {h:.2f}")
     check(z <= max_zero, f"zero rule {name}: {z * 100:.1f}% of the shots near 0 on a real desync")
     check(h >= need, f"zero rule {name}: hit rate of the first shots {h:.2f} < {need}")
+
+# a target we never hit (its body yaw is out of reach: like lag comp breakers whose misses count as resolver misses):
+# the near-0 try used to come after every 2-3 misses (21% of the shots), each failed try now doubles the misses it takes
+NEAR0_ALL = lua('''function(acc)
+    return function(k, e, r, hit, ctl, S)
+        if r.applied == nil then return end
+        acc.n = acc.n + 1
+        if math.abs(r.applied) < 20 then acc.z = acc.z + 1 end
+    end
+end''')
+acc = lua("function() return { n = 0, z = 0 } end")()
+for sd in (1, 2, 3):
+    for d in (dict(amp=30, choke=6, size=100), dict(amp=0, choke=6, size=100)):
+        run("micro_jitter", dict(d, seed=sd), ticks=3000, ping=40, seed=sd, on_shot=NEAR0_ALL(acc))
+print(f"   never hit target: {acc.z / acc.n * 100:.1f}% of {acc.n} shots near 0")
+check(acc.z / acc.n <= 0.12, f"never hit target: {acc.z / acc.n * 100:.1f}% of the shots near 0")
 
 G0 = lua('''function(tick, ent, name)
     local r = (tick * 7 + ent * 13 + #name) % 19

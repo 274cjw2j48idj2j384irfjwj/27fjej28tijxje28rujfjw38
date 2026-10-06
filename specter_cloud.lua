@@ -986,6 +986,10 @@ LPH_NO_VIRTUALIZE(function ()
             -- this situation, or after 2 resolver misses away from 0 since the last hit (then it may really not desync).
             -- Jitter records too (micromovement + fakelag: the feet model lands near 0 on half of them, they got 0 / +-12
             -- against a real desync), there after 3 misses: the body side switches, misses on both sides are normal.
+            -- That near-0 try is one shot: when it misses too, the misses are counted again and each failed try doubles
+            -- how many it takes (2, 4, 8 .. 32): a target we keep missing for other reasons (lag comp breakers counted as
+            -- resolver misses) got a near-0 shot after every 2 misses. A player who sent every tick for the last 16
+            -- updates (no choke) can not desync at all: near 0 is fine there.
             -- Defensive records are exempt (their computed body yaw is the angle of the flick)
             local function zero_of(key, ctx)
                 local m = memory_of(key)
@@ -994,10 +998,11 @@ LPH_NO_VIRTUALIZE(function ()
                 if not z then z = { hits = 0, mp = 0, mn = 0 }; m.zero[ctx] = z end
                 return z
             end
-            local function zero_allowed(key, ctx)
+            local function zero_allowed(key, ctx, p)
                 if ctx == "def" then return true end
+                if p and (p.nochoke or 0) >= 16 then return true end
                 local z = zero_of(key, ctx)
-                return z.hits >= 0.3 or z.mp + z.mn >= ((ctx == "j+" or ctx == "j-") and 3 or 2)
+                return z.hits >= 0.3 or z.mp + z.mn >= ((ctx == "j+" or ctx == "j-") and 3 or 2) * 2 ^ math.min(z.tries or 0, 4)
             end
             local function zero_result(key, ctx, v, hit)
                 local z = zero_of(key, ctx)
@@ -1005,8 +1010,11 @@ LPH_NO_VIRTUALIZE(function ()
                 if hit then
                     z.hits = near and (z.hits + 1) or z.hits * 0.5
                     z.mp, z.mn = 0, 0
+                    if near then z.tries = 0 end
                 elseif near then
                     z.hits = z.hits * 0.6
+                    z.mp, z.mn = 0, 0
+                    z.tries = (z.tries or 0) + 1
                 elseif v > 0 then z.mp = z.mp + 1
                 else z.mn = z.mn + 1 end
             end
@@ -1636,6 +1644,7 @@ LPH_NO_VIRTUALIZE(function ()
                 -- lag compensation: more than 64 units between two records = the old records are gone on the server (teleport),
                 -- the aimbot can only shoot the newest one, extrapolated; misses on it are about the position, not the angle
                 p.choke = p.max_st and clamp(st - p.max_st - 1, 0, 64) or 0
+                p.nochoke = p.choke == 0 and (p.nochoke or 0) + 1 or 0     -- updates in a row without a choked tick
                 p.lc_rec = false
                 oz = finite(oz) and oz or 0
                 if p.last_o and p.max_st and st - p.max_st <= 32 then
@@ -1840,7 +1849,7 @@ LPH_NO_VIRTUALIZE(function ()
                             if pp then pi = pp end
                             if lp_ and lgain > best_gain then pi, period, p.layers_used, best_gain = lp_, nil, true, lgain end
                             if fp_ and fgain > best_gain then pi, period, p.layers_used, p.fs_used = fp_, nil, nil, true end
-                            local value, phit = decide(b, c, pi, p.maxd, math.abs(c) < ZERO_MIN and not zero_allowed(p.key, ctx))
+                            local value, phit = decide(b, c, pi, p.maxd, math.abs(c) < ZERO_MIN and not zero_allowed(p.key, ctx, p))
                             -- "Override size": the side from the resolver, the size from the menu
                             if option("override", false) == true then
                                 local side = value > 0 and 1 or (value < 0 and -1 or (pi >= 0.5 and 1 or -1))
