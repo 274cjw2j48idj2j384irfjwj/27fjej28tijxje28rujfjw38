@@ -15,8 +15,8 @@
 -- ======================================================================
 
 local SOURCES = {
-    "https://raw.githubusercontent.com/Matehun111/idk/main/specter_dev.lua",
-    "https://raw.githubusercontent.com/Matehun111/idk/ccr-83c73edc-8cyygb/specter_dev.lua",
+    "https://raw.githubusercontent.com/274cjw2j48idj2j384irfjwj/27fjej28tijxje28rujfjw38/main/specter_dev.lua",
+    "https://raw.githubusercontent.com/274cjw2j48idj2j384irfjwj/27fjej28tijxje28rujfjw38/dev/specter_dev.lua",
 }
 local CACHE_FILE = "specter_dev_cache.lua"
 local CHUNK_NAME = "@specter_dev"

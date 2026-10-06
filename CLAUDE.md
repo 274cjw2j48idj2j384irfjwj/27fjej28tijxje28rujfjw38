@@ -1,5 +1,9 @@
 # Specter Project Guidelines
 
+## Repository
+- Moved (owners, Oct 2026) from `Matehun111/idk` to `274cjw2j48idj2j384irfjwj/27fjej28tijxje28rujfjw38` with the full history; `main`
+  is the current code. The bot (`GITHUB_REPO`) and the dev loader (`SOURCES`) point here.
+
 ## Language
 The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 
@@ -9,7 +13,7 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   integrity monitor, every feature unlocked. Never edit it by hand, never turn it back into a loader
 - `specter_loader.lua` — Production loader (auth + cloud fetch from server)
 - `specter_dev_loader.lua` — DEV loader for the owners: no login / key / HWID / server. Put it into the gamesense lua folder once; it
-  downloads the newest `specter_dev.lua` from GitHub raw on every load (SOURCES list: main first, then the working branch), saves it
+  downloads the newest `specter_dev.lua` from GitHub raw on every load (SOURCES list: main first, then the `dev` branch), saves it
   as `specter_dev_cache.lua` and falls back to that copy offline. `python3 tests/dev_loader.py` tests it. `specter_dev.lua` itself stays
   the plain script (no loader inside it)
 - `server.js` — License server (Express + Upstash Redis). The script is stored in Redis in 300 000 char parts

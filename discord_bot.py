@@ -12,7 +12,7 @@ ENV VARS (set in Discord bot host or .env):
   LOG_CHANNEL_ID      — Channel ID for key/role logs (optional)
   GITHUB_TOKEN        — GitHub PAT with repo write access (for key sync). Leave it EMPTY while the repo is public:
                         the sync writes every key into specter_keys.json in the repo (the loader does not need it)
-  GITHUB_REPO         — GitHub repo (default: Matehun111/idk)
+  GITHUB_REPO         — GitHub repo (default: 274cjw2j48idj2j384irfjwj/27fjej28tijxje28rujfjw38)
   SCRIPT_BRANCH       — branch /script_upload takes specter_cloud.lua from (default: main)
 """
 
@@ -33,7 +33,7 @@ ADMIN_ROLE_ID     = int(os.getenv("ADMIN_ROLE_ID", "0"))
 DEFAULT_ROLE_NAME = os.getenv("DEFAULT_ROLE_NAME", "Member")
 LOG_CHANNEL_ID    = int(os.getenv("LOG_CHANNEL_ID", "0"))
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
-GITHUB_REPO       = os.getenv("GITHUB_REPO", "Matehun111/idk")
+GITHUB_REPO       = os.getenv("GITHUB_REPO", "274cjw2j48idj2j384irfjwj/27fjej28tijxje28rujfjw38")
 SCRIPT_BRANCH     = os.getenv("SCRIPT_BRANCH", "main")
 
 VALID_PLANS     = ["beta", "nightly", "specter", "debug"]

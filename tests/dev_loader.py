@@ -61,7 +61,7 @@ def logs(env):
 # 1) main answers: used, saved, the other source is never asked
 e = go([dict(status=200, body=GOOD % "main")])
 check(len(list(e.requests.values())) == 1, "main first, only one request when it works")
-check("raw.githubusercontent.com/Matehun111/idk/main/specter_dev.lua?t=1000" in e.requests[1], "first url is main with a cache buster")
+check("raw.githubusercontent.com/274cjw2j48idj2j384irfjwj/27fjej28tijxje28rujfjw38/main/specter_dev.lua?t=1000" in e.requests[1], "first url is main with a cache buster")
 check(e.G.WHICH == "main" and e.G.RAN == 1, "the script from main ran once")
 check(e.files["specter_dev_cache.lua"] is not None, "the downloaded script is saved")
 
