@@ -22,6 +22,9 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   GitHub raw of `SCRIPT_BRANCH`; with `SCRIPT_TOKEN`, a read-only token, through the contents API for a private repo)
   without comments on the server for every plan; it refuses a file without the auth gate.
   Keep `GITHUB_TOKEN` empty while the repo is public (the key sync writes every key into `specter_keys.json`)
+  `/setup_server` / `/setup_channels` build `CHANNEL_STRUCTURE` (existing channels are skipped, so `/setup_channels` adds a new
+  category to a running server), incl. "⭐ Specter Hub": loader-download (Customer read-only, Staff writes), config-share (forum),
+  script-help, showcase. A forum the server can not have (no Community) becomes a text channel (`create_setup_channel`)
 - Railway: `Dockerfile` = license server, `Dockerfile.bot` = bot (service variable `RAILWAY_DOCKERFILE_PATH=Dockerfile.bot`)
 - `specter_resolver.lua` — STANDALONE desync resolver: one file, no login, no AA, no visuals, nothing but the resolver
   (menu: RAGE > Other > "Specter desync resolver"). Independent from `specter_cloud.lua` (own copy of the resolver code, own

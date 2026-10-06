@@ -113,6 +113,15 @@ CHANNEL_STRUCTURE = [
         ],
     },
     {
+        "category": "⭐ Specter Hub",
+        "channels": [
+            {"name": "loader-download", "type": "text", "access": "customer_readonly", "emoji": "\U0001f4e5", "topic": "Download the Specter loader here"},
+            {"name": "config-share",    "type": "forum", "access": "customer", "emoji": "\U0001f4c1", "topic": "Upload and share your configs"},
+            {"name": "script-help",     "type": "text",  "access": "customer", "emoji": "\U0001f527", "topic": "Script questions, issues, and troubleshooting"},
+            {"name": "showcase",        "type": "text",  "access": "customer", "emoji": "\U0001f3ac", "topic": "Show off your clips, screenshots, and highlights"},
+        ],
+    },
+    {
         "category": "⭐ Specter·Gs",
         "channels": [
             {"name": "reviews",     "type": "forum", "access": "customer", "emoji": "\U0001f49c", "topic": "Leave a review"},
@@ -254,6 +263,20 @@ async def find_or_create_role(guild: discord.Guild, name: str) -> discord.Role |
         return role
     except discord.Forbidden:
         return None
+
+
+async def create_setup_channel(guild: discord.Guild, ch: dict, category, overwrites: dict, reason: str):
+    """A channel of CHANNEL_STRUCTURE -> (channel, note). A forum the server can not have (forums need Community on in
+    Server Settings) becomes a text channel instead of stopping the whole setup."""
+    kw = dict(name=ch["name"], topic=ch.get("topic", ""), category=category, overwrites=overwrites, reason=reason)
+    if ch.get("type", "text") == "forum":
+        try:
+            return await guild.create_forum(**kw), ""
+        except discord.Forbidden:
+            raise
+        except discord.HTTPException:
+            return await guild.create_text_channel(**kw), " (text channel: forums need Community)"
+    return await guild.create_text_channel(**kw), ""
 
 
 # ── Ticket system (persistent views) ────────────────────────────────
@@ -484,13 +507,12 @@ async def setup_channels(interaction: discord.Interaction):
                     cat_name,
                     reason=f"Setup by {interaction.user}",
                 )
-            except discord.Forbidden:
+            except discord.HTTPException:
                 failed.append(f"Category: {cat_name}")
                 continue
 
         for ch in section["channels"]:
             ch_name = ch["name"]
-            ch_type = ch.get("type", "text")
             existing = discord.utils.get(guild.channels, name=ch_name, category=category)
             if existing:
                 existed.append(f"#{ch_name}")
@@ -510,6 +532,13 @@ async def setup_channels(interaction: discord.Interaction):
                 if staff_role:
                     overwrites[staff_role] = discord.PermissionOverwrite(
                         view_channel=True, send_messages=True, read_message_history=True)
+            elif ch.get("access") == "customer_readonly":
+                if customer_role:
+                    overwrites[customer_role] = discord.PermissionOverwrite(
+                        view_channel=True, send_messages=False, read_message_history=True)
+                if staff_role:
+                    overwrites[staff_role] = discord.PermissionOverwrite(
+                        view_channel=True, send_messages=True, read_message_history=True)
             elif ch.get("access") in access_map:
                 for role in access_map[ch["access"]]:
                     if role:
@@ -522,24 +551,9 @@ async def setup_channels(interaction: discord.Interaction):
                         view_channel=True, send_messages=True, read_message_history=True)
 
             try:
-                if ch_type == "forum":
-                    await guild.create_forum(
-                        name=ch_name,
-                        topic=ch.get("topic", ""),
-                        category=category,
-                        overwrites=overwrites,
-                        reason=f"Setup by {interaction.user}",
-                    )
-                else:
-                    await guild.create_text_channel(
-                        name=ch_name,
-                        topic=ch.get("topic", ""),
-                        category=category,
-                        overwrites=overwrites,
-                        reason=f"Setup by {interaction.user}",
-                    )
-                created.append(f"#{ch_name}")
-            except discord.Forbidden:
+                _, note = await create_setup_channel(guild, ch, category, overwrites, f"Setup by {interaction.user}")
+                created.append(f"#{ch_name}{note}")
+            except discord.HTTPException:
                 failed.append(f"#{ch_name}")
 
     embed = discord.Embed(title="\U0001f319 Channel Setup Complete", color=0x82C3FF)
@@ -1373,13 +1387,12 @@ async def setup_server(interaction: discord.Interaction):
         if not category:
             try:
                 category = await guild.create_category(cat_name, reason=f"Setup by {interaction.user}")
-            except discord.Forbidden:
+            except discord.HTTPException:
                 log_lines.append(f"❌ Category **{cat_name}** failed")
                 continue
 
         for ch in section["channels"]:
             ch_name = ch["name"]
-            ch_type = ch.get("type", "text")
             existing = discord.utils.get(guild.channels, name=ch_name, category=category)
             if existing:
                 if ch_name == "prices":     prices_ch = existing
@@ -1401,6 +1414,13 @@ async def setup_server(interaction: discord.Interaction):
                 if staff_role:
                     overwrites[staff_role] = discord.PermissionOverwrite(
                         view_channel=True, send_messages=True, read_message_history=True)
+            elif ch.get("access") == "customer_readonly":
+                if customer_role:
+                    overwrites[customer_role] = discord.PermissionOverwrite(
+                        view_channel=True, send_messages=False, read_message_history=True)
+                if staff_role:
+                    overwrites[staff_role] = discord.PermissionOverwrite(
+                        view_channel=True, send_messages=True, read_message_history=True)
             elif ch.get("access") in access_map:
                 for role in access_map[ch["access"]]:
                     if role:
@@ -1413,22 +1433,13 @@ async def setup_server(interaction: discord.Interaction):
                         view_channel=True, send_messages=True, read_message_history=True)
 
             try:
-                if ch_type == "forum":
-                    created_ch = await guild.create_forum(
-                        name=ch_name, topic=ch.get("topic", ""),
-                        category=category, overwrites=overwrites,
-                        reason=f"Setup by {interaction.user}")
-                else:
-                    created_ch = await guild.create_text_channel(
-                        name=ch_name, topic=ch.get("topic", ""),
-                        category=category, overwrites=overwrites,
-                        reason=f"Setup by {interaction.user}")
-                log_lines.append(f"✅ #{ch_name}")
+                created_ch, note = await create_setup_channel(guild, ch, category, overwrites, f"Setup by {interaction.user}")
+                log_lines.append(f"✅ #{ch_name}{note}")
                 if ch_name == "prices":     prices_ch = created_ch
                 if ch_name == "rules":      rules_ch  = created_ch
                 if ch_name == "how-to-use": howto_ch  = created_ch
                 if ch_name == "support-ticket": ticket_ch = created_ch
-            except discord.Forbidden:
+            except discord.HTTPException:
                 log_lines.append(f"❌ #{ch_name}")
 
     # 3. Post embeds in the right channels
