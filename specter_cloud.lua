@@ -363,11 +363,13 @@ LPH_NO_VIRTUALIZE(function ()
             end)
 
             c_math.normalize_yaw = (function (a)
-                while a > 180 do
+                -- one step for any value: the old loops (minus 360 until <= 180) never ended on inf and ran for minutes
+                -- on a huge value (a bad memory read gives 1e12 .. 1e38), the game froze. Same result as the loops
+                if a ~= a or a == math.huge or a == -math.huge then return 0 end
+                if a > 540 or a < -540 then a = math.fmod(a, 360) end
+                if a > 180 then
                     a = a - 360
-                end
-
-                while a < -180 do
+                elseif a < -180 then
                     a = a + 360
                 end
 
@@ -1299,7 +1301,7 @@ LPH_NO_VIRTUALIZE(function ()
                 try(c)
                 try(-c)
                 for i = 1, NB do try(A[i]) end
-                if best_p < 0 then return decide(b, c, pi, maxd, false) end
+                if best_p < 0 and nozero then return decide(b, c, pi, maxd, false) end
                 return math.floor(best + 0.5), best_p
             end
 
@@ -4762,6 +4764,10 @@ LPH_NO_VIRTUALIZE(function ()
                     if not self.location then return nil end
                     local ok, command = pcall(self.location, self.vtbl, 0, command_number)
                     if not ok or command == nil or command == ffi.NULL then return nil end
+                    -- the slot of a real usercmd carries its own number: anything else is the wrong memory (a moved
+                    -- signature / vtable): its angles are garbage and writing its buttons would corrupt the game
+                    local okn, number = pcall(function() return command.command_number end)
+                    if not okn or number ~= command_number then return nil end
                     return command
                 end
             end

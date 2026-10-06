@@ -154,6 +154,13 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   then fall back to the gamesense api of the no-ffi version: host_timescale, m_fFlags + landing tick, m_flNextAttack /
   m_flFlashDuration / m_flVelocityModifier, pose parameter 11, cmd.in_* in setup_command, m_nTickBase. A game / gamesense update that
   moves a signature must never stop the script from loading. Keep it that way for every new memory read.
+- A memory read can also give garbage instead of failing. `user_input:get_command` checks that the usercmd it got carries
+  the requested `command_number` (else nil = the gamesense api fallback; the animation breaker writes its buttons through
+  it). Freeze (owners, Oct 2026: "kifagyasztja a csgot"): `c_math.normalize_yaw` looped "minus 360 until <= 180" and never
+  ended on inf / ran for minutes on 1e12+ (a bad usercmd view angle in `finish_command`); it is one step now. No loop may
+  depend on a value from memory, a netvar or the menu without a bound. `python3 tests/freeze_guard.py [--dev-file]` runs
+  the whole script in `tests/perf/mock.lua` with every callback call on a 20 M instruction budget: normal play, usercmd
+  from the wrong memory, garbage view angles (inf / NaN / 1e30 / 1e12), garbage netvars
 
 ## Performance
 - `python3 tests/perf_profile.py [--hot N]` runs the WHOLE dev build in `tests/perf/mock.lua` (a mock game: local player, N enemies that
