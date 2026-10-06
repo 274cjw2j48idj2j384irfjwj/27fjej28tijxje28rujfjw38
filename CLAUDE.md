@@ -19,7 +19,8 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - `server.js` — License server (Express + Upstash Redis). The script is stored in Redis in 300 000 char parts
   (`specter:script:<plan>:<i>` + `:parts`), a script stored the old way (one key) is still read
 - `discord_bot.py` — Discord bot (keys, roles, tickets, server setup). `/script_upload` puts specter_cloud.lua (an attachment or
-  GitHub raw of `SCRIPT_BRANCH`) without comments on the server for every plan; it refuses a file without the auth gate.
+  GitHub raw of `SCRIPT_BRANCH`; with `SCRIPT_TOKEN`, a read-only token, through the contents API for a private repo)
+  without comments on the server for every plan; it refuses a file without the auth gate.
   Keep `GITHUB_TOKEN` empty while the repo is public (the key sync writes every key into `specter_keys.json`)
 - Railway: `Dockerfile` = license server, `Dockerfile.bot` = bot (service variable `RAILWAY_DOCKERFILE_PATH=Dockerfile.bot`)
 - `specter_resolver.lua` — STANDALONE desync resolver: one file, no login, no AA, no visuals, nothing but the resolver

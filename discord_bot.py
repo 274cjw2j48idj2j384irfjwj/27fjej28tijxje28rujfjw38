@@ -14,6 +14,9 @@ ENV VARS (set in Discord bot host or .env):
                         the sync writes every key into specter_keys.json in the repo (the loader does not need it)
   GITHUB_REPO         — GitHub repo (default: 274cjw2j48idj2j384irfjwj/27fjej28tijxje28rujfjw38)
   SCRIPT_BRANCH       — branch /script_upload takes specter_cloud.lua from (default: main)
+  SCRIPT_TOKEN        — GitHub token that can READ the repo (fine-grained, Contents: Read-only). Needed when the repo
+                        is private: /script_upload then downloads specter_cloud.lua through the GitHub API with it.
+                        It is not used for anything else (the key sync uses GITHUB_TOKEN)
 """
 
 import os
@@ -35,6 +38,7 @@ LOG_CHANNEL_ID    = int(os.getenv("LOG_CHANNEL_ID", "0"))
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 GITHUB_REPO       = os.getenv("GITHUB_REPO", "274cjw2j48idj2j384irfjwj/27fjej28tijxje28rujfjw38")
 SCRIPT_BRANCH     = os.getenv("SCRIPT_BRANCH", "main")
+SCRIPT_TOKEN      = os.getenv("SCRIPT_TOKEN", "")
 
 VALID_PLANS     = ["beta", "nightly", "specter", "debug"]
 VALID_DURATIONS = ["lifetime", "1d", "7d", "14d", "30d", "90d"]
@@ -947,11 +951,23 @@ async def script_upload(
             source = file.filename
         else:
             br = branch or SCRIPT_BRANCH
-            url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{br}/specter_cloud.lua"
+            if SCRIPT_TOKEN:
+                # private repo: the contents API with the read-only token, raw file body
+                url = f"{GH_API}/repos/{GITHUB_REPO}/contents/specter_cloud.lua?ref={br}"
+                headers = {"Authorization": f"Bearer {SCRIPT_TOKEN}", "Accept": "application/vnd.github.raw",
+                           "X-GitHub-Api-Version": "2022-11-28"}
+            else:
+                url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{br}/specter_cloud.lua"
+                headers = {}
             async with aiohttp.ClientSession() as s:
-                async with s.get(url) as r:
+                async with s.get(url, headers=headers) as r:
                     if r.status != 200:
-                        await interaction.followup.send(f"GitHub: {r.status} for `{url}`", ephemeral=True)
+                        hint = ""
+                        if r.status in (401, 403):
+                            hint = " (SCRIPT_TOKEN wrong or expired, or it has no read access to this repo)"
+                        elif r.status == 404 and not SCRIPT_TOKEN:
+                            hint = " (private repo? set SCRIPT_TOKEN on the bot service)"
+                        await interaction.followup.send(f"GitHub: {r.status} for `{url.split('?')[0]}`{hint}", ephemeral=True)
                         return
                     raw = await r.read()
             source = f"GitHub {GITHUB_REPO}@{br}"
