@@ -272,6 +272,12 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   the whole script in `tests/perf/mock.lua` with every callback call on a 20 M instruction budget: normal play, usercmd
   from the wrong memory, garbage view angles (inf / NaN / 1e30 / 1e12), garbage netvars
 
+- Unload freeze (owners, Oct 2026: "amikor kikapcsoljuk a luat kifagy a jatek", dev build, in game and in the menu): the
+  shutdown callbacks run in ~2 ms in the mock, so it is native. Suspect: gamesense writes its database to disk on unload,
+  and `specter_stats` stored the raw names of up to 200 players (accents, cyrillic, colour codes, a multi byte character
+  cut at 32 bytes). Names going into the database go through `db_name` (printable ASCII, 20 chars); the saved ones are
+  cleaned and written back right after load. Not confirmed in game.
+
 ## Performance
 - `python3 tests/perf_profile.py [--hot N]` runs the WHOLE dev build in `tests/perf/mock.lua` (a mock game: local player, N enemies that
   move / jitter / choke, numeric ui handles like gamesense, real ffi memory for the animstate / usercmd helpers) and prints the script time
