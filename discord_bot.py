@@ -21,8 +21,10 @@ ENV VARS (set in Discord bot host or .env):
                         below also gets its own GitHub API limit (without it: 60 calls / hour per IP, shared on Railway)
   RELEASE_CHANNEL     — staff channel (name or id) new script versions are posted in (default: staff). Only posted when
                         neither @everyone nor a member / customer / plan role can read it
-  RELEASE_FILES       — files posted there when a new commit changes them (default: specter_dev.lua,specter_cloud.lua)
+  RELEASE_FILES       — files posted there when a new commit changes them (default: specter_dev.lua)
   RELEASE_MINUTES     — how often GitHub is checked (default: 5, 0 = only /release_check)
+  AUTO_UPLOAD         — 1 (default): a new specter_cloud.lua of SCRIPT_BRANCH goes to the license server by itself (every
+                        plan; the loader downloads it from there), 0: only /script_upload
 """
 
 import os
@@ -1058,6 +1060,29 @@ def strip_lua_comments(src: str) -> str:
     return "\n".join(l for l in lines if l.strip()) + "\n"
 
 
+CLOUD_FILE = "specter_cloud.lua"
+
+
+def is_cloud_script(text: str) -> bool:
+    """Only the cloud script: it has the auth gate the loader's prefix opens (the dev build has none)."""
+    return "-- ── AUTH GATE" in text and "_auth_ok" in text
+
+
+async def upload_script(script: str, plans: list[str]) -> tuple[list[str], list[str]]:
+    """The comment-free cloud script to the license server -> (one line per plan, the plans that got it)."""
+    lines, done = [], []
+    for p in plans:
+        try:
+            res = await api_post("/admin/upload_script", {"plan": p, "script": script})
+            ok = res.get("ok") and res.get("status") == 200
+            lines.append(f"`{p}`: " + (f"ok ({res.get('bytes', 0) // 1024} KB, {res.get('parts', 1)} parts)" if ok else f"failed {res}"))
+            if ok:
+                done.append(p)
+        except Exception as e:
+            lines.append(f"`{p}`: API error {e}")
+    return lines, done
+
+
 @tree.command(name="script_upload", description="Upload specter_cloud.lua to the license server (a file, or from GitHub)")
 @app_commands.describe(
     file="specter_cloud.lua (empty: taken from GitHub)",
@@ -1091,8 +1116,7 @@ async def script_upload(
         await interaction.followup.send(f"Could not read the script: {e}", ephemeral=True)
         return
 
-    # only the cloud script: it has the auth gate the loader's prefix opens (the dev build has none)
-    if "-- ── AUTH GATE" not in text or "_auth_ok" not in text:
+    if not is_cloud_script(text):
         await interaction.followup.send("This is not specter_cloud.lua (no auth gate in it). Nothing uploaded.", ephemeral=True)
         return
 
@@ -1103,14 +1127,7 @@ async def script_upload(
         return
 
     plans = VALID_PLANS if plan == "all" else [plan]
-    lines = []
-    for p in plans:
-        try:
-            res = await api_post("/admin/upload_script", {"plan": p, "script": script})
-            ok = res.get("ok") and res.get("status") == 200
-            lines.append(f"`{p}`: " + (f"ok ({res.get('bytes', 0) // 1024} KB, {res.get('parts', 1)} parts)" if ok else f"failed {res}"))
-        except Exception as e:
-            lines.append(f"`{p}`: API error {e}")
+    lines, _ = await upload_script(script, plans)
 
     embed = discord.Embed(title="Script Upload", color=0x82C3FF)
     embed.description = "\n".join(lines)
@@ -1236,13 +1253,15 @@ def _env_int(name: str, default: int) -> int:
 
 
 RELEASE_CHANNEL = _env("RELEASE_CHANNEL", "staff")
-RELEASE_FILES   = [f.strip() for f in _env("RELEASE_FILES", "specter_dev.lua,specter_cloud.lua").split(",") if f.strip()]
+RELEASE_FILES   = [f.strip() for f in _env("RELEASE_FILES", "specter_dev.lua").split(",") if f.strip()]
 RELEASE_MINUTES = _env_int("RELEASE_MINUTES", 5)
+AUTO_UPLOAD     = _env("AUTO_UPLOAD", "1").lower() not in ("0", "false", "off", "no")
 RELEASE_ROLES   = [r for r in ROLE_CONFIG if r != "Staff"]     # never posted where one of these (or @everyone) reads
 RELEASE_FOOTER  = re.compile(r"^(\S+) @ ([0-9a-f]{16})$")       # the footer of a version post: file @ its SHA-256
 _release_seen: dict[int, dict[str, str]] = {}                   # channel id -> file -> SHA-256 of the newest post there
 _release_files: dict[str, dict] = {}                            # file -> the newest version GitHub has (body, hash, commit, etag)
 _release_lock = asyncio.Lock()
+_cloud_on_server = ""                                           # SHA-256 of the cloud script the server is known to have
 
 
 def release_channel(guild: discord.Guild) -> discord.TextChannel | None:
@@ -1355,7 +1374,7 @@ async def newest_version(path: str) -> dict:
         except (UnicodeDecodeError, ValueError):
             pass
     ver = dict(body=body, stripped=stripped, hash=hashlib.sha256(body).hexdigest()[:16], commit=commit, commit_err=err,
-               raw_hash=hashlib.sha256(raw).digest(), etag=etag)
+               raw=raw, raw_hash=hashlib.sha256(raw).digest(), etag=etag)
     _release_files[path] = ver
     return ver
 
@@ -1383,6 +1402,24 @@ def release_embed(path: str, ver: dict) -> discord.Embed:
     return embed
 
 
+def staff_channels(report: list[str]) -> list[discord.TextChannel]:
+    """The staff channel of every guild of the bot that only staff can read (the others are explained in `report`)."""
+    out = []
+    for guild in client.guilds:
+        ch = release_channel(guild)
+        if ch is None:
+            report.append(f"{guild.name}: no #{RELEASE_CHANNEL} channel (RELEASE_CHANNEL), nothing posted")
+            continue
+        readers = non_staff_readers(ch)
+        if readers:
+            fix = ("Server Settings > Roles: take Administrator off that role" if any("Administrator" in r for r in readers)
+                   else "Edit channel > Permissions: View Channel off for them")
+            report.append(f"{guild.name}: {ch.mention} can be read by {', '.join(readers)}, nothing posted there. {fix}")
+            continue
+        out.append(ch)
+    return out
+
+
 async def check_releases(force: bool = False) -> list[str]:
     """Every RELEASE_FILES file whose newest version is not in the staff channel yet is posted there (in every guild of
     the bot). force: the current versions again. -> what happened, one line each"""
@@ -1393,17 +1430,7 @@ async def check_releases(force: bool = False) -> list[str]:
                 versions[path] = await newest_version(path)
             except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError) as e:
                 report.append(f"`{path}`: {e}")
-        for guild in client.guilds:
-            ch = release_channel(guild)
-            if ch is None:
-                report.append(f"{guild.name}: no #{RELEASE_CHANNEL} channel (RELEASE_CHANNEL), nothing posted")
-                continue
-            readers = non_staff_readers(ch)
-            if readers:
-                fix = ("Server Settings > Roles: take Administrator off that role" if any("Administrator" in r for r in readers)
-                       else "Edit channel > Permissions: View Channel off for them")
-                report.append(f"{guild.name}: {ch.mention} can be read by {', '.join(readers)}, nothing posted there. {fix}")
-                continue
+        for ch in staff_channels(report):
             if ch.id not in _release_seen:
                 _release_seen[ch.id] = await posted_versions(ch)
             seen = _release_seen[ch.id]
@@ -1421,6 +1448,55 @@ async def check_releases(force: bool = False) -> list[str]:
         return report
 
 
+async def server_script_hashes() -> dict | None:
+    """plan -> SHA-256 of the script the license server has (None: a server without /admin/script_info, or down)."""
+    try:
+        res = await api_get("/admin/script_info")
+    except Exception:
+        return None
+    return res if isinstance(res, dict) and res.get("status") == 200 else None
+
+
+async def sync_cloud(force: bool = False) -> list[str]:
+    """A new specter_cloud.lua of SCRIPT_BRANCH -> the license server, every plan that has another version (the loader
+    downloads the script from the server at every login). A short note goes to the staff channel. force: upload again."""
+    global _cloud_on_server
+    async with _release_lock:
+        try:
+            ver = await newest_version(CLOUD_FILE)
+        except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError) as e:
+            return [f"`{CLOUD_FILE}`: {e}"]
+        full = hashlib.sha256(ver["body"]).hexdigest()
+        if full == _cloud_on_server and not force:
+            return []
+        if not ver["stripped"] or not is_cloud_script(ver["raw"].decode("utf-8", "replace")):
+            return [f"`{CLOUD_FILE}` of `{SCRIPT_BRANCH}`: no auth gate or comments not removable, not uploaded"]
+        have = await server_script_hashes()
+        plans = [p for p in VALID_PLANS if force or have is None or have.get(p) != full]
+        if not plans:
+            _cloud_on_server = full
+            return []
+        lines, done = await upload_script(ver["body"].decode("utf-8"), plans)
+        if len(done) == len(plans):
+            _cloud_on_server = full
+        report = [f"cloud script `{ver['hash'][:7]}` to the server: " + " ".join(lines)]
+        if not done:
+            return report
+        embed = discord.Embed(title="\u2601\ufe0f Cloud script updated on the server", color=0x82C3FF,
+                              description=(commit_points(ver["commit"]["commit"].get("message", "")) if ver["commit"]
+                                           else f"New `{CLOUD_FILE}` on `{SCRIPT_BRANCH}`") or "-")
+        if ver["commit"]:
+            embed.url = ver["commit"].get("html_url") or None
+        embed.add_field(name="Plans", value="\n".join(lines)[:1024], inline=False)
+        embed.set_footer(text="Customers get it at their next login (the loader downloads it from the server)")
+        for ch in staff_channels(report):
+            try:
+                await ch.send(embed=embed)
+            except discord.HTTPException as e:
+                report.append(f"could not post in {ch.mention}: {e}")
+        return report
+
+
 async def release_loop():
     """Checks GitHub every RELEASE_MINUTES; a problem is printed once, not every round."""
     await client.wait_until_ready()
@@ -1428,24 +1504,28 @@ async def release_loop():
     while True:
         try:
             report = await check_releases()
+            if AUTO_UPLOAD:
+                report += await sync_cloud()
         except Exception as e:
             report = [f"version check failed: {e!r}"]
         for line in report:
-            if "posted in" in line or line not in last:
+            if "posted in" in line or "to the server" in line or line not in last:
                 print(f"[release] {line}", flush=True)
         last = report
         await asyncio.sleep(RELEASE_MINUTES * 60)
 
 
-@tree.command(name="release_check", description="Post new versions of the scripts (dev build, cloud) in the staff channel now")
-@app_commands.describe(force="Post the current versions even if they are there already")
+@tree.command(name="release_check", description="Check GitHub now: dev build to the staff channel, cloud script to the server")
+@app_commands.describe(force="Post the dev build and upload the cloud script again even if they are there already")
 async def release_check(interaction: discord.Interaction, force: bool = False):
     if not is_staff(interaction):
         await interaction.response.send_message("No permission.", ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True)
     report = await check_releases(force)
-    text = "\n".join(report) or f"Nothing new: the newest versions are already in #{RELEASE_CHANNEL}."
+    if AUTO_UPLOAD:
+        report += await sync_cloud(force)
+    text = "\n".join(report) or f"Nothing new: #{RELEASE_CHANNEL} and the server already have the newest versions."
     await interaction.followup.send(text[:1900], ephemeral=True)
 
 
@@ -1941,7 +2021,8 @@ async def on_ready():
     print(f"Default role: {DEFAULT_ROLE_NAME}")
     if RELEASE_MINUTES > 0 and (_release_task is None or _release_task.done()):
         _release_task = asyncio.create_task(release_loop())
-        print(f"Version check: {', '.join(RELEASE_FILES)} -> #{RELEASE_CHANNEL} every {RELEASE_MINUTES} min")
+        print(f"Version check: {', '.join(RELEASE_FILES)} -> #{RELEASE_CHANNEL}"
+              + (f", {CLOUD_FILE} -> license server" if AUTO_UPLOAD else "") + f" every {RELEASE_MINUTES} min")
 
 
 # ── Run ───────────────────────────────────────────────────────────────

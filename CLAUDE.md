@@ -20,7 +20,7 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   as `specter_dev_cache.lua` and falls back to that copy offline. `python3 tests/dev_loader.py` tests it. `specter_dev.lua` itself stays
   the plain script (no loader inside it)
 - `server.js` — License server (Express + Upstash Redis). The script is stored in Redis in 300 000 char parts
-  (`specter:script:<plan>:<i>` + `:parts`), a script stored the old way (one key) is still read
+  (`specter:script:<plan>:<i>` + `:parts` + `:sha256`), a script stored the old way (one key) is still read
 - `discord_bot.py` — Discord bot (keys, roles, tickets, server setup). `/script_upload` puts specter_cloud.lua (an attachment or
   GitHub raw of `SCRIPT_BRANCH`; with `SCRIPT_TOKEN`, a read-only token, through the contents API for a private repo)
   without comments on the server for every plan; it refuses a file without the auth gate.
@@ -31,13 +31,17 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   `/post_loader` posts `specter_loader.lua` (an attachment or GitHub, same download as `/script_upload`: `gh_fetch_file`) with the
   install steps into #loader-download and deletes the bot's older loader posts there. `is_customer_loader` refuses anything but the
   production loader: the cloud script, the dev build and the dev loader run the whole script without a key
-  New versions go to the staff channel by themselves (`release_loop`, every `RELEASE_MINUTES` = 5): `RELEASE_FILES`
-  (specter_dev.lua, specter_cloud.lua) of `SCRIPT_BRANCH`, without comments, into `RELEASE_CHANNEL` (#staff), only when neither
-  @everyone nor a member / customer / plan role can read it. The file is polled from raw.githubusercontent with its ETag (the
-  GitHub API allows 60 calls / hour per IP without a token, shared on Railway: it is asked only for the commit message
-  (posted short, `commit_points`: the title in bold + one short line per "- " item of the body, at most 6), and
-  the post goes out without it on a 403); the footer `file @ sha256` keeps a restart from posting it twice. `/release_check`
-  [force] checks now
+  New versions by themselves (`release_loop`, every `RELEASE_MINUTES` = 5, `/release_check [force]` = now):
+  * `RELEASE_FILES` (default: specter_dev.lua only) of `SCRIPT_BRANCH`, without comments, into `RELEASE_CHANNEL` (#staff),
+    only when neither @everyone nor a member / customer / plan role can read it (managed bot roles do not count). The
+    footer `file @ sha256` keeps a restart from posting it twice. The commit message is posted short (`commit_points`:
+    the title in bold + one short line per "- " item of the body, at most 6)
+  * `AUTO_UPLOAD` (default on): a new specter_cloud.lua goes to the license server for every plan whose script differs
+    (`sync_cloud`; the server keeps the SHA-256 of each upload, `GET /admin/script_info`), a short note (no file) in
+    #staff. The loader downloads the script from the server at every login: what is on `main` reaches the customers
+    within 5 minutes, so only tested code goes to main. A manual `/script_upload` stays until main changes again
+  * files are polled from raw.githubusercontent with their ETag (the GitHub API allows 60 calls / hour per IP without a
+    token, shared on Railway: it is asked only for the commit message, and the post goes out without it on a 403)
   Who may do what: admin commands (keys create / revoke / sync, script_upload, post_loader, setup_*, post_*) = owner,
   `ADMIN_ROLE_ID` or Administrator (`is_admin`); support commands (key_info, key_list with the keys cut to 6 chars,
   key_reset_hwid, give_role / remove_role except the Staff role, release_check, close_ticket) also the Staff role
