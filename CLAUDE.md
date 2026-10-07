@@ -34,7 +34,8 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   New versions by themselves (`release_loop`, every `RELEASE_MINUTES` = 5, `/release_check [force]` = now):
   * `RELEASE_FILES` (default: specter_dev.lua only) of `SCRIPT_BRANCH`, without comments, into `RELEASE_CHANNEL` (#staff),
     only when neither @everyone nor a member / customer / plan role can read it (managed bot roles do not count). The
-    footer `file @ sha256` keeps a restart from posting it twice. The commit message is posted short (`commit_points`:
+    footer `file @ sha256` keeps a restart from posting it twice; a new post deletes the bot's older posts of that file
+    there (`remove_older_posts`, owners: only the newest dev build stays). The commit message is posted short (`commit_points`:
     the title in bold + one short line per "- " item of the body, at most 6)
   * `AUTO_UPLOAD` (default on): a new specter_cloud.lua goes to the license server for every plan whose script differs
     (`sync_cloud`; the server keeps the SHA-256 of each upload, `GET /admin/script_info`). Its changelog (the commit points,

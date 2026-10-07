@@ -1430,6 +1430,22 @@ def staff_channels(report: list[str]) -> list[discord.TextChannel]:
     return out
 
 
+async def remove_older_posts(ch: discord.TextChannel, path: str, keep_id: int) -> int:
+    """The bot's older version posts of `path` in the channel go: only the newest one stays (like /post_loader)."""
+    removed = 0
+    try:
+        async for msg in ch.history(limit=200):
+            if msg.id == keep_id or msg.author.id != client.user.id or not msg.embeds:
+                continue
+            m = RELEASE_FOOTER.match(msg.embeds[0].footer.text or "")
+            if m and m.group(1) == path:
+                await msg.delete()
+                removed += 1
+    except discord.HTTPException:
+        pass
+    return removed
+
+
 async def check_releases(force: bool = False) -> list[str]:
     """Every RELEASE_FILES file whose newest version is not in the staff channel yet is posted there (in every guild of
     the bot). force: the current versions again. -> what happened, one line each"""
@@ -1448,13 +1464,15 @@ async def check_releases(force: bool = False) -> list[str]:
                 if seen.get(path) == ver["hash"] and not force:
                     continue
                 try:
-                    await ch.send(embed=release_embed(path, ver),
-                                  file=discord.File(io.BytesIO(ver["body"]), filename=path.rsplit("/", 1)[-1]))
+                    msg = await ch.send(embed=release_embed(path, ver),
+                                        file=discord.File(io.BytesIO(ver["body"]), filename=path.rsplit("/", 1)[-1]))
                 except discord.HTTPException as e:
                     report.append(f"`{path}`: could not post in {ch.mention}: {e}")
                     continue
                 seen[path] = ver["hash"]
-                report.append(f"`{path}` `{ver['hash'][:7]}` posted in {ch.mention}")
+                removed = await remove_older_posts(ch, path, msg.id)
+                report.append(f"`{path}` `{ver['hash'][:7]}` posted in {ch.mention}"
+                              + (f" ({removed} older post{'s' if removed != 1 else ''} removed)" if removed else ""))
         return report
 
 
