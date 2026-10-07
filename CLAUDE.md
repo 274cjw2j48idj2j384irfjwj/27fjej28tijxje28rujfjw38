@@ -141,17 +141,9 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   Tickbase shifted updates (sim time not moving forward, defensive) are NOT records: the server adds a lag record only when the sim time
   moves forward, a shot at the shifted model is tested against the newest normal record at or before its sim time. A shifted update
   only moves the feet model (the server animates it); the forced value stays the one of the newest normal record, nothing goes into
-  `hist`, and it resets `p.nochoke` (a shifted packet carries ticks the server animates at once). A shot at the drawn shifted model
-  (gamesense says 0 ticks back: `raw` 0 of `shot_backtrack`) while the target's newest update is a shift is `shots[id].defensive`
-  (reason "defensive"); it is judged AND logged by the server's record, the newest normal one at or before the shift's sim time
-  (`p.shift_st`): `bt` = its age, the angle its value (owners, Oct 2026: "missed: defensive · bt 0t", the newest record's angle was
-  logged). A shot at an older normal record during a shift is a normal shot. A resolver miss on a defensive shot is lag comp,
-  it is not learned / not counted in `consecutive_misses`; a head hit is.
-  Defensive pitch (owners: "jol erzekeli defensiv, csak a pitchet rontja el"): many defensive AAs flick the pitch on the shifted
-  updates; gamesense aims at that model, the server has the record with its own pitch. A shifted update whose pitch is more than
-  `PITCH_FLICK` (30) from that record's pitch (`hist[i].pitch`) gets the record's pitch forced (plist "Force pitch" + "Force pitch
-  value", `force_pitch`, written on change), a normal record gives it back (also `unforce`). Sim: jitter + always-on defensive with a
-  pitch-only flick (`def_head = "pitch"`) 0.76 -> 0.92 (= a defensive that keeps the angles). Until Oct 2026 shifted updates had their own situation `def`:
+  `hist`, and it resets `p.nochoke` (a shifted packet carries ticks the server animates at once). A shot fired while the target's newest
+  update is a shift is `shots[id].defensive` (reason "defensive", attributed to that normal record): a resolver miss on it is lag comp,
+  it is not learned / not counted in `consecutive_misses`; a head hit is. Until Oct 2026 shifted updates had their own situation `def`:
   the computed body yaw of the flick (often ~0, exempt from the zero rule) was forced, and shots at normal records were judged by a
   shifted update with the same sim tick (owners: "a jittert es a defensive resot osszekeveri", "res 0°" at bt 58t; sim: 8% near 0 on a
   real desync, 14% misjudged, now 0).
@@ -196,24 +188,14 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - History per player by time (`HIST_TIME` 1 s = sv_maxunlag's cap: 64 ticks on 64 tick, 128 on 128 tick; `hist_ticks()`): shots at old
   records (extended backtrack) are still judged by what that record got, the backtrack measurement looks that far too. It was 64
   records / 64 ticks: on 128 tick a 58+ tick old record fell out.
-- Backtrack of a shot (`shot_backtrack` -> ticks back, `raw`): measured from the aim point (`measured_backtrack`: the records apart,
-  the aim point near one and 2+ units nearer to it than to any other: where a target turns its records lie on each other). A target
-  that stands can not be measured: then what the measured shots taught (`cal`: aim_fire `tick` minus the record's sim tick, and the
-  measured ticks minus gamesense's number; each used once its last 8 agree, all but one within 1 tick). With a ping spike gamesense
-  says 0 for a record ~fake latency old (owners: "rosszul logolja a shotokra az anglet, bt is"): every shot at a standing target was
-  logged / learned as the newest record (sim, 12 tick spike: 273 of 273 -> 0 after the first 8 measured shots). Untaught: gamesense's
-  number, like before.
 - Interface the rest of the script uses: `resolver.on_fire / on_hit / on_miss`, `new_round`, `reset_player`, `reset_all`, `shot_backtrack`,
   `shots[id]` (`reason` = desync / jitter / defensive / native, `value`, `mode`, `bt`, `ctx`, `defensive`, `teleported`), `database[idx]` (`stance`, `speed`, `consecutive_misses`,
   `mode` = "d" / "j", `method`, `model_name`, `phit` = confidence, `value`), `memory[key].hit_value[stance]` (aa stealer), `forced`,
   `stats_hook`. The tiers without the resolver get a stub with the same names.
 - Tests: `pip install lupa && python3 tests/resolver_regress.py` (hit rates per AA and ping, reaction delays, noise, inverted sign, options,
   zero rule on 60 new jitter + micromovement players, a never-hit target (<= 12% near 0), legit players, jitter + always-on defensive
-  (no near 0, no shifted value, every shot judged by its record, a shot at the shifted model by the server's record), defensive pitch
-  flick, a standing target with a ping spike (backtrack taught by a moving one), 128 tick shots up to 120 ticks back, ping profile with a
-  ping spike, player list / release / Correction active restore, shot attribution, garbage netvars, 5 enemies, slot reuse, resets,
-  last_log). The world (`tests/resolver_world.lua`): a shot at the drawn shifted model says 0 ticks back like gamesense; options
-  `def_head` ("same" / "pitch"), `aim` (aim points), `move` (per enemy spec), `native_off` + `bt_min` (ping spike), `ev_tick`.
+  (no near 0, no shifted value, every shot judged by its record), 128 tick shots up to 120 ticks back, ping profile with a ping spike, player list / release / Correction active restore, shot attribution, garbage
+  netvars, 5 enemies, slot reuse, resets, last_log).
 - Load smoke test: `python3 tests/load_smoke.py [--dev-file] [--plan=nightly|beta|specter]`. Run it after every change that touches
   load-time code, the loaders, the auth gate or the resolver.
 
