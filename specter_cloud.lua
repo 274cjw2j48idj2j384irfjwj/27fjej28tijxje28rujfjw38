@@ -58,7 +58,6 @@ local TIER = {
     HAS_BUILDER       = (_PLAN == "debug" or _PLAN == "specter" or _PLAN == "nightly"),
     HAS_AA_STEALER    = (_PLAN == "debug"),
     HAS_DEFENSIVE     = (_PLAN == "debug" or _PLAN == "specter" or _PLAN == "nightly"),
-    HAS_SPONSOR_SAY   = (_PLAN == "debug"),   -- the owners' Discord in the kill say: the dev build only, not the customers
     plan = _PLAN,
 }
 -- ── END TIER GATE ─────────────────────────────────────────────────────
@@ -11566,11 +11565,9 @@ LPH_NO_VIRTUALIZE(function ()
                 :record("miscellaneous", "killsay")
                 :save()
 
-            if TIER.HAS_SPONSOR_SAY then
-                config.miscellaneous.sponsor_killsay = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Sponsor Kill Say")
-                    :record("miscellaneous", "sponsor_killsay")
-                    :save()
-            end
+            config.miscellaneous.sponsor_killsay = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Sponsor Kill Say")
+                :record("miscellaneous", "sponsor_killsay")
+                :save()
 
             config.miscellaneous.custom_output = menu.new_item(ui.new_checkbox, "AA", "Other", "Custom Output")
                 :record("miscellaneous", "custom_output")
@@ -12225,7 +12222,7 @@ LPH_NO_VIRTUALIZE(function ()
 
                 function miscellaneous.trashtalk:on_kill(event)
                     local M = config.miscellaneous
-                    local sponsor = M.sponsor_killsay and M.sponsor_killsay:get()
+                    local sponsor = M.sponsor_killsay:get()
                     local killsay = sponsor or M.killsay:get()
                     if not M.trashtalk:get() and not killsay then
                         return
@@ -14648,7 +14645,7 @@ LPH_NO_VIRTUALIZE(function ()
                 if M.cheat_tweaks:get() then M.cheat_tweaks_list:display() end
                 M.trashtalk:display()
                 M.killsay:display()
-                if M.sponsor_killsay then M.sponsor_killsay:display() end
+                M.sponsor_killsay:display()
                 M.hdr_utility:display()
                 M.console_filter:display()
                 M.aspect_mode:display()
