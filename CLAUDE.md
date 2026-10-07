@@ -37,9 +37,12 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
     footer `file @ sha256` keeps a restart from posting it twice. The commit message is posted short (`commit_points`:
     the title in bold + one short line per "- " item of the body, at most 6)
   * `AUTO_UPLOAD` (default on): a new specter_cloud.lua goes to the license server for every plan whose script differs
-    (`sync_cloud`; the server keeps the SHA-256 of each upload, `GET /admin/script_info`), a short note (no file) in
-    #staff. The loader downloads the script from the server at every login: what is on `main` reaches the customers
-    within 5 minutes, so only tested code goes to main. A manual `/script_upload` stays until main changes again
+    (`sync_cloud`; the server keeps the SHA-256 of each upload, `GET /admin/script_info`). Its changelog (the commit points,
+    no sizes, no link to the repo) goes to the public `UPDATES_CHANNEL` (#updates; `named_channel` also finds "📜・updates"),
+    once per version. #staff gets only the dev build (owners, Oct 2026: "ide eleg csak ha a dev-et tolti fel") and an alarm
+    when a plan could not be updated (once per version, the loop keeps trying). The loader downloads the script from the
+    server at every login: what is on `main` reaches the customers within 5 minutes, so only tested code goes to main.
+    A manual `/script_upload` stays until main changes again
   * files are polled from raw.githubusercontent with their ETag (the GitHub API allows 60 calls / hour per IP without a
     token, shared on Railway: it is asked only for the commit message, and the post goes out without it on a 403)
   Who may do what: admin commands (keys create / revoke / sync, script_upload, post_loader, setup_*, post_*) = owner,
