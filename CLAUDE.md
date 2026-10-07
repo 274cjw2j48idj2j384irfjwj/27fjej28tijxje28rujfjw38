@@ -31,6 +31,12 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   `/post_loader` posts `specter_loader.lua` (an attachment or GitHub, same download as `/script_upload`: `gh_fetch_file`) with the
   install steps into #loader-download and deletes the bot's older loader posts there. `is_customer_loader` refuses anything but the
   production loader: the cloud script, the dev build and the dev loader run the whole script without a key
+  New versions go to the staff channel by themselves (`release_loop`, every `RELEASE_MINUTES` = 5): `RELEASE_FILES`
+  (specter_dev.lua, specter_cloud.lua) of `SCRIPT_BRANCH`, without comments, into `RELEASE_CHANNEL` (#staff), only when neither
+  @everyone nor a member / customer / plan role can read it. The file is polled from raw.githubusercontent with its ETag (the
+  GitHub API allows 60 calls / hour per IP without a token, shared on Railway: it is asked only for the commit message, and
+  the post goes out without it on a 403); the footer `file @ sha256` keeps a restart from posting it twice. `/release_check`
+  [force] checks now
 - Railway: `Dockerfile` = license server, `Dockerfile.bot` = bot (service variable `RAILWAY_DOCKERFILE_PATH=Dockerfile.bot`)
   A 429 at login (Cloudflare 1015: Discord bans the IP after too many logins, e.g. a crash loop that Railway restarts every
   second) makes the bot wait in the process (5, 10, 20 .. 60 min) instead of exiting; the command sync runs once per start

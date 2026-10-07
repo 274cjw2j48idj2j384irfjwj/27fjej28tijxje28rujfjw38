@@ -16,11 +16,17 @@ ENV VARS (set in Discord bot host or .env):
   SCRIPT_BRANCH       — branch /script_upload takes specter_cloud.lua from (default: main)
   SCRIPT_TOKEN        — GitHub token that can READ the repo (fine-grained, Contents: Read-only). Needed when the repo
                         is private: /script_upload then downloads specter_cloud.lua through the GitHub API with it.
-                        It is not used for anything else (the key sync uses GITHUB_TOKEN)
+                        It is not used for anything else (the key sync uses GITHUB_TOKEN). With it the version check
+                        below also gets its own GitHub API limit (without it: 60 calls / hour per IP, shared on Railway)
+  RELEASE_CHANNEL     — staff channel (name or id) new script versions are posted in (default: staff). Only posted when
+                        neither @everyone nor a member / customer / plan role can read it
+  RELEASE_FILES       — files posted there when a new commit changes them (default: specter_dev.lua,specter_cloud.lua)
+  RELEASE_MINUTES     — how often GitHub is checked (default: 5, 0 = only /release_check)
 """
 
 import os
 import io
+import re
 import time
 import json
 import base64
@@ -28,6 +34,7 @@ import asyncio
 import hashlib
 import aiohttp
 import discord
+from datetime import datetime
 from discord import app_commands
 
 # ── Config ────────────────────────────────────────────────────────────
@@ -938,19 +945,22 @@ class GitHubFetchError(Exception):
     pass
 
 
-async def gh_fetch_file(path: str, branch: str = "") -> tuple[bytes, str]:
-    """A file of GITHUB_REPO at `branch` (default SCRIPT_BRANCH) -> (bytes, source text). Public repo: raw.githubusercontent;
-    with SCRIPT_TOKEN (private repo) the contents API with that read-only token."""
-    br = branch or SCRIPT_BRANCH
+async def gh_get_file(path: str, ref: str, etag: str = "") -> tuple[bytes | None, str]:
+    """A file of GITHUB_REPO at `ref` (branch or commit) -> (bytes, etag); bytes None = unchanged since `etag`.
+    Public repo: raw.githubusercontent (no API limit); with SCRIPT_TOKEN (private repo) the contents API with that token."""
     if SCRIPT_TOKEN:
-        url = f"{GH_API}/repos/{GITHUB_REPO}/contents/{path}?ref={br}"
+        url = f"{GH_API}/repos/{GITHUB_REPO}/contents/{path}?ref={ref}"
         headers = {"Authorization": f"Bearer {SCRIPT_TOKEN}", "Accept": "application/vnd.github.raw",
                    "X-GitHub-Api-Version": "2022-11-28"}
     else:
-        url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{br}/{path}"
+        url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{ref}/{path}"
         headers = {}
+    if etag:
+        headers["If-None-Match"] = etag
     async with aiohttp.ClientSession() as s:
-        async with s.get(url, headers=headers) as r:
+        async with s.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=60)) as r:
+            if r.status == 304 and etag:
+                return None, etag
             if r.status != 200:
                 hint = ""
                 if r.status in (401, 403):
@@ -958,14 +968,20 @@ async def gh_fetch_file(path: str, branch: str = "") -> tuple[bytes, str]:
                 elif r.status == 404 and not SCRIPT_TOKEN:
                     hint = " (private repo? set SCRIPT_TOKEN on the bot service)"
                 raise GitHubFetchError(f"GitHub: {r.status} for `{url.split('?')[0]}`{hint}")
-            return await r.read(), f"GitHub {GITHUB_REPO}@{br}"
+            return await r.read(), r.headers.get("ETag", "")
+
+
+async def gh_fetch_file(path: str, branch: str = "") -> tuple[bytes, str]:
+    """A file of GITHUB_REPO at `branch` (default SCRIPT_BRANCH) -> (bytes, source text)."""
+    br = branch or SCRIPT_BRANCH
+    raw, _ = await gh_get_file(path, br)
+    return raw, f"GitHub {GITHUB_REPO}@{br}"
 
 
 # ── /script_upload — put the cloud Lua on the license server ─────────
 
 def strip_lua_comments(src: str) -> str:
     """Comments and blank lines out, strings and long strings kept (the same as the owners' build)."""
-    import re
     out, i, n = [], 0, len(src)
     while i < n:
         c = src[i]
@@ -1176,6 +1192,191 @@ async def post_loader(
     log_embed.add_field(name="Source", value=source, inline=True)
     log_embed.add_field(name="By", value=interaction.user.mention, inline=True)
     await log_action(interaction.guild, log_embed)
+
+
+# ── New script versions -> the staff channel ────────────────────────
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(_env(name, str(default)))
+    except ValueError:
+        return default
+
+
+RELEASE_CHANNEL = _env("RELEASE_CHANNEL", "staff")
+RELEASE_FILES   = [f.strip() for f in _env("RELEASE_FILES", "specter_dev.lua,specter_cloud.lua").split(",") if f.strip()]
+RELEASE_MINUTES = _env_int("RELEASE_MINUTES", 5)
+RELEASE_ROLES   = [r for r in ROLE_CONFIG if r != "Staff"]     # never posted where one of these (or @everyone) reads
+RELEASE_FOOTER  = re.compile(r"^(\S+) @ ([0-9a-f]{16})$")       # the footer of a version post: file @ its SHA-256
+_release_seen: dict[int, dict[str, str]] = {}                   # channel id -> file -> SHA-256 of the newest post there
+_release_files: dict[str, dict] = {}                            # file -> the newest version GitHub has (body, hash, commit, etag)
+_release_lock = asyncio.Lock()
+
+
+def release_channel(guild: discord.Guild) -> discord.TextChannel | None:
+    ch = (guild.get_channel(int(RELEASE_CHANNEL)) if RELEASE_CHANNEL.isdigit()
+          else discord.utils.get(guild.text_channels, name=RELEASE_CHANNEL))
+    return ch if isinstance(ch, discord.TextChannel) else None
+
+
+def staff_only(ch: discord.TextChannel) -> bool:
+    roles = [ch.guild.default_role] + [r for r in ch.guild.roles if r.name in RELEASE_ROLES]
+    return not any(ch.permissions_for(r).view_channel for r in roles)
+
+
+async def gh_last_commit(path: str) -> tuple[dict | None, str]:
+    """The newest commit of SCRIPT_BRANCH that changed `path` -> (commit, error). Only for the message: the GitHub API
+    allows 60 calls / hour per IP without a token (shared on Railway), SCRIPT_TOKEN gives the bot its own limit."""
+    headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
+    if SCRIPT_TOKEN:
+        headers["Authorization"] = f"Bearer {SCRIPT_TOKEN}"
+    try:
+        async with aiohttp.ClientSession() as s:
+            async with s.get(f"{GH_API}/repos/{GITHUB_REPO}/commits", headers=headers,
+                             params={"path": path, "sha": SCRIPT_BRANCH, "per_page": "1"},
+                             timeout=aiohttp.ClientTimeout(total=30)) as r:
+                if r.status != 200:
+                    return None, f"GitHub API {r.status}" + (" (limit: set SCRIPT_TOKEN)" if r.status in (403, 429) else "")
+                data = await r.json()
+    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+        return None, f"GitHub API: {e!r}"
+    return (data[0], "") if data else (None, "no commit")
+
+
+def commit_text(message: str) -> str:
+    """What the commit changed: a PR merge says it after its first line; the attribution lines are left out."""
+    lines = (message or "").strip().split("\n")
+    if len(lines) > 1 and lines[0].startswith("Merge pull request"):
+        lines = lines[1:]
+    lines = [l for l in lines if not re.match(r"^(Co-Authored-By|Claude-Session|Signed-off-by):", l, re.I)]
+    text = "\n".join(lines).strip()
+    return text if len(text) <= 600 else text[:600] + "…"
+
+
+async def posted_versions(ch: discord.TextChannel) -> dict[str, str]:
+    """file -> SHA-256 of the bot's newest version post in the channel (after a restart nothing is posted twice)."""
+    seen = {}
+    try:
+        async for msg in ch.history(limit=200):
+            if msg.author.id == client.user.id and msg.embeds:
+                m = RELEASE_FOOTER.match(msg.embeds[0].footer.text or "")
+                if m and m.group(1) not in seen:
+                    seen[m.group(1)] = m.group(2)
+    except discord.HTTPException:
+        pass
+    return seen
+
+
+async def newest_version(path: str) -> dict:
+    """The newest version of `path` on SCRIPT_BRANCH. The file is checked with its ETag (unchanged = nothing downloaded,
+    raw.githubusercontent has no API limit); the commit (for the message) is asked only when the file changed."""
+    old = _release_files.get(path)
+    raw, etag = await gh_get_file(path, SCRIPT_BRANCH, old["etag"] if old else "")
+    if raw is None or (old and hashlib.sha256(raw).digest() == old["raw_hash"]):
+        old["etag"] = etag
+        return old
+    commit, err = await gh_last_commit(path)
+    if commit:
+        try:            # the file of exactly that commit: the raw cache of the branch can be a few minutes old
+            raw, _ = await gh_get_file(path, commit["sha"])
+        except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError):
+            pass
+    body, stripped = raw, False
+    if path.endswith(".lua"):               # without comments, like the owners' copy and the server's
+        try:
+            body, stripped = strip_lua_comments(raw.decode("utf-8")).encode("utf-8"), True
+        except (UnicodeDecodeError, ValueError):
+            pass
+    ver = dict(body=body, stripped=stripped, hash=hashlib.sha256(body).hexdigest()[:16], commit=commit, commit_err=err,
+               raw_hash=hashlib.sha256(raw).digest(), etag=etag)
+    _release_files[path] = ver
+    return ver
+
+
+def release_embed(path: str, ver: dict) -> discord.Embed:
+    commit = ver["commit"]
+    embed = discord.Embed(title=f"\U0001f195 New version: {path}", color=0xFFC850)
+    if commit:
+        info = commit.get("commit") or {}
+        url = commit.get("html_url") or f"https://github.com/{GITHUB_REPO}/commit/{commit['sha']}"
+        embed.url = url
+        embed.description = commit_text(info.get("message", "")) or "-"
+        embed.add_field(name="Commit", value=f"[`{commit['sha'][:7]}`]({url})", inline=True)
+        try:
+            when = datetime.fromisoformat((info.get("committer") or {}).get("date", "").replace("Z", "+00:00"))
+            embed.add_field(name="Date", value=f"<t:{int(when.timestamp())}:f>", inline=True)
+        except ValueError:
+            pass
+    else:
+        embed.description = f"New `{path}` on `{SCRIPT_BRANCH}` (no commit message: {ver['commit_err']})"
+    embed.add_field(name="Size", value=f"{len(ver['body']) // 1024} KB" + (" without comments" if ver["stripped"] else ""),
+                    inline=True)
+    embed.add_field(name="SHA-256", value=f"`{ver['hash']}`", inline=True)
+    embed.set_footer(text=f"{path} @ {ver['hash']}")
+    return embed
+
+
+async def check_releases(force: bool = False) -> list[str]:
+    """Every RELEASE_FILES file whose newest version is not in the staff channel yet is posted there (in every guild of
+    the bot). force: the current versions again. -> what happened, one line each"""
+    async with _release_lock:
+        report, versions = [], {}
+        for path in RELEASE_FILES:
+            try:
+                versions[path] = await newest_version(path)
+            except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError) as e:
+                report.append(f"`{path}`: {e}")
+        for guild in client.guilds:
+            ch = release_channel(guild)
+            if ch is None:
+                report.append(f"{guild.name}: no #{RELEASE_CHANNEL} channel (RELEASE_CHANNEL), nothing posted")
+                continue
+            if not staff_only(ch):
+                report.append(f"{guild.name}: {ch.mention} can be read by non-staff roles, nothing posted there")
+                continue
+            if ch.id not in _release_seen:
+                _release_seen[ch.id] = await posted_versions(ch)
+            seen = _release_seen[ch.id]
+            for path, ver in versions.items():
+                if seen.get(path) == ver["hash"] and not force:
+                    continue
+                try:
+                    await ch.send(embed=release_embed(path, ver),
+                                  file=discord.File(io.BytesIO(ver["body"]), filename=path.rsplit("/", 1)[-1]))
+                except discord.HTTPException as e:
+                    report.append(f"`{path}`: could not post in {ch.mention}: {e}")
+                    continue
+                seen[path] = ver["hash"]
+                report.append(f"`{path}` `{ver['hash'][:7]}` posted in {ch.mention}")
+        return report
+
+
+async def release_loop():
+    """Checks GitHub every RELEASE_MINUTES; a problem is printed once, not every round."""
+    await client.wait_until_ready()
+    last = []
+    while True:
+        try:
+            report = await check_releases()
+        except Exception as e:
+            report = [f"version check failed: {e!r}"]
+        for line in report:
+            if "posted in" in line or line not in last:
+                print(f"[release] {line}", flush=True)
+        last = report
+        await asyncio.sleep(RELEASE_MINUTES * 60)
+
+
+@tree.command(name="release_check", description="Post new versions of the scripts (dev build, cloud) in the staff channel now")
+@app_commands.describe(force="Post the current versions even if they are there already")
+async def release_check(interaction: discord.Interaction, force: bool = False):
+    if not is_admin(interaction):
+        await interaction.response.send_message("No permission.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    report = await check_releases(force)
+    text = "\n".join(report) or f"Nothing new: the newest versions are already in #{RELEASE_CHANNEL}."
+    await interaction.followup.send(text[:1900], ephemeral=True)
 
 
 # ── /redeem — user-facing key claim + auto role ──────────────────────
@@ -1662,11 +1863,12 @@ async def setup_server(interaction: discord.Interaction):
 # ── Events ────────────────────────────────────────────────────────────
 
 _synced = False
+_release_task = None
 
 
 @client.event
 async def on_ready():
-    global _synced
+    global _synced, _release_task
     client.add_view(TicketCreateView())
     client.add_view(TicketCloseView())
     print(f"Bot online: {client.user}  |  Guilds: {len(client.guilds)}")
@@ -1678,6 +1880,9 @@ async def on_ready():
         print(f"Slash commands ({len(synced)}): {', '.join(sorted(c.name for c in synced))}")
     print(f"API: {API_URL}")
     print(f"Default role: {DEFAULT_ROLE_NAME}")
+    if RELEASE_MINUTES > 0 and (_release_task is None or _release_task.done()):
+        _release_task = asyncio.create_task(release_loop())
+        print(f"Version check: {', '.join(RELEASE_FILES)} -> #{RELEASE_CHANNEL} every {RELEASE_MINUTES} min")
 
 
 # ── Run ───────────────────────────────────────────────────────────────
