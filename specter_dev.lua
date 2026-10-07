@@ -742,7 +742,11 @@ LPH_NO_VIRTUALIZE(function ()
             -- forward, a shot at the shifted model is tested against the newest normal record at or before its sim time.
             -- So it gets no angle of its own (the forced value stays the one of the jitter / desync record), and a shot
             -- fired at it is judged by that record; its miss is about lag comp, not the angle.
+            -- Many defensive AAs flick the pitch on the shifted updates (up / zero): the aimbot aims at that model, the
+            -- server tests the shot against that record, with its pitch, and the head is somewhere else. A shifted update
+            -- gets the pitch of that record forced ("Force pitch"), a normal one its own.
             local MAX_DESYNC = 58
+            local PITCH_FLICK = 30            -- a shifted update this far from its record's pitch: the defensive flicked it
             local ZERO_MIN = 20               -- |angle| below this: "no desync" (it can hit neither side of a real desync)
             local STEP, TOL = 4, 12           -- angles -60 .. 60 in steps of 4; within TOL of the body yaw the head is hit
             local NB, NM = 31, 16             -- angle bins (-60 .. 60), size bins (0 .. 60)
@@ -1487,8 +1491,9 @@ LPH_NO_VIRTUALIZE(function ()
                 if p.max_st and (st < p.max_st - 32 or st - p.max_st > GAP_RESET) then
                     p.records, p.hist, p.max_st, p.feet, p.feet_t, p.jitter, p.side = {}, {}, nil, nil, nil, false, 0
                 end
-                local _, eye = entity.get_prop(idx, "m_angEyeAngles")
+                local pitch, eye = entity.get_prop(idx, "m_angEyeAngles")
                 if not finite(eye) then return nil end
+                if not finite(pitch) then pitch = nil end
                 local lby = entity.get_prop(idx, "m_flLowerBodyYawTarget")
                 lby = finite(lby) and lby or nil
                 -- the feet logic's clock is the tick the update arrived: a shifted update's sim time says nothing about how
@@ -1500,7 +1505,8 @@ LPH_NO_VIRTUALIZE(function ()
                 -- The shifted packet carries ticks the server animates at once: no "can not desync" from no choke
                 if p.max_st and st <= p.max_st then
                     feet_update(p, eye, lby, now)
-                    p.lc_state, p.lc_tick, p.lc_rec, p.shifting, p.nochoke = "shifting", now, true, true, 0
+                    p.lc_state, p.lc_tick, p.lc_rec, p.shifting, p.nochoke, p.shift_st = "shifting", now, true, true, 0, st
+                    p.shift_pitch = pitch
                     return "defensive"
                 end
                 if p.lc_tick and now - p.lc_tick > 64 then p.lc_state = "ok" end
@@ -1520,7 +1526,7 @@ LPH_NO_VIRTUALIZE(function ()
                     if p.lc_dist > 64 then p.lc_state, p.lc_tick, p.lc_rec = "breaking", now, true end
                 end
                 p.last_o = { ox, oy, oz }
-                p.max_st, p.st = st, st
+                p.max_st, p.st, p.pitch = st, st, pitch
                 local vx, vy = entity.get_prop(idx, "m_vecVelocity")
                 p.speed = (finite(vx) and finite(vy)) and clamp(math.sqrt(vx * vx + vy * vy), 0, 320) or 0
                 local flags = entity.get_prop(idx, "m_fFlags")
@@ -1572,6 +1578,7 @@ LPH_NO_VIRTUALIZE(function ()
                 local s = saved[idx]
                 if not s then return end
                 pcall(plist.set, idx, "Force body yaw", false)
+                if s.pitch then pcall(plist.set, idx, "Force pitch", false) end
                 if s.ok and s.correction ~= nil then pcall(plist.set, idx, "Correction active", s.correction) end
                 saved[idx], forced[idx] = nil, nil
             end
@@ -1591,11 +1598,21 @@ LPH_NO_VIRTUALIZE(function ()
                     pcall(plist.set, idx, "Correction active", true)
                     pcall(plist.set, idx, "Force body yaw", true)
                     forced[idx] = nil
+                    if s.pitch then pcall(plist.set, idx, "Force pitch", true); pcall(plist.set, idx, "Force pitch value", s.pitch) end
                 end
                 if forced[idx] ~= value then
                     pcall(plist.set, idx, "Force body yaw value", value)
                     forced[idx] = value
                 end
+            end
+
+            -- the defensive pitch (nil: not forced), written on change. Only on a player we force already
+            local function force_pitch(idx, pitch)
+                local s = saved[idx]
+                if not s or s.pitch == pitch then return end
+                pcall(plist.set, idx, "Force pitch", pitch ~= nil)
+                if pitch then pcall(plist.set, idx, "Force pitch value", pitch) end
+                s.pitch = pitch
             end
 
             local function release_all()
@@ -1690,6 +1707,13 @@ LPH_NO_VIRTUALIZE(function ()
                             -- no record: the forced value stays the one of the newest normal record, the one the server
                             -- tests a shot at the shifted model against
                             p.method = p.method and (p.method:gsub(" / defensive$", "") .. " / defensive") or "Defensive"
+                            -- its pitch flicked away from the record the server has: that record's pitch
+                            local srv
+                            for i = #p.hist, 1, -1 do
+                                if p.hist[i].st <= p.shift_st then srv = p.hist[i]; break end
+                            end
+                            local fix = srv and srv.pitch and p.shift_pitch and math.abs(p.shift_pitch - srv.pitch) > PITCH_FLICK
+                            force_pitch(idx, fix and clamp(math.floor(srv.pitch + 0.5), -89, 89) or nil)
                         elseif kind then
                             local ctx = situation(p)
                             local c = p.model or 0
@@ -1731,10 +1755,12 @@ LPH_NO_VIRTUALIZE(function ()
                             -- HIST_TIME (a fixed count covered 64 ticks only without choke on 64 tick)
                             local h = p.hist
                             h[#h + 1] = { st = p.st, value = value, c = c, ctx = ctx, stance = p.stance, at = tick, phit = phit, zs = zs,
-                                          n = n, pi_base = pi_base, lcls = lcls, fcls = fcls, mode = p.mode, lc = p.lc_rec, o = p.last_o }
+                                          n = n, pi_base = pi_base, lcls = lcls, fcls = fcls, mode = p.mode, lc = p.lc_rec, o = p.last_o,
+                                          pitch = p.pitch }
                             local oldest = p.st - hist_ticks()
                             while #h > 1 and h[1].st < oldest do table.remove(h, 1) end
                             force(idx, value)
+                            force_pitch(idx, nil)
                         end
                     end
                 end
@@ -1755,37 +1781,90 @@ LPH_NO_VIRTUALIZE(function ()
             -- origin of the record the aimbot used; the stored record with the nearest origin is it. Only when the target
             -- moved enough between records to tell them apart; otherwise gamesense's number
             local HITBOX_OF = { [1] = 0, [2] = 5, [3] = 3, [4] = 17, [5] = 15, [6] = 8, [7] = 7, [8] = 1 }
-            resolver.shot_backtrack = function(event)
-                if type(event) ~= "table" then return 0 end
-                local native = math.max(0, tonumber(event.backtrack) or 0)
-                local idx = event.target
-                local p = idx and players[idx]
+            -- the record the aim point belongs to (ticks back), nil when the position can not tell
+            local function measured_backtrack(p, idx, event)
                 local ax, ay, az = tonumber(event.x), tonumber(event.y), tonumber(event.z)
-                if not (p and p.max_st and #p.hist > 1 and finite(ax) and finite(ay) and finite(az)) then return native end
+                if not (#p.hist > 1 and finite(ax) and finite(ay) and finite(az)) then return nil end
                 local newest
                 for i = #p.hist, 1, -1 do
                     if p.hist[i].o and p.hist[i].st == p.max_st then newest = p.hist[i]; break end
                 end
-                if not newest then return native end
+                if not newest then return nil end
                 -- hitbox and origin of the drawn (interpolated) model: their difference is the hitbox offset
                 local hx, hy, hz = entity.hitbox_position(idx, HITBOX_OF[tonumber(event.hitgroup) or 1] or 0)
                 local ox, oy, oz = entity.get_origin(idx)
-                if not (finite(hx) and finite(hy) and finite(hz) and finite(ox) and finite(oy) and finite(oz)) then return native end
+                if not (finite(hx) and finite(hy) and finite(hz) and finite(ox) and finite(oy) and finite(oz)) then return nil end
                 -- the origin the aim point belongs to
                 local tx, ty = ax - (hx - ox), ay - (hy - oy)
-                local best, bd = nil, math.huge
+                local best, bd, d2 = nil, math.huge, math.huge
                 for i = #p.hist, 1, -1 do
                     local h = p.hist[i]
                     if h.o and p.max_st - h.st >= 0 and p.max_st - h.st <= hist_ticks() then
                         local d = (h.o[1] - tx) ^ 2 + (h.o[2] - ty) ^ 2
-                        if d < bd then best, bd = h, d end
+                        if d < bd then best, bd, d2 = h, d, bd elseif d < d2 then d2 = d end
                     end
                 end
-                if not best then return native end
+                if not best then return nil end
                 local no, bo = newest.o, best.o
-                -- the records have to be apart (more than the multipoint error) and the aim point near the chosen one
-                if (no[1] - bo[1]) ^ 2 + (no[2] - bo[2]) ^ 2 < 5 * 5 or bd > 10 * 10 then return native end
-                return math.max(native, p.max_st - best.st)
+                -- the records have to be apart (more than the multipoint error), the aim point near the chosen one and
+                -- clearly nearer to it than to any other (where the target turns, the records lie on each other)
+                if (no[1] - bo[1]) ^ 2 + (no[2] - bo[2]) ^ 2 < 5 * 5 or bd > 10 * 10 then return nil end
+                if math.sqrt(d2) - math.sqrt(bd) < 2 then return nil end
+                return p.max_st - best.st
+            end
+
+            -- A target that stands still: the position can not tell the record. Then what the shots it could tell say:
+            -- with a ping spike gamesense counts its number from another record than the newest (owners: "bt 0t" on
+            -- backtracked shots), and the shot's tick (aim_fire `tick`) may be its record's tick + the interpolation.
+            -- Each is used once its last 8 measured shots agree (all but one within 1 tick), else gamesense's number
+            local cal = { tick = {}, native = {} }
+            local function cal_push(list, v)
+                list[#list + 1] = v
+                while #list > 8 do table.remove(list, 1) end
+            end
+            local function cal_get(list)
+                if #list < 8 then return nil end
+                local sorted = {}
+                for i = 1, #list do sorted[i] = list[i] end
+                table.sort(sorted)
+                local mid, agree = sorted[4], 0
+                for i = 1, #list do if math.abs(list[i] - mid) <= 1 then agree = agree + 1 end end
+                return agree >= #list - 1 and mid or nil
+            end
+
+            -- -> ticks back (what the log shows, the record the shot is judged by), gamesense's / the measured number
+            -- before the standing target estimate (a shot at the drawn shifted model is 0 there)
+            resolver.shot_backtrack = function(event)
+                if type(event) ~= "table" then return 0, 0 end
+                local native = math.max(0, tonumber(event.backtrack) or 0)
+                local idx = event.target
+                local p = idx and players[idx]
+                if not (p and p.max_st and #p.hist > 0) then return native, native end
+                local tk = tonumber(event.tick)
+                if not finite(tk) then tk = nil end
+                local m = measured_backtrack(p, idx, event)
+                if m then
+                    -- not while it shifts: the drawn model is the shifted one
+                    if not p.shifting then
+                        if tk then cal_push(cal.tick, tk - (p.max_st - m)) end
+                        cal_push(cal.native, m - native)
+                    end
+                    local bt = math.max(native, m)
+                    return bt, bt
+                end
+                local off = cal_get(cal.tick)
+                if off and tk then
+                    for i = #p.hist, 1, -1 do
+                        local h = p.hist[i]
+                        if h.st <= tk - off then
+                            if p.max_st - h.st <= hist_ticks() then return p.max_st - h.st, native end
+                            break
+                        end
+                    end
+                end
+                off = cal_get(cal.native)
+                if off then return clamp(native + off, 0, hist_ticks()), native end
+                return native, native
             end
 
             resolver.on_fire = function(e)
@@ -1795,11 +1874,18 @@ LPH_NO_VIRTUALIZE(function ()
                     if now - s.time > 5 or now < s.time then shots[id] = nil end
                 end
                 local p = players[e.target]
-                local bt = resolver.shot_backtrack(e)
+                local bt, raw = resolver.shot_backtrack(e)
+                -- fired at the drawn model (0 ticks back) while the target's newest update is a shifted one: the server does
+                -- not have it and tests the shot against the newest normal record at or before its sim time. That record's
+                -- age is the backtrack of the shot, its value the angle (gamesense says 0 ticks)
+                local defensive = p and p.shifting and raw == 0 and p.shift_st or nil
+                if defensive then
+                    for i = #p.hist, 1, -1 do
+                        if p.hist[i].st <= p.shift_st then bt = p.max_st - p.hist[i].st; break end
+                    end
+                end
                 local h = p and applied_for(p, bt)
-                -- fired while the target's newest update is a shifted one: at the shifted (drawn) model, which the server
-                -- does not have; it tests the shot against the normal record before it
-                local shot = { idx = e.target, key = p and p.key, bt = bt, time = now, reason = "native", defensive = p and p.shifting or nil }
+                local shot = { idx = e.target, key = p and p.key, bt = bt, time = now, reason = "native", defensive = defensive and true or nil }
                 if p then
                     -- the target sees this shot: its answer (a side switch?) shows in its records some ticks later
                     local ev = { fire = globals.tickcount(), phit = h and h.phit or 0.5, q = {}, at = {} }
@@ -1930,6 +2016,7 @@ LPH_NO_VIRTUALIZE(function ()
                 release_all()
                 players, mem, shots, global, grates = {}, {}, {}, {}, new_rates()
                 gfeat, eye_hist = {}, {}
+                cal.tick, cal.native = {}, {}
                 grel = { hit = 17, noise = 3 }
                 publish()
             end
