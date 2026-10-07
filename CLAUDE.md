@@ -54,6 +54,12 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   and adds them to an existing one (never removes any), `/setup_roles` / `/setup_server` report it
   Roles are looked up by name with `guild_role`, which skips managed roles: Discord gives a bot a role named after it, and
   the bot "Specter" (invited with Administrator) has a role "Specter" = the name of the specter plan role
+  Panels (`PANELS`: prices / rules / how-to / ticket panel, one text in `prices_embed` ... used by /post_*, /setup_server and
+  the automatic refresh): `AUTO_PANELS` (default on) checks them at every start (`startup_panels`, a deploy that changed a
+  text) and posts the ones that are missing or say something else (`embed_text`: title, text, fields, footer; not the
+  images), deleting the bot's older posts of that panel there (`post_panel`, by title; a member's message stays). A new
+  specter_loader.lua of `SCRIPT_BRANCH` goes to #loader-download the same way every `RELEASE_MINUTES` (`sync_loader`, the
+  post's SHA-256 field says which one is out; only `is_customer_loader`). /post_* and /post_loader replace the old post too
   Logo (`logo()`): `assets/specter_icon.png` (thumbnails) / `assets/specter_logo.png` (the big image of the prices) go with
   the messages as attachments (`Dockerfile.bot` copies assets/); `SPECTER_LOGO_URL` overrides them with a lasting link. A
   Discord upload link (cdn.discordapp.com/attachments ...?ex=) expires in a day and is ignored. The PNGs are the watermark's

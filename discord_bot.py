@@ -26,6 +26,9 @@ ENV VARS (set in Discord bot host or .env):
   AUTO_UPLOAD         — 1 (default): a new specter_cloud.lua of SCRIPT_BRANCH goes to the license server by itself (every
                         plan; the loader downloads it from there), 0: only /script_upload
   UPDATES_CHANNEL     — public channel (name or id) the changelog of a new cloud script is posted in (default: updates)
+  AUTO_PANELS         — 1 (default): at every start the prices / rules / how-to / ticket panels that changed (or are missing)
+                        are posted again in their channels and the old posts deleted; a new specter_loader.lua of
+                        SCRIPT_BRANCH goes to #loader-download the same way (checked every RELEASE_MINUTES). 0: only by hand
   SPECTER_LOGO_URL    — a lasting image link for the logo on the bot's posts (optional). Empty: assets/specter_icon.png /
                         specter_logo.png go with the messages. A Discord upload link expires in a day: it is ignored
 """
@@ -1176,6 +1179,63 @@ def is_customer_loader(text: str) -> bool:
             and "[resolver:begin]" not in text and len(text) < 200_000)
 
 
+LOADER_CHANNEL = "loader-download"
+
+
+def loader_sha(raw: bytes) -> str:
+    return hashlib.sha256(raw).hexdigest()[:16]
+
+
+async def send_loader(target: discord.TextChannel, raw: bytes, replace: bool = True) -> int:
+    """The loader post (install steps + the file) in `target`; then the bot's older loader posts there go -> how many."""
+    embed = discord.Embed(
+        title="\U0001f4e5 Specter Loader",
+        description=(
+            "**Install**\n"
+            "1. Download `specter_loader.lua` below\n"
+            "2. Put it into your **CS:GO folder** (where `csgo.exe` is): gamesense loads Lua scripts from there\n"
+            "3. In gamesense open the **Lua** tab, refresh the list and load **specter_loader**\n"
+            "4. Go to **AA > Anti-aimbot angles**, copy your key and click **Paste key** (Ctrl+V does not work in gamesense text fields), pick a username & password\n"
+            "5. **Register** the first time, **Login** after that. Your HWID locks on first use\n\n"
+            "The script itself is downloaded from our server every time you log in, so this file only changes "
+            "when we post a new one here.\n"
+            "No key yet? See #prices. Problems? Open a ticket in #support-ticket."
+        ),
+        color=0x82C3FF,
+    )
+    embed.add_field(name="Updated", value=f"<t:{int(discord.utils.utcnow().timestamp())}:D>", inline=True)
+    embed.add_field(name="SHA-256", value=f"`{loader_sha(raw)}`", inline=True)
+    embed.set_footer(text="Specter \U0001f319 • never share your key or the loader")
+    msg = await target.send(embed=embed, files=[discord.File(io.BytesIO(raw), filename=LOADER_FILE)] + logo(embed))
+    if not replace:
+        return 0
+    return await delete_posts(await bot_posts(target, lambda m: m.id != msg.id
+                                              and any(a.filename == LOADER_FILE for a in m.attachments)))
+
+
+async def bot_posts(ch: discord.TextChannel, test, limit: int = 50) -> list[discord.Message]:
+    """The bot's own messages in the channel (newest first) that `test` accepts."""
+    out = []
+    try:
+        async for msg in ch.history(limit=limit):
+            if msg.author.id == client.user.id and test(msg):
+                out.append(msg)
+    except discord.HTTPException:
+        pass
+    return out
+
+
+async def delete_posts(msgs: list[discord.Message]) -> int:
+    n = 0
+    for msg in msgs:
+        try:
+            await msg.delete()
+            n += 1
+        except discord.HTTPException:
+            pass
+    return n
+
+
 @tree.command(name="post_loader", description="Post the Specter loader (specter_loader.lua) for customers to download")
 @app_commands.describe(
     file="specter_loader.lua (empty: taken from GitHub)",
@@ -1214,42 +1274,13 @@ async def post_loader(
             "Nothing posted.", ephemeral=True)
         return
 
-    target = channel or discord.utils.get(interaction.guild.text_channels, name="loader-download") or interaction.channel
+    target = channel or named_channel(interaction.guild, LOADER_CHANNEL) or interaction.channel
     if not isinstance(target, discord.TextChannel):
         await interaction.followup.send("Pick a text channel to post the loader in.", ephemeral=True)
         return
 
-    removed = 0
-    if replace:
-        try:
-            async for msg in target.history(limit=50):
-                if msg.author.id == client.user.id and any(a.filename == LOADER_FILE for a in msg.attachments):
-                    await msg.delete()
-                    removed += 1
-        except discord.HTTPException:
-            pass
-
-    embed = discord.Embed(
-        title="\U0001f4e5 Specter Loader",
-        description=(
-            "**Install**\n"
-            "1. Download `specter_loader.lua` below\n"
-            "2. Put it into your **CS:GO folder** (where `csgo.exe` is): gamesense loads Lua scripts from there\n"
-            "3. In gamesense open the **Lua** tab, refresh the list and load **specter_loader**\n"
-            "4. Go to **AA > Anti-aimbot angles**, copy your key and click **Paste key** (Ctrl+V does not work in gamesense text fields), pick a username & password\n"
-            "5. **Register** the first time, **Login** after that. Your HWID locks on first use\n\n"
-            "The script itself is downloaded from our server every time you log in, so this file only changes "
-            "when we post a new one here.\n"
-            "No key yet? See #prices. Problems? Open a ticket in #support-ticket."
-        ),
-        color=0x82C3FF,
-    )
-    embed.add_field(name="Updated", value=f"<t:{int(discord.utils.utcnow().timestamp())}:D>", inline=True)
-    embed.add_field(name="SHA-256", value=f"`{hashlib.sha256(raw).hexdigest()[:16]}`", inline=True)
-    embed.set_footer(text="Specter \U0001f319 • never share your key or the loader")
-    files = logo(embed)
     try:
-        await target.send(embed=embed, files=[discord.File(io.BytesIO(raw), filename=LOADER_FILE)] + files)
+        removed = await send_loader(target, raw, replace)
     except discord.HTTPException as e:
         await interaction.followup.send(f"Could not post in {target.mention}: {e}", ephemeral=True)
         return
@@ -1278,6 +1309,7 @@ UPDATES_CHANNEL = _env("UPDATES_CHANNEL", "updates")
 RELEASE_FILES   = [f.strip() for f in _env("RELEASE_FILES", "specter_dev.lua").split(",") if f.strip()]
 RELEASE_MINUTES = _env_int("RELEASE_MINUTES", 5)
 AUTO_UPLOAD     = _env("AUTO_UPLOAD", "1").lower() not in ("0", "false", "off", "no")
+AUTO_PANELS     = _env("AUTO_PANELS", "1").lower() not in ("0", "false", "off", "no")
 RELEASE_ROLES   = [r for r in ROLE_CONFIG if r != "Staff"]     # never posted where one of these (or @everyone) reads
 RELEASE_FOOTER  = re.compile(r"^(\S+) @ ([0-9a-f]{16})$")       # the footer of a version post: file @ its SHA-256
 _release_seen: dict[int, dict[str, str]] = {}                   # channel id -> file -> SHA-256 of the newest post there
@@ -1569,6 +1601,8 @@ async def release_loop():
             report = await check_releases()
             if AUTO_UPLOAD:
                 report += await sync_cloud()
+            if AUTO_PANELS:
+                report += await sync_loader()
         except Exception as e:
             report = [f"version check failed: {e!r}"]
         for line in report:
@@ -1578,8 +1612,8 @@ async def release_loop():
         await asyncio.sleep(RELEASE_MINUTES * 60)
 
 
-@tree.command(name="release_check", description="Check GitHub now: dev build to the staff channel, cloud script to the server")
-@app_commands.describe(force="Post the dev build and upload the cloud script again even if they are there already")
+@tree.command(name="release_check", description="Check GitHub now: dev build to #staff, cloud script to the server, loader")
+@app_commands.describe(force="Post the dev build / loader and upload the cloud script again even if they are there already")
 async def release_check(interaction: discord.Interaction, force: bool = False):
     if not is_staff(interaction):
         await interaction.response.send_message("No permission.", ephemeral=True)
@@ -1588,7 +1622,9 @@ async def release_check(interaction: discord.Interaction, force: bool = False):
     report = await check_releases(force)
     if AUTO_UPLOAD:
         report += await sync_cloud(force)
-    text = "\n".join(report) or f"Nothing new: #{RELEASE_CHANNEL} and the server already have the newest versions."
+    if AUTO_PANELS:
+        report += await sync_loader(force)
+    text = "\n".join(report) or "Nothing new: the newest versions are already out."
     await interaction.followup.send(text[:1900], ephemeral=True)
 
 
@@ -1677,12 +1713,11 @@ async def redeem(interaction: discord.Interaction, key: str):
 
 # ── /setup_tickets — post ticket panel ───────────────────────────────
 
-@tree.command(name="setup_tickets", description="Post the ticket creation panel in the current channel")
-async def setup_tickets(interaction: discord.Interaction):
-    if not is_admin(interaction):
-        await interaction.response.send_message("No permission.", ephemeral=True)
-        return
+# ── Panels: prices, rules, how-to, ticket panel ─────────────────────
+# One text for /post_*, /setup_server and the automatic refresh at every start: a deploy that changes a text puts the
+# new post in its channel and deletes the old one.
 
+def tickets_embed() -> discord.Embed:
     embed = discord.Embed(
         title="\U0001f3ab Specter Support",
         description=(
@@ -1696,10 +1731,179 @@ async def setup_tickets(interaction: discord.Interaction):
         color=0x82C3FF,
     )
     embed.set_footer(text="Specter \U0001f319")
-    files = logo(embed)
+    return embed
+
+
+def prices_embed() -> discord.Embed:
+    embed = discord.Embed(title="Prices", color=0x82C3FF)
+    embed.add_field(name="\U0001f319 Specter for GS", value=price_lines(), inline=False)
+    pay_lines = [f"○ {m}" for m in PAYMENT_METHODS]
+    if BUY_CONTACT:
+        pay_lines.append(f"○ Tag to buy: **{BUY_CONTACT}**")
+    embed.add_field(name="Payment Methods", value="\n".join(pay_lines), inline=False)
+    embed.add_field(
+        name="\U0001f319 Specter Info",
+        value=(
+            "• *Versions* — `beta` | `nightly` | `specter`\n"
+            "• *Status* — fully updated for 2026\n"
+            "• *Platform* — gamesense"
+        ),
+        inline=False,
+    )
+    embed.add_field(name="\u2728 Features", value=FEATURES_TEXT, inline=False)
+    embed.add_field(
+        name="Still Have Questions?",
+        value=(
+            "• Open a ticket in #support-ticket\n"
+            "• Check #how-to-use for setup guide"
+        ),
+        inline=False,
+    )
+    embed.set_footer(text="Specter \U0001f319 • gamesense lua")
+    return embed
+
+
+def rules_embed() -> discord.Embed:
+    embed = discord.Embed(title="\U0001f30d Rules", color=0x82C3FF)
+    embed.description = (
+        "**1.** Be respectful to all members.\n"
+        "**2.** No spamming or self-promotion.\n"
+        "**3.** Do not share or resell license keys.\n"
+        "**4.** Do not share the script or any part of it.\n"
+        "**5.** Use #support-ticket for help, don't DM staff.\n"
+        "**6.** No NSFW, illegal content, or doxxing.\n"
+        "**7.** English / Hungarian only.\n"
+        "**8.** Staff decisions are final.\n\n"
+        "*Breaking any rule may result in a mute, kick, or ban.*"
+    )
+    embed.set_footer(text="Specter \U0001f319")
+    return embed
+
+
+def howto_embed() -> discord.Embed:
+    embed = discord.Embed(title="\U0001f4d5 How to Use Specter", color=0x82C3FF)
+    embed.add_field(
+        name="Step 1 — Get Your Key",
+        value=(
+            "Purchase a plan in #prices or from staff.\n"
+            "Use `/redeem <key>` in Discord to get your role."
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="Step 2 — Register / Login",
+        value=(
+            "1. Copy your **license key** and click **Paste key** (Ctrl+V does not work in gamesense)\n"
+            "2. Choose a **username** and **password**\n"
+            "3. Click **Register** (first time) or **Login**\n"
+            "4. Your HWID locks on first activation"
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="Tier Features",
+        value=(
+            "```\n"
+            "Plan       Resolver  Ragebot+  Tuning  Builder  AA Stealer\n"
+            "specter    ✔         ✔         ✔       ✔        ✘\n"
+            "nightly    ✘         ✔         ✔       ✔        ✘\n"
+            "beta       ✘         ✘         ✘       ✘        ✘\n"
+            "```"
+        ),
+        inline=False,
+    )
+    embed.add_field(name="Trouble?", value="Open a ticket in #support-ticket and we'll help.", inline=False)
+    embed.set_footer(text="Specter \U0001f319")
+    return embed
+
+
+# name -> its channel, the embed, the wide logo as the big image (else the icon as the thumbnail), the ticket button
+PANELS = {
+    "prices":  {"channel": "prices",         "build": prices_embed,  "banner": True,  "button": False},
+    "rules":   {"channel": "rules",          "build": rules_embed,   "banner": False, "button": False},
+    "howto":   {"channel": "how-to-use",     "build": howto_embed,   "banner": False, "button": False},
+    "tickets": {"channel": "support-ticket", "build": tickets_embed, "banner": False, "button": True},
+}
+
+
+def embed_text(e) -> tuple:
+    """What an embed says (not its pictures, colour or time): the same = no new post needed."""
+    def t(x):
+        return (x or "").strip()
+    return (t(e.title), t(e.description), tuple((t(f.name), t(f.value)) for f in e.fields), t(e.footer.text))
+
+
+async def post_panel(ch: discord.TextChannel, name: str, force: bool = False) -> str:
+    """The panel in the channel, posted when it is missing or says something else than now (force: always); the bot's
+    older posts of it there are deleted -> "posted" / "updated" / "" (it was there already)."""
+    p = PANELS[name]
+    embed = p["build"]()
+    old = await bot_posts(ch, lambda m: bool(m.embeds) and (m.embeds[0].title or "") == embed.title)
+    if old and not force and embed_text(old[0].embeds[0]) == embed_text(embed):
+        await delete_posts(old[1:])                 # a double post (a setup run twice) goes
+        return ""
+    kw = {"view": TicketCreateView()} if p["button"] else {}
+    await ch.send(embed=embed, files=logo(embed, banner=p["banner"]), **kw)
+    await delete_posts(old)
+    return "updated" if old else "posted"
+
+
+async def sync_panels() -> list[str]:
+    """Every panel in its channel (by name, also "💸・prices"), every guild of the bot: what changed is posted again."""
+    report = []
+    for guild in client.guilds:
+        for name, p in PANELS.items():
+            ch = named_channel(guild, p["channel"])
+            if ch is None:
+                continue
+            try:
+                what = await post_panel(ch, name)
+            except discord.HTTPException as e:
+                report.append(f"{guild.name}: {name} panel could not be posted in {ch.mention}: {e}")
+                continue
+            if what:
+                report.append(f"{guild.name}: {name} panel {what} in {ch.mention}")
+    return report
+
+
+async def sync_loader(force: bool = False) -> list[str]:
+    """A new specter_loader.lua of SCRIPT_BRANCH goes to #loader-download (install steps + the file), the older loader
+    post is deleted. Only the customer loader is ever posted there."""
+    try:
+        ver = await newest_version(LOADER_FILE)
+    except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError) as e:
+        return [f"`{LOADER_FILE}`: {e}"]
+    raw = ver["raw"]
+    if not is_customer_loader(raw.decode("utf-8", "replace")):
+        return [f"`{LOADER_FILE}` of `{SCRIPT_BRANCH}` is not the customer loader, not posted"]
+    sha = loader_sha(raw)
+    report = []
+    for guild in client.guilds:
+        ch = named_channel(guild, LOADER_CHANNEL)
+        if ch is None:
+            continue
+        posts = await bot_posts(ch, lambda m: any(a.filename == LOADER_FILE for a in m.attachments))
+        if posts and not force and posts[0].embeds and any(f.name == "SHA-256" and sha in (f.value or "")
+                                                           for f in posts[0].embeds[0].fields):
+            continue
+        try:
+            removed = await send_loader(ch, raw)
+        except discord.HTTPException as e:
+            report.append(f"`{LOADER_FILE}`: could not post in {ch.mention}: {e}")
+            continue
+        report.append(f"`{LOADER_FILE}` `{sha[:7]}` posted in {ch.mention}"
+                      + (f" ({removed} older post{'s' if removed != 1 else ''} removed)" if removed else ""))
+    return report
+
+
+@tree.command(name="setup_tickets", description="Post the ticket creation panel in the current channel")
+async def setup_tickets(interaction: discord.Interaction):
+    if not is_admin(interaction):
+        await interaction.response.send_message("No permission.", ephemeral=True)
+        return
 
     await interaction.response.send_message("Ticket panel posted!", ephemeral=True)
-    await interaction.channel.send(embed=embed, view=TicketCreateView(), files=files)
+    await post_panel(interaction.channel, "tickets", force=True)
 
 
 # ── /close_ticket — manually close a ticket ──────────────────────────
@@ -1744,49 +1948,8 @@ async def post_prices(interaction: discord.Interaction):
         await interaction.response.send_message("No permission.", ephemeral=True)
         return
 
-    embed = discord.Embed(title="Prices", color=0x82C3FF)
-
-    embed.add_field(
-        name="\U0001f319 Specter for GS",
-        value=price_lines(),
-        inline=False,
-    )
-
-    pay_lines = [f"○ {m}" for m in PAYMENT_METHODS]
-    if BUY_CONTACT:
-        pay_lines.append(f"○ Tag to buy: **{BUY_CONTACT}**")
-    embed.add_field(
-        name="Payment Methods",
-        value="\n".join(pay_lines),
-        inline=False,
-    )
-
-    embed.add_field(
-        name="\U0001f319 Specter Info",
-        value=(
-            "• *Versions* — `beta` | `nightly` | `specter`\n"
-            "• *Status* — fully updated for 2026\n"
-            "• *Platform* — gamesense"
-        ),
-        inline=False,
-    )
-
-    embed.add_field(name="\u2728 Features", value=FEATURES_TEXT, inline=False)
-
-    embed.add_field(
-        name="Still Have Questions?",
-        value=(
-            "• Open a ticket in #support-ticket\n"
-            "• Check #how-to-use for setup guide"
-        ),
-        inline=False,
-    )
-
-    files = logo(embed, banner=True)
-    embed.set_footer(text="Specter \U0001f319 • gamesense lua")
-
     await interaction.response.send_message("Prices posted!", ephemeral=True)
-    await interaction.channel.send(embed=embed, files=files)
+    await post_panel(interaction.channel, "prices", force=True)
 
 
 # ── /post_rules — post server rules ──────────────────────────────────
@@ -1797,26 +1960,8 @@ async def post_rules(interaction: discord.Interaction):
         await interaction.response.send_message("No permission.", ephemeral=True)
         return
 
-    embed = discord.Embed(
-        title="\U0001f30d Rules",
-        color=0x82C3FF,
-    )
-    embed.description = (
-        "**1.** Be respectful to all members.\n"
-        "**2.** No spamming or self-promotion.\n"
-        "**3.** Do not share or resell license keys.\n"
-        "**4.** Do not share the script or any part of it.\n"
-        "**5.** Use #support-ticket for help, don't DM staff.\n"
-        "**6.** No NSFW, illegal content, or doxxing.\n"
-        "**7.** English / Hungarian only.\n"
-        "**8.** Staff decisions are final.\n\n"
-        "*Breaking any rule may result in a mute, kick, or ban.*"
-    )
-    files = logo(embed)
-    embed.set_footer(text="Specter \U0001f319")
-
     await interaction.response.send_message("Rules posted!", ephemeral=True)
-    await interaction.channel.send(embed=embed, files=files)
+    await post_panel(interaction.channel, "rules", force=True)
 
 
 # ── /post_howto — post how-to-use guide ──────────────────────────────
@@ -1827,50 +1972,8 @@ async def post_howto(interaction: discord.Interaction):
         await interaction.response.send_message("No permission.", ephemeral=True)
         return
 
-    embed = discord.Embed(
-        title="\U0001f4d5 How to Use Specter",
-        color=0x82C3FF,
-    )
-    embed.add_field(
-        name="Step 1 — Get Your Key",
-        value=(
-            "Purchase a plan in #prices or from staff.\n"
-            "Use `/redeem <key>` in Discord to get your role."
-        ),
-        inline=False,
-    )
-    embed.add_field(
-        name="Step 2 — Register / Login",
-        value=(
-            "1. Copy your **license key** and click **Paste key** (Ctrl+V does not work in gamesense)\n"
-            "2. Choose a **username** and **password**\n"
-            "3. Click **Register** (first time) or **Login**\n"
-            "4. Your HWID locks on first activation"
-        ),
-        inline=False,
-    )
-    embed.add_field(
-        name="Tier Features",
-        value=(
-            "```\n"
-            "Plan       Resolver  Ragebot+  Tuning  Builder  AA Stealer\n"
-            "specter    ✔         ✔         ✔       ✔        ✘\n"
-            "nightly    ✘         ✔         ✔       ✔        ✘\n"
-            "beta       ✘         ✘         ✘       ✘        ✘\n"
-            "```"
-        ),
-        inline=False,
-    )
-    embed.add_field(
-        name="Trouble?",
-        value="Open a ticket in #support-ticket and we'll help.",
-        inline=False,
-    )
-    files = logo(embed)
-    embed.set_footer(text="Specter \U0001f319")
-
     await interaction.response.send_message("How-to guide posted!", ephemeral=True)
-    await interaction.channel.send(embed=embed, files=files)
+    await post_panel(interaction.channel, "howto", force=True)
 
 
 # ── /setup_server — one-click full server setup ──────────────────────
@@ -1967,85 +2070,11 @@ async def setup_server(interaction: discord.Interaction):
             except discord.HTTPException:
                 log_lines.append(f"❌ #{ch_name}")
 
-    # 3. Post embeds in the right channels
+    # 3. The panels in their channels (only when missing or changed: running the setup again posts nothing twice)
     posted = []
-
-    if prices_ch and isinstance(prices_ch, discord.TextChannel):
-        e = discord.Embed(title="Prices", color=0x82C3FF)
-        e.add_field(name="\U0001f319 Specter for GS", value=price_lines(), inline=False)
-        pay = [f"○ {m}" for m in PAYMENT_METHODS]
-        if BUY_CONTACT:
-            pay.append(f"○ Tag to buy: **{BUY_CONTACT}**")
-        e.add_field(name="Payment Methods", value="\n".join(pay), inline=False)
-        e.add_field(name="\U0001f319 Specter Info", value=(
-            "• *Versions* — `beta` | `nightly` | `specter`\n"
-            "• *Status* — fully updated for 2026\n"
-            "• *Platform* — gamesense"
-        ), inline=False)
-        e.add_field(name="\u2728 Features", value=FEATURES_TEXT, inline=False)
-        files = logo(e, banner=True)
-        e.set_footer(text="Specter \U0001f319 • gamesense lua")
-        await prices_ch.send(embed=e, files=files)
-        posted.append("#prices")
-
-    if rules_ch and isinstance(rules_ch, discord.TextChannel):
-        e = discord.Embed(title="\U0001f30d Rules", color=0x82C3FF)
-        e.description = (
-            "**1.** Be respectful to all members.\n"
-            "**2.** No spamming or self-promotion.\n"
-            "**3.** Do not share or resell license keys.\n"
-            "**4.** Do not share the script or any part of it.\n"
-            "**5.** Use #support-ticket for help, don't DM staff.\n"
-            "**6.** No NSFW, illegal content, or doxxing.\n"
-            "**7.** English / Hungarian only.\n"
-            "**8.** Staff decisions are final.\n\n"
-            "*Breaking any rule may result in a mute, kick, or ban.*"
-        )
-        e.set_footer(text="Specter \U0001f319")
-        await rules_ch.send(embed=e, files=logo(e))
-        posted.append("#rules")
-
-    if howto_ch and isinstance(howto_ch, discord.TextChannel):
-        e = discord.Embed(title="\U0001f4d5 How to Use Specter", color=0x82C3FF)
-        e.add_field(name="Step 1 — Get Your Key", value=(
-            "Purchase a plan in #prices or from staff.\n"
-            "Use `/redeem <key>` to get your role."
-        ), inline=False)
-        e.add_field(name="Step 2 — Register / Login", value=(
-            "1. Copy your **license key** and click **Paste key** (Ctrl+V does not work in gamesense)\n"
-            "2. Choose a **username** and **password**\n"
-            "3. Click **Register** (first time) or **Login**\n"
-            "4. Your HWID locks on first activation"
-        ), inline=False)
-        e.add_field(name="Tier Features", value=(
-            "```\n"
-            "Plan       Resolver  Ragebot+  Tuning  Builder\n"
-            "specter    ✔         ✔         ✔       ✔\n"
-            "nightly    ✘         ✔         ✔       ✔\n"
-            "beta       ✘         ✘         ✘       ✘\n"
-            "```"
-        ), inline=False)
-        e.set_footer(text="Specter \U0001f319")
-        await howto_ch.send(embed=e, files=logo(e))
-        posted.append("#how-to-use")
-
-    if ticket_ch and isinstance(ticket_ch, discord.TextChannel):
-        e = discord.Embed(
-            title="\U0001f3ab Specter Support",
-            description=(
-                "Need help? Click the button below to create a private support ticket.\n\n"
-                "A staff member will assist you as soon as possible.\n\n"
-                "**Before opening a ticket:**\n"
-                "• Check #how-to-use for common questions\n"
-                "• Make sure your key is valid\n"
-                "• Describe your issue clearly"
-            ),
-            color=0x82C3FF,
-        )
-        e.set_footer(text="Specter \U0001f319")
-        files = logo(e)
-        await ticket_ch.send(embed=e, view=TicketCreateView(), files=files)
-        posted.append("#support-ticket")
+    for name, ch in (("prices", prices_ch), ("rules", rules_ch), ("howto", howto_ch), ("tickets", ticket_ch)):
+        if isinstance(ch, discord.TextChannel) and await post_panel(ch, name):
+            posted.append(f"#{ch.name}")
 
     if posted:
         log_lines.append(f"\U0001f4e8 Embeds posted: {', '.join(posted)}")
@@ -2060,11 +2089,22 @@ async def setup_server(interaction: discord.Interaction):
 
 _synced = False
 _release_task = None
+_panels_task = None
+
+
+async def startup_panels():
+    """Once per start: the panels a deploy changed are posted again (the old posts deleted)."""
+    await client.wait_until_ready()
+    try:
+        for line in await sync_panels():
+            print(f"[panels] {line}", flush=True)
+    except Exception as e:
+        print(f"[panels] failed: {e!r}", flush=True)
 
 
 @client.event
 async def on_ready():
-    global _synced, _release_task
+    global _synced, _release_task, _panels_task
     client.add_view(TicketCreateView())
     client.add_view(TicketCloseView())
     print(f"Bot online: {client.user}  |  Guilds: {len(client.guilds)}")
@@ -2076,6 +2116,8 @@ async def on_ready():
         print(f"Slash commands ({len(synced)}): {', '.join(sorted(c.name for c in synced))}")
     print(f"API: {API_URL}")
     print(f"Default role: {DEFAULT_ROLE_NAME}")
+    if AUTO_PANELS and _panels_task is None:
+        _panels_task = asyncio.create_task(startup_panels())
     if RELEASE_MINUTES > 0 and (_release_task is None or _release_task.done()):
         _release_task = asyncio.create_task(release_loop())
         print(f"Version check: {', '.join(RELEASE_FILES)} -> #{RELEASE_CHANNEL}"
