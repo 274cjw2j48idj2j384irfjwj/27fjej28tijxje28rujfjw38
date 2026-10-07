@@ -3,11 +3,13 @@
 -- decides an eye yaw and which ticks are sent (fakelag); a copy of the server's animstate feet logic turns that into the
 -- true body yaw, and only the sent ticks reach the resolver as netvars. Shots are fired by an aimbot model with backtrack
 -- and ping delayed results; a shot hits when the value applied to the record it went at is within `tol` of the truth.
+-- A tickbase shifted update (defensive) gets no lag record on the server (it adds one only when the sim time moves
+-- forward): a shot at the shifted model is tested against the newest normal record at or before its sim time.
 --
 --   H = load(this)();  stats = H.run(script_src, { scenario = "...", ticks = ..., ping = ..., ... })
 local H = {}
 
-local TI = 1 / 64
+local TI = 1 / 64                 -- opts.tickrate changes it for a run
 
 -- ── server physics (an independent copy of the animstate feet logic) ────────
 local function norm(a)
@@ -288,8 +290,8 @@ H.drivers = {
         return d
     end,
     -- defensive: every 48 ticks a window of 6 sent ticks with a tickbase shift (sim time goes back `back` ticks) while the
-    -- eye yaw flicks (`flick`, 110 = past the side, 90 = sideways, 0 = pitch only); the true body yaw of those records comes
-    -- from the server feet logic on the flicked angles. o.base: "static" (eye 0) or "jitter" (+-35 every tick)
+    -- eye yaw flicks (`flick`, 110 = past the side, 90 = sideways, 0 = pitch only); the server animates the flicked angles
+    -- but keeps no lag record of them. o.base: "static" (eye 0) or "jitter" (+-35 every tick)
     defensive = function(o)
         local flick, back, base = o.flick or 110, o.back or 10, o.base or "static"
         local d = {}
@@ -303,7 +305,8 @@ H.drivers = {
         d.shift = function(k) if window(k) then return { back = back } end return nil end
         return d
     end,
-    -- standing choke desync with tickbase shifts every 48 ticks
+    -- standing choke desync with tickbase shifts every 48 ticks (the sim time goes back past the newest record: `back`
+    -- has to be more than the choke)
     choke_defensive = function(o)
         local c = o.choke or 6
         local d = {}
@@ -311,9 +314,33 @@ H.drivers = {
         d.sent = function(k) return k % (c + 1) == c end
         d.shift = function(k)
             local ph = k % 48
-            if ph >= 36 and ph < 42 and k % (c + 1) == c then return { back = o.back or 4, theta = 0 } end
+            if ph >= 36 and ph < 42 and k % (c + 1) == c then return { back = o.back or (c + 4), theta = 0 } end
             return nil
         end
+        return d
+    end,
+    -- a jitter AA with micromovement (the netvars show no desync, the feet model lands near 0) and an always-on defensive:
+    -- every `every` ticks a burst of `len` sent packets with a tickbase shift (`back` ticks) and a pitch flick (the yaw
+    -- stays). The body yaw is a real desync (body "static" / "opp" / "coin" per packet), the shifted packets too
+    jitter_defensive = function(o)
+        local c, amp, size, body, every, len = o.choke or 1, o.amp or 30, o.size or 58, o.body or "static", o.every or 16, o.len or 4
+        local rnd = lcg(o.seed or 17)
+        local d = {}
+        local ys, bs, cur = 1, o.side or 1, 0
+        local function burst(k) return k % every >= every - len * (c + 1) end
+        function d.eye(k)
+            if k % (c + 1) == c then
+                ys = -ys
+                cur = (o.center or 0) + ys * amp
+                if body == "opp" then bs = -ys elseif body == "coin" then bs = rnd() < 0.5 and 1 or -1 end
+            end
+            return cur
+        end
+        d.sent = function(k) return k % (c + 1) == c end
+        d.vel = function(k) return 1.1 end
+        d.net_lby = function(k, eye) return eye end
+        d.truth = function(k) return bs * size end
+        d.shift = function(k) if burst(k) and d.sent(k) then return { back = o.back or 6, truth = true } end return nil end
         return d
     end,
 }
@@ -322,7 +349,7 @@ H.drivers = {
 local function make_enemy(idx, spec, ping_ticks)
     local e = {
         idx = idx, name = spec.name or ("enemy" .. idx), driver = spec.driver,
-        srv = { feet = 0, lby = 0, timer = 0 }, rec = {}, recent = {},
+        srv = { feet = 0, lby = 0, timer = 0 }, rec = {}, recent = {}, valid = {},
         net = { sim = 0, eye = 0, pitch = 89, vel = 0, flags = 1, duck = 0, lby = 0, pose = 0.5 },
         max_st = 0, native_p = spec.native_p or 0.25, truth_pol = spec.truth_pol or 1,
         realign_until = 0, realign_since = 0, prev_value = nil,
@@ -340,8 +367,10 @@ local function enemy_advance(e, k, opts)
 
     local sh = d.shift and d.shift(k) or nil
     local st = sh and (k - sh.back) or k
+    -- a shift that still leaves the sim time past the newest one moves it forward: the server takes it as a normal record
+    local shifted = sh ~= nil and st <= e.max_st
     local raw = (sh and sh.theta) or theta
-    if d.truth and not sh then raw = d.truth(k) end
+    if d.truth and (not sh or sh.truth) then raw = d.truth(k) end
     local pose = 0.5
     if opts.pose_real then pose = (raw + 60) / 120 end
     -- d.net_lby: the lower body yaw target the server sends when it is not the one of the feet logic (micromovement keeps
@@ -349,11 +378,20 @@ local function enemy_advance(e, k, opts)
     local lby = e.srv.lby
     if d.net_lby then lby = d.net_lby(k, eye) end
     e.net = { sim = st, eye = eye, pitch = sh and -89 or 89, vel = vel, flags = 1, duck = 0, lby = lby, pose = pose }
-    if not sh then e.max_st = st end
-    local r = { k = k, st = st, T = raw * e.truth_pol, shifted = sh ~= nil, applied = nil }
+    if not shifted then e.max_st = st end
+    local r = { k = k, st = st, T = raw * e.truth_pol, shifted = shifted, applied = nil }
+    -- the server's lag record for a shifted update: the newest normal one at or before its sim time
+    if shifted then
+        for i = #e.valid, 1, -1 do
+            if e.valid[i].st <= st then r.srv = e.valid[i]; break end
+        end
+    else
+        e.valid[#e.valid + 1] = r
+        while #e.valid > 300 do table.remove(e.valid, 1) end
+    end
     e.rec[k] = r
     e.recent[#e.recent + 1] = r
-    while #e.recent > 64 do table.remove(e.recent, 1) end
+    while #e.recent > 300 do table.remove(e.recent, 1) end
     return r
 end
 
@@ -361,8 +399,10 @@ end
 function H.run(script_src, opts)
     opts = opts or {}
     local real_G = _G
+    TI = 1 / (opts.tickrate or 64)
     local ticks = opts.ticks or 3000
     local ping_ms = opts.ping or 20
+    local fake_ms = opts.fake_ping or 0          -- ping spike: the scoreboard and client.latency have it, the results not
     local ping_ticks = math.ceil(ping_ms / 1000 / TI)
     local tol = opts.tol or 12
     local apply_lag = opts.apply_lag or 0
@@ -451,7 +491,7 @@ function H.run(script_src, opts)
         return "7656119800000000" .. idx
     end
     entity.get_prop = function(ent, name, i)
-        if ent == 99 and name == "m_iPing" then return ctl.ping end
+        if ent == 99 and name == "m_iPing" then return ctl.ping + fake_ms end
         if ent == 1 then if name == "m_vecOrigin" then return 0, 0, 0 end return 0 end
         local e = by_idx[ent]
         if not e then return 0 end
@@ -476,7 +516,8 @@ function H.run(script_src, opts)
 
     -- client ---------------------------------------------------------------------
     local client = {
-        latency = function() return ctl.ping / 2000 end,
+        latency = function() return (ctl.ping + fake_ms) / 2000 end,
+        real_latency = function() return ctl.ping / 2000 end,
         eye_position = function() return 0, 0, 64 end,
         trace_line = function(me, x1, y1) if y1 < 0 then return 0.4 end return 1.0 end,
         current_threat = function() return ctl.threat or (enemies[1] and enemies[1].idx) end,
@@ -535,7 +576,8 @@ function H.run(script_src, opts)
     end
 
     -- run --------------------------------------------------------------------------
-    local stats = { shots = 0, hits = 0, late_shots = 0, late_hits = 0, errors = 0, per = {}, spread = 0 }
+    local stats = { shots = 0, hits = 0, late_shots = 0, late_hits = 0, errors = 0, per = {}, spread = 0, def_shots = 0,
+                    late_valid_shots = 0, late_valid_hits = 0 }
     for _, e in ipairs(enemies) do stats.per[e.idx] = { shots = 0, hits = 0, late_shots = 0, late_hits = 0 } end
     local pending, shot_id = {}, 0
     -- the enemy AA reacting to a shot (anti-bruteforce drivers): right away, or opts.react_delay ticks later (in a real game
@@ -606,11 +648,14 @@ function H.run(script_src, opts)
         if k > 20 and k % shoot_every == 0 then
             local e = enemies[(math.floor(k / shoot_every) % #enemies) + 1]
             if #e.recent > 0 then
+                -- the drawn model (the newest update: a shifted one during a defensive burst) or a backtracked normal record
+                -- (a shifted record is no backtrack target: its sim time went back)
                 local newest = e.recent[#e.recent]
                 local r = newest
                 if rng() < 0.5 then
                     local pool = {}
-                    for _, c in ipairs(e.recent) do if e.max_st - c.st <= ping_ticks + 8 then pool[#pool + 1] = c end end
+                    local bt_max = opts.bt_max or (ping_ticks + 8)
+                    for _, c in ipairs(e.recent) do if not c.shifted and e.max_st - c.st <= bt_max then pool[#pool + 1] = c end end
                     if #pool > 0 then r = pool[math.floor(rng() * #pool) + 1] end
                 end
                 shot_id = shot_id + 1
@@ -627,16 +672,24 @@ function H.run(script_src, opts)
                 per.shots = per.shots + 1
                 if late then stats.late_shots = stats.late_shots + 1; per.late_shots = per.late_shots + 1 end
                 local hit
+                if r.shifted then stats.def_shots = stats.def_shots + 1 end
+                if late and not r.shifted then stats.late_valid_shots = stats.late_valid_shots + 1 end
                 if rng() < (opts.spread_p or 0.06) then
                     stats.spread = stats.spread + 1
                     pending[#pending + 1] = { at = k + ping_ticks, kind = "miss", id = shot_id, target = e.idx, reason = "spread" }
                 else
-                    if r.applied == nil then hit = rng() < e.native_p else hit = math.abs(r.applied - r.T) <= tol end
+                    if r.shifted then
+                        -- tested against the server's lag record; the aimbot aimed at the shifted model, whose head the
+                        -- flick moved (opts.def_head = "same": a defensive that keeps the angles, only the record breaks)
+                        local s = r.srv
+                        hit = s ~= nil and r.applied ~= nil and opts.def_head == "same" and math.abs(r.applied - s.T) <= tol
+                    elseif r.applied == nil then hit = rng() < e.native_p else hit = math.abs(r.applied - r.T) <= tol end
                     if hit and rng() < (opts.noise_p or 0) then hit = false end
                     if opts.on_shot then opts.on_shot(k, e, r, hit, ctl, S) end
                     if hit then
                         stats.hits = stats.hits + 1; per.hits = per.hits + 1
                         if late then stats.late_hits = stats.late_hits + 1; per.late_hits = per.late_hits + 1 end
+                        if late and not r.shifted then stats.late_valid_hits = stats.late_valid_hits + 1 end
                         pending[#pending + 1] = { at = k + ping_ticks, kind = "hit", id = shot_id, target = e.idx }
                     else
                         pending[#pending + 1] = { at = k + ping_ticks, kind = "miss", id = shot_id, target = e.idx, reason = "?" }
@@ -648,6 +701,7 @@ function H.run(script_src, opts)
 
     stats.rate = stats.shots > 0 and stats.hits / stats.shots or 0
     stats.late_rate = stats.late_shots > 0 and stats.late_hits / stats.late_shots or 0
+    stats.valid_rate = stats.late_valid_shots > 0 and stats.late_valid_hits / stats.late_valid_shots or 0
     for _, per in pairs(stats.per) do per.late_rate = per.late_shots > 0 and per.late_hits / per.late_shots or 0 end
     stats.ctl = ctl
     stats.S = S

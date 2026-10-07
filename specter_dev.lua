@@ -674,6 +674,33 @@ LPH_NO_VIRTUALIZE(function ()
     local aa_stealer
     local player, reference, ffi_helpers
 
+    -- [ping:begin]
+    -- Our real ping in ms. The scoreboard ping has the fake ping in it (ping spike / extended backtrack: the server
+    -- compensates it and shows it), but the results of our shots and the enemies' answers come with the real one.
+    -- gamesense gives the latency with and without the fake part (client.latency / client.real_latency): the scoreboard
+    -- ping x real / total leaves the fake part out in whatever unit they count. No scoreboard yet: the real latency
+    -- (one way) twice
+    local function real_ping(me)
+        local function latency(fn)
+            local ok, v = pcall(fn)
+            return (ok and type(v) == "number" and v >= 0 and v < 5) and v or nil
+        end
+        local total = latency(client.latency)
+        local real = client.real_latency and latency(client.real_latency) or nil
+        local board
+        local okr, res = pcall(entity.get_player_resource)
+        if okr and res and me then
+            local okp, v = pcall(entity.get_prop, res, "m_iPing", me)
+            if okp and type(v) == "number" and v > 0 and v < 2000 then board = v end
+        end
+        if board then
+            if total and real and real < total then return board * real / total end
+            return board
+        end
+        return (real or total or 0) * 2000
+    end
+    -- [ping:end]
+
     ---
     --- Modules
     ---
@@ -711,11 +738,16 @@ LPH_NO_VIRTUALIZE(function ()
             -- A head hit says the body yaw was within TOL of the angle the record got, a resolver miss says it was not (Bayes).
             -- Each model is weighted by how well it predicted the shots, and the angle most likely to hit is forced.
             -- A shot is judged by what the RECORD it went at got (backtrack). Misses that are not about the angle are ignored.
+            -- A tickbase shifted update (defensive) is no record: the server adds a lag record only when the sim time moves
+            -- forward, a shot at the shifted model is tested against the newest normal record at or before its sim time.
+            -- So it gets no angle of its own (the forced value stays the one of the jitter / desync record), and a shot
+            -- fired at it is judged by that record; its miss is about lag comp, not the angle.
             local MAX_DESYNC = 58
             local ZERO_MIN = 20               -- |angle| below this: "no desync" (it can hit neither side of a real desync)
             local STEP, TOL = 4, 12           -- angles -60 .. 60 in steps of 4; within TOL of the body yaw the head is hit
             local NB, NM = 31, 16             -- angle bins (-60 .. 60), size bins (0 .. 60)
-            local HIST = 64                   -- records remembered per player: a shot at a record up to 64 ticks old is still judged
+            local HIST_TIME = 1.0             -- seconds of records per player: the most the server lag compensates (sv_maxunlag
+                                              -- is capped at 1 s): 64 ticks on 64 tick, 128 on 128 tick
             local WINDOW = 12                 -- records the jitter detection looks at
             local GAP_RESET = 64              -- ticks without an update (dormant, lag spike): the old records say nothing any more
             local P_HIT, P_LUCK = 0.85, 0.05  -- the right angle hits the head / a wrong one still does
@@ -825,8 +857,8 @@ LPH_NO_VIRTUALIZE(function ()
             -- That near-0 try is one shot: when it misses too, the misses are counted again and each failed try doubles
             -- how many it takes (2, 4, 8 .. 32): a target we keep missing for other reasons (lag comp breakers counted as
             -- resolver misses) got a near-0 shot after every 2 misses. A player who sent every tick for the last 16
-            -- updates (no choke) can not desync at all: near 0 is fine there.
-            -- Defensive records are exempt (their computed body yaw is the angle of the flick)
+            -- updates (no choke, no tickbase shift) can not desync at all: near 0 is fine there.
+            -- (Defensive records used to be exempt: they got the computed body yaw of the flick, often ~0, "res 0°")
             local function zero_of(key, ctx)
                 local m = memory_of(key)
                 m.zero = m.zero or {}
@@ -835,7 +867,6 @@ LPH_NO_VIRTUALIZE(function ()
                 return z
             end
             local function zero_allowed(key, ctx, p)
-                if ctx == "def" then return true end
                 if p and (p.nochoke or 0) >= 16 then return true end
                 local z = zero_of(key, ctx)
                 return z.hits >= 0.3 or z.mp + z.mn >= ((ctx == "j+" or ctx == "j-") and 3 or 2) * 2 ^ math.min(z.tries or 0, 4)
@@ -961,8 +992,8 @@ LPH_NO_VIRTUALIZE(function ()
                     local okp, v = pcall(entity.get_prop, res, "m_iPing", idx)
                     if okp and finite(v) then ping = clamp(v, 0, 400) end
                 end
-                local okl, lat = pcall(client.latency)
-                lat = (okl and finite(lat)) and clamp(lat, 0, 0.4) or 0
+                -- our side of it: the real one way latency (a fake ping does not delay what they see of us)
+                local lat = clamp(real_ping(entity.get_local_player()) / 2000, 0, 0.4)
                 local back = clamp(math.floor((ping / 1000 + lat + 0.016) / globals.tickinterval() + 0.5), 0, 48)
                 local e = back > 0 and eye_hist[(tick - back) % 64]
                 if e and e[1] == tick - back then return e[2], e[3], e[4] end
@@ -1465,11 +1496,11 @@ LPH_NO_VIRTUALIZE(function ()
                 local now = globals.tickcount()
 
                 -- sim time that does not move forward: a tickbase shift (defensive). Its angles say nothing about the real AA
-                -- (they stay out of the jitter detection), but the server animates them
+                -- (they stay out of the jitter detection) and the server keeps no lag record of it, but it animates them.
+                -- The shifted packet carries ticks the server animates at once: no "can not desync" from no choke
                 if p.max_st and st <= p.max_st then
                     feet_update(p, eye, lby, now)
-                    p.st = st
-                    p.lc_state, p.lc_tick, p.lc_rec = "shifting", now, true
+                    p.lc_state, p.lc_tick, p.lc_rec, p.shifting, p.nochoke = "shifting", now, true, true, 0
                     return "defensive"
                 end
                 if p.lc_tick and now - p.lc_tick > 64 then p.lc_state = "ok" end
@@ -1481,7 +1512,7 @@ LPH_NO_VIRTUALIZE(function ()
                 -- the aimbot can only shoot the newest one, extrapolated; misses on it are about the position, not the angle
                 p.choke = p.max_st and clamp(st - p.max_st - 1, 0, 64) or 0
                 p.nochoke = p.choke == 0 and (p.nochoke or 0) + 1 or 0     -- updates in a row without a choked tick
-                p.lc_rec = false
+                p.lc_rec, p.shifting = false, false
                 oz = finite(oz) and oz or 0
                 if p.last_o and p.max_st and st - p.max_st <= 32 then
                     local dx, dy, dz = ox - p.last_o[1], oy - p.last_o[2], oz - p.last_o[3]
@@ -1513,26 +1544,27 @@ LPH_NO_VIRTUALIZE(function ()
             end
 
             -- the situation a record is learned in
-            local function situation(p, kind)
-                if kind == "defensive" then return "def" end
+            local function situation(p)
                 if p.jitter then return p.side > 0 and "j+" or "j-" end
                 return p.stance
             end
 
-            -- what was given to the record a shot went at: `bt` ticks behind the newest one
+            -- ticks of records kept (HIST_TIME): a shot at any of them is judged by what it got
+            local function hist_ticks()
+                return math.ceil(HIST_TIME / globals.tickinterval())
+            end
+
+            -- what was given to the record a shot went at: `bt` ticks behind the newest one. The records are sorted by sim
+            -- tick (shifted updates are none): the newest one at or before the target, like the server takes it for a target
+            -- time between two records and for the sim time of a shifted model (a shift goes back 2-14+ ticks)
             local function applied_for(p, bt)
                 local h = p.hist
                 if #h == 0 or not p.max_st then return nil end
                 local target = p.max_st - math.max(bt, 0)
-                -- the closest record at or before the target (defensive records go back in time, so the list is not sorted by
-                -- sim tick); among equally close ones the newest
-                local found, gap = nil, 5
                 for i = #h, 1, -1 do
-                    local d = target - h[i].st
-                    if d >= 0 and d < gap then found, gap = h[i], d end
-                    if gap == 0 then break end
+                    if h[i].st <= target then return h[i] end
                 end
-                return found
+                return nil
             end
 
             -- ── player list ────────────────────────────────────────────────────────
@@ -1574,9 +1606,10 @@ LPH_NO_VIRTUALIZE(function ()
 
             -- ── ping scale ─────────────────────────────────────────────────────────
             -- the resolver numbers that work best per ping (0 .. 150 ms in steps of 5), found in the simulation
-            -- (a ping sweep: every row beat the defaults on its ping). "Auto" reads our scoreboard ping (fake ping
-            -- included: the results come that late), "Manual" the slider. Re-checked every 32 ticks, a row changes only
-            -- when the ping is 1+ ms into the next step (no flapping on the edge)
+            -- (a ping sweep: every row beat the defaults on its ping). "Auto" reads our real ping (real_ping: the fake
+            -- ping of the ping spike / extended backtrack left out, the results and the enemies' answers come with the
+            -- real one; the scoreboard ping with a 200 ms spike put every player on the 150 ms row), "Manual" the
+            -- slider. Re-checked every 32 ticks, a row changes only when the ping is 1+ ms into the next step
             local PING_TABLE = {
                 [0] = { forget = 0.0200, decay = 0.950, p_hit = 0.85, rdecay = 0.97, tol = 12 },
                 [5] = { forget = 0.0200, decay = 0.951, p_hit = 0.85, rdecay = 0.97, tol = 12 },
@@ -1623,16 +1656,9 @@ LPH_NO_VIRTUALIZE(function ()
                 if option("ping_mode", "Auto") == "Manual" then
                     ping = tonumber(option("ping_manual", 50)) or 50
                 else
-                    local okr, res = pcall(entity.get_player_resource)
-                    local okp, v = false, nil
-                    if okr and res then okp, v = pcall(entity.get_prop, res, "m_iPing", me) end
-                    if okp and finite(v) and v > 0 then
-                        ping = v
-                    else
-                        local okl, lat = pcall(client.latency)
-                        ping = (okl and finite(lat)) and lat * 2000 or 0
-                    end
-                    -- smoothed: one lag spike does not switch the row
+                    ping = real_ping(me)
+                    -- smoothed: one lag spike (or the scoreboard catching up with a ping spike switched on / off) does
+                    -- not switch the row
                     ping = ping_state.ping + (ping - ping_state.ping) * (ping_state.bucket and 0.35 or 1)
                 end
                 ping = clamp(ping, 0, 150)
@@ -1660,8 +1686,12 @@ LPH_NO_VIRTUALIZE(function ()
                         seen[idx] = true
                         local p = player_of(idx, tick)
                         local kind = ingest(idx, p, me)
-                        if kind then
-                            local ctx = situation(p, kind)
+                        if kind == "defensive" then
+                            -- no record: the forced value stays the one of the newest normal record, the one the server
+                            -- tests a shot at the shifted model against
+                            p.method = p.method and (p.method:gsub(" / defensive$", "") .. " / defensive") or "Defensive"
+                        elseif kind then
+                            local ctx = situation(p)
                             local c = p.model or 0
                             side_advance(p, tick)
                             local z = z_of(p, ctx)
@@ -1669,10 +1699,9 @@ LPH_NO_VIRTUALIZE(function ()
                             for k = 1, ND do zs[k] = z[k] end
                             local b = belief_of(p.key, ctx)
                             local pi = (1 + zs[best_delay(rates_of(p.key))]) / 2
-                            local pi_base, n = pi, kind == "record" and p.rec_n or nil
+                            local pi_base, n = pi, p.rec_n
                             local pp, period, pgain = pat_predict(p.key, n)
-                            local lcls = kind == "record" and p.lcls or nil
-                            local fcls = kind == "record" and p.fcls_now or nil
+                            local lcls, fcls = p.lcls, p.fcls_now
                             local lp_, lgain = feat_predict(p.key, "lay", lcls)
                             local fp_, fgain = feat_predict(p.key, "fs", fcls)
                             if option("hide_head", true) == true then
@@ -1694,18 +1723,17 @@ LPH_NO_VIRTUALIZE(function ()
                             local w = weights(b)
                             local model = (w[1] >= w[2] and w[1] >= w[3]) and "computed" or (w[2] >= w[3] and "mirrored" or "side")
                             p.mode, p.value, p.ctx, p.phit, p.model_name = p.jitter and "j" or "d", value, ctx, phit, model
-                            p.method = kind == "defensive" and "Defensive" or (p.jitter and "Jitter"
-                                or (model ~= "side" and (p.stance == "stand" and "LBY" or "Dynamic") or "Static"))
-                            if period and kind ~= "defensive" then p.method = p.method .. " / cycle " .. period end
+                            p.method = p.jitter and "Jitter" or (model ~= "side" and (p.stance == "stand" and "LBY" or "Dynamic") or "Static")
+                            if period then p.method = p.method .. " / cycle " .. period end
                             if p.layers_used then p.method = p.method .. " / layers" end
                             if p.fs_used then p.method = p.method .. " / hide head" end
-                            -- remember what this record got: a shot at it later (backtrack) is judged by this
+                            -- remember what this record got: a shot at it later (backtrack) is judged by this. Kept for
+                            -- HIST_TIME (a fixed count covered 64 ticks only without choke on 64 tick)
                             local h = p.hist
                             h[#h + 1] = { st = p.st, value = value, c = c, ctx = ctx, stance = p.stance, at = tick, phit = phit, zs = zs,
-                                          n = n, pi_base = pi_base, lcls = lcls, fcls = fcls,
-                                          mode = kind == "defensive" and "f" or p.mode, lc = p.lc_rec and kind ~= "defensive",
-                                          o = kind ~= "defensive" and p.last_o or nil }
-                            while #h > HIST do table.remove(h, 1) end
+                                          n = n, pi_base = pi_base, lcls = lcls, fcls = fcls, mode = p.mode, lc = p.lc_rec, o = p.last_o }
+                            local oldest = p.st - hist_ticks()
+                            while #h > 1 and h[1].st < oldest do table.remove(h, 1) end
                             force(idx, value)
                         end
                     end
@@ -1748,7 +1776,7 @@ LPH_NO_VIRTUALIZE(function ()
                 local best, bd = nil, math.huge
                 for i = #p.hist, 1, -1 do
                     local h = p.hist[i]
-                    if h.o and p.max_st - h.st >= 0 and p.max_st - h.st <= 64 then
+                    if h.o and p.max_st - h.st >= 0 and p.max_st - h.st <= hist_ticks() then
                         local d = (h.o[1] - tx) ^ 2 + (h.o[2] - ty) ^ 2
                         if d < bd then best, bd = h, d end
                     end
@@ -1769,7 +1797,9 @@ LPH_NO_VIRTUALIZE(function ()
                 local p = players[e.target]
                 local bt = resolver.shot_backtrack(e)
                 local h = p and applied_for(p, bt)
-                local shot = { idx = e.target, key = p and p.key, bt = bt, time = now, reason = "native" }
+                -- fired while the target's newest update is a shifted one: at the shifted (drawn) model, which the server
+                -- does not have; it tests the shot against the normal record before it
+                local shot = { idx = e.target, key = p and p.key, bt = bt, time = now, reason = "native", defensive = p and p.shifting or nil }
                 if p then
                     -- the target sees this shot: its answer (a side switch?) shows in its records some ticks later
                     local ev = { fire = globals.tickcount(), phit = h and h.phit or 0.5, q = {}, at = {} }
@@ -1781,7 +1811,7 @@ LPH_NO_VIRTUALIZE(function ()
                     shot.value, shot.c, shot.ctx, shot.stance, shot.at, shot.zs, shot.mode = h.value, h.c, h.ctx, h.stance, h.at, h.zs, h.mode
                     shot.n, shot.pi_base, shot.lcls, shot.fcls = h.n, h.pi_base, h.lcls, h.fcls
                     shot.teleported = h.lc
-                    shot.reason = h.ctx == "def" and "defensive" or (h.ctx:sub(1, 1) == "j" and "jitter" or "desync")
+                    shot.reason = shot.defensive and "defensive" or (h.ctx:sub(1, 1) == "j" and "jitter" or "desync")
                 end
                 shots[shot_id(e)] = shot
                 if resolver.stats_hook then pcall(resolver.stats_hook, "fire", shot, e, p) end
@@ -1876,6 +1906,8 @@ LPH_NO_VIRTUALIZE(function ()
                 if s and s.ev and p and s.key == p.key then side_result(p, s.ev, "miss") end
                 -- spread, prediction error, death ... are not about the angle
                 if e.reason ~= "?" and e.reason ~= "resolver" then return end
+                -- nor a miss on a shifted model: the server tested it against an older record (lag comp)
+                if s and s.defensive then return end
                 if p then p.consecutive_misses = p.consecutive_misses + 1 end
                 if not s or s.value == nil or not s.key then return end
                 learn(s, false)
@@ -3681,7 +3713,7 @@ LPH_NO_VIRTUALIZE(function ()
         config.ragebot.predict_mode = menu.new_item(ui.new_combobox, "AA", "Anti-aimbot angles", "•  Mode\npredict", {
             "Default", "Aggressive", "Ultimate"
         }):record("ragebot", "predict_mode"):save()
-        -- only at some pings (our scoreboard ping): less interp helps most on a high ping
+        -- only at some pings (our real ping, without the fake ping): less interp helps most on a high ping
         config.ragebot.predict_when = menu.new_item(ui.new_combobox, "AA", "Anti-aimbot angles", "•  Active\npredict", {
             "Always", "Ping 55+", "Ping under 40"
         }):record("ragebot", "predict_when"):save()
@@ -3711,9 +3743,7 @@ LPH_NO_VIRTUALIZE(function ()
                 local on = config.ragebot.predict:get()
                 local when = config.ragebot.predict_when and config.ragebot.predict_when:get() or "Always"
                 if on and when ~= "Always" then
-                    local me, res = entity.get_local_player(), entity.get_player_resource()
-                    local ping = (me and res) and tonumber(entity.get_prop(res, "m_iPing", me)) or nil
-                    if not ping or ping <= 0 then ping = (client.latency() or 0) * 1000 end
+                    local ping = real_ping(entity.get_local_player())
                     -- 3 ms of hysteresis, or a ping that sits on the line switches the cvars every half second
                     local was = next(saved) ~= nil
                     if when == "Ping 55+" then on = ping >= (was and 52 or 55) else on = ping <= (was and 43 or 40) end
@@ -4321,10 +4351,9 @@ LPH_NO_VIRTUALIZE(function ()
                     b.misses = b.misses + 1
                     local why = tostring(event.reason or "?")
                     local bucket = "other"
-                    if shot and (shot.extrap or shot.teleported) then
-                        bucket = "lagcomp"
-                    elseif why == "?" or why == "resolver" then
-                        bucket = "resolver"
+                    if why == "?" or why == "resolver" then
+                        -- at a record that broke lag comp / at a shifted model (defensive): not the angle
+                        bucket = (shot and (shot.teleported or shot.defensive)) and "lagcomp" or "resolver"
                     elseif why == "spread" or why == "prediction error" or why == "death" then
                         bucket = why == "prediction error" and "prediction" or why
                     end
@@ -12545,28 +12574,33 @@ LPH_NO_VIRTUALIZE(function ()
                     return string_format('bt %dt', math_max(0, tonumber(cached.bt) or 0))
                 end
 
-                -- the resolver's angle of the shot (only with "Show angle in hitlog" on)
-                local function res_text(event)
+                -- the resolver's part of the shot (only with "Show angle in hitlog" on): the angle its record got and what
+                -- kind of record it was (desync / jitter); "(def)" = fired at a shifted model (defensive), the server tested
+                -- it against that record
+                local function res_text(shot)
                     local item = config.resolver and config.resolver.log
-                    if not (item and item:get()) then return nil end
-                    local shot = resolver and resolver.shots and resolver.shots[event.id]
-                    if shot and shot.value ~= nil then return string_format('res %d\194\176', shot.value) end
-                    return nil
+                    if not (item and item:get()) or not (shot and shot.value ~= nil) then return nil end
+                    local kind = (shot.ctx or ''):sub(1, 1) == 'j' and 'jitter' or 'desync'
+                    return string_format('res %d\194\176 %s%s', shot.value, kind, shot.defensive and ' (def)' or '')
                 end
 
                 local function shot_meta(event, cached)
                     return cached.res and (bt_text(cached) .. '   ' .. cached.res) or bt_text(cached)
                 end
 
+                -- the resolver ran first (miscellaneous:aim_fire): the log shows its backtrack and angle of the shot, and
+                -- a "?" miss it does not count (lag comp, not the angle) is not called a resolver miss
                 function miscellaneous.event_logger.aim_fire(event)
+                    local shot = resolver.shots[event.id]
                     local this = {
                         tick = event.tick,
                         timestamp = client.timestamp(),
                         wanted_damage = event.damage,
                         wanted_hit_chance = event.hit_chance,
                         wanted_hitgroup = event.hitgroup,
-                        bt = resolver.shot_backtrack(event),
-                        res = res_text(event),
+                        bt = shot and shot.bt or resolver.shot_backtrack(event),
+                        res = res_text(shot),
+                        lagcomp = shot and (shot.defensive and 'defensive' or (shot.teleported and 'lag comp')) or nil,
                     }
 
                     cache[event.id] = this
@@ -12689,7 +12723,7 @@ LPH_NO_VIRTUALIZE(function ()
                     local name = clean_name(event.target)
                     local aimed = hitgroups[(tonumber(cached.wanted_hitgroup) or tonumber(event.hitgroup) or 0) + 1] or '?'
                     local reason = tostring(event.reason or '?')
-                    local shown_reason = reason == '?' and 'resolver' or reason
+                    local shown_reason = (reason == '?' or reason == 'resolver') and (cached.lagcomp or 'resolver') or reason
                     local kr, kg, kb = visuals.hitlog_color('miss')
 
                     if config.miscellaneous.event_logger:get() then

@@ -68,13 +68,23 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 
 ## Resolver (computed body yaw + learned models, one module)
 - Code lives between the `-- [resolver:begin]` / `-- [resolver:end]` markers in `specter_cloud.lua`. Keep the markers (tests extract the block).
+  `real_ping` (our ping without the fake ping) sits before the modules between `-- [ping:begin]` / `-- [ping:end]`: the block and Predict
+  enemies use it, the tests extract it too.
   The owners asked for "a completely new, simple resolver with no hardcode" and later for their `dynamic_resolver_simple.lua` to be put in:
   no guess lists / arm biases any more. The previous block (desync + jitter parts, arms, neural network) is in git history (commit 01e1bd2).
 - Every enemy update is read once (`ingest`): eye yaw, LBY target, speed, stance, duck, max desync (58 x speed factor, lower when moving
   crouched like the server), choke, jitter detection (spread >= "Jitter sensitivity" (30) and 2+ side flips in the last 12 records).
-  Tickbase shifted updates (sim time not moving forward) are "defensive" records with their own situation.
+  Tickbase shifted updates (sim time not moving forward, defensive) are NOT records: the server adds a lag record only when the sim time
+  moves forward, a shot at the shifted model is tested against the newest normal record at or before its sim time. A shifted update
+  only moves the feet model (the server animates it); the forced value stays the one of the newest normal record, nothing goes into
+  `hist`, and it resets `p.nochoke` (a shifted packet carries ticks the server animates at once). A shot fired while the target's newest
+  update is a shift is `shots[id].defensive` (reason "defensive", attributed to that normal record): a resolver miss on it is lag comp,
+  it is not learned / not counted in `consecutive_misses`; a head hit is. Until Oct 2026 shifted updates had their own situation `def`:
+  the computed body yaw of the flick (often ~0, exempt from the zero rule) was forced, and shots at normal records were judged by a
+  shifted update with the same sim tick (owners: "a jittert es a defensive resot osszekeveri", "res 0°" at bt 58t; sim: 8% near 0 on a
+  real desync, 14% misjudged, now 0).
 - The feet model (`feet_update`, the server's feet logic on netvars: standing -> LBY at 100 deg/s, moving -> eye at 30-50 deg/s, clamped)
-  gives the COMPUTED body yaw `c` of every record. Per player and situation (`stand` / `move` / `air` / `j+` / `j-` / `def`) a belief
+  gives the COMPUTED body yaw `c` of every record. Per player and situation (`stand` / `move` / `air` / `j+` / `j-`) a belief
   (`mem[key].b[ctx]`, started from the pooled `global[ctx]`) mixes three models, weighted by how well each predicted the shots:
   computed (c + learned offset), mirrored (-c + learned offset), side (a learned size on the side the target is on now).
   `decide` forces the angle with the most probability within TOL (12) of it, on exact angles (rounding c into a bin lost 1-2 deg = misses).
@@ -87,11 +97,12 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - Extra side signals, each used only when it predicted better than the side filter: packet cycles (`PATTERNS` 2/3/4/6), animation
   layer 6 playback rate classes (`resolver.read_layer6`, ffi, read only), hide head predictor (`fs_class`: where the enemy saw us from,
   ping late; pooled over players in `gfeat`), "Hide head predictor" option. Ping scale: `PING_TABLE` (0-150 ms in steps of 5, from
-  the sim) sets FORGET / P_HIT / DECAY / TOL / RDECAY by our scoreboard ping ("Auto") or a manual value.
+  the sim) sets FORGET / P_HIT / DECAY / TOL / RDECAY by our REAL ping ("Auto", `real_ping`: scoreboard ping x
+  client.real_latency / client.latency; the scoreboard has the fake ping in it and with a 200 ms ping spike put everyone on the 150 ms
+  row) or a manual value. The hide head predictor takes our real one way latency from it too.
 - Zero rule: on a record whose computed body yaw is ~0 (|c| < `ZERO_MIN` 20: micromovement keeps the LBY on the eye yaw, the netvars
   show no desync) a near-0 angle is only given after a head hit near 0 on such records (`zero_of`) or 2 resolver misses away from 0
-  since the last hit (3 on jitter records `j+` / `j-`: the side switches, misses on both sides are normal); only defensive records
-  are exempt. That near-0 try is ONE shot: a near-0 miss counts the misses again, and every failed try doubles the misses it takes
+  since the last hit (3 on jitter records `j+` / `j-`: the side switches, misses on both sides are normal). That near-0 try is ONE shot: a near-0 miss counts the misses again, and every failed try doubles the misses it takes
   (`z.tries`, x2 .. x16; a near-0 hit resets it): a target we keep missing for other reasons got a near-0 shot after every 2 misses
   (21% of its shots, now 8%). A player with no choked tick for 16 updates in a row (`p.nochoke`) can not desync: near 0 is allowed
   (legit / no-AA players, first 10 shots 0.80-0.87 -> 0.93-1.00). It used to shoot the first shots of a new player at 0 / -12. Jitter was exempt too until the owners saw 0° on jitter
@@ -100,19 +111,26 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   with a big computed body yaw: a real ~0 body yaw happens there (jitter_choke 0.92 -> 0.47 when it was tried).
 - Size model: a resolver miss updates the size only as much as the side is sure (`|2 pi - 1|`): with a 50 / 50 side, misses used to eat
   the size (48 -> 8-20 deg, shots in the middle that hit neither side).
-- Sim (tests/resolver_world.lua, ceiling ~0.92): static / jitter / LBY / anti-brute / anti-miss / anti-shot 0.91-0.92, defensive 0.84-0.92,
-  random switches 0.74-0.80, coin flip body side ~0.47-0.50 (a coin flip can not be beaten, 0.5 is the best any guess gets).
-- Menu: Enable Resolver, info rows for the current threat (target, method = Static / LBY / Dynamic / Jitter / Defensive + winning model,
+- Sim (tests/resolver_world.lua, ceiling ~0.92): static / jitter / LBY / anti-brute / anti-miss / anti-shot 0.91-0.92, defensive 0.87-0.88
+  (0.92-0.94 on the real records: a shot at a shifted model is a lag comp miss for everyone, the sim tests it against the server's lag
+  record like the server), random switches 0.74-0.80, coin flip body side ~0.47-0.50 (a coin flip can not be beaten, 0.5 is the best
+  any guess gets). The sim runs on 64 tick, `tickrate=128` for 128 tick, `fake_ping` for a ping spike, `bt_max` for older records.
+- Menu: Enable Resolver, info rows for the current threat (target, method = Static / LBY / Dynamic / Jitter (+ " / defensive" while it shifts) + winning model,
   desync L/R, lag comp, confidence), Show angle in hitlog, Jitter sensitivity, Hide head predictor, Ping scale (Auto / Manual + value),
   Override size (+ Size: the resolver keeps the side, the size is fixed), Reset memory. The resolver prints nothing itself: its last
-  line is `resolver.last_log`, the hitlog shows the angle (`res N°`).
-- 64 records of history per player (`HIST`): shots at old records (extended backtrack) are still judged by what that record got.
+  line is `resolver.last_log`. The hitlog takes the shot from `resolver.shots` (aim_fire runs the resolver first): `bt` = the resolver's
+  measured backtrack, `res N° jitter|desync` (+ " (def)" for a shot at a shifted model), and a "?" miss the resolver does not count is
+  shown as "missed: defensive" / "missed: lag comp" (stats bucket lagcomp), not "resolver".
+- History per player by time (`HIST_TIME` 1 s = sv_maxunlag's cap: 64 ticks on 64 tick, 128 on 128 tick; `hist_ticks()`): shots at old
+  records (extended backtrack) are still judged by what that record got, the backtrack measurement looks that far too. It was 64
+  records / 64 ticks: on 128 tick a 58+ tick old record fell out.
 - Interface the rest of the script uses: `resolver.on_fire / on_hit / on_miss`, `new_round`, `reset_player`, `reset_all`, `shot_backtrack`,
-  `shots[id]` (`reason` = desync / jitter / defensive / native, `value`, `mode`), `database[idx]` (`stance`, `speed`, `consecutive_misses`,
+  `shots[id]` (`reason` = desync / jitter / defensive / native, `value`, `mode`, `bt`, `ctx`, `defensive`, `teleported`), `database[idx]` (`stance`, `speed`, `consecutive_misses`,
   `mode` = "d" / "j", `method`, `model_name`, `phit` = confidence, `value`), `memory[key].hit_value[stance]` (aa stealer), `forced`,
   `stats_hook`. The tiers without the resolver get a stub with the same names.
 - Tests: `pip install lupa && python3 tests/resolver_regress.py` (hit rates per AA and ping, reaction delays, noise, inverted sign, options,
-  zero rule on 60 new jitter + micromovement players, a never-hit target (<= 12% near 0), legit players, player list / release / Correction active restore, shot attribution, garbage
+  zero rule on 60 new jitter + micromovement players, a never-hit target (<= 12% near 0), legit players, jitter + always-on defensive
+  (no near 0, no shifted value, every shot judged by its record), 128 tick shots up to 120 ticks back, ping profile with a ping spike, player list / release / Correction active restore, shot attribution, garbage
   netvars, 5 enemies, slot reuse, resets, last_log).
 - Load smoke test: `python3 tests/load_smoke.py [--dev-file] [--plan=nightly|beta|specter]`. Run it after every change that touches
   load-time code, the loaders, the auth gate or the resolver.
@@ -124,12 +142,13 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   body aim "Off" (head) when confidence >= 0.8 and no miss. Written on change only, "-" given back when it no longer applies / round start.
 - Extended Backtrack (Ping spike) defaults to 200 ms, the most gamesense allows. The server compensates the real ping + the fake ping
   (+ interp, up to sv_maxunlag) and accepts records up to 0.2 s around that, so shots at 30-40 tick old records are normal (owners saw
-  it in game; more on 128 tick). The resolver keeps 64 records per player, every one of those shots is judged by what its record got.
+  it in game; more on 128 tick). The resolver keeps 1 s of records per player (128 ticks on 128 tick), every one of those shots is
+  judged by what its record got.
 - Tuning (`config.tuning`, rage UI flat in `SPECTER_SHARED.rage_ui`): quick peek options per weapon group (Early autostop: stop when the
   gun is ready within a per weapon window and our bullet can hurt the threat, held 0.1 s after the shot; Slow motion; Move between
   shots), Force shot (hotkey + hit chance), Fake duck speed limit, Bizon air spray (Fun). Dormant aimbot: hitbox heights from the last
   visible frame, sound position prediction (`dormant_track`), hit chance from the weapon spread, kill first. Predict enemies: Active =
-  Always / Ping 55+ / Ping under 40.
+  Always / Ping 55+ / Ping under 40 (our real ping, `real_ping`).
 - Anti-bruteforce: Stage pick "Adaptive" (per enemy steam id and stage how often it got hit / dodged, Thompson style pick) or "Cycle",
   Stages used, Refresh jitter on trigger. Roll anti-aim on a key.
 
