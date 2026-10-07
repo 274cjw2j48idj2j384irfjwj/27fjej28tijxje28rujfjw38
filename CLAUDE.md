@@ -112,7 +112,8 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 ## Tier System
 4-tier feature gating: `debug` (full) > `specter` (no AA stealer) > `nightly` (no resolver) > `beta` (minimal)
 - `debug` only (the dev build; not sold) also: Misc "Sponsor Kill Say" (`TIER.HAS_SPONSOR_SAY`, owners Oct 2026: "csak a devbe"):
-  toxic kill say lines with the Discord invite, nothing about the features; it wins over Kill Say / Trash Talk on a kill.
+  toxic kill say lines, every one with the name Specter and the Discord invite, nothing about the features; it wins over
+  Kill Say / Trash Talk on a kill.
   The victim's name is cleaned before it goes into `say "..."` (no quote / semicolon / % / control chars: a name could run a command)
 
 ## Resolver (computed body yaw + learned models, one module)
