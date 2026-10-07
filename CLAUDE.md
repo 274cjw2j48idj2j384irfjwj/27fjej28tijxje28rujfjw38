@@ -37,6 +37,12 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   GitHub API allows 60 calls / hour per IP without a token, shared on Railway: it is asked only for the commit message, and
   the post goes out without it on a 403); the footer `file @ sha256` keeps a restart from posting it twice. `/release_check`
   [force] checks now
+  Who may do what: admin commands (keys create / revoke / sync, script_upload, post_loader, setup_*, post_*) = owner,
+  `ADMIN_ROLE_ID` or Administrator (`is_admin`); support commands (key_info, key_list with the keys cut to 6 chars,
+  key_reset_hwid, give_role / remove_role except the Staff role, release_check, close_ticket) also the Staff role
+  (`is_staff`). The Staff role's server permissions are `STAFF_PERMISSIONS` (moderation: messages, timeout, kick, ban,
+  nicknames, voice, audit log, threads; no server / roles / channels / admin); `ensure_role` gives them to a new Staff role
+  and adds them to an existing one (never removes any), `/setup_roles` / `/setup_server` report it
 - Railway: `Dockerfile` = license server, `Dockerfile.bot` = bot (service variable `RAILWAY_DOCKERFILE_PATH=Dockerfile.bot`)
   A 429 at login (Cloudflare 1015: Discord bans the IP after too many logins, e.g. a crash loop that Railway restarts every
   second) makes the bot wait in the process (5, 10, 20 .. 60 min) instead of exiting; the command sync runs once per start
