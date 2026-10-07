@@ -4241,6 +4241,14 @@ LPH_NO_VIRTUALIZE(function ()
             return "native"
         end
 
+        -- player names go into the gamesense database (written to disk when the script unloads): printable ASCII only,
+        -- 20 characters. Raw names (accents, cyrillic, colour codes, a multi byte character cut at 32 bytes) were stored
+        -- before; the dev build froze CS:GO on unload with a database full of them (owners, Oct 2026)
+        local function db_name(name)
+            local n = tostring(name or "?"):gsub("\a%x%x%x%x%x%x%x%x", ""):gsub("[^\32-\126]", ""):sub(1, 20)
+            return n ~= "" and n or "?"
+        end
+
         local session, lifetime = new_bucket(), new_bucket()
         do
             local ok, saved = pcall(database.read, "specter_stats")
@@ -4249,6 +4257,20 @@ LPH_NO_VIRTUALIZE(function ()
                     if saved[k] == nil then saved[k] = v end
                 end
                 lifetime = saved
+                -- the names stored before: cleaned and written back at once, not only at unload
+                local players, changed = {}, false
+                for key, p in pairs(type(lifetime.players) == "table" and lifetime.players or {}) do
+                    local k = db_name(key)
+                    if type(p) == "table" then
+                        local name = db_name(p.name)
+                        changed = changed or k ~= key or name ~= p.name
+                        players[k] = { name = name, h = tonumber(p.h) or 0, n = tonumber(p.n) or 0 }
+                    else
+                        changed = true
+                    end
+                end
+                lifetime.players = players
+                if changed then pcall(database.write, "specter_stats", lifetime) end
             end
         end
 
@@ -4273,8 +4295,8 @@ LPH_NO_VIRTUALIZE(function ()
 
         resolver.stats_hook = function(kind, shot, event, data)
             local method = method_of(shot and shot.reason)
-            local key = data and data.key or tostring(event.target)
-            local name = entity_get_player_name(event.target) or "?"
+            local key = db_name(data and data.key or tostring(event.target))
+            local name = db_name(entity_get_player_name(event.target))
 
             if kind == "fire" then
                 each(function(b) b.shots = b.shots + 1 end)
