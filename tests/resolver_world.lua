@@ -351,7 +351,7 @@ local function make_enemy(idx, spec, ping_ticks)
         idx = idx, name = spec.name or ("enemy" .. idx), driver = spec.driver,
         srv = { feet = 0, lby = 0, timer = 0 }, rec = {}, recent = {}, valid = {},
         net = { sim = 0, eye = 0, pitch = 89, vel = 0, flags = 1, duck = 0, lby = 0, pose = 0.5 },
-        max_st = 0, native_p = spec.native_p or 0.25, truth_pol = spec.truth_pol or 1,
+        max_st = 0, native_p = spec.native_p or 0.25, truth_pol = spec.truth_pol or 1, move = spec.move,
         realign_until = 0, realign_since = 0, prev_value = nil,
     }
     return e
@@ -377,9 +377,11 @@ local function enemy_advance(e, k, opts)
     -- it on the eye yaw of the sent tick, the netvars show no desync)
     local lby = e.srv.lby
     if d.net_lby then lby = d.net_lby(k, eye) end
-    e.net = { sim = st, eye = eye, pitch = sh and -89 or 89, vel = vel, flags = 1, duck = 0, lby = lby, pose = pose }
+    -- spec.move: the player walks left and right (100 units each way, 3 s), else it stands at y 0
+    local oy = e.move and 100 * math.sin(k * TI * 2 * math.pi / 3) or 0
+    e.net = { sim = st, eye = eye, pitch = sh and -89 or 89, vel = vel, flags = 1, duck = 0, lby = lby, pose = pose, oy = oy }
     if not shifted then e.max_st = st end
-    local r = { k = k, st = st, T = raw * e.truth_pol, shifted = shifted, applied = nil }
+    local r = { k = k, st = st, T = raw * e.truth_pol, shifted = shifted, applied = nil, pitch_net = e.net.pitch, oy = oy }
     -- the server's lag record for a shifted update: the newest normal one at or before its sim time
     if shifted then
         for i = #e.valid, 1, -1 do
@@ -484,7 +486,8 @@ function H.run(script_src, opts)
         return l
     end
     entity.get_player_resource = function() return 99 end
-    entity.hitbox_position = function() return 500, 0, 64 end
+    entity.hitbox_position = function(idx) local e = by_idx[idx]; return 500, e and e.net.oy or 0, 64 end
+    entity.get_origin = function(idx) local e = by_idx[idx]; return 500, e and e.net.oy or 0, 0 end
     entity.get_player_name = function(idx) return by_idx[idx] and by_idx[idx].name or "me" end
     entity.get_steam64 = function(idx)
         if opts.steam_fn then return opts.steam_fn(ctl.tick, idx) end
@@ -499,7 +502,7 @@ function H.run(script_src, opts)
         if opts.garbage and opts.garbage(ctl.tick, ent, name) ~= nil then return opts.garbage(ctl.tick, ent, name) end
         if name == "m_flSimulationTime" then return n.sim * TI end
         if name == "m_angEyeAngles" then return n.pitch, n.eye end
-        if name == "m_vecOrigin" then return 500, 0, 0 end
+        if name == "m_vecOrigin" then return 500, n.oy or 0, 0 end
         if name == "m_vecVelocity" then return n.vel, 0, 0 end
         if name == "m_fFlags" then return n.flags end
         if name == "m_flDuckAmount" then return n.duck end
@@ -607,13 +610,16 @@ function H.run(script_src, opts)
             if not okp then stats.errors = stats.errors + 1; ctl.errors[#ctl.errors + 1] = "paint: " .. tostring(errp) end
         end
 
-        -- what was applied to the records that arrived this tick (the value forced after this update, or one update later)
+        -- what was applied to the records that arrived this tick (the value forced after this update, or one update later);
+        -- the pitch too ("Force pitch": the defensive pitch flick taken back)
         for _, e in ipairs(enemies) do
             local pl = ctl.plist[e.idx] or {}
             local v = pl["Force body yaw"] and pl["Force body yaw value"] or nil
+            local fp = pl["Force pitch"] and pl["Force pitch value"] or nil
             local r = arrived[e.idx]
-            if r then r.applied = (apply_lag == 0) and v or e.prev_value end
-            e.prev_value = v
+            if r and apply_lag == 0 then r.applied, r.pitch = v, fp
+            elseif r then r.applied, r.pitch = e.prev_value, e.prev_pitch end
+            e.prev_value, e.prev_pitch = v, fp
             local cl = ctl.plist[e.idx] or {}
             if cl["Override prefer body aim"] == "On" then stats.ba_ticks = (stats.ba_ticks or 0) + 1 end
             if cl["Override safe point"] == "On" then stats.sp_ticks = (stats.sp_ticks or 0) + 1 end
@@ -649,19 +655,30 @@ function H.run(script_src, opts)
             local e = enemies[(math.floor(k / shoot_every) % #enemies) + 1]
             if #e.recent > 0 then
                 -- the drawn model (the newest update: a shifted one during a defensive burst) or a backtracked normal record
-                -- (a shifted record is no backtrack target: its sim time went back)
+                -- (a shifted record is no backtrack target: its sim time went back). Like gamesense, a shot at the drawn
+                -- shifted model says 0 ticks back: the newest normal record is not drawn then, and not shot with 0
                 local newest = e.recent[#e.recent]
                 local r = newest
-                if rng() < 0.5 then
+                -- opts.bt_min: a ping spike, the aimbot shoots the records around the fake latency only
+                if opts.bt_min or rng() < 0.5 then
                     local pool = {}
                     local bt_max = opts.bt_max or (ping_ticks + 8)
-                    for _, c in ipairs(e.recent) do if not c.shifted and e.max_st - c.st <= bt_max then pool[#pool + 1] = c end end
+                    for _, c in ipairs(e.recent) do
+                        if not c.shifted and e.max_st - c.st <= bt_max and e.max_st - c.st >= (opts.bt_min or 0)
+                                and not (newest.shifted and c.st == e.max_st) then pool[#pool + 1] = c end
+                    end
                     if #pool > 0 then r = pool[math.floor(rng() * #pool) + 1] end
                 end
                 shot_id = shot_id + 1
                 pending[#pending + 1] = { at = k + math.max(1, math.floor(ping_ticks / 2)), kind = "impact", target = e.idx }
-                local bt = math.max(0, e.max_st - r.st)
+                local bt = r.shifted and 0 or math.max(0, e.max_st - r.st)
                 local ev = { id = shot_id, target = e.idx, backtrack = bt, tick = k, hitgroup = 1, hit_chance = 80 }
+                -- opts.aim: the aim point on the record's head (+- 0.5 multipoint); opts.native_off: gamesense counts its
+                -- backtrack from the record that many ticks back (a ping spike); opts.ev_tick = "record": the shot's tick
+                -- is its record's tick + 1 (interpolation), else the tick it was fired at
+                if opts.aim then ev.x, ev.y, ev.z = 500 + rng() - 0.5, (r.oy or 0) + rng() - 0.5, 64 end
+                if opts.native_off then ev.backtrack = math.max(0, bt - opts.native_off) end
+                if opts.ev_tick == "record" then ev.tick = r.st + 1 end
                 if opts.no_ids then ev.id = nil end
                 if opts.fire_extra then for kk, vv in pairs(opts.fire_extra(k, e, r) or {}) do ev[kk] = vv end end
                 local okf, errf = pcall(fire, "aim_fire", ev)
@@ -680,9 +697,11 @@ function H.run(script_src, opts)
                 else
                     if r.shifted then
                         -- tested against the server's lag record; the aimbot aimed at the shifted model, whose head the
-                        -- flick moved (opts.def_head = "same": a defensive that keeps the angles, only the record breaks)
+                        -- flick moved (opts.def_head = "same": a defensive that keeps the angles, only the record breaks;
+                        -- "pitch": the flick is the pitch only (-89), the head is right when the normal pitch was forced)
                         local s = r.srv
-                        hit = s ~= nil and r.applied ~= nil and opts.def_head == "same" and math.abs(r.applied - s.T) <= tol
+                        local head = opts.def_head == "same" or (opts.def_head == "pitch" and r.pitch ~= nil and math.abs(r.pitch - 89) <= 10)
+                        hit = s ~= nil and r.applied ~= nil and head and math.abs(r.applied - s.T) <= tol
                     elseif r.applied == nil then hit = rng() < e.native_p else hit = math.abs(r.applied - r.T) <= tol end
                     if hit and rng() < (opts.noise_p or 0) then hit = false end
                     if opts.on_shot then opts.on_shot(k, e, r, hit, ctl, S) end

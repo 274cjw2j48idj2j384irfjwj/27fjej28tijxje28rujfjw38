@@ -145,6 +145,11 @@ DEF = lua('''function(acc)
             if best.reason ~= "defensive" then acc.unmarked = acc.unmarked + 1 end
             -- the shifted model kept the value of the newest normal record
             if r.applied ~= e.valid[#e.valid].applied then acc.moved = acc.moved + 1 end
+            -- judged and logged (bt, angle) by the server's lag record: the newest normal one at or before its sim time.
+            -- gamesense says 0 ticks back for the drawn shifted model ("missed: defensive  bt 0t")
+            if r.srv and r.srv.applied ~= nil and (best.value ~= r.srv.applied or best.bt ~= e.max_st - r.srv.st) then
+                acc.srv = acc.srv + 1
+            end
         elseif best.value ~= nil and best.value ~= r.applied then
             acc.bad = acc.bad + 1
         end
@@ -152,7 +157,7 @@ DEF = lua('''function(acc)
 end''')
 for d in (dict(body="static"), dict(body="opp"), dict(body="coin"), dict(body="static", choke=0, every=48, len=6),
           dict(body="static", back=12, len=6)):
-    acc = lua("function() return { n = 0, z = 0, sh = 0, unmarked = 0, moved = 0, bad = 0 } end")()
+    acc = lua("function() return { n = 0, z = 0, sh = 0, unmarked = 0, moved = 0, bad = 0, srv = 0 } end")()
     vals = []
     for sd in (1, 2, 3):
         for ping in (20, 80):
@@ -161,12 +166,13 @@ for d in (dict(body="static"), dict(body="opp"), dict(body="coin"), dict(body="s
             vals.append(s.valid_rate)
     v = sum(vals) / len(vals)
     print(f"   {str(d):<52} valid {v:.2f}  near 0 {acc.z}/{acc.n}  at shifted {acc.sh} (unmarked {acc.unmarked}, "
-          f"value moved {acc.moved})  misjudged {acc.bad}")
+          f"value moved {acc.moved}, not the server's record {acc.srv})  misjudged {acc.bad}")
     need = 0.42 if d["body"] == "coin" else 0.88
     check(v >= need, f"jitter_defensive{d}: valid hit rate {v:.2f} < {need}")
     check(acc.z <= 0.02 * acc.n, f"jitter_defensive{d}: {acc.z} of {acc.n} shots near 0 on a real desync")
     check(acc.sh > 10 and acc.unmarked == 0, f"jitter_defensive{d}: {acc.unmarked} of {acc.sh} shots at a shifted model not marked defensive")
     check(acc.moved == 0, f"jitter_defensive{d}: the forced value moved on {acc.moved} shifted updates")
+    check(acc.srv == 0, f"jitter_defensive{d}: {acc.srv} of {acc.sh} shots at a shifted model not judged by the server's record")
     check(acc.bad == 0, f"jitter_defensive{d}: {acc.bad} shots judged by another value than their record got")
 for scn, d in (("defensive", dict(flick=110)), ("defensive", dict(flick=110, base="jitter")), ("choke_defensive", dict(choke=6))):
     c = avg(scn, d, 40, metric="valid_rate")
@@ -177,6 +183,30 @@ for scn, d in (("defensive", dict(flick=110)), ("defensive", dict(flick=110, bas
 c = avg("jitter_defensive", dict(body="static"), 40, def_head="same")
 print(f"   jitter_defensive, angles kept on the shifted packets          late {c:.2f}")
 check(c >= 0.85, f"jitter_defensive def_head=same: hit rate {c:.2f} < 0.85")
+# the defensive flicks the pitch only (owners, Oct 2026: "missed: defensive ... csak a pitchet rontja el"): the aimbot aims
+# at the shifted model, the server has the record before it with its own pitch. A shifted update gets that record's
+# pitch forced, a normal record (also one at the end of a burst that still carries the flicked pitch) its own
+PITCH = lua('''function(acc)
+    return function(k, e, r, hit, ctl, S)
+        if r.shifted then
+            acc.sh = acc.sh + 1
+            if r.srv and r.pitch == r.srv.pitch_net then acc.fixed = acc.fixed + 1 end
+        elseif r.pitch ~= nil then acc.normal = acc.normal + 1 end
+    end
+end''')
+acc = lua("function() return { sh = 0, fixed = 0, normal = 0 } end")()
+c = avg("jitter_defensive", dict(body="static"), 40, def_head="pitch", on_shot=PITCH(acc))
+print(f"   jitter_defensive, pitch flick on the shifted packets         late {c:.2f}  pitch of the record on {acc.fixed} of "
+      f"{acc.sh} shifted, forced on {acc.normal} normal")
+check(c >= 0.85, f"jitter_defensive def_head=pitch: hit rate {c:.2f} < 0.85 (the record's pitch is not forced?)")
+check(acc.sh > 50 and acc.fixed == acc.sh, f"pitch flick: the record's pitch on {acc.fixed} of {acc.sh} shifted updates")
+check(acc.normal == 0, f"pitch flick: the pitch forced on {acc.normal} normal records")
+s = run("jitter_defensive", dict(body="static"), ticks=800)
+s.fire("shutdown")
+check(pl(s, 2, "Force pitch") is not True, "shutdown gives the pitch back")
+for scn, d in (("choke_static", dict(choke=6)), ("legit", {}), ("jitter_tick", {})):
+    s = run(scn, d, ticks=800)
+    check(pl(s, 2, "Force pitch") is None, f"{scn}: no defensive pitch flick, the pitch must not be touched ({pl(s, 2, 'Force pitch')})")
 
 # ── noise: 15% spread + 10% misses for other reasons, inverted sign ──────────────
 print("== noise, inverted sign")
@@ -334,6 +364,37 @@ for scn, d in (("choke_static", dict(choke=6)), ("choke_random", dict(choke=6)),
     print(f"   {scn}: {acc.n} shots ({acc.bt} backtracked), {acc.bad} judged by a different value than their record got")
     check(acc.n > 100 and acc.bt > 30, f"{scn}: too few shots to judge attribution")
     check(acc.bad == 0, f"{scn}: {acc.bad} shots judged by the wrong value")
+
+# ── a standing target: the aim point can not tell the record, the shots at a moving one teach how gamesense's number /
+# the shot's tick relate to the record (owners, Oct 2026: "rosszul logolja a shotokra az anglet, bt is": with a ping
+# spike gamesense says 0 for a record ~fake latency old, the jitter side of the newest record was logged and learned)
+print("== standing target: backtrack learned from the shots at a moving one")
+STAND = lua('''function(acc)
+    return function(k, e, r, hit, ctl, S)
+        local best, t = nil, -1
+        for _, s in pairs(S.resolver.shots) do if s.time > t then best, t = s, s.time end end
+        -- after the first 800 ticks: until 8 shots at the moving one were measured gamesense's number is used
+        if not best or r.applied == nil or r.shifted or k <= 800 then return end
+        local who = e.move and "run" or "stand"
+        acc[who] = acc[who] + 1
+        if best.value ~= r.applied or best.bt ~= e.max_st - r.st then acc[who .. "_bad"] = acc[who .. "_bad"] + 1 end
+    end
+end''')
+TWO = lua('''function(drivers)
+    return { { driver = drivers.choke_static({ choke = 2 }), name = "runner", move = true },
+             { driver = drivers.jitter_tick({}), name = "stander" } }
+end''')(H.drivers)
+for what, kw, stand_max in (
+        ("no ping spike, tick = fired", dict(aim=True), 0.0),
+        ("ping spike 12t, tick = fired", dict(aim=True, native_off=12, bt_min=12, bt_max=24), 0.01),
+        ("ping spike 12t, tick = record + 1", dict(aim=True, native_off=12, bt_min=12, bt_max=24, ev_tick="record"), 0.01)):
+    acc = lua("function() return { run = 0, run_bad = 0, stand = 0, stand_bad = 0 } end")()
+    for sd in (1, 2):
+        s = run(enemies=TWO, ticks=4000, ping=40, seed=sd, on_shot=STAND(acc), **kw)
+        check(s.errors == 0 and not errors_of(s), f"standing target {what}: errors {errors_of(s)[:2]}")
+    print(f"   {what:<36} moving: {acc.run_bad}/{acc.run} misjudged   standing: {acc.stand_bad}/{acc.stand} misjudged")
+    check(acc.stand > 100, f"standing target {what}: too few shots")
+    check(acc.stand_bad <= stand_max * acc.stand, f"standing target {what}: {acc.stand_bad} of {acc.stand} shots judged by another record")
 
 # ── 128 tick, long backtrack: the server lag compensates up to 1 s (sv_maxunlag), on 128 tick that is 128 ticks; a
 # shot at a 58+ tick old record used to fall out of the 64 records / 64 ticks the resolver kept ("bt 58t res 0")
