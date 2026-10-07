@@ -239,6 +239,13 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - `antiaimbot.main:run` keeps gamesense's own AA switch (`reference.antiaim.master`) on while specter's AA is on, `release()` gives it
   back; it used to be set only by the menu code while the menu was open.
 - Modifications "Yaw sway" (a slow random drift of up to 12 deg on the 180 yaw) and "Edge on crouch" (edge yaw while standing crouched).
+- "Enhanced AA" is gone (owners, Oct 2026: "kellenek egyaltalan?"). Its 11 "jitter types" (Figure-8, Quantum, Chaos Theory,
+  Anti-Aim Matrix ...) were sine / noise formulas added to the preset's yaw offset: red team (Distort, best attacker) 0.47-0.50
+  against 0.48 without, Smooth Sine 0.57 / Figure-8 0.53 in the air; Quantum's 0.44 was noise (0.47 vs 0.48 on 4 more seeds).
+  Adaptive learning doubled the anti brute-force, Anti-Exploit the defensive triggers (ignoring their activation / delay),
+  360 edge the edge yaw key, Custom lean wrote a client-side pose parameter the server never sees, Fake flick changed cmd.yaw
+  that the "At targets" AA overwrites; the defaults switched it on for everyone. What the presets used of it is `aa_noise`
+  (chaos_rng / fractal_noise / get_prime_offset, the noise in their micro jitter, delays and limits).
 - Manual / Freestand options: "Jitter disabled" (no yaw modifier + the body on the covered side) and "Body freestanding" (Oct 2026,
   the idea from other luas the owners sent: angelwings / panchan / althea; the yaw keeps its jitter, only the body side goes by the
   wall, `player.fs_side`, instead of the coin flip). Off by default: holding manual / freestand means a wall is there, the red
