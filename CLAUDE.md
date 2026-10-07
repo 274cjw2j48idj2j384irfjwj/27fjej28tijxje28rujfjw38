@@ -90,6 +90,11 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   The owners play the dev build WITHOUT a loader (Oct 2026): `specter_dev.lua` is what they test in game, so every change has to
   reach it. (For a while only the cloud got the changes and the dev build stayed old: the owners kept seeing bugs that were
   already fixed, e.g. "res 0° / bt 0t" in the hitlog.)
+- The commit message of a change to `specter_cloud.lua` IS the public #updates changelog (the bot posts the newest commit that
+  changed the file: its title in bold + one line per "- " item / sentence of the body). Owners, Oct 2026: "nem kell tul
+  bonyolitani az upd logot". So: a short title for players, e.g. "Sponsor kill added", "Expanded sponsor kill", "Fixed ...", and
+  NO body besides the attribution lines (the bot drops those). No file names, tests, plans or numbers; the details go into
+  the PR description. A PR with several commits is posted once, with the last one's title: that one has to say it all.
 - The dev build is just the normal code: the owners said many times that it needs no login, no checks and no loader. Do not add any.
 - No dead code (owners, Oct 2026: "nincs benne junk code"): luacheck on the dev build reports nothing but unused callback
   arguments / loop variables and shadowing (no unused locals, values or functions). The owners' own copy is the dev build without
