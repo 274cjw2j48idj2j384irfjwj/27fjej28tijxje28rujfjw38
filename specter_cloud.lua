@@ -240,6 +240,23 @@ LPH_NO_VIRTUALIZE(function ()
         local _snap_rndrect   = renderer.rectangle
         local _snap_rndtext   = renderer.text
 
+        -- one report to the server the moment tampering is seen, before the script kills itself a few seconds later.
+        -- The server holds the Discord webhook; this script only names the key, which the server already knows
+        local _reported = false
+        local function _report_tamper(detail)
+            if _reported then return end
+            _reported = true
+            _snap_pcall(function()
+                local url = _auth_data and _auth_data.server_url or ""
+                local key = _auth_data and _auth_data.key or ""
+                if url == "" or key == "" or not http_ok or not http then return end
+                local function enc(v)
+                    return _snap_tostring(v):gsub("([^%w%-_.~])", function(c) return string.format("%%%02X", string.byte(c)) end)
+                end
+                http.get(url .. "/report?key=" .. enc(key) .. "&kind=integrity&detail=" .. enc(detail or ""), function() end)
+            end)
+        end
+
         local _tampered       = false
         local _check_count    = 0
         local _next_check     = 0
@@ -313,6 +330,7 @@ LPH_NO_VIRTUALIZE(function ()
 
                 if not ok then
                     _tampered = true
+                    _report_tamper("check " .. _snap_tostring(_check_count))
                     local crash_delay = 10
                     local crash_ticks = math_floor(crash_delay / (_snap_gti() or 0.015625))
                     _death_tick = tick + crash_ticks

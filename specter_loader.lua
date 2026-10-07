@@ -106,6 +106,30 @@ local function url_encode(s)
     end)
 end
 
+-- ── TAMPER REPORT ────────────────────────────────────────────────────
+-- Tells the server that something looks wrong with this copy. The server decides what to do with it (it keeps the
+-- Discord webhook, this script never sees it: whoever is cracking the loader reads every string in it).
+-- Fire and forget: a failed report must never stop a paying customer from loading.
+local function report(key, kind, detail)
+    if not key or key == "" then return end
+    pcall(function()
+        http.get(SERVER_URL .. "/report?key=" .. url_encode(key)
+            .. "&kind=" .. url_encode(kind)
+            .. "&detail=" .. url_encode(detail or ""), function() end)
+    end)
+end
+
+-- Someone set the auth globals by hand before the loader ran, to make the script think it is logged in. The server
+-- writes these itself in front of the script body, so before the download they must not exist.
+local function check_forged_auth(key)
+    local g = rawget(_G, "_auth_ok")
+    if g ~= nil or rawget(_G, "_auth_key") ~= nil or rawget(_G, "_auth_ticket") ~= nil then
+        report(key, "fake_auth", "globals present before download")
+        return true
+    end
+    return false
+end
+
 -- ── AUTH STATE ───────────────────────────────────────────────────────
 local auth_plan = nil
 local script_running = false        -- set once the script runs: it can not be unloaded, so the login menu stays hidden
@@ -128,6 +152,8 @@ local function load_from_server(key, hwid, on_plan)
     end
     set_status(255,200,80, "Verifying license...")
     info("Verifying key with server...")
+
+    check_forged_auth(key)
 
     local verify_url = SERVER_URL .. "/verify?key=" .. url_encode(key) .. "&hwid=" .. url_encode(hwid)
     http.get(verify_url, function(ok1, resp1)
@@ -207,12 +233,15 @@ local function load_from_server(key, hwid, on_plan)
             info("Downloaded "..#body2.." bytes, starting...")
             local fn, lerr = (rawget(_G,"loadstring") or rawget(_G,"load") or load)(body2, "@specter_cloud")
             if not fn then
+                -- the server sends a script that compiles; one that does not got edited on the way in
+                report(key, "script_error", "compile: " .. tostring(lerr))
                 set_status(255,60,60, "Script load error.")
                 err("Load error: "..tostring(lerr))
                 return
             end
             local ok3, rerr = pcall(fn)
             if not ok3 then
+                report(key, "script_error", "run: " .. tostring(rerr))
                 set_status(255,60,60, "Script runtime error.")
                 err("Runtime error: "..tostring(rerr))
                 return

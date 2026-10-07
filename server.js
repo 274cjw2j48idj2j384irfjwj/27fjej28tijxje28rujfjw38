@@ -17,6 +17,14 @@ const PORT = env('PORT', 3000)
 const ADMIN_SECRET  = env('ADMIN_SECRET', 'change_this_secret_now')
 const SCRIPT_SECRET = env('SCRIPT_SECRET', 'change_this_script_secret_now')
 
+// Tamper reports: a Discord webhook URL (Channel settings > Integrations > Webhooks). It lives HERE and never in the
+// Lua: a client side webhook can be read out of the script by the very person cracking it, who can then flood the
+// channel with fake reports or drop the request. The server sees every verify, so its own signals can not be patched out.
+const TAMPER_WEBHOOK  = env('TAMPER_WEBHOOK', '')
+// after this many reports on one key the license is revoked by itself; 0 = report only (a false positive would ban a
+// paying customer, so it is off unless you turn it on)
+const TAMPER_AUTO_BAN = parseInt(env('TAMPER_AUTO_BAN', '0'), 10) || 0
+
 // ── PERSISTENT DB via Railway env var ────────────────────────────────────
 // Since Railway filesystem resets on redeploy, we store licenses in
 // a KV store. Simplest free option: store in memory + sync to
@@ -116,6 +124,76 @@ function sign_ticket(key, hwid, plan, ticket_exp, nonce) {
     return sha256(`${key}|${hwid}|${plan}|${ticket_exp}|${nonce}|${SCRIPT_SECRET}`)
 }
 
+// ── tamper reports ───────────────────────────────────────────────────────
+const TAMPER_KINDS = {
+    hwid_mismatch:   'Key used on a second machine',
+    integrity:       'Script integrity check failed (in-game memory / globals changed)',
+    fake_auth:       'Auth globals pre-set before the loader ran (forged login)',
+    script_error:    'Downloaded script was modified (does not compile / run)',
+    bad_ticket:      'Script requested with a wrong or replayed ticket',
+    no_ticket:       'Script requested without verifying first',
+}
+
+async function discord_post(license, key, kind, detail, count) {
+    if (!TAMPER_WEBHOOK) return
+    const body = {
+        username: 'Specter Guard',
+        embeds: [{
+            title: 'Tamper attempt',
+            color: 0xFF5050,
+            fields: [
+                { name: 'User',  value: '`' + (license.note || 'unknown') + '`', inline: true },
+                { name: 'Plan',  value: '`' + (license.plan || '?') + '`',       inline: true },
+                { name: 'Count', value: String(count),                           inline: true },
+                { name: 'Key',   value: '```' + key + '```' },
+                { name: 'HWID',  value: '```' + (license.hwid || '-') + '```' },
+                { name: 'What',  value: (TAMPER_KINDS[kind] || kind) + (detail ? ('\n`' + detail + '`') : '') },
+            ],
+            footer: { text: 'Revoke with /key_revoke' },
+            timestamp: new Date().toISOString(),
+        }],
+    }
+    try {
+        const r = await fetch(TAMPER_WEBHOOK, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(body),
+        })
+        if (!r.ok) console.error('[TAMPER] webhook ' + r.status)
+    } catch (e) {
+        console.error('[TAMPER] webhook error:', e.message)
+    }
+}
+
+// Records one report on a key. The same kind is only reported once every 5 minutes so a loop in the client (or someone
+// replaying the request) can not flood the channel. Returns false when nothing was recorded.
+async function tamper_report(key, kind, detail) {
+    if (!key || !TAMPER_KINDS[kind]) return false
+    const db = await db_read()
+    const license = db[key]
+    if (!license) return false                       // unknown key: nothing to ban, nothing to report
+
+    const now  = Date.now()
+    const list = Array.isArray(license.tamper) ? license.tamper : []
+    const last = list.filter(t => t.kind === kind).pop()
+    if (last && now - last.at < 300000) return false
+
+    detail = String(detail || '').slice(0, 120)
+    list.push({ kind, detail, at: now })
+    while (list.length > 20) list.shift()
+    license.tamper = list
+
+    if (TAMPER_AUTO_BAN > 0 && list.length >= TAMPER_AUTO_BAN && !license.revoked) {
+        license.revoked = true
+        console.log(`[TAMPER] auto-revoked key=${key} after ${list.length} reports`)
+    }
+    await db_write(db)
+
+    console.log(`[TAMPER] key=${key} kind=${kind} count=${list.length} ${detail}`)
+    await discord_post(license, key, kind, detail, list.length)
+    return true
+}
+
 app.use(cors())
 // Accept JSON, urlencoded, and raw text (GS http.post sends no content-type)
 app.use((req, res, next) => {
@@ -193,7 +271,8 @@ app.get('/admin/list', async (req, res) => {
     res.json(Object.entries(db).map(([key, v]) => ({
         key, plan: v.plan, expires_at: v.expires_at,
         expired: v.expires_at ? now > v.expires_at : false,
-        hwid_locked: !!v.hwid, revoked: !!v.revoked, note: v.note||''
+        hwid_locked: !!v.hwid, revoked: !!v.revoked, note: v.note||'',
+        tamper: Array.isArray(v.tamper) ? v.tamper : []
     })))
 })
 
@@ -241,7 +320,13 @@ app.get('/verify', async (req, res) => {
     if (license.revoked)                                      return res.json({ valid: false, reason: 'revoked' })
     if (license.expires_at && Date.now()>license.expires_at) return res.json({ valid: false, reason: 'expired' })
     if (!license.hwid) { license.hwid = hwid }
-    if (license.hwid !== hwid) { await db_write(db); return res.json({ valid: false, reason: 'hwid_mismatch' }) }
+    if (license.hwid !== hwid) {
+        await db_write(db)
+        // the server's own signal: the key is being used on a machine it is not locked to (shared, resold or cracked).
+        // The client can not patch this out, it happens here
+        tamper_report(key, 'hwid_mismatch', 'tried from ' + String(hwid).slice(0, 40)).catch(() => {})
+        return res.json({ valid: false, reason: 'hwid_mismatch' })
+    }
 
     const nonce      = crypto.randomBytes(12).toString('hex')
     const ticket_exp = Date.now() + 20000
@@ -256,6 +341,19 @@ app.get('/verify', async (req, res) => {
     })
 })
 
+// ── GET /report ───────────────────────────────────────────────────────────
+// The client says it caught something. Anything coming from a client can be faked or left out, so this is a nice-to-have
+// on top of the server's own signals (hwid_mismatch / bad ticket below), never the only line.
+app.get('/report', async (req, res) => {
+    const { key, kind, detail } = req.query
+    try {
+        await tamper_report(key, kind, detail)
+    } catch (e) {
+        console.error('[TAMPER] report error:', e.message)
+    }
+    res.json({ ok: true })                            // always ok: never tell the client what was recorded
+})
+
 // ── GET /script ───────────────────────────────────────────────────────────
 app.get('/script', async (req, res) => {
     const { key, hwid, plan, ticket, nonce } = req.query
@@ -268,11 +366,13 @@ app.get('/script', async (req, res) => {
     if (license.expires_at && Date.now()>license.expires_at)  return res.status(403).json({ ok: false, reason: 'expired' })
     if (license.hwid !== hwid)                                 return res.status(403).json({ ok: false, reason: 'hwid_mismatch' })
     if (license.plan !== plan)                                 return res.status(403).json({ ok: false, reason: 'wrong_plan' })
-    if (!license.last_ticket||!license.last_ticket_exp)        return res.status(403).json({ ok: false, reason: 'no_ticket' })
+    if (!license.last_ticket||!license.last_ticket_exp)       { tamper_report(key, 'no_ticket', '').catch(() => {}); return res.status(403).json({ ok: false, reason: 'no_ticket' }) }
     if (Date.now() > license.last_ticket_exp)                  return res.status(403).json({ ok: false, reason: 'ticket_expired' })
     const expected = sign_ticket(key, hwid, plan, license.last_ticket_exp, license.last_nonce)
-    if (ticket!==expected || nonce!==license.last_nonce || ticket!==license.last_ticket)
+    if (ticket!==expected || nonce!==license.last_nonce || ticket!==license.last_ticket) {
+        tamper_report(key, 'bad_ticket', '').catch(() => {})
         return res.status(403).json({ ok: false, reason: 'bad_ticket' })
+    }
 
     const raw = await get_script(plan)
     if (!raw) return res.status(500).json({ ok: false, reason: 'script_missing' })

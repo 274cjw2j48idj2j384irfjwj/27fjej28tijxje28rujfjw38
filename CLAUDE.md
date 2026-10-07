@@ -69,6 +69,17 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - Railway: `Dockerfile` = license server, `Dockerfile.bot` = bot (service variable `RAILWAY_DOCKERFILE_PATH=Dockerfile.bot`)
   A 429 at login (Cloudflare 1015: Discord bans the IP after too many logins, e.g. a crash loop that Railway restarts every
   second) makes the bot wait in the process (5, 10, 20 .. 60 min) instead of exiting; the command sync runs once per start
+
+## Tamper reports
+- The Discord webhook URL lives ONLY on the server (`TAMPER_WEBHOOK` on the license server service). It is never put in
+  the Lua: whoever cracks the loader reads every string in it, and could then flood the channel or drop the request.
+- Server side signals (these can not be patched out of a client): `/verify` `hwid_mismatch` (the key on a second
+  machine), `/script` `bad_ticket` / `no_ticket`. Client side, as a nice-to-have on top: the integrity monitor
+  (`_report_tamper`, one report the moment it trips, ~10 s before the script kills itself), forged auth globals before
+  the download, and a downloaded script that does not compile or run (`report()` in `specter_loader.lua`).
+- `tamper_report()` in `server.js` stores the last 20 per license (`license.tamper`, also in `/admin/list`), reports the
+  same kind at most once per 5 minutes, and ignores keys that do not exist. `TAMPER_AUTO_BAN` (default 0 = off) revokes
+  the key by itself after that many reports — off by default because a false positive would ban a paying customer.
 - `specter_resolver.lua` — STANDALONE desync resolver: one file, no login, no AA, no visuals, nothing but the resolver
   (menu: RAGE > Other > "Specter desync resolver"). Independent from `specter_cloud.lua` (own copy of the resolver code, own
   learning, own saved priors key). A change to one does not touch the other
