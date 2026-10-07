@@ -25,6 +25,11 @@ m = re.search(r"-- \[resolver:begin\]\n(.*?)\n\s*-- \[resolver:end\]", src, re.S
 if not m:
     sys.exit("resolver markers not found in specter_cloud.lua")
 BLOCK = m.group(1)
+# the real ping helper the block uses (defined before the modules, shared with Predict enemies)
+mp = re.search(r"-- \[ping:begin\]\n(.*?)\n\s*-- \[ping:end\]", src, re.S)
+if not mp:
+    sys.exit("ping markers not found in specter_cloud.lua")
+PING = mp.group(1)
 
 # what the main script gives the block: the `resolver` table, the menu items (config.resolver), the logger; and the
 # event wiring of the main script (miscellaneous:aim_* -> resolver.on_*, round start -> resolver.new_round)
@@ -49,7 +54,7 @@ client.set_event_callback("aim_miss", function(e) resolver.on_miss(e) end)
 client.set_event_callback("round_prestart", function() resolver.new_round() end)
 return { resolver = resolver, hooks = hooks }
 '''
-SCRIPT = PRELUDE + BLOCK + EPILOGUE
+SCRIPT = PRELUDE + PING + "\n" + BLOCK + EPILOGUE
 
 rt = L.LuaRuntime(unpack_returned_tuples=True)
 H = rt.eval("function(src) return load(src)() end")(open(os.path.join(HERE, "resolver_world.lua")).read())
@@ -76,12 +81,12 @@ def run(scn=None, driver=None, **kw):
     return H.run(SCRIPT, rt.table_from(o))
 
 
-def avg(scn, d, ping, seeds=(1, 2, 3), **kw):
+def avg(scn, d, ping, seeds=(1, 2, 3), metric="late_rate", **kw):
     vals = []
     for sd in seeds:
         s = run(scn, dict(d, seed=7 + sd * 13), ticks=4000, ping=ping, seed=sd, **kw)
         check(s.errors == 0 and not errors_of(s), f"{scn}{d} {ping}ms: errors {errors_of(s)[:2]}")
-        vals.append(s.late_rate)
+        vals.append(getattr(s, metric))
     return sum(vals) / len(vals)
 
 
@@ -103,9 +108,10 @@ RATES = [
     ("choke_defensive", dict(choke=6), 0.80), ("lby_flick", {}, 0.88), ("lby_flick", dict(flick=60), 0.88),
     # side switching (anti-bruteforce, random): this version does not track it, the side is only measured -> lower
     ("anti_brute", dict(choke=6), 0.15), ("anti_miss", dict(choke=6), 0.55), ("choke_random", dict(choke=6), 0.35),
-    # defensive: tickbase shift windows with flicked angles (the body yaw of those records from the server feet logic)
-    ("defensive", dict(flick=110), 0.88), ("defensive", dict(flick=90), 0.88), ("defensive", dict(flick=-70, back=6), 0.85),
-    ("defensive", dict(flick=110, base="jitter"), 0.88),
+    # defensive: tickbase shift windows with flicked angles. The server has no lag record of them: a shot at the shifted
+    # model is a lag comp miss for everyone (the "valid" rate below counts the shots at real records)
+    ("defensive", dict(flick=110), 0.82), ("defensive", dict(flick=90), 0.82), ("defensive", dict(flick=-70, back=6), 0.82),
+    ("defensive", dict(flick=110, base="jitter"), 0.82),
     # jitter -> jitter part
     ("jitter_tick", {}, 0.88), ("jitter_tick", dict(amp=58), 0.88), ("jitter_delay", dict(period=3), 0.88),
     ("jitter_delay", dict(period=5), 0.88), ("jitter_choke", dict(choke=3), 0.88), ("moving_jitter", {}, 0.88),
@@ -120,6 +126,57 @@ for scn, d, need in RATES:
     print(f"{scn + (str(d) if d else ''):<34}" + "".join(f"{c:>7.2f}" for c in cells))
     for ping, c in zip((20, 80), cells):
         check(c >= need, f"{scn}{d} {ping}ms: hit rate {c:.2f} < {need}")
+
+# ── defensive (tickbase shift): no angle of its own, shots judged by the server's lag record ──────────
+# jitter with micromovement + an always-on defensive with a pitch flick (owners, Oct 2026: "a jittert es a defensive
+# resot osszekeveri", a "res 0" shot at a 58 tick backtrack): the shifted updates used to get their own "def" angle
+# (computed body yaw of the flick, often ~0, exempt from the zero rule: 16% of the shots near 0 on a real desync) and
+# shots at normal records were judged by a shifted update with the same sim tick (10-15% of them, reason "defensive")
+print("== defensive: shifted updates keep the jitter / desync angle, shots judged by the normal record")
+DEF = lua('''function(acc)
+    return function(k, e, r, hit, ctl, S)
+        local best, bt = nil, -1
+        for _, s in pairs(S.resolver.shots) do if s.time > bt then best, bt = s, s.time end end
+        if not best or r.applied == nil then return end
+        acc.n = acc.n + 1
+        if math.abs(r.applied) < 20 and math.abs(r.T) >= 30 then acc.z = acc.z + 1 end
+        if r.shifted then
+            acc.sh = acc.sh + 1
+            if best.reason ~= "defensive" then acc.unmarked = acc.unmarked + 1 end
+            -- the shifted model kept the value of the newest normal record
+            if r.applied ~= e.valid[#e.valid].applied then acc.moved = acc.moved + 1 end
+        elseif best.value ~= nil and best.value ~= r.applied then
+            acc.bad = acc.bad + 1
+        end
+    end
+end''')
+for d in (dict(body="static"), dict(body="opp"), dict(body="coin"), dict(body="static", choke=0, every=48, len=6),
+          dict(body="static", back=12, len=6)):
+    acc = lua("function() return { n = 0, z = 0, sh = 0, unmarked = 0, moved = 0, bad = 0 } end")()
+    vals = []
+    for sd in (1, 2, 3):
+        for ping in (20, 80):
+            s = run("jitter_defensive", dict(d, seed=sd * 31), ticks=3000, ping=ping, seed=sd, on_shot=DEF(acc))
+            check(s.errors == 0 and not errors_of(s), f"jitter_defensive{d}: errors {errors_of(s)[:2]}")
+            vals.append(s.valid_rate)
+    v = sum(vals) / len(vals)
+    print(f"   {str(d):<52} valid {v:.2f}  near 0 {acc.z}/{acc.n}  at shifted {acc.sh} (unmarked {acc.unmarked}, "
+          f"value moved {acc.moved})  misjudged {acc.bad}")
+    need = 0.42 if d["body"] == "coin" else 0.88
+    check(v >= need, f"jitter_defensive{d}: valid hit rate {v:.2f} < {need}")
+    check(acc.z <= 0.02 * acc.n, f"jitter_defensive{d}: {acc.z} of {acc.n} shots near 0 on a real desync")
+    check(acc.sh > 10 and acc.unmarked == 0, f"jitter_defensive{d}: {acc.unmarked} of {acc.sh} shots at a shifted model not marked defensive")
+    check(acc.moved == 0, f"jitter_defensive{d}: the forced value moved on {acc.moved} shifted updates")
+    check(acc.bad == 0, f"jitter_defensive{d}: {acc.bad} shots judged by another value than their record got")
+for scn, d in (("defensive", dict(flick=110)), ("defensive", dict(flick=110, base="jitter")), ("choke_defensive", dict(choke=6))):
+    c = avg(scn, d, 40, metric="valid_rate")
+    print(f"   {scn + str(d):<52} valid {c:.2f}")
+    check(c >= 0.88, f"{scn}{d}: valid hit rate {c:.2f} < 0.88")
+# a defensive that keeps the angles (only the lag record breaks): a shot at the shifted model is tested against the
+# record before it with the value the shifted model kept
+c = avg("jitter_defensive", dict(body="static"), 40, def_head="same")
+print(f"   jitter_defensive, angles kept on the shifted packets          late {c:.2f}")
+check(c >= 0.85, f"jitter_defensive def_head=same: hit rate {c:.2f} < 0.85")
 
 # ── noise: 15% spread + 10% misses for other reasons, inverted sign ──────────────
 print("== noise, inverted sign")
@@ -210,9 +267,11 @@ s = run("jitter_tick", {}, ticks=2000, configure=SET("Resolver jitter", "90"))
 check(s.S.resolver.database[2].mode == "d", "jitter sensitivity 90: a 70 degree jitter is not a jitterer any more")
 print(f"   override size, info (method / confidence), jitter sensitivity")
 
-# a shot at a record 60 ticks old is still judged by what that record got (64 ticks of history)
+# a shot at a record 60 ticks old is still judged by what that record got: 1 s of history (64 ticks on 64 tick)
 s = run("jitter_tick", {}, ticks=1500)
-check(len(list(s.S.resolver.database[2].hist.keys())) == 64, "64 records of history")
+p = s.S.resolver.database[2]
+span = p.max_st - p.hist[1].st
+check(span == 64 and len(list(p.hist.keys())) == 65, f"history: {span} ticks, {len(list(p.hist.keys()))} records (1 s = 64 ticks)")
 
 # ── player list handling ──────────────────────────────────────────────────────
 print("== player list")
@@ -275,6 +334,29 @@ for scn, d in (("choke_static", dict(choke=6)), ("choke_random", dict(choke=6)),
     print(f"   {scn}: {acc.n} shots ({acc.bt} backtracked), {acc.bad} judged by a different value than their record got")
     check(acc.n > 100 and acc.bt > 30, f"{scn}: too few shots to judge attribution")
     check(acc.bad == 0, f"{scn}: {acc.bad} shots judged by the wrong value")
+
+# ── 128 tick, long backtrack: the server lag compensates up to 1 s (sv_maxunlag), on 128 tick that is 128 ticks; a
+# shot at a 58+ tick old record used to fall out of the 64 records / 64 ticks the resolver kept ("bt 58t res 0")
+print("== 128 tick, shots up to 120 ticks back")
+for scn, d in (("choke_static", dict(choke=1)), ("jitter_rperiod", {}), ("jitter_tick", {})):
+    acc = lua("function() return { n = 0, bad = 0, bt = 0 } end")()
+    s = run(scn, dict(d), ticks=6000, ping=40, tickrate=128, bt_max=120, on_shot=ATTR(acc))
+    p = s.S.resolver.database[2]
+    span = p.max_st - p.hist[1].st
+    print(f"   {scn}: {acc.n} shots ({acc.bt} backtracked), {acc.bad} misjudged, history {span} ticks, late {s.late_rate:.2f}")
+    check(s.errors == 0 and not errors_of(s), f"128 tick {scn}: errors {errors_of(s)[:2]}")
+    check(span >= 120, f"128 tick {scn}: history {span} ticks < 120")
+    check(acc.bad == 0 and acc.bt > 100, f"128 tick {scn}: {acc.bad} of {acc.n} shots misjudged ({acc.bt} backtracked)")
+    check(s.late_rate >= 0.85, f"128 tick {scn}: late rate {s.late_rate:.2f}")
+
+# ── ping spike: the scoreboard ping has the fake ping, the ping profile takes the real one ───────────
+print("== ping profile with a ping spike")
+for ping, fake in ((20, 0), (40, 200), (80, 150), (110, 100)):
+    s = run("jitter_tick", {}, ticks=1500, ping=ping, fake_ping=fake)
+    b = s.S.resolver.ping_state.bucket
+    print(f"   real {ping} ms + fake {fake} ms (scoreboard {ping + fake}): profile {b} ms, late {s.late_rate:.2f}")
+    check(b is not None and abs(b - ping) <= 5, f"ping spike {fake} on {ping} ms: profile {b} ms")
+    check(s.late_rate >= 0.85, f"ping spike {fake} on {ping} ms: late rate {s.late_rate:.2f}")
 
 # ── robustness ────────────────────────────────────────────────────────────────
 print("== robustness")

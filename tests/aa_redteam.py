@@ -28,10 +28,11 @@ STATES = {"stand": (0, 0, True, 0), "move": (230, 0, True, 0), "air": (180, 0, F
 
 src_cloud = open(os.path.join(ROOT, "specter_cloud.lua"), encoding="utf-8").read()
 BLOCK = re.search(r"-- \[resolver:begin\]\n(.*?)\n\s*-- \[resolver:end\]", src_cloud, re.S).group(1)
+PING = re.search(r"-- \[ping:begin\]\n(.*?)\n\s*-- \[ping:end\]", src_cloud, re.S).group(1)
 T = open(os.path.join(HERE, "resolver_regress.py"), encoding="utf-8").read()
 PRE = re.search(r"PRELUDE = '''(.*?)'''", T, re.S).group(1)
 POST = re.search(r"EPILOGUE = '''(.*?)'''", T, re.S).group(1)
-ATTACKER = PRE + BLOCK + POST
+ATTACKER = PRE + PING + "\n" + BLOCK + POST
 # the resolver with its defaults, without the jitter split (sensitivity 90), and with a fixed size (side learned only)
 ATTACKERS = {
     "full": "",
