@@ -11900,26 +11900,20 @@ LPH_NO_VIRTUALIZE(function ()
 
                 local DISCORD = 'discord.gg/dxM89UUnVN'
                 local sponsor_messages = {
-                    '{name} got tapped by Specter / cry about it in ' .. DISCORD,
-                    'sit down {name} / Specter users get good at ' .. DISCORD,
+                    '{name} got tapped by Specter / sit down',
+                    'imagine dying to Specter {name}',
+                    'skill issue {name} / Specter said goodnight',
                     '1 {name} / sponsored by Specter - ' .. DISCORD,
-                    'skill issue {name} / fix it with Specter at ' .. DISCORD,
-                    '{name} is a free kill for Specter / tired of being one? ' .. DISCORD,
-                    'imagine dying to Specter {name} / ' .. DISCORD,
-                    'who sold you that paste {name}? / refund it and get Specter at ' .. DISCORD,
-                    'L {name} / Specter says cope in ' .. DISCORD,
-                    '{name} spectating again / Specter keeps playing - ' .. DISCORD,
-                    'ez {name} / post your Specter death in ' .. DISCORD,
-                    'nn down / Specter wants the next one - ' .. DISCORD,
-                    '{name} uninstall / or join Specter at ' .. DISCORD,
-                    'dont rage quit {name} / rage in the Specter server ' .. DISCORD,
-                    'iq check failed {name} / Specter school is at ' .. DISCORD,
-                    'another bot down / stop being one, get Specter at ' .. DISCORD,
-                    '{name} sleeps / Specter keeps tapping - ' .. DISCORD,
-                    'ratio + L + no Specter {name} / ' .. DISCORD,
-                    'was that a hvh or a Specter tutorial {name}? / ' .. DISCORD,
-                    '{name} you just paid the Specter tax / ' .. DISCORD,
-                    'owned by Specter / get on our level ' .. DISCORD
+                    '{name} is a free kill for Specter / thanks for the frag',
+                    'L {name} / Specter on top',
+                    'ratio + L + no Specter {name}',
+                    '{name} spectating again / Specter keeps playing',
+                    'was that a hvh or a Specter tutorial {name}?',
+                    '{name} uninstall / or get Specter at ' .. DISCORD,
+                    '{name} you just paid the Specter tax',
+                    'owned by Specter / next',
+                    'iq check failed {name} / Specter passed it',
+                    'dont rage quit {name} / Specter is not done with you'
                 }
 
                 local list = {
