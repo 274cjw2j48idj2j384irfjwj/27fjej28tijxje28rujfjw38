@@ -126,7 +126,7 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 ## Tier System
 4-tier feature gating: `debug` (full) > `specter` (no AA stealer) > `nightly` (no resolver) > `beta` (minimal)
 - Misc "Sponsor Kill Say", every plan (first in the dev build only, then released to the cloud, owners Oct 2026):
-  14 toxic kill say lines, every one names Specter, 2 of them carry the Discord invite (owners: "csak 1-2be"), nothing about
+  15 toxic kill say lines, every one names Specter, 2 of them carry the Discord invite (owners: "csak 1-2be"), nothing about
   the features; it wins over Kill Say / Trash Talk on a kill.
   The victim's name is cleaned before it goes into `say "..."` (no quote / semicolon / % / control chars: a name could run a command)
 

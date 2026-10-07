@@ -12083,7 +12083,8 @@ LPH_NO_VIRTUALIZE(function ()
                     '{name} you just paid the Specter tax',
                     'owned by Specter / next',
                     'iq check failed {name} / Specter passed it',
-                    'dont rage quit {name} / Specter is not done with you'
+                    'dont rage quit {name} / Specter is not done with you',
+                    '{name} vs Specter / not even close'
                 }
 
                 local list = {
