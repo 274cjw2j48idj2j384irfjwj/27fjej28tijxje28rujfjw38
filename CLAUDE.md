@@ -3,6 +3,14 @@
 ## Repository
 - Moved (owners, Oct 2026) from `Matehun111/idk` to `274cjw2j48idj2j384irfjwj/27fjej28tijxje28rujfjw38` with the full history; `main`
   is the current code. The bot (`GITHUB_REPO`) and the dev loader (`SOURCES`) point here.
+- Two branches (owners, Oct 2026: "ne lassak az emberek a dev valtozasokat", the lua is tested in dev, then it goes to the cloud):
+  `main` = DEV: every change lands here; the bot posts its dev build to #staff, the dev loader loads it. The customers see
+  nothing of it. `cloud` = what the CUSTOMERS get (bot `CLOUD_BRANCH`): its specter_cloud.lua goes to the license server and
+  its changelog to #updates, its specter_loader.lua to #loader-download.
+  RELEASE ("mehet cloudra", "rakd ki az updatet") = a PR `main` -> `cloud`, merged with a merge commit: its title (or the merge
+  message: a short title + "- " points) IS the public #updates changelog, short and for players: "Sponsor kill added",
+  "Fixed ...". Never release without the owners asking. `server.js` deploys from `main` at once: keep it compatible with the
+  loader / cloud script on `cloud` (an auth change is released together with them)
 
 ## Language
 The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
@@ -22,7 +30,7 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - `server.js` — License server (Express + Upstash Redis). The script is stored in Redis in 300 000 char parts
   (`specter:script:<plan>:<i>` + `:parts` + `:sha256`), a script stored the old way (one key) is still read
 - `discord_bot.py` — Discord bot (keys, roles, tickets, server setup). `/script_upload` puts specter_cloud.lua (an attachment or
-  GitHub raw of `SCRIPT_BRANCH`; with `SCRIPT_TOKEN`, a read-only token, through the contents API for a private repo)
+  GitHub raw of `CLOUD_BRANCH`; with `SCRIPT_TOKEN`, a read-only token, through the contents API for a private repo)
   without comments on the server for every plan; it refuses a file without the auth gate.
   Keep `GITHUB_TOKEN` empty while the repo is public (the key sync writes every key into `specter_keys.json`)
   `/setup_server` / `/setup_channels` build `CHANNEL_STRUCTURE` (existing channels are skipped, so `/setup_channels` adds a new
@@ -37,13 +45,14 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
     footer `file @ sha256` keeps a restart from posting it twice; a new post deletes the bot's older posts of that file
     there (`remove_older_posts`, owners: only the newest dev build stays). The commit message is posted short (`commit_points`:
     the title in bold + one short line per "- " item of the body, at most 6)
-  * `AUTO_UPLOAD` (default on): a new specter_cloud.lua goes to the license server for every plan whose script differs
-    (`sync_cloud`; the server keeps the SHA-256 of each upload, `GET /admin/script_info`). Its changelog (the commit points,
-    no sizes, no link to the repo) goes to the public `UPDATES_CHANNEL` (#updates; `named_channel` also finds "📜・updates"),
+  * `AUTO_UPLOAD` (default on): a new specter_cloud.lua of `CLOUD_BRANCH` goes to the license server for every plan whose
+    script differs (`sync_cloud`; the server keeps the SHA-256 of each upload, `GET /admin/script_info`). Its changelog (the
+    points of the branch's newest commit = the release merge, `newest_version(head=True)`: git's path filter skips a merge whose
+    file equals main's; a bare "Merge branch ..." gives "A new version of the script is out."; no sizes, no link to the repo) goes to the public `UPDATES_CHANNEL` (#updates; `named_channel` also finds "📜・updates"),
     once per version. #staff gets only the dev build (owners, Oct 2026: "ide eleg csak ha a dev-et tolti fel") and an alarm
     when a plan could not be updated (once per version, the loop keeps trying). The loader downloads the script from the
-    server at every login: what is on `main` reaches the customers within 5 minutes, so only tested code goes to main.
-    A manual `/script_upload` stays until main changes again
+    server at every login: what is merged into `cloud` reaches the customers within 5 minutes; `main` never does.
+    A manual `/script_upload` stays until `cloud` changes again
   * files are polled from raw.githubusercontent with their ETag (the GitHub API allows 60 calls / hour per IP without a
     token, shared on Railway: it is asked only for the commit message, and the post goes out without it on a 403)
   Who may do what: admin commands (keys create / revoke / sync, script_upload, post_loader, setup_*, post_*) = owner,
@@ -60,7 +69,7 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   it has its logo: a post from before the logo is posted again), deleting the bot's older posts of that panel there
   (`post_panel`, by title; a member's message stays). The #updates changelog carries the logo too, but every version is a
   new post and the old ones stay (owners: the history stays there). A new
-  specter_loader.lua of `SCRIPT_BRANCH` goes to #loader-download the same way every `RELEASE_MINUTES` (`sync_loader`, the
+  specter_loader.lua of `CLOUD_BRANCH` goes to #loader-download the same way every `RELEASE_MINUTES` (`sync_loader`, the
   post's SHA-256 field says which one is out; only `is_customer_loader`). /post_* and /post_loader replace the old post too
   Logo (`logo()`): `assets/specter_icon.png` (thumbnails) / `assets/specter_logo.png` (the big image of the prices) go with
   the messages as attachments (`Dockerfile.bot` copies assets/); `SPECTER_LOGO_URL` overrides them with a lasting link. A
@@ -90,11 +99,11 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   The owners play the dev build WITHOUT a loader (Oct 2026): `specter_dev.lua` is what they test in game, so every change has to
   reach it. (For a while only the cloud got the changes and the dev build stayed old: the owners kept seeing bugs that were
   already fixed, e.g. "res 0° / bt 0t" in the hitlog.)
-- The commit message of a change to `specter_cloud.lua` IS the public #updates changelog (the bot posts the newest commit that
-  changed the file: its title in bold + one line per "- " item / sentence of the body). Owners, Oct 2026: "nem kell tul
-  bonyolitani az upd logot". So: a short title for players, e.g. "Sponsor kill added", "Expanded sponsor kill", "Fixed ...", and
-  NO body besides the attribution lines (the bot drops those). No file names, tests, plans or numbers; the details go into
-  the PR description. A PR with several commits is posted once, with the last one's title: that one has to say it all.
+- Changelogs short (owners, Oct 2026: "nem kell tul bonyolitani az upd logot"): the #updates post is the release merge into
+  `cloud` (see Repository), the #staff dev build post is the newest commit that changed `specter_dev.lua` (title in bold + one
+  line per "- " item / sentence of the body). So commit titles like "Sponsor kill added", "Expanded sponsor kill", "Fixed ...",
+  no body besides the attribution lines (the bot drops those): no file names, tests, plans or numbers, the details go into
+  the PR description.
 - The dev build is just the normal code: the owners said many times that it needs no login, no checks and no loader. Do not add any.
 - No dead code (owners, Oct 2026: "nincs benne junk code"): luacheck on the dev build reports nothing but unused callback
   arguments / loop variables and shadowing (no unused locals, values or functions). The owners' own copy is the dev build without
@@ -116,7 +125,7 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 
 ## Tier System
 4-tier feature gating: `debug` (full) > `specter` (no AA stealer) > `nightly` (no resolver) > `beta` (minimal)
-- `debug` only (the dev build; not sold) also: Misc "Sponsor Kill Say" (`TIER.HAS_SPONSOR_SAY`, owners Oct 2026: "csak a devbe"):
+- Misc "Sponsor Kill Say", every plan (first in the dev build only, then released to the cloud, owners Oct 2026):
   14 toxic kill say lines, every one names Specter, 2 of them carry the Discord invite (owners: "csak 1-2be"), nothing about
   the features; it wins over Kill Say / Trash Talk on a kill.
   The victim's name is cleaned before it goes into `say "..."` (no quote / semicolon / % / control chars: a name could run a command)

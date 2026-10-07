@@ -14,7 +14,11 @@ ENV VARS (set in Discord bot host or .env):
   GITHUB_TOKEN        — GitHub PAT with repo write access (for key sync). Leave it EMPTY while the repo is public:
                         the sync writes every key into specter_keys.json in the repo (the loader does not need it)
   GITHUB_REPO         — GitHub repo (default: 274cjw2j48idj2j384irfjwj/27fjej28tijxje28rujfjw38)
-  SCRIPT_BRANCH       — branch /script_upload takes specter_cloud.lua from (default: main)
+  SCRIPT_BRANCH       — the DEV branch (default: main): its specter_dev.lua goes to the staff channel (RELEASE_FILES)
+  CLOUD_BRANCH        — the branch the CUSTOMERS get (default: cloud): its specter_cloud.lua goes to the license server
+                        and its changelog to #updates, its specter_loader.lua to #loader-download; /script_upload and
+                        /post_loader take their file from it. A release = merging SCRIPT_BRANCH into it: the message of
+                        that merge (the PR title) is the #updates changelog. Nothing of SCRIPT_BRANCH reaches the customers
   SCRIPT_TOKEN        — GitHub token that can READ the repo (fine-grained, Contents: Read-only). Needed when the repo
                         is private: /script_upload then downloads specter_cloud.lua through the GitHub API with it.
                         It is not used for anything else (the key sync uses GITHUB_TOKEN). With it the version check
@@ -23,12 +27,12 @@ ENV VARS (set in Discord bot host or .env):
                         neither @everyone nor a member / customer / plan role can read it
   RELEASE_FILES       — files posted there when a new commit changes them (default: specter_dev.lua)
   RELEASE_MINUTES     — how often GitHub is checked (default: 5, 0 = only /release_check)
-  AUTO_UPLOAD         — 1 (default): a new specter_cloud.lua of SCRIPT_BRANCH goes to the license server by itself (every
+  AUTO_UPLOAD         — 1 (default): a new specter_cloud.lua of CLOUD_BRANCH goes to the license server by itself (every
                         plan; the loader downloads it from there), 0: only /script_upload
   UPDATES_CHANNEL     — public channel (name or id) the changelog of a new cloud script is posted in (default: updates)
   AUTO_PANELS         — 1 (default): at every start the prices / rules / how-to / ticket panels that changed (or are missing)
                         are posted again in their channels and the old posts deleted; a new specter_loader.lua of
-                        SCRIPT_BRANCH goes to #loader-download the same way (checked every RELEASE_MINUTES). 0: only by hand
+                        CLOUD_BRANCH goes to #loader-download the same way (checked every RELEASE_MINUTES). 0: only by hand
   SPECTER_LOGO_URL    — a lasting image link for the logo on the bot's posts (optional). Empty: assets/specter_icon.png /
                         specter_logo.png go with the messages. A Discord upload link expires in a day: it is ignored
 """
@@ -66,7 +70,8 @@ DEFAULT_ROLE_NAME = _env("DEFAULT_ROLE_NAME", "Member")
 LOG_CHANNEL_ID    = int(_env("LOG_CHANNEL_ID", "0"))
 GITHUB_TOKEN      = _env("GITHUB_TOKEN", "")
 GITHUB_REPO       = _env("GITHUB_REPO", "274cjw2j48idj2j384irfjwj/27fjej28tijxje28rujfjw38")
-SCRIPT_BRANCH     = _env("SCRIPT_BRANCH", "main")
+SCRIPT_BRANCH     = _env("SCRIPT_BRANCH", "main")       # dev: the dev build for the staff channel
+CLOUD_BRANCH      = _env("CLOUD_BRANCH", "cloud")       # release: what the customers get (server script, loader, #updates)
 SCRIPT_TOKEN      = _env("SCRIPT_TOKEN", "")
 
 VALID_PLANS     = ["beta", "nightly", "specter", "debug"]
@@ -1031,8 +1036,8 @@ async def gh_get_file(path: str, ref: str, etag: str = "") -> tuple[bytes | None
 
 
 async def gh_fetch_file(path: str, branch: str = "") -> tuple[bytes, str]:
-    """A file of GITHUB_REPO at `branch` (default SCRIPT_BRANCH) -> (bytes, source text)."""
-    br = branch or SCRIPT_BRANCH
+    """A file of GITHUB_REPO at `branch` (default CLOUD_BRANCH: these files go to the customers) -> (bytes, source text)."""
+    br = branch or CLOUD_BRANCH
     raw, _ = await gh_get_file(path, br)
     return raw, f"GitHub {GITHUB_REPO}@{br}"
 
@@ -1111,7 +1116,7 @@ async def upload_script(script: str, plans: list[str]) -> tuple[list[str], list[
 @tree.command(name="script_upload", description="Upload specter_cloud.lua to the license server (a file, or from GitHub)")
 @app_commands.describe(
     file="specter_cloud.lua (empty: taken from GitHub)",
-    branch="GitHub branch when no file is given (default: SCRIPT_BRANCH)",
+    branch="GitHub branch when no file is given (default: CLOUD_BRANCH)",
     plan="Which plan gets it (default: all four)",
 )
 @app_commands.choices(plan=[app_commands.Choice(name="all", value="all")] + [app_commands.Choice(name=p, value=p) for p in VALID_PLANS])
@@ -1239,7 +1244,7 @@ async def delete_posts(msgs: list[discord.Message]) -> int:
 @tree.command(name="post_loader", description="Post the Specter loader (specter_loader.lua) for customers to download")
 @app_commands.describe(
     file="specter_loader.lua (empty: taken from GitHub)",
-    branch="GitHub branch when no file is given (default: SCRIPT_BRANCH)",
+    branch="GitHub branch when no file is given (default: CLOUD_BRANCH)",
     channel="Where to post it (default: #loader-download, else this channel)",
     replace="Delete the bot's older loader posts in that channel (default: yes)",
 )
@@ -1313,7 +1318,7 @@ AUTO_PANELS     = _env("AUTO_PANELS", "1").lower() not in ("0", "false", "off", 
 RELEASE_ROLES   = [r for r in ROLE_CONFIG if r != "Staff"]     # never posted where one of these (or @everyone) reads
 RELEASE_FOOTER  = re.compile(r"^(\S+) @ ([0-9a-f]{16})$")       # the footer of a version post: file @ its SHA-256
 _release_seen: dict[int, dict[str, str]] = {}                   # channel id -> file -> SHA-256 of the newest post there
-_release_files: dict[str, dict] = {}                            # file -> the newest version GitHub has (body, hash, commit, etag)
+_release_files: dict[tuple, dict] = {}                          # (branch, file) -> the newest version GitHub has (body, hash, commit, etag)
 _release_lock = asyncio.Lock()
 _cloud_on_server = ""                                           # SHA-256 of the cloud script the server is known to have
 _cloud_told = {"updates": "", "staff": ""}                      # the cloud script whose changelog / failure was posted
@@ -1340,16 +1345,19 @@ def non_staff_readers(ch: discord.TextChannel) -> list[str]:
             for r, name in roles if ch.permissions_for(r).view_channel]
 
 
-async def gh_last_commit(path: str) -> tuple[dict | None, str]:
-    """The newest commit of SCRIPT_BRANCH that changed `path` -> (commit, error). Only for the message: the GitHub API
-    allows 60 calls / hour per IP without a token (shared on Railway), SCRIPT_TOKEN gives the bot its own limit."""
+async def gh_last_commit(branch: str, path: str = "") -> tuple[dict | None, str]:
+    """The newest commit of `branch` (that changed `path`, when given) -> (commit, error). Only for the message: the GitHub
+    API allows 60 calls / hour per IP without a token (shared on Railway), SCRIPT_TOKEN gives the bot its own limit."""
     headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
     if SCRIPT_TOKEN:
         headers["Authorization"] = f"Bearer {SCRIPT_TOKEN}"
+    params = {"sha": branch, "per_page": "1"}
+    if path:
+        params["path"] = path
     try:
         async with aiohttp.ClientSession() as s:
             async with s.get(f"{GH_API}/repos/{GITHUB_REPO}/commits", headers=headers,
-                             params={"path": path, "sha": SCRIPT_BRANCH, "per_page": "1"},
+                             params=params,
                              timeout=aiohttp.ClientTimeout(total=30)) as r:
                 if r.status != 200:
                     return None, f"GitHub API {r.status}" + (" (limit: set SCRIPT_TOKEN)" if r.status in (403, 429) else "")
@@ -1381,9 +1389,10 @@ def short_point(text: str, limit: int = 80) -> str:
 
 def commit_points(message: str, most: int = 6) -> str:
     """The commit as a short list: its title in bold, then one short line per "- " item of the body (or per sentence
-    when it has no list). A PR merge says it after its first line; the attribution lines are left out."""
+    when it has no list). A merge says it after its first line ("Merge pull request #N from ..." / "Merge branch ...",
+    a bare one gives nothing); the attribution lines are left out."""
     lines = (message or "").strip().split("\n")
-    if len(lines) > 1 and lines[0].startswith("Merge pull request"):
+    if re.match(r"Merge (pull request|branch|remote-tracking branch) ", lines[0]):
         lines = lines[1:]
     lines = [l for l in lines if not re.match(r"^\s*(Co-Authored-By|Claude-Session|Signed-off-by):", l, re.I)]
     while lines and not lines[0].strip():
@@ -1415,15 +1424,17 @@ async def posted_versions(ch: discord.TextChannel) -> dict[str, str]:
     return seen
 
 
-async def newest_version(path: str) -> dict:
-    """The newest version of `path` on SCRIPT_BRANCH. The file is checked with its ETag (unchanged = nothing downloaded,
-    raw.githubusercontent has no API limit); the commit (for the message) is asked only when the file changed."""
-    old = _release_files.get(path)
-    raw, etag = await gh_get_file(path, SCRIPT_BRANCH, old["etag"] if old else "")
+async def newest_version(path: str, branch: str = SCRIPT_BRANCH, head: bool = False) -> dict:
+    """The newest version of `path` on `branch`. The file is checked with its ETag (unchanged = nothing downloaded,
+    raw.githubusercontent has no API limit); the commit (for the message) is asked only when the file changed: the newest
+    one that changed the file, or with `head` the newest of the branch (a release is a merge into CLOUD_BRANCH and its
+    message is the changelog; git's path filter skips such a merge, its file is the same as on SCRIPT_BRANCH)."""
+    old = _release_files.get((branch, path))
+    raw, etag = await gh_get_file(path, branch, old["etag"] if old else "")
     if raw is None or (old and hashlib.sha256(raw).digest() == old["raw_hash"]):
         old["etag"] = etag
         return old
-    commit, err = await gh_last_commit(path)
+    commit, err = await gh_last_commit(branch, "" if head else path)
     if commit:
         try:            # the file of exactly that commit: the raw cache of the branch can be a few minutes old
             raw, _ = await gh_get_file(path, commit["sha"])
@@ -1437,7 +1448,7 @@ async def newest_version(path: str) -> dict:
             pass
     ver = dict(body=body, stripped=stripped, hash=hashlib.sha256(body).hexdigest()[:16], commit=commit, commit_err=err,
                raw=raw, raw_hash=hashlib.sha256(raw).digest(), etag=etag)
-    _release_files[path] = ver
+    _release_files[(branch, path)] = ver
     return ver
 
 
@@ -1538,21 +1549,21 @@ async def server_script_hashes() -> dict | None:
 
 
 async def sync_cloud(force: bool = False) -> list[str]:
-    """A new specter_cloud.lua of SCRIPT_BRANCH -> the license server, every plan that has another version (the loader
-    downloads the script from the server at every login). Its changelog goes to the public #updates channel (no sizes,
-    no link to the repo), once per version; #staff only hears about it when a plan could not be updated (once per version,
+    """A new specter_cloud.lua of CLOUD_BRANCH -> the license server, every plan that has another version (the loader
+    downloads the script from the server at every login). Its changelog (the release merge's message) goes to the public
+    #updates channel (no sizes, no link to the repo), once per version; #staff only hears about it when a plan could not be updated (once per version,
     the loop keeps trying). force: upload again (no second changelog when the server had that version already)."""
     global _cloud_on_server
     async with _release_lock:
         try:
-            ver = await newest_version(CLOUD_FILE)
+            ver = await newest_version(CLOUD_FILE, CLOUD_BRANCH, head=True)
         except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError) as e:
             return [f"`{CLOUD_FILE}`: {e}"]
         full = hashlib.sha256(ver["body"]).hexdigest()
         if full == _cloud_on_server and not force:
             return []
         if not ver["stripped"] or not is_cloud_script(ver["raw"].decode("utf-8", "replace")):
-            return [f"`{CLOUD_FILE}` of `{SCRIPT_BRANCH}`: no auth gate or comments not removable, not uploaded"]
+            return [f"`{CLOUD_FILE}` of `{CLOUD_BRANCH}`: no auth gate or comments not removable, not uploaded"]
         have = await server_script_hashes()
         new = (have is None or any(have.get(p) != full for p in VALID_PLANS)) and _cloud_told["updates"] != full
         plans = [p for p in VALID_PLANS if force or have is None or have.get(p) != full]
@@ -1612,7 +1623,7 @@ async def release_loop():
         await asyncio.sleep(RELEASE_MINUTES * 60)
 
 
-@tree.command(name="release_check", description="Check GitHub now: dev build to #staff, cloud script to the server, loader")
+@tree.command(name="release_check", description="Check GitHub now: dev build to #staff, the cloud branch to the server + loader")
 @app_commands.describe(force="Post the dev build / loader and upload the cloud script again even if they are there already")
 async def release_check(interaction: discord.Interaction, force: bool = False):
     if not is_staff(interaction):
@@ -1872,15 +1883,15 @@ async def sync_panels() -> list[str]:
 
 
 async def sync_loader(force: bool = False) -> list[str]:
-    """A new specter_loader.lua of SCRIPT_BRANCH goes to #loader-download (install steps + the file), the older loader
+    """A new specter_loader.lua of CLOUD_BRANCH goes to #loader-download (install steps + the file), the older loader
     post is deleted. Only the customer loader is ever posted there."""
     try:
-        ver = await newest_version(LOADER_FILE)
+        ver = await newest_version(LOADER_FILE, CLOUD_BRANCH)
     except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError) as e:
         return [f"`{LOADER_FILE}`: {e}"]
     raw = ver["raw"]
     if not is_customer_loader(raw.decode("utf-8", "replace")):
-        return [f"`{LOADER_FILE}` of `{SCRIPT_BRANCH}` is not the customer loader, not posted"]
+        return [f"`{LOADER_FILE}` of `{CLOUD_BRANCH}` is not the customer loader, not posted"]
     sha = loader_sha(raw)
     report = []
     for guild in client.guilds:
