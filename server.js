@@ -62,6 +62,7 @@ async function put_script(plan, script) {
     for (let i = 0; i < n; i++)
         await redis.set(`specter:script:${plan}:${i}`, script.slice(i * SCRIPT_PART, (i + 1) * SCRIPT_PART))
     await redis.set(`specter:script:${plan}:parts`, n)
+    await redis.set(`specter:script:${plan}:sha256`, sha256(script))
     await redis.del(`specter:script:${plan}`)
     return n
 }
@@ -213,6 +214,20 @@ app.post('/admin/upload_script', async (req, res) => {
     } catch(e) {
         console.error('Script upload error:', e.message)
         res.status(500).json({ ok: false, error: 'redis: ' + e.message })
+    }
+})
+
+// ── GET /admin/script_info ────────────────────────────────────────────────
+// The SHA-256 of the script each plan has (set by upload_script; null = not known): the bot uploads a new
+// specter_cloud.lua only when it differs. Hashes only, never the script
+app.get('/admin/script_info', async (req, res) => {
+    if (req.headers['x-admin-secret'] !== ADMIN_SECRET)
+        return res.status(403).json({ error: 'forbidden' })
+    try {
+        const hashes = await redis.mget(...VALID_PLANS.map(p => `specter:script:${p}:sha256`))
+        res.json(Object.fromEntries(VALID_PLANS.map((p, i) => [p, typeof hashes[i] === 'string' ? hashes[i] : null])))
+    } catch(e) {
+        res.status(500).json({ error: 'redis: ' + e.message })
     }
 })
 
