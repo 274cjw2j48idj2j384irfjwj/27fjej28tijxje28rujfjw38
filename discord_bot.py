@@ -1245,9 +1245,11 @@ def release_channel(guild: discord.Guild) -> discord.TextChannel | None:
     return ch if isinstance(ch, discord.TextChannel) else None
 
 
-def staff_only(ch: discord.TextChannel) -> bool:
-    roles = [ch.guild.default_role] + [r for r in ch.guild.roles if r.name in RELEASE_ROLES]
-    return not any(ch.permissions_for(r).view_channel for r in roles)
+def non_staff_readers(ch: discord.TextChannel) -> list[str]:
+    """Which of @everyone and the member / customer / plan roles can read the channel (empty = staff only)."""
+    roles = [(ch.guild.default_role, "@everyone")] + [(r, r.name) for r in ch.guild.roles if r.name in RELEASE_ROLES]
+    return [name + (" (has Administrator)" if r.permissions.administrator else "")
+            for r, name in roles if ch.permissions_for(r).view_channel]
 
 
 async def gh_last_commit(path: str) -> tuple[dict | None, str]:
@@ -1357,8 +1359,11 @@ async def check_releases(force: bool = False) -> list[str]:
             if ch is None:
                 report.append(f"{guild.name}: no #{RELEASE_CHANNEL} channel (RELEASE_CHANNEL), nothing posted")
                 continue
-            if not staff_only(ch):
-                report.append(f"{guild.name}: {ch.mention} can be read by non-staff roles, nothing posted there")
+            readers = non_staff_readers(ch)
+            if readers:
+                fix = ("Server Settings > Roles: take Administrator off that role" if any("Administrator" in r for r in readers)
+                       else "Edit channel > Permissions: View Channel off for them")
+                report.append(f"{guild.name}: {ch.mention} can be read by {', '.join(readers)}, nothing posted there. {fix}")
                 continue
             if ch.id not in _release_seen:
                 _release_seen[ch.id] = await posted_versions(ch)
