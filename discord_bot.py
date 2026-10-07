@@ -7,7 +7,8 @@ ENV VARS (set in Discord bot host or .env):
   DISCORD_TOKEN       — Bot token from Discord Developer Portal
   API_URL             — License server URL (e.g. https://your-app.up.railway.app)
   ADMIN_SECRET        — Matches server.js ADMIN_SECRET
-  ADMIN_ROLE_ID       — Discord role ID that can use admin commands (optional)
+  ADMIN_ROLE_ID       — Discord role ID that can use admin commands (optional; else owner + Administrator). The Staff
+                        role gets the support commands (key info / list / HWID reset, roles, tickets, release_check)
   DEFAULT_ROLE_NAME   — Role given to every new member (default: "Member")
   LOG_CHANNEL_ID      — Channel ID for key/role logs (optional)
   GITHUB_TOKEN        — GitHub PAT with repo write access (for key sync). Leave it EMPTY while the repo is public:
@@ -63,6 +64,17 @@ SCRIPT_TOKEN      = _env("SCRIPT_TOKEN", "")
 VALID_PLANS     = ["beta", "nightly", "specter", "debug"]
 VALID_DURATIONS = ["lifetime", "1d", "7d", "14d", "30d", "90d"]
 
+# what the Staff role may do on the server: moderation, not the server / roles / channels (those stay the owner's)
+STAFF_PERMISSIONS = discord.Permissions(
+    view_channel=True, send_messages=True, send_messages_in_threads=True, create_public_threads=True,
+    create_private_threads=True, embed_links=True, attach_files=True, add_reactions=True, use_external_emojis=True,
+    read_message_history=True, use_application_commands=True, change_nickname=True, connect=True, speak=True,
+    manage_messages=True, manage_threads=True, moderate_members=True, kick_members=True, ban_members=True,
+    manage_nicknames=True, mute_members=True, deafen_members=True, move_members=True, view_audit_log=True,
+)
+if hasattr(STAFF_PERMISSIONS, "pin_messages"):      # its own permission since 2025 (older discord.py: in manage_messages)
+    STAFF_PERMISSIONS.pin_messages = True
+
 ROLE_CONFIG = {
     "Member":   {"color": 0x808080, "hoist": False, "position": "bottom"},
     "Debug":    {"color": 0xFF5050, "hoist": True,  "position": "top"},
@@ -70,7 +82,7 @@ ROLE_CONFIG = {
     "Nightly":  {"color": 0xFF82A0, "hoist": True,  "position": "mid"},
     "Beta":     {"color": 0xC882FF, "hoist": True,  "position": "mid"},
     "Customer": {"color": 0x60FF90, "hoist": True,  "position": "mid"},
-    "Staff":    {"color": 0xFFC850, "hoist": True,  "position": "top"},
+    "Staff":    {"color": 0xFFC850, "hoist": True,  "position": "top", "permissions": STAFF_PERMISSIONS},
 }
 
 PLAN_TO_ROLE = {
@@ -192,6 +204,11 @@ def is_admin(interaction: discord.Interaction) -> bool:
     return interaction.user.guild_permissions.administrator
 
 
+def is_staff(interaction: discord.Interaction) -> bool:
+    """The support commands (key info / list / HWID reset, roles except Staff, tickets, version check): admins + Staff."""
+    return is_admin(interaction) or discord.utils.get(interaction.user.roles, name="Staff") is not None
+
+
 async def api_post(path: str, data: dict) -> dict:
     async with aiohttp.ClientSession() as s:
         async with s.post(
@@ -285,22 +302,30 @@ async def log_action(guild: discord.Guild, embed: discord.Embed):
             pass
 
 
-async def find_or_create_role(guild: discord.Guild, name: str) -> discord.Role | None:
-    role = discord.utils.get(guild.roles, name=name)
-    if role:
-        return role
+async def ensure_role(guild: discord.Guild, name: str, reason: str = "Auto-created by license bot"):
+    """A role of ROLE_CONFIG -> (role or None, "created" / "permissions set" / "exists" / "failed: ..."). An existing role
+    gets the permissions of its config added (never taken away: what the owner gave it stays)."""
     cfg = ROLE_CONFIG.get(name, {"color": 0x808080, "hoist": False})
+    perms = cfg.get("permissions")
+    role = discord.utils.get(guild.roles, name=name)
     try:
-        role = await guild.create_role(
-            name=name,
-            color=discord.Color(cfg["color"]),
-            hoist=cfg["hoist"],
-            mentionable=False,
-            reason=f"Auto-created by license bot",
-        )
-        return role
+        if role is None:
+            kw = {"permissions": perms} if perms is not None else {}
+            role = await guild.create_role(name=name, color=discord.Color(cfg["color"]), hoist=cfg["hoist"],
+                                           mentionable=False, reason=reason, **kw)
+            return role, "created"
+        if perms is not None and not perms.is_subset(role.permissions):
+            await role.edit(permissions=role.permissions | perms, reason=reason)
+            return role, "permissions set"
+        return role, "exists"
     except discord.Forbidden:
-        return None
+        return role, "failed: the bot's role must be above it in Server Settings > Roles and have these permissions"
+    except discord.HTTPException as e:
+        return role, f"failed: {e}"
+
+
+async def find_or_create_role(guild: discord.Guild, name: str) -> discord.Role | None:
+    return (await ensure_role(guild, name))[0]
 
 
 async def create_setup_channel(guild: discord.Guild, ch: dict, category, overwrites: dict, reason: str):
@@ -461,36 +486,28 @@ async def setup_roles(interaction: discord.Interaction):
     existed = []
     failed  = []
 
-    for name, cfg in ROLE_CONFIG.items():
-        existing = discord.utils.get(guild.roles, name=name)
-        if existing:
-            existed.append(name)
-            continue
-        try:
-            await guild.create_role(
-                name=name,
-                color=discord.Color(cfg["color"]),
-                hoist=cfg["hoist"],
-                mentionable=False,
-                reason=f"Setup by {interaction.user}",
-            )
-            created.append(name)
-        except discord.Forbidden:
-            failed.append(name)
+    updated = []
+    for name in ROLE_CONFIG:
+        _, what = await ensure_role(guild, name, f"Setup by {interaction.user}")
+        {"created": created, "permissions set": updated, "exists": existed}.get(what, failed).append(name)
 
     embed = discord.Embed(title="Role Setup", color=0x60FF90)
     if created:
         embed.add_field(name="Created", value=", ".join(f"**{r}**" for r in created), inline=False)
+    if updated:
+        embed.add_field(name="Permissions set", value=", ".join(f"**{r}**" for r in updated), inline=False)
     if existed:
         embed.add_field(name="Already exist", value=", ".join(f"**{r}**" for r in existed), inline=False)
     if failed:
-        embed.add_field(name="Failed (missing perms)", value=", ".join(f"**{r}**" for r in failed), inline=False)
+        embed.add_field(name="Failed (the bot's role must be above them, with their permissions)",
+                        value=", ".join(f"**{r}**" for r in failed), inline=False)
 
     desc_lines = [
         "**Role hierarchy (drag in Server Settings > Roles):**",
         "",
         "```",
-        "  Staff      — admin / moderator",
+        "  (the bot)  — above Staff, or it can not manage it",
+        "  Staff      — moderator + the bot's support commands",
         "  Nightly    — nightly plan users",
         "  Beta       — beta plan users",
         "  Specter    — specter plan users",
@@ -613,8 +630,11 @@ async def setup_channels(interaction: discord.Interaction):
     role_name=[app_commands.Choice(name=r, value=r) for r in ROLE_CONFIG],
 )
 async def give_role(interaction: discord.Interaction, user: discord.Member, role_name: str):
-    if not is_admin(interaction):
+    if not is_staff(interaction):
         await interaction.response.send_message("No permission.", ephemeral=True)
+        return
+    if role_name == "Staff" and not is_admin(interaction):
+        await interaction.response.send_message("Only the owner / admins can change who is Staff.", ephemeral=True)
         return
 
     await interaction.response.defer(ephemeral=True)
@@ -641,8 +661,11 @@ async def give_role(interaction: discord.Interaction, user: discord.Member, role
     role_name=[app_commands.Choice(name=r, value=r) for r in ROLE_CONFIG],
 )
 async def remove_role(interaction: discord.Interaction, user: discord.Member, role_name: str):
-    if not is_admin(interaction):
+    if not is_staff(interaction):
         await interaction.response.send_message("No permission.", ephemeral=True)
+        return
+    if role_name == "Staff" and not is_admin(interaction):
+        await interaction.response.send_message("Only the owner / admins can change who is Staff.", ephemeral=True)
         return
 
     await interaction.response.defer(ephemeral=True)
@@ -769,7 +792,7 @@ async def key_revoke(interaction: discord.Interaction, key: str, user: discord.M
 @tree.command(name="key_reset_hwid", description="Reset HWID lock on a key")
 @app_commands.describe(key="The license key to reset HWID for")
 async def key_reset_hwid(interaction: discord.Interaction, key: str):
-    if not is_admin(interaction):
+    if not is_staff(interaction):
         await interaction.response.send_message("No permission.", ephemeral=True)
         return
 
@@ -797,7 +820,7 @@ async def key_reset_hwid(interaction: discord.Interaction, key: str):
     plan=[app_commands.Choice(name=p, value=p) for p in VALID_PLANS],
 )
 async def key_list(interaction: discord.Interaction, plan: str = ""):
-    if not is_admin(interaction):
+    if not is_staff(interaction):
         await interaction.response.send_message("No permission.", ephemeral=True)
         return
 
@@ -819,6 +842,8 @@ async def key_list(interaction: discord.Interaction, plan: str = ""):
         await interaction.followup.send("No keys found.", ephemeral=True)
         return
 
+    admin = is_admin(interaction)
+
     chunks = []
     current = ""
     for k in keys:
@@ -831,7 +856,8 @@ async def key_list(interaction: discord.Interaction, plan: str = ""):
         else:
             status = "UNUSED"
 
-        line = f"`{k['key']}` | **{k['plan']}** | {status}"
+        key = k["key"] if admin else k["key"][:6] + "…"        # Staff sees which keys exist, not the keys
+        line = f"`{key}` | **{k['plan']}** | {status}"
         if k.get("note"):
             line += f" | {k['note']}"
         line += "\n"
@@ -859,7 +885,7 @@ async def key_list(interaction: discord.Interaction, plan: str = ""):
 @tree.command(name="key_info", description="Show details for a specific key")
 @app_commands.describe(key="The license key to look up")
 async def key_info(interaction: discord.Interaction, key: str):
-    if not is_admin(interaction):
+    if not is_staff(interaction):
         await interaction.response.send_message("No permission.", ephemeral=True)
         return
 
@@ -1370,7 +1396,7 @@ async def release_loop():
 @tree.command(name="release_check", description="Post new versions of the scripts (dev build, cloud) in the staff channel now")
 @app_commands.describe(force="Post the current versions even if they are there already")
 async def release_check(interaction: discord.Interaction, force: bool = False):
-    if not is_admin(interaction):
+    if not is_staff(interaction):
         await interaction.response.send_message("No permission.", ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True)
@@ -1499,9 +1525,9 @@ async def close_ticket(interaction: discord.Interaction):
         await interaction.response.send_message("This is not a ticket channel.", ephemeral=True)
         return
 
-    is_staff = is_admin(interaction) or discord.utils.get(interaction.user.roles, name="Staff")
+    staff = is_staff(interaction)
     is_owner = channel.name == f"ticket-{interaction.user.name.lower().replace(' ', '-')[:20]}"
-    if not is_staff and not is_owner:
+    if not staff and not is_owner:
         await interaction.response.send_message("Only staff or the ticket owner can close this.", ephemeral=True)
         return
 
@@ -1676,22 +1702,11 @@ async def setup_server(interaction: discord.Interaction):
     guild = interaction.guild
     log_lines = []
 
-    # 1. Create roles
-    for name, cfg in ROLE_CONFIG.items():
-        existing = discord.utils.get(guild.roles, name=name)
-        if existing:
-            continue
-        try:
-            await guild.create_role(
-                name=name,
-                color=discord.Color(cfg["color"]),
-                hoist=cfg["hoist"],
-                mentionable=False,
-                reason=f"Server setup by {interaction.user}",
-            )
-            log_lines.append(f"✅ Role **{name}** created")
-        except discord.Forbidden:
-            log_lines.append(f"❌ Role **{name}** failed")
+    # 1. Create roles (an existing Staff role gets its permissions)
+    for name in ROLE_CONFIG:
+        _, what = await ensure_role(guild, name, f"Server setup by {interaction.user}")
+        if what != "exists":
+            log_lines.append(f"{'❌' if what.startswith('failed') else '✅'} Role **{name}** {what}")
 
     member_role   = await find_or_create_role(guild, "Member")
     customer_role = await find_or_create_role(guild, "Customer")
