@@ -5633,12 +5633,16 @@ LPH_NO_VIRTUALIZE(function ()
                 :record("manuals", "freestanding")
                 :save()
 
+            -- "Body freestanding": the yaw keeps its jitter, the body (head) goes to the side the wall covers. "Jitter
+            -- disabled" does that too and also stops the jitter
             config.antiaimbot.manual_options = menu.new_item(ui.new_multiselect, "AA", "Anti-aimbot angles", "•  Manual options", {
                 "Jitter disabled",
+                "Body freestanding",
             }):record("antiaimbot", "manual_options"):save()
 
             config.antiaimbot.fs_options = menu.new_item(ui.new_multiselect, "AA", "Anti-aimbot angles", "•  Freestand options", {
                 "Jitter disabled",
+                "Body freestanding",
             }):record("antiaimbot", "fs_options"):save()
 
             -- roll anti-aim on a key (servers that clamp roll make it do nothing)
@@ -6017,21 +6021,26 @@ LPH_NO_VIRTUALIZE(function ()
                             antiaimbot.features.state.freestanding = instance.freestand
                         end
 
+                        local manual = state ~= -1
                         local fs_detected = instance.freestand and c_table.contains(fs_options, 'Jitter disabled')
+                        local jitter_off = manual and c_table.contains(m_options, 'Jitter disabled') or fs_detected
+                        local body_fs = jitter_off or (manual and c_table.contains(m_options, 'Body freestanding'))
+                            or (instance.freestand and c_table.contains(fs_options, 'Body freestanding'))
 
-                        if state ~= -1 and c_table.contains(m_options, 'Jitter disabled') or fs_detected then
+                        if jitter_off then
                             instance.yaw_modifier = 'Off'
                             instance.modifier_offset = 0
-
-                            if player.fs_side ~= 'none' then
-                                instance.body_yaw_type = 'Static'
-                                instance.body_yaw_value = player.fs_side == 'left' and 1 or -1
-                            end
 
                             if fs_detected then
                                 instance.yaw_type = '180'
                                 instance.yaw_offset = 0
                             end
+                        end
+
+                        -- the body side by the wall instead of the coin flip: the head stays behind cover
+                        if body_fs and player.fs_side ~= 'none' then
+                            instance.body_yaw_type = 'Static'
+                            instance.body_yaw_value = player.fs_side == 'left' and 1 or -1
                         end
 
                         if not (antiaimbot.features.state.manual_antiaim or antiaimbot.features.state.freestanding) then
