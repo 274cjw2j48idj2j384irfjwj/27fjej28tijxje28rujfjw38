@@ -43,6 +43,8 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   (`is_staff`). The Staff role's server permissions are `STAFF_PERMISSIONS` (moderation: messages, timeout, kick, ban,
   nicknames, voice, audit log, threads; no server / roles / channels / admin); `ensure_role` gives them to a new Staff role
   and adds them to an existing one (never removes any), `/setup_roles` / `/setup_server` report it
+  Roles are looked up by name with `guild_role`, which skips managed roles: Discord gives a bot a role named after it, and
+  the bot "Specter" (invited with Administrator) has a role "Specter" = the name of the specter plan role
 - Railway: `Dockerfile` = license server, `Dockerfile.bot` = bot (service variable `RAILWAY_DOCKERFILE_PATH=Dockerfile.bot`)
   A 429 at login (Cloudflare 1015: Discord bans the IP after too many logins, e.g. a crash loop that Railway restarts every
   second) makes the bot wait in the process (5, 10, 20 .. 60 min) instead of exiting; the command sync runs once per start

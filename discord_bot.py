@@ -204,6 +204,12 @@ def is_admin(interaction: discord.Interaction) -> bool:
     return interaction.user.guild_permissions.administrator
 
 
+def guild_role(guild: discord.Guild, name: str) -> discord.Role | None:
+    """A role by name, never a bot's own role: Discord names that after the bot, and the bot "Specter" has a role
+    "Specter" (with Administrator when it was invited so), the same name as the specter plan role."""
+    return discord.utils.find(lambda r: r.name == name and not r.managed, guild.roles)
+
+
 def is_staff(interaction: discord.Interaction) -> bool:
     """The support commands (key info / list / HWID reset, roles except Staff, tickets, version check): admins + Staff."""
     return is_admin(interaction) or discord.utils.get(interaction.user.roles, name="Staff") is not None
@@ -307,7 +313,7 @@ async def ensure_role(guild: discord.Guild, name: str, reason: str = "Auto-creat
     gets the permissions of its config added (never taken away: what the owner gave it stays)."""
     cfg = ROLE_CONFIG.get(name, {"color": 0x808080, "hoist": False})
     perms = cfg.get("permissions")
-    role = discord.utils.get(guild.roles, name=name)
+    role = guild_role(guild, name)
     try:
         if role is None:
             kw = {"permissions": perms} if perms is not None else {}
@@ -363,7 +369,7 @@ class TicketCreateView(discord.ui.View):
                 f"You already have an open ticket: {existing.mention}", ephemeral=True)
             return
 
-        staff_role = discord.utils.get(guild.roles, name="Staff")
+        staff_role = guild_role(guild, "Staff")
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
             member: discord.PermissionOverwrite(
@@ -669,7 +675,7 @@ async def remove_role(interaction: discord.Interaction, user: discord.Member, ro
         return
 
     await interaction.response.defer(ephemeral=True)
-    role = discord.utils.get(interaction.guild.roles, name=role_name)
+    role = guild_role(interaction.guild, role_name)
     if not role:
         await interaction.followup.send(f"Role '{role_name}' not found.", ephemeral=True)
         return
@@ -766,7 +772,7 @@ async def key_revoke(interaction: discord.Interaction, key: str, user: discord.M
         if user:
             removed_roles = []
             for rname in list(PLAN_TO_ROLE.values()) + ["Customer"]:
-                role = discord.utils.get(interaction.guild.roles, name=rname)
+                role = guild_role(interaction.guild, rname)
                 if role and role in user.roles:
                     try:
                         await user.remove_roles(role, reason=f"Key revoked by {interaction.user}")
@@ -1247,7 +1253,8 @@ def release_channel(guild: discord.Guild) -> discord.TextChannel | None:
 
 def non_staff_readers(ch: discord.TextChannel) -> list[str]:
     """Which of @everyone and the member / customer / plan roles can read the channel (empty = staff only)."""
-    roles = [(ch.guild.default_role, "@everyone")] + [(r, r.name) for r in ch.guild.roles if r.name in RELEASE_ROLES]
+    roles = [(ch.guild.default_role, "@everyone")] + [(r, r.name) for r in ch.guild.roles
+                                                    if r.name in RELEASE_ROLES and not r.managed]
     return [name + (" (has Administrator)" if r.permissions.administrator else "")
             for r, name in roles if ch.permissions_for(r).view_channel]
 
