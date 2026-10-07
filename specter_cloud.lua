@@ -65,7 +65,7 @@ local TIER = {
 -- ══ CONTENTS ══════════════════════════════════════════════════════════════════════════════════════════
 -- Search for the marker in quotes to jump to a part.
 --   "--- Dependencies"            gamesense libraries (pui, csgo_weapons, vector, ...)
---   "--- Modules"                 resolver ("[resolver:begin]"), enhanced AA, enhanced fake lag
+--   "--- Modules"                 resolver ("[resolver:begin]"), aa_noise (the noise of the presets)
 --   "--- Constant section"        presets, state lists
 --   "--- UI library"              menu helpers (mui: headers, rows, hints)
 --   "--- Reference"               gamesense menu references (rage, AA, misc)
@@ -859,7 +859,7 @@ LPH_NO_VIRTUALIZE(function ()
     ---
     --- Modules
     ---
-    local resolver, enhanced_aa, enhanced_fakelag do
+    local resolver, aa_noise do
         resolver = {} do
         if not TIER.HAS_RESOLVER then
             resolver.database, resolver.memory, resolver.shots, resolver.forced = {}, {}, {}, {}
@@ -2104,23 +2104,23 @@ LPH_NO_VIRTUALIZE(function ()
         end
         end -- TIER.HAS_RESOLVER else
 
-        enhanced_aa = {} do
-            enhanced_aa.hit_data = {
-                dangerous_angles = {},
-                last_hit_time = 0,
-                chaos_seed = 0.5
-            }
-
-            enhanced_aa.chaos_rng = function()
-                local r = 3.9999
-                enhanced_aa.hit_data.chaos_seed = r * enhanced_aa.hit_data.chaos_seed * (1 - enhanced_aa.hit_data.chaos_seed)
-                if enhanced_aa.hit_data.chaos_seed < 0.001 or enhanced_aa.hit_data.chaos_seed > 0.999 then
-                    enhanced_aa.hit_data.chaos_seed = (globals_curtime() % 1) * 0.8 + 0.1
+        -- The noise the presets mix into their jitter (micro jitter, delays, limits, sway). Deterministic noise per tick,
+        -- not a security feature: what an enemy cannot learn is the body side (antiaimbot.body_side, a coin flip per packet).
+        -- It was part of "Enhanced AA" (removed Oct 2026: its yaw formulas "Figure-8" / "Quantum" / "Chaos Theory" ... did not
+        -- lower the red team's hit rate (0.47-0.50 against 0.48 without, Smooth Sine 0.57 in the air), the rest doubled the
+        -- anti brute-force / defensive triggers / edge yaw, and the default config had it on)
+        aa_noise = {} do
+            local chaos_seed = 0.5
+            -- logistic map (r ~ 4): chaotic, reseeded from the clock when it sticks to an edge
+            aa_noise.chaos_rng = function()
+                chaos_seed = 3.9999 * chaos_seed * (1 - chaos_seed)
+                if chaos_seed < 0.001 or chaos_seed > 0.999 then
+                    chaos_seed = (globals_curtime() % 1) * 0.8 + 0.1
                 end
-                return enhanced_aa.hit_data.chaos_seed
+                return chaos_seed
             end
 
-            enhanced_aa.perlin_noise = function(x)
+            local function perlin_noise(x)
                 local i = math_floor(x)
                 local f = x - i
                 local u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0)
@@ -2131,13 +2131,10 @@ LPH_NO_VIRTUALIZE(function ()
                 return a * (1.0 - u) + b * u
             end
 
-            enhanced_aa.fractal_noise = function(x, octaves, persistence)
-                octaves = octaves or 3
-                persistence = persistence or 0.5
-                local total, amplitude, max_val = 0, 1.0, 0
-                local frequency = 1.0
+            aa_noise.fractal_noise = function(x, octaves, persistence)
+                local total, amplitude, max_val, frequency = 0, 1.0, 0, 1.0
                 for _ = 1, octaves do
-                    total = total + enhanced_aa.perlin_noise(x * frequency) * amplitude
+                    total = total + perlin_noise(x * frequency) * amplitude
                     max_val = max_val + amplitude
                     amplitude = amplitude * persistence
                     frequency = frequency * 2.0
@@ -2145,293 +2142,11 @@ LPH_NO_VIRTUALIZE(function ()
                 return total / max_val
             end
 
-            enhanced_aa.primes = {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97}
-            enhanced_aa.prime_index = 1
-
-            enhanced_aa.get_prime_offset = function()
-                enhanced_aa.prime_index = (enhanced_aa.prime_index % #enhanced_aa.primes) + 1
-                return enhanced_aa.primes[enhanced_aa.prime_index]
-            end
-
-            enhanced_aa.golden_ratio = (math.sqrt(5) - 1) / 2
-            enhanced_aa.golden_counter = 0
-
-            enhanced_aa.golden_rng = function()
-                enhanced_aa.golden_counter = enhanced_aa.golden_counter + 1
-                local val = (enhanced_aa.golden_counter * enhanced_aa.golden_ratio) % 1.0
-                return val
-            end
-
-            enhanced_aa.jitter_patterns = {
-                ["Smooth Sine"] = function()
-                    local time = globals_tickcount() * globals_tickinterval()
-                    local base = math.sin(time * 2.7) * 50 + math.sin(time * 4.3) * 18
-                    return base
-                end,
-
-                ["Aggressive"] = function()
-                    local tick = globals_tickcount()
-                    local base = math.sin(tick * 0.2) * 58
-                    local noise = enhanced_aa.perlin_noise(tick * 0.05) * 20
-                    return base + noise
-                end,
-
-                ["Adaptive"] = function()
-                    local tick = globals_tickcount()
-                    local base = math.sin(tick * 0.15) * 30
-                    if #enhanced_aa.hit_data.dangerous_angles > 0 and (globals_curtime() - enhanced_aa.hit_data.last_hit_time) < 2 then
-                        base = enhanced_aa.get_safe_angle(base)
-                    end
-                    return base + (enhanced_aa.chaos_rng() - 0.5) * 15
-                end,
-
-                ["Quantum"] = function()
-                    local tick = globals_tickcount()
-                    local state = tick % 5
-                    if state == 0 then
-                        return client_random_int(-89, 89)
-                    elseif state < 3 then
-                        return (enhanced_aa.golden_rng() - 0.5) * 120
-                    else
-                        return 0
-                    end
-                end,
-
-                ["Spiral"] = function()
-                    local tick = globals_tickcount()
-                    local radius = 30 + math.sin(tick * 0.04) * 35
-                    local angle_speed = 0.08 + enhanced_aa.perlin_noise(tick * 0.01) * 0.04
-                    return math.sin(tick * angle_speed) * radius
-                end,
-
-                ["Chaos Theory"] = function()
-                    local c1 = (enhanced_aa.chaos_rng() - 0.5) * 80
-                    local c2 = (enhanced_aa.golden_rng() - 0.5) * 40
-                    return c1 + c2
-                end,
-
-                ["Burst Jitter"] = function()
-                    local tick = globals_tickcount()
-                    local prime = enhanced_aa.primes[(tick % #enhanced_aa.primes) + 1]
-                    if tick % prime == 0 then
-                        return client_random_int(-89, 89)
-                    end
-                    return enhanced_aa.fractal_noise(tick * 0.1, 2, 0.6) * 40
-                end,
-
-                ["Figure-8"] = function()
-                    local tick = globals_tickcount()
-                    local a, b, delta = 3, 2, math.pi / 2
-                    local t = tick * 0.08
-                    local x = math.sin(a * t + delta) * 55
-                    local y = math.sin(b * t) * 35
-                    return x + y
-                end,
-
-                ["Peek Jitter"] = function()
-                    local tick = globals_tickcount()
-                    local side = (math_floor(tick / 2) % 2 == 0) and 1 or -1
-                    local base = side * (58 + client_random_int(0, 15))
-                    return base + (enhanced_aa.chaos_rng() - 0.5) * 8
-                end,
-
-                ["Duck Weave"] = function()
-                    local tick = globals_tickcount()
-                    local time = tick * globals_tickinterval()
-                    local base = math.sin(time * 1.8) * 70
-                    local wobble = enhanced_aa.perlin_noise(time * 3.0) * 25
-                    return base + wobble
-                end,
-
-                ["Anti-Aim Matrix"] = function()
-                    local tick = globals_tickcount()
-                    local chaos = (enhanced_aa.chaos_rng() - 0.5) * 60
-                    local golden = (enhanced_aa.golden_rng() - 0.5) * 50
-                    local sine = math.sin(tick * 0.17) * 30
-                    local prime_kick = 0
-                    if tick % enhanced_aa.primes[(tick % 10) + 1] == 0 then
-                        prime_kick = client_random_int(-89, 89)
-                    end
-                    return chaos + golden + sine * 0.3 + prime_kick * 0.5
-                end
-            }
-
-            enhanced_aa.defensive_active = false
-            enhanced_aa.defensive_tick = 0
-            enhanced_aa.defensive_window = 16
-            enhanced_aa.defensive_threat_cache = 0
-
-            enhanced_aa.run_defensive = function(cmd, me, wpn)
-                if not (config.enhanced_aa and config.enhanced_aa.anti_exploit and config.enhanced_aa.anti_exploit:get()) then return end
-
-                local tick = globals_tickcount()
-
-                local threat = client.current_threat()
-                local has_threat = threat and entity.is_alive(threat)
-
-                local velocity_mod = player.velocity_modifier or 1.0
-                local took_damage = velocity_mod < 1.0
-
-                local doubletap_active = c_table.is_hotkey_active(reference.ragebot.doubletap.enable)
-                local onshot_active = c_table.is_hotkey_active(reference.misc.onshot_antiaim)
-                local exploit_active = doubletap_active or onshot_active
-
-                local should_activate = false
-                local animlayers = ffi_helpers.animlayers:get(me)
-                if animlayers and ffi_helpers.activity.location then
-                    local weapon_activity = ffi_helpers.activity:get(animlayers[1]['sequence'], me)
-                    local body_weight = animlayers[3] and animlayers[3]['weight'] or 0
-                    local is_reloading = animlayers[1]['weight'] ~= 0.0 and weapon_activity == 967
-
-                    if took_damage or (is_reloading and has_threat) or (body_weight > 0.5 and has_threat and exploit_active) then
-                        should_activate = true
-                    end
-                else
-                    local is_reloading = (entity_get_prop(me, 'm_flNextAttack') or 0) > globals_curtime() + 0.1
-                    if took_damage or (is_reloading and has_threat) then should_activate = true end
-                end
-
-                if has_threat and player.peeking then
-                    should_activate = true
-                end
-
-                if should_activate then
-                    enhanced_aa.defensive_active = true
-                    enhanced_aa.defensive_tick = tick
-                    enhanced_aa.defensive_threat_cache = threat or 0
-                end
-
-                if enhanced_aa.defensive_active and tick - enhanced_aa.defensive_tick < enhanced_aa.defensive_window then
-                    if exploit_active then
-                        cmd.force_defensive = 1
-                    end
-                    return
-                end
-                enhanced_aa.defensive_active = false
-            end
-
-            enhanced_aa.last_flick_tick = 0
-            enhanced_aa.flick_active = false
-            enhanced_aa.flick_stage = 0
-
-            enhanced_aa.run_fake_flick = function(cmd)
-                if not config.enhanced_aa.fake_flick:get() then return end
-
-                local tick = globals_tickcount()
-                local interval = config.enhanced_aa.flick_interval:get()
-
-                local offset = math_floor(enhanced_aa.golden_rng() * 7)
-                local random_interval = interval + offset
-
-                if tick - enhanced_aa.last_flick_tick > random_interval then
-                    enhanced_aa.flick_active = true
-                    enhanced_aa.flick_stage = 0
-                    enhanced_aa.last_flick_tick = tick
-                end
-
-                if enhanced_aa.flick_active then
-                    local mode = config.enhanced_aa.flick_mode:get()
-                    local flick_angle = 0
-
-                    if mode == "Random Snap" then
-                        flick_angle = client_random_int(-180, 180)
-                    elseif mode == "Inverter Snap" then
-                        flick_angle = enhanced_aa.flick_stage == 0 and 180 or client_random_int(90, 150)
-                    elseif mode == "L-Shape" then
-                        local dirs = {90, -90, 135, -135}
-                        flick_angle = dirs[client_random_int(1, #dirs)]
-                    end
-
-                    cmd.yaw = c_math.normalize_yaw(cmd.yaw + flick_angle)
-
-                    enhanced_aa.flick_stage = enhanced_aa.flick_stage + 1
-                    if enhanced_aa.flick_stage >= 2 then
-                        enhanced_aa.flick_active = false
-                    end
-                end
-            end
-
-            enhanced_aa.learn_from_hit = function(angle)
-                local current_time = globals_curtime()
-                enhanced_aa.hit_data.last_hit_time = current_time
-
-                table_insert(enhanced_aa.hit_data.dangerous_angles, {
-                    angle = angle,
-                    time = current_time,
-                    weight = 1.0
-                })
-
-                enhanced_aa.hit_data.chaos_seed = (current_time % 1) * 0.7 + 0.15
-
-                for i = #enhanced_aa.hit_data.dangerous_angles, 1, -1 do
-                    local entry = enhanced_aa.hit_data.dangerous_angles[i]
-                    local age = current_time - entry.time
-                    if age > 15 then
-                        table_remove(enhanced_aa.hit_data.dangerous_angles, i)
-                    else
-                        entry.weight = math.exp(-age * 0.2)
-                    end
-                end
-            end
-
-            enhanced_aa.get_safe_angle = function(base_angle)
-                local list = enhanced_aa.hit_data.dangerous_angles
-                if #list == 0 then return base_angle end
-                local threat = client.current_threat()
-                local me = entity_get_local_player()
-                if not threat or not me then return base_angle end
-                local mx, my = entity.get_origin(me)
-                local tx, ty = entity.get_origin(threat)
-                if not mx or not tx then return base_angle end
-                local to_threat = math.deg(math.atan2(ty - my, tx - mx))
-                local now = globals_curtime()
-
-                local function danger(offset)
-                    local d = 0
-                    for _, data in ipairs(list) do
-                        local age = now - data.time
-                        if age < 15 then
-                            local diff = c_math.abs(c_math.normalize_yaw(offset - data.angle))
-                            if diff < 30 then d = d + (30 - diff) * math.exp(-age * 0.2) end
-                        end
-                    end
-                    return d
-                end
-
-                local current = c_math.normalize_yaw(base_angle - to_threat)
-                if danger(current) == 0 then return base_angle end
-                local best, best_d = current, danger(current)
-                for shift = -60, 60, 15 do
-                    local cand = c_math.normalize_yaw(current + shift)
-                    local d = danger(cand) + c_math.abs(shift) * 0.05
-                    if d < best_d then best, best_d = cand, d end
-                end
-                return c_math.normalize_yaw(to_threat + best)
-            end
-
-        end
-
-        enhanced_fakelag = {} do
-            enhanced_fakelag.get_limit = function(me)
-                local velocity = vector(entity_get_prop(me, "m_vecVelocity"))
-                local speed = velocity:length()
-                local flags = entity_get_prop(me, "m_fFlags") or 0
-                local on_ground = bit.band(flags, 1) == 1
-                local ducking = bit.band(flags, 2) == 2
-
-                if not on_ground then
-                    return 6
-                elseif ducking then
-                    return 14
-                elseif speed < 5 then
-                    return 14
-                elseif speed < 80 then
-                    return 12
-                elseif speed < 170 then
-                    return 9
-                else
-                    return 5
-                end
+            local primes = {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97}
+            local prime_index = 1
+            aa_noise.get_prime_offset = function()
+                prime_index = (prime_index % #primes) + 1
+                return primes[prime_index]
             end
         end
     end
@@ -5819,33 +5534,6 @@ LPH_NO_VIRTUALIZE(function ()
                 :record("antiaimbot", "freestanding_disabler_states")
                 :save()
 
-            config.antiaimbot.hdr_enhanced = mui.header(mui.CONTENT, "⟳", "Enhanced AA")
-            config.enhanced_aa = {} do
-                config.enhanced_aa.label = menu.new_item(ui.new_label, "AA", "Anti-aimbot angles", "\aB4A0FFFF⟳ \aE6E6E6FFEnhanced anti-aim")
-                    :config_ignore()
-                config.enhanced_aa.enabled = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Enable Enhanced AA Logic")
-                    :record("enhanced_aa", "enabled"):save()
-                config.enhanced_aa.adaptive = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Adaptive Learning AA")
-                    :record("enhanced_aa", "adaptive"):save()
-                config.enhanced_aa.edge = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "360° Edge Detection")
-                    :record("enhanced_aa", "edge"):save()
-                config.enhanced_aa.jitter_type = menu.new_item(ui.new_combobox, "AA", "Anti-aimbot angles", "Enhanced Jitter Type", {"Off", "Smooth Sine", "Aggressive", "Adaptive", "Quantum", "Spiral", "Chaos Theory", "Burst Jitter", "Figure-8", "Peek Jitter", "Duck Weave", "Anti-Aim Matrix"})
-                    :record("enhanced_aa", "jitter_type"):save()
-            config.enhanced_aa.custom_lean = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Custom Lean")
-                :record("enhanced_aa", "custom_lean"):save()
-            config.enhanced_aa.lean_amount = menu.new_item(ui.new_slider, "AA", "Anti-aimbot angles", "Lean Amount", -100, 100, 0, true, "%")
-                :record("enhanced_aa", "lean_amount"):save()
-
-                config.enhanced_aa.anti_exploit = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Anti-Exploit (Defensive AA)")
-                    :record("enhanced_aa", "anti_exploit"):save()
-
-                config.enhanced_aa.fake_flick = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Fake Flick (Yaw Snapping)")
-                    :record("enhanced_aa", "fake_flick"):save()
-                config.enhanced_aa.flick_mode = menu.new_item(ui.new_combobox, "AA", "Anti-aimbot angles", "Flick Mode", {"Random Snap", "Inverter Snap", "L-Shape"})
-                    :record("enhanced_aa", "flick_mode"):save()
-                config.enhanced_aa.flick_interval = menu.new_item(ui.new_slider, "AA", "Anti-aimbot angles", "Flick Interval", 1, 64, 16, true, "t")
-                    :record("enhanced_aa", "flick_interval"):save()
-            end
         end
 
         do
@@ -5943,13 +5631,7 @@ LPH_NO_VIRTUALIZE(function ()
                         local yaw_modifier = self.yaw_modifier or 'Off'
                         local modifier_offset = self.modifier_offset or 0
                         local valid_modifiers = { Off = true, Offset = true, Center = true, Random = true, Skitter = true }
-                        if not valid_modifiers[yaw_modifier] then
-                            yaw_modifier = ({
-                                ["Chaos Theory"] = "Random", ["Quantum"] = "Center", ["Burst Jitter"] = "Offset",
-                                ["Spiral"] = "Skitter", ["Smooth Sine"] = "Center", ["Anti-Aim Matrix"] = "Skitter",
-                                ["Duck Weave"] = "Center", ["Peek Jitter"] = "Offset",
-                            })[yaw_modifier] or "Center"
-                        end
+                        if not valid_modifiers[yaw_modifier] then yaw_modifier = "Center" end
 
                         override.set(reference.antiaim.yaw.jitter.type, yaw_modifier)
                         override.set(reference.antiaim.yaw.jitter.value, modifier_offset)
@@ -6844,7 +6526,7 @@ LPH_NO_VIRTUALIZE(function ()
                             local t = dtick * (this.yaw_speed or 8) * 0.02
                             yaw = l + (r - l) * (0.5 + 0.5 * math.sin(t))
                         elseif yaw_mode == 'Distortion' then
-                            local n = c_math.clamp((enhanced_aa.fractal_noise(dtick * (this.yaw_speed or 8) * 0.01, 3, 0.55) - 0.5) * 2.1 + 0.5, 0, 1)
+                            local n = c_math.clamp((aa_noise.fractal_noise(dtick * (this.yaw_speed or 8) * 0.01, 3, 0.55) - 0.5) * 2.1 + 0.5, 0, 1)
                             yaw = l + (r - l) * n
                             if client.random_int(1, 10) == 1 then yaw = (n > 0.5) and l or r end
                         else
@@ -7057,7 +6739,6 @@ LPH_NO_VIRTUALIZE(function ()
                         if st.freestanding then act[#act + 1] = "freestanding" end
                         local dbg = antiaimbot.main and antiaimbot.main.debug or {}
                         if dbg.avoid_backstab then act[#act + 1] = "avoid backstab" end
-                        if config.enhanced_aa and config.enhanced_aa.enabled:get() then act[#act + 1] = "enhanced AA" end
                         local line_b = "running: " .. (#act > 0 and table.concat(act, ", ") or (config.antiaimbot.preset:get() or "preset"))
                         renderer.text(x0, y0 - 28, 230, 230, 240, 255, "c", 0, line_a)
                         renderer.text(x0, y0 - 14, 255, 200, 120, 255, "c", 0, line_b)
@@ -7106,7 +6787,7 @@ LPH_NO_VIRTUALIZE(function ()
                         add = cj.dir * v / 2
                     elseif mode == "Distortion" then
                         -- smooth wandering angle with no fixed period, plus rare 2-packet snaps to the far side
-                        local n = c_math.clamp((enhanced_aa.fractal_noise(p * 0.27, 3, 0.55) - 0.5) * 4.2, -1, 1)
+                        local n = c_math.clamp((aa_noise.fractal_noise(p * 0.27, 3, 0.55) - 0.5) * 4.2, -1, 1)
                         add = n * v
                         if advanced and not (cj.snap and p <= cj.snap) and client.random_int(1, 14) == 1 then
                             cj.snap, cj.snap_dir = p + 2, add > 0 and -1 or 1
@@ -7152,7 +6833,7 @@ LPH_NO_VIRTUALIZE(function ()
                             local left_offset = type(data.left_offset) == 'table' and client.random_int(data.left_offset[1], data.left_offset[2]) or data.left_offset
                             local right_offset = type(data.right_offset) == 'table' and client.random_int(data.right_offset[1], data.right_offset[2]) or data.right_offset
 
-                            local micro_jitter = (enhanced_aa.chaos_rng() - 0.5) * 8
+                            local micro_jitter = (aa_noise.chaos_rng() - 0.5) * 8
                             left_offset = left_offset + micro_jitter
                             right_offset = right_offset - micro_jitter
 
@@ -7165,10 +6846,10 @@ LPH_NO_VIRTUALIZE(function ()
                                 if kicked or player.packets - antiaim_state.last_packets >= antiaim_state.delay then
                                     if logic == "Random" then
                                         local base_delay = client.random_int(c_math.min(data.yaw_delay, data.yaw_delay_second), c_math.max(data.yaw_delay, data.yaw_delay_second))
-                                        local prime_mod = enhanced_aa.get_prime_offset() % 5
+                                        local prime_mod = aa_noise.get_prime_offset() % 5
                                         antiaim_state.delay = base_delay + prime_mod
 
-                                        if enhanced_aa.chaos_rng() > 0.15 then
+                                        if aa_noise.chaos_rng() > 0.15 then
                                             antiaim_state.switch = not antiaim_state.switch
                                         end
                                     elseif logic == "Sequence" and data.yaw_sequence then
@@ -7223,10 +6904,10 @@ LPH_NO_VIRTUALIZE(function ()
                             base_random = client.random_int(modifier_offset+yaw_modifier_randomize, modifier_offset-yaw_modifier_randomize)
                         end
 
-                        local chaos_offset = (enhanced_aa.chaos_rng() - 0.5) * c_math.abs(yaw_modifier_randomize) * 0.5
+                        local chaos_offset = (aa_noise.chaos_rng() - 0.5) * c_math.abs(yaw_modifier_randomize) * 0.5
 
                         local tick = globals_tickcount()
-                        local tick_variance = (tick % enhanced_aa.get_prime_offset()) * (yaw_modifier_randomize > 0 and 1 or -1)
+                        local tick_variance = (tick % aa_noise.get_prime_offset()) * (yaw_modifier_randomize > 0 and 1 or -1)
 
                         modifier_offset = base_random + chaos_offset + tick_variance
                     end
@@ -7246,7 +6927,7 @@ LPH_NO_VIRTUALIZE(function ()
                     local right_limit = data.right_limit or 58
 
                     local tick = globals_tickcount()
-                    local limit_variance = (tick % 7) * (enhanced_aa.chaos_rng() > 0.5 and 1 or -1)
+                    local limit_variance = (tick % 7) * (aa_noise.chaos_rng() > 0.5 and 1 or -1)
                     left_limit = c_math.clamp(left_limit + limit_variance, 30, 60)
                     right_limit = c_math.clamp(right_limit + limit_variance, 30, 60)
 
@@ -7724,49 +7405,7 @@ LPH_NO_VIRTUALIZE(function ()
                         if instance.body_yaw_value then instance.body_yaw_value = -instance.body_yaw_value end
                     end
 
-                    -- Enhanced AA works on the preset's yaw offset (through gamesense's anti-aim). It used to write cmd.yaw
-                    -- every tick (edge yaw, the "safe angle" after hits, the jitter patterns), which replaced the 180 at targets
-                    -- of the preset: after a few hits the model looked wherever that angle was, in every state
-                    if config.enhanced_aa.enabled:get() and not antiaimbot.features.running then
-                        local at_targets = (instance.yaw_base or 'At targets') == 'At targets' and (instance.yaw_type or '180') == '180'
-                        if config.enhanced_aa.edge:get() and player.state == "Standing" then
-                            instance.edge_yaw = true
-                        end
-                        if at_targets then
-                            local offset = instance.yaw_offset or 0
-                            if config.enhanced_aa.adaptive:get() then
-                                -- the safe angle is absolute: back to an offset from 180 at the threat
-                                local threat = client.current_threat()
-                                local mx, my = entity.get_origin(me)
-                                local tx, ty
-                                if threat then tx, ty = entity.get_origin(threat) end
-                                if mx and my and tx and ty then
-                                    local back = math.deg(math.atan2(ty - my, tx - mx)) + 180
-                                    local safe = enhanced_aa.get_safe_angle(back + offset)
-                                    offset = c_math.normalize_yaw(safe - back)
-                                end
-                            end
-                            local jitter_fn = enhanced_aa.jitter_patterns[config.enhanced_aa.jitter_type:get()]
-                            local jitter = jitter_fn and jitter_fn() or 0
-                            instance.yaw_offset = math_floor(c_math.normalize_yaw(offset + jitter) + 0.5)
-                        end
-                    end
-
                     instance:run()
-
-                    if config.enhanced_aa.enabled:get() then
-                        enhanced_aa.run_fake_flick(cmd)
-                        enhanced_aa.run_defensive(cmd, me, wpn)
-                    end
-
-                    local custom_fl = config.fakelag.enable and config.fakelag.enable:get()
-                    if config.enhanced_aa.enabled:get() and not custom_fl then
-                        override.set(reference.fakelag.limit, enhanced_fakelag.get_limit(me))
-                        antiaimbot.main.efl_active = true
-                    elseif antiaimbot.main.efl_active then
-                        antiaimbot.main.efl_active = false
-                        if not custom_fl then override.unset(reference.fakelag.limit) end
-                    end
 
                     antiaimbot.main.multipoint(wpn)
                 end
@@ -7778,10 +7417,6 @@ LPH_NO_VIRTUALIZE(function ()
                     pcall(instance.reset, instance)
                     pcall(override.unset, reference.antiaim.master)      -- gamesense's own switch back as it was
                     pcall(antiaimbot.air_exploit.run, false)
-                    if antiaimbot.main.efl_active then
-                        antiaimbot.main.efl_active = false
-                        if not config.fakelag.enable:get() then pcall(override.unset, reference.fakelag.limit) end
-                    end
                     antiaimbot.anti_brute:reset()
                 end
 
@@ -8120,12 +7755,6 @@ LPH_NO_VIRTUALIZE(function ()
                 if me and not ffi_helpers.user_input.location and config.antiaimbot.animation_breaker:get() then
                     self.animation_breaker.post(cmd, me)
                 end
-
-                    if config.enhanced_aa.custom_lean:get() then
-                        local lean_val = config.enhanced_aa.lean_amount:get() / 100
-                        entity.set_prop(me, 'm_flPoseParameter', lean_val, 12)
-                    end
-
 
                 if me == nil then
                     return
@@ -8651,7 +8280,7 @@ LPH_NO_VIRTUALIZE(function ()
                 local function put(item, value)
                     if item then pcall(item.set, item, value) end
                 end
-                local aa, en, fl = config.antiaimbot, config.enhanced_aa or {}, config.fakelag or {}
+                local aa, fl = config.antiaimbot, config.fakelag or {}
 
                 put(aa.options, { "On use antiaim", "Fast ladder", "Dormant preset" })
                 put(aa.defensive_aa, true)
@@ -8667,13 +8296,6 @@ LPH_NO_VIRTUALIZE(function ()
                 put(aa.manual_options, { "Jitter disabled" })
                 put(aa.fs_options, { "Jitter disabled" })
                 put(aa.freestanding_disabler_states, { "Air", "Air & Crouch" })
-
-                put(en.enabled, true)
-                put(en.adaptive, true)
-                put(en.edge, false)
-                put(en.jitter_type, "Off")
-                put(en.anti_exploit, true)
-                put(en.fake_flick, false)
 
                 put(fl.enable, true)
                 put(fl.type, "Randomize")
@@ -13403,19 +13025,6 @@ LPH_NO_VIRTUALIZE(function ()
 
             function miscellaneous:player_hurt(event)
                 self.event_logger.player_hurt(event)
-                local me = entity_get_local_player()
-                local attacker = client.userid_to_entindex(event.attacker)
-                local victim = client.userid_to_entindex(event.userid)
-                if victim == me and attacker ~= me then
-                    local mx, my = entity.get_origin(me)
-                    local ax, ay = entity.get_origin(attacker)
-                    local _, sent_yaw = entity_get_prop(me, "m_angEyeAngles")
-                    if mx and ax and sent_yaw then
-                        local to_attacker = math.deg(math.atan2(ay - my, ax - mx))
-                        enhanced_aa.learn_from_hit(c_math.normalize_yaw(sent_yaw - to_attacker))
-                    end
-
-                end
             end
 
             function miscellaneous:net_update_end()
@@ -14848,24 +14457,6 @@ LPH_NO_VIRTUALIZE(function ()
                     end
                     AA.roll_key:display()
                     AA.roll_value:display()
-
-                    -- enhanced AA (it was on no page: on by default and impossible to switch off)
-                    local E = config.enhanced_aa
-                    AA.hdr_enhanced:display()
-                    E.enabled:display()
-                    if E.enabled:get() then
-                        E.adaptive:display()
-                        E.edge:display()
-                        E.jitter_type:display()
-                        E.custom_lean:display()
-                        if E.custom_lean:get() then E.lean_amount:display() end
-                        E.anti_exploit:display()
-                        E.fake_flick:display()
-                        if E.fake_flick:get() then
-                            E.flick_mode:display()
-                            E.flick_interval:display()
-                        end
-                    end
 
                     -- side: modifications, fake lag
                     AA.hdr_mods:display()
