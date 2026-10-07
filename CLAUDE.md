@@ -238,6 +238,11 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - `antiaimbot.main:run` keeps gamesense's own AA switch (`reference.antiaim.master`) on while specter's AA is on, `release()` gives it
   back; it used to be set only by the menu code while the menu was open.
 - Modifications "Yaw sway" (a slow random drift of up to 12 deg on the 180 yaw) and "Edge on crouch" (edge yaw while standing crouched).
+- Manual / Freestand options: "Jitter disabled" (no yaw modifier + the body on the covered side) and "Body freestanding" (Oct 2026,
+  the idea from other luas the owners sent: angelwings / panchan / althea; the yaw keeps its jitter, only the body side goes by the
+  wall, `player.fs_side`, instead of the coin flip). Off by default: holding manual / freestand means a wall is there, the red
+  team has no walls. Most other ideas of those luas (delayed / sequence jitter, defensive pitch / yaw modes, safe head on knife /
+  zeus / height, break-lc triggers, bomb E, body hold / pulse patterns) Specter already has, or its coin flip side beats them.
 - Defensive triggers also: On peek, Landing, Low HP (<= 40), Threat scoped.
 - Presets: Godmode, Phantom, Elite, Nova, Distort, Mirage (random-hold wide yaw, 5-way air), Void (asymmetric left / right with a random
   switch delay, 3-way air), Constructor.
