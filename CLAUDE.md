@@ -34,7 +34,8 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   New versions go to the staff channel by themselves (`release_loop`, every `RELEASE_MINUTES` = 5): `RELEASE_FILES`
   (specter_dev.lua, specter_cloud.lua) of `SCRIPT_BRANCH`, without comments, into `RELEASE_CHANNEL` (#staff), only when neither
   @everyone nor a member / customer / plan role can read it. The file is polled from raw.githubusercontent with its ETag (the
-  GitHub API allows 60 calls / hour per IP without a token, shared on Railway: it is asked only for the commit message, and
+  GitHub API allows 60 calls / hour per IP without a token, shared on Railway: it is asked only for the commit message
+  (posted short, `commit_points`: the title in bold + one short line per "- " item of the body, at most 6), and
   the post goes out without it on a 403); the footer `file @ sha256` keeps a restart from posting it twice. `/release_check`
   [force] checks now
   Who may do what: admin commands (keys create / revoke / sync, script_upload, post_loader, setup_*, post_*) = owner,

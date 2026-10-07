@@ -1278,14 +1278,46 @@ async def gh_last_commit(path: str) -> tuple[dict | None, str]:
     return (data[0], "") if data else (None, "no commit")
 
 
-def commit_text(message: str) -> str:
-    """What the commit changed: a PR merge says it after its first line; the attribution lines are left out."""
+def short_point(text: str, limit: int = 80) -> str:
+    """One line of a list: up to the first clause end after 25 characters, at most `limit` (cut at a word)."""
+    text = " ".join(text.split()).rstrip(".:;,")
+    depth, quoted = 0, False
+    for i, c in enumerate(text):
+        end = text.startswith(". ", i) and (text[i - 1].isalnum() or text[i - 1] in ")\"'")    # not "5 .. 60"
+        if i >= 25 and depth == 0 and not quoted and (end or text.startswith(("; ", ": ", " (", ", ", " - ", " — "), i)):
+            text = text[:i]
+            break
+        if c == '"':
+            quoted = not quoted
+        elif c == "(":
+            depth += 1
+        elif c == ")":
+            depth = max(depth - 1, 0)
+    if len(text) > limit:
+        text = text[:limit].rsplit(" ", 1)[0] + "…"
+    return text
+
+
+def commit_points(message: str, most: int = 6) -> str:
+    """The commit as a short list: its title in bold, then one short line per "- " item of the body (or per sentence
+    when it has no list). A PR merge says it after its first line; the attribution lines are left out."""
     lines = (message or "").strip().split("\n")
     if len(lines) > 1 and lines[0].startswith("Merge pull request"):
         lines = lines[1:]
-    lines = [l for l in lines if not re.match(r"^(Co-Authored-By|Claude-Session|Signed-off-by):", l, re.I)]
-    text = "\n".join(lines).strip()
-    return text if len(text) <= 600 else text[:600] + "…"
+    lines = [l for l in lines if not re.match(r"^\s*(Co-Authored-By|Claude-Session|Signed-off-by):", l, re.I)]
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    if not lines:
+        return ""
+    title, body = lines[0].strip(), "\n".join(lines[1:])
+    items = [m.group(1) for m in re.finditer(r"^\s*[-*•]\s+(.+?)(?=^\s*[-*•]\s|^\s*$|\Z)", body, re.M | re.S)]
+    if not items:
+        items = [x for x in re.split(r"(?<=[.!?])\s+(?=[A-Z])", " ".join(body.split())) if x][:3]
+    points = [short_point(x) for x in items]
+    out = [f"**{title}**"] + [f"• {p}" for p in points[:most]]
+    if len(points) > most:
+        out.append(f"• … and {len(points) - most} more (see the commit)")
+    return "\n".join(out)
 
 
 async def posted_versions(ch: discord.TextChannel) -> dict[str, str]:
@@ -1335,7 +1367,7 @@ def release_embed(path: str, ver: dict) -> discord.Embed:
         info = commit.get("commit") or {}
         url = commit.get("html_url") or f"https://github.com/{GITHUB_REPO}/commit/{commit['sha']}"
         embed.url = url
-        embed.description = commit_text(info.get("message", "")) or "-"
+        embed.description = commit_points(info.get("message", "")) or "-"
         embed.add_field(name="Commit", value=f"[`{commit['sha'][:7]}`]({url})", inline=True)
         try:
             when = datetime.fromisoformat((info.get("committer") or {}).get("date", "").replace("Z", "+00:00"))
