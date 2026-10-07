@@ -26,6 +26,8 @@ ENV VARS (set in Discord bot host or .env):
   AUTO_UPLOAD         — 1 (default): a new specter_cloud.lua of SCRIPT_BRANCH goes to the license server by itself (every
                         plan; the loader downloads it from there), 0: only /script_upload
   UPDATES_CHANNEL     — public channel (name or id) the changelog of a new cloud script is posted in (default: updates)
+  SPECTER_LOGO_URL    — a lasting image link for the logo on the bot's posts (optional). Empty: assets/specter_icon.png /
+                        specter_logo.png go with the messages. A Discord upload link expires in a day: it is ignored
 """
 
 import os
@@ -131,6 +133,25 @@ FEATURES_TEXT = (
     "• **Configs** — loadouts, cloud configs, import / export, auto-save"
 )
 LOGO_URL = _env("SPECTER_LOGO_URL", "")
+ASSETS   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+if "cdn.discordapp.com/attachments" in LOGO_URL and "ex=" in LOGO_URL:
+    # a link to a Discord upload expires after about a day: the logo would vanish from every new post
+    print("SPECTER_LOGO_URL is a Discord upload link (it expires), the logo that ships with the bot is used instead")
+    LOGO_URL = ""
+
+
+def logo(embed: discord.Embed, banner: bool = False) -> list[discord.File]:
+    """The Specter logo on an embed (banner: the wide one as the big image, else the icon as the thumbnail).
+    SPECTER_LOGO_URL when it is set, else the PNG in assets/ goes with the message -> the files to send with it."""
+    if LOGO_URL:
+        (embed.set_image if banner else embed.set_thumbnail)(url=LOGO_URL)
+        return []
+    name = "specter_logo.png" if banner else "specter_icon.png"
+    path = os.path.join(ASSETS, name)
+    if not os.path.isfile(path):
+        return []
+    (embed.set_image if banner else embed.set_thumbnail)(url=f"attachment://{name}")
+    return [discord.File(path, filename=name)]
 BUY_CONTACT = _env("BUY_CONTACT", "@owner")
 
 # ── Channel structure ────────────────────────────────────────────────
@@ -1226,10 +1247,9 @@ async def post_loader(
     embed.add_field(name="Updated", value=f"<t:{int(discord.utils.utcnow().timestamp())}:D>", inline=True)
     embed.add_field(name="SHA-256", value=f"`{hashlib.sha256(raw).hexdigest()[:16]}`", inline=True)
     embed.set_footer(text="Specter \U0001f319 • never share your key or the loader")
-    if LOGO_URL:
-        embed.set_thumbnail(url=LOGO_URL)
+    files = logo(embed)
     try:
-        await target.send(embed=embed, file=discord.File(io.BytesIO(raw), filename=LOADER_FILE))
+        await target.send(embed=embed, files=[discord.File(io.BytesIO(raw), filename=LOADER_FILE)] + files)
     except discord.HTTPException as e:
         await interaction.followup.send(f"Could not post in {target.mention}: {e}", ephemeral=True)
         return
@@ -1676,11 +1696,10 @@ async def setup_tickets(interaction: discord.Interaction):
         color=0x82C3FF,
     )
     embed.set_footer(text="Specter \U0001f319")
-    if LOGO_URL:
-        embed.set_thumbnail(url=LOGO_URL)
+    files = logo(embed)
 
     await interaction.response.send_message("Ticket panel posted!", ephemeral=True)
-    await interaction.channel.send(embed=embed, view=TicketCreateView())
+    await interaction.channel.send(embed=embed, view=TicketCreateView(), files=files)
 
 
 # ── /close_ticket — manually close a ticket ──────────────────────────
@@ -1763,12 +1782,11 @@ async def post_prices(interaction: discord.Interaction):
         inline=False,
     )
 
-    if LOGO_URL:
-        embed.set_image(url=LOGO_URL)
+    files = logo(embed, banner=True)
     embed.set_footer(text="Specter \U0001f319 • gamesense lua")
 
     await interaction.response.send_message("Prices posted!", ephemeral=True)
-    await interaction.channel.send(embed=embed)
+    await interaction.channel.send(embed=embed, files=files)
 
 
 # ── /post_rules — post server rules ──────────────────────────────────
@@ -1794,12 +1812,11 @@ async def post_rules(interaction: discord.Interaction):
         "**8.** Staff decisions are final.\n\n"
         "*Breaking any rule may result in a mute, kick, or ban.*"
     )
-    if LOGO_URL:
-        embed.set_thumbnail(url=LOGO_URL)
+    files = logo(embed)
     embed.set_footer(text="Specter \U0001f319")
 
     await interaction.response.send_message("Rules posted!", ephemeral=True)
-    await interaction.channel.send(embed=embed)
+    await interaction.channel.send(embed=embed, files=files)
 
 
 # ── /post_howto — post how-to-use guide ──────────────────────────────
@@ -1849,12 +1866,11 @@ async def post_howto(interaction: discord.Interaction):
         value="Open a ticket in #support-ticket and we'll help.",
         inline=False,
     )
-    if LOGO_URL:
-        embed.set_thumbnail(url=LOGO_URL)
+    files = logo(embed)
     embed.set_footer(text="Specter \U0001f319")
 
     await interaction.response.send_message("How-to guide posted!", ephemeral=True)
-    await interaction.channel.send(embed=embed)
+    await interaction.channel.send(embed=embed, files=files)
 
 
 # ── /setup_server — one-click full server setup ──────────────────────
@@ -1967,10 +1983,9 @@ async def setup_server(interaction: discord.Interaction):
             "• *Platform* — gamesense"
         ), inline=False)
         e.add_field(name="\u2728 Features", value=FEATURES_TEXT, inline=False)
-        if LOGO_URL:
-            e.set_image(url=LOGO_URL)
+        files = logo(e, banner=True)
         e.set_footer(text="Specter \U0001f319 • gamesense lua")
-        await prices_ch.send(embed=e)
+        await prices_ch.send(embed=e, files=files)
         posted.append("#prices")
 
     if rules_ch and isinstance(rules_ch, discord.TextChannel):
@@ -1987,7 +2002,7 @@ async def setup_server(interaction: discord.Interaction):
             "*Breaking any rule may result in a mute, kick, or ban.*"
         )
         e.set_footer(text="Specter \U0001f319")
-        await rules_ch.send(embed=e)
+        await rules_ch.send(embed=e, files=logo(e))
         posted.append("#rules")
 
     if howto_ch and isinstance(howto_ch, discord.TextChannel):
@@ -2011,7 +2026,7 @@ async def setup_server(interaction: discord.Interaction):
             "```"
         ), inline=False)
         e.set_footer(text="Specter \U0001f319")
-        await howto_ch.send(embed=e)
+        await howto_ch.send(embed=e, files=logo(e))
         posted.append("#how-to-use")
 
     if ticket_ch and isinstance(ticket_ch, discord.TextChannel):
@@ -2028,9 +2043,8 @@ async def setup_server(interaction: discord.Interaction):
             color=0x82C3FF,
         )
         e.set_footer(text="Specter \U0001f319")
-        if LOGO_URL:
-            e.set_thumbnail(url=LOGO_URL)
-        await ticket_ch.send(embed=e, view=TicketCreateView())
+        files = logo(e)
+        await ticket_ch.send(embed=e, view=TicketCreateView(), files=files)
         posted.append("#support-ticket")
 
     if posted:
