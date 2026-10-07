@@ -56,8 +56,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   the bot "Specter" (invited with Administrator) has a role "Specter" = the name of the specter plan role
   Panels (`PANELS`: prices / rules / how-to / ticket panel, one text in `prices_embed` ... used by /post_*, /setup_server and
   the automatic refresh): `AUTO_PANELS` (default on) checks them at every start (`startup_panels`, a deploy that changed a
-  text) and posts the ones that are missing or say something else (`embed_text`: title, text, fields, footer; not the
-  images), deleting the bot's older posts of that panel there (`post_panel`, by title; a member's message stays). A new
+  text) and posts the ones that are missing or say something else (`embed_text`: title, text, fields, footer and whether
+  it has its logo: a post from before the logo is posted again), deleting the bot's older posts of that panel there
+  (`post_panel`, by title; a member's message stays). The #updates changelog carries the logo too, but every version is a
+  new post and the old ones stay (owners: the history stays there). A new
   specter_loader.lua of `SCRIPT_BRANCH` goes to #loader-download the same way every `RELEASE_MINUTES` (`sync_loader`, the
   post's SHA-256 field says which one is out; only `is_customer_loader`). /post_* and /post_loader replace the old post too
   Logo (`logo()`): `assets/specter_icon.png` (thumbnails) / `assets/specter_logo.png` (the big image of the prices) go with

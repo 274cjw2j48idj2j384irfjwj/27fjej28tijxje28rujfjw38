@@ -1575,7 +1575,7 @@ async def sync_cloud(force: bool = False) -> list[str]:
                     report.append(f"{guild.name}: no #{UPDATES_CHANNEL} channel (UPDATES_CHANNEL), changelog not posted")
                     continue
                 try:
-                    await ch.send(embed=embed)
+                    await ch.send(embed=embed, files=logo(embed))       # a new post each version, the old ones stay
                     report.append(f"changelog posted in {ch.mention}")
                 except discord.HTTPException as e:
                     report.append(f"could not post in {ch.mention}: {e}")
@@ -1827,10 +1827,12 @@ PANELS = {
 
 
 def embed_text(e) -> tuple:
-    """What an embed says (not its pictures, colour or time): the same = no new post needed."""
+    """What an embed says and whether it has its logo (not the picture's link, the colour or the time): the same = no new
+    post needed. A post from before the logo has none, so it is posted again with it."""
     def t(x):
         return (x or "").strip()
-    return (t(e.title), t(e.description), tuple((t(f.name), t(f.value)) for f in e.fields), t(e.footer.text))
+    return (t(e.title), t(e.description), tuple((t(f.name), t(f.value)) for f in e.fields), t(e.footer.text),
+            bool(e.thumbnail.url), bool(e.image.url))
 
 
 async def post_panel(ch: discord.TextChannel, name: str, force: bool = False) -> str:
@@ -1838,12 +1840,15 @@ async def post_panel(ch: discord.TextChannel, name: str, force: bool = False) ->
     older posts of it there are deleted -> "posted" / "updated" / "" (it was there already)."""
     p = PANELS[name]
     embed = p["build"]()
+    files = logo(embed, banner=p["banner"])
     old = await bot_posts(ch, lambda m: bool(m.embeds) and (m.embeds[0].title or "") == embed.title)
     if old and not force and embed_text(old[0].embeds[0]) == embed_text(embed):
+        for f in files:
+            f.close()
         await delete_posts(old[1:])                 # a double post (a setup run twice) goes
         return ""
     kw = {"view": TicketCreateView()} if p["button"] else {}
-    await ch.send(embed=embed, files=logo(embed, banner=p["banner"]), **kw)
+    await ch.send(embed=embed, files=files, **kw)
     await delete_posts(old)
     return "updated" if old else "posted"
 
@@ -1883,8 +1888,10 @@ async def sync_loader(force: bool = False) -> list[str]:
         if ch is None:
             continue
         posts = await bot_posts(ch, lambda m: any(a.filename == LOADER_FILE for a in m.attachments))
+        has_logo = bool(LOGO_URL) or os.path.isfile(os.path.join(ASSETS, "specter_icon.png"))
         if posts and not force and posts[0].embeds and any(f.name == "SHA-256" and sha in (f.value or "")
-                                                           for f in posts[0].embeds[0].fields):
+                                                           for f in posts[0].embeds[0].fields) \
+                and (bool(posts[0].embeds[0].thumbnail.url) or not has_logo):
             continue
         try:
             removed = await send_loader(ch, raw)
