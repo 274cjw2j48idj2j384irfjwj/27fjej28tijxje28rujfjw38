@@ -20,6 +20,7 @@ local TIER = {
     HAS_BUILDER       = (_PLAN == "debug" or _PLAN == "specter" or _PLAN == "nightly"),
     HAS_AA_STEALER    = (_PLAN == "debug"),
     HAS_DEFENSIVE     = (_PLAN == "debug" or _PLAN == "specter" or _PLAN == "nightly"),
+    HAS_SPONSOR_SAY   = (_PLAN == "debug"),   -- the owners' Discord in the kill say: the dev build only, not the customers
     plan = _PLAN,
 }
 -- ── END TIER GATE ─────────────────────────────────────────────────────
@@ -11392,6 +11393,12 @@ LPH_NO_VIRTUALIZE(function ()
                 :record("miscellaneous", "killsay")
                 :save()
 
+            if TIER.HAS_SPONSOR_SAY then
+                config.miscellaneous.sponsor_killsay = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Sponsor Kill Say")
+                    :record("miscellaneous", "sponsor_killsay")
+                    :save()
+            end
+
             config.miscellaneous.custom_output = menu.new_item(ui.new_checkbox, "AA", "Other", "Custom Output")
                 :record("miscellaneous", "custom_output")
                 :save()
@@ -11866,7 +11873,7 @@ LPH_NO_VIRTUALIZE(function ()
 
             miscellaneous.trashtalk = {} do
                 local counter = 0
-                local killsay_counter = 0
+                local said = {}   -- per kill say list: how many of its lines went out
 
                 local killsay_messages = {
                     '{name} got absolutely destroyed / sit down',
@@ -11889,6 +11896,30 @@ LPH_NO_VIRTUALIZE(function ()
                     'that was embarrassing {name} / just saying',
                     '1 tap on {name} / too clean',
                     '{name} uninstall maybe? / just a suggestion'
+                }
+
+                local DISCORD = 'discord.gg/dxM89UUnVN'
+                local sponsor_messages = {
+                    '{name} got tapped by Specter / cry about it in ' .. DISCORD,
+                    'sit down {name} / Specter users get good at ' .. DISCORD,
+                    '1 {name} / sponsored by Specter - ' .. DISCORD,
+                    'skill issue {name} / fix it with Specter at ' .. DISCORD,
+                    '{name} is a free kill for Specter / tired of being one? ' .. DISCORD,
+                    'imagine dying to Specter {name} / ' .. DISCORD,
+                    'who sold you that paste {name}? / refund it and get Specter at ' .. DISCORD,
+                    'L {name} / Specter says cope in ' .. DISCORD,
+                    '{name} spectating again / Specter keeps playing - ' .. DISCORD,
+                    'ez {name} / post your Specter death in ' .. DISCORD,
+                    'nn down / Specter wants the next one - ' .. DISCORD,
+                    '{name} uninstall / or join Specter at ' .. DISCORD,
+                    'dont rage quit {name} / rage in the Specter server ' .. DISCORD,
+                    'iq check failed {name} / Specter school is at ' .. DISCORD,
+                    'another bot down / stop being one, get Specter at ' .. DISCORD,
+                    '{name} sleeps / Specter keeps tapping - ' .. DISCORD,
+                    'ratio + L + no Specter {name} / ' .. DISCORD,
+                    'was that a hvh or a Specter tutorial {name}? / ' .. DISCORD,
+                    '{name} you just paid the Specter tax / ' .. DISCORD,
+                    'owned by Specter / get on our level ' .. DISCORD
                 }
 
                 local list = {
@@ -11989,18 +12020,21 @@ LPH_NO_VIRTUALIZE(function ()
                     counter = counter + 1
                 end
 
-                function miscellaneous.trashtalk.run_killsay(victim_name)
-                    if not config.miscellaneous.killsay or not config.miscellaneous.killsay:get() then
-                        return
-                    end
+                -- the line goes to the console as  say "...";  so a name with a quote or a semicolon would end it and
+                -- run the rest as a command (an enemy can pick that name); % would be a gsub capture
+                function miscellaneous.trashtalk.run_killsay(messages, victim_name)
                     if active then return end
 
                     local game_rules = entity.get_game_rules()
                     local is_warmup = entity_get_prop(game_rules, 'm_bWarmupPeriod') == 1
                     if is_warmup then return end
 
-                    local phrase = killsay_messages[killsay_counter % #killsay_messages + 1]
-                    phrase = phrase:gsub('{name}', victim_name or 'noob')
+                    local n = said[messages] or 0
+                    said[messages] = n + 1
+
+                    local name = (victim_name or ''):gsub('[%c";%%]', '')
+                    if name == '' then name = 'noob' end
+                    local phrase = messages[n % #messages + 1]:gsub('{name}', function () return name end)
 
                     local active_pool = c_string.split(phrase, ' / ')
                     active = true
@@ -12020,21 +12054,21 @@ LPH_NO_VIRTUALIZE(function ()
 
                         delay = new_delay
                     end
-
-                    killsay_counter = killsay_counter + 1
                 end
 
                 function miscellaneous.trashtalk:on_kill(event)
-                    if not config.miscellaneous.trashtalk:get() and
-                       not (config.miscellaneous.killsay and config.miscellaneous.killsay:get()) then
+                    local M = config.miscellaneous
+                    local sponsor = M.sponsor_killsay and M.sponsor_killsay:get()
+                    local killsay = sponsor or M.killsay:get()
+                    if not M.trashtalk:get() and not killsay then
                         return
                     end
 
                     local victim_ent = client.userid_to_entindex(event.userid)
                     local victim_name = victim_ent and entity.get_player_name(victim_ent) or nil
 
-                    if config.miscellaneous.killsay and config.miscellaneous.killsay:get() and victim_name then
-                        self.run_killsay(victim_name)
+                    if killsay and victim_name then
+                        self.run_killsay(sponsor and sponsor_messages or killsay_messages, victim_name)
                         return
                     end
 
@@ -14447,6 +14481,7 @@ LPH_NO_VIRTUALIZE(function ()
                 if M.cheat_tweaks:get() then M.cheat_tweaks_list:display() end
                 M.trashtalk:display()
                 M.killsay:display()
+                if M.sponsor_killsay then M.sponsor_killsay:display() end
                 M.hdr_utility:display()
                 M.console_filter:display()
                 M.aspect_mode:display()
