@@ -54,6 +54,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   and adds them to an existing one (never removes any), `/setup_roles` / `/setup_server` report it
   Roles are looked up by name with `guild_role`, which skips managed roles: Discord gives a bot a role named after it, and
   the bot "Specter" (invited with Administrator) has a role "Specter" = the name of the specter plan role
+  Logo (`logo()`): `assets/specter_icon.png` (thumbnails) / `assets/specter_logo.png` (the big image of the prices) go with
+  the messages as attachments (`Dockerfile.bot` copies assets/); `SPECTER_LOGO_URL` overrides them with a lasting link. A
+  Discord upload link (cdn.discordapp.com/attachments ...?ex=) expires in a day and is ignored. The PNGs are the watermark's
+  look: the crescent of `sky()` (accent circle minus a 0.844 r circle at +0.49 r / -0.36 r), accent 180 160 255, panel 12 12 16
 - Railway: `Dockerfile` = license server, `Dockerfile.bot` = bot (service variable `RAILWAY_DOCKERFILE_PATH=Dockerfile.bot`)
   A 429 at login (Cloudflare 1015: Discord bans the IP after too many logins, e.g. a crash loop that Railway restarts every
   second) makes the bot wait in the process (5, 10, 20 .. 60 min) instead of exiting; the command sync runs once per start
