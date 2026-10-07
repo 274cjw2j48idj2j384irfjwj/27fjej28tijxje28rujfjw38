@@ -25,6 +25,7 @@ ENV VARS (set in Discord bot host or .env):
   RELEASE_MINUTES     — how often GitHub is checked (default: 5, 0 = only /release_check)
   AUTO_UPLOAD         — 1 (default): a new specter_cloud.lua of SCRIPT_BRANCH goes to the license server by itself (every
                         plan; the loader downloads it from there), 0: only /script_upload
+  UPDATES_CHANNEL     — public channel (name or id) the changelog of a new cloud script is posted in (default: updates)
 """
 
 import os
@@ -1253,6 +1254,7 @@ def _env_int(name: str, default: int) -> int:
 
 
 RELEASE_CHANNEL = _env("RELEASE_CHANNEL", "staff")
+UPDATES_CHANNEL = _env("UPDATES_CHANNEL", "updates")
 RELEASE_FILES   = [f.strip() for f in _env("RELEASE_FILES", "specter_dev.lua").split(",") if f.strip()]
 RELEASE_MINUTES = _env_int("RELEASE_MINUTES", 5)
 AUTO_UPLOAD     = _env("AUTO_UPLOAD", "1").lower() not in ("0", "false", "off", "no")
@@ -1262,12 +1264,20 @@ _release_seen: dict[int, dict[str, str]] = {}                   # channel id -> 
 _release_files: dict[str, dict] = {}                            # file -> the newest version GitHub has (body, hash, commit, etag)
 _release_lock = asyncio.Lock()
 _cloud_on_server = ""                                           # SHA-256 of the cloud script the server is known to have
+_cloud_told = {"updates": "", "staff": ""}                      # the cloud script whose changelog / failure was posted
+
+
+def named_channel(guild: discord.Guild, spec: str) -> discord.TextChannel | None:
+    """A text channel by id or name; the name also matches with an emoji / separator in front of it ("📜・updates")."""
+    if spec.isdigit():
+        ch = guild.get_channel(int(spec))
+        return ch if isinstance(ch, discord.TextChannel) else None
+    return (discord.utils.get(guild.text_channels, name=spec)
+            or next((c for c in guild.text_channels if re.sub(r"^[^0-9a-z]+", "", c.name) == spec), None))
 
 
 def release_channel(guild: discord.Guild) -> discord.TextChannel | None:
-    ch = (guild.get_channel(int(RELEASE_CHANNEL)) if RELEASE_CHANNEL.isdigit()
-          else discord.utils.get(guild.text_channels, name=RELEASE_CHANNEL))
-    return ch if isinstance(ch, discord.TextChannel) else None
+    return named_channel(guild, RELEASE_CHANNEL)
 
 
 def non_staff_readers(ch: discord.TextChannel) -> list[str]:
@@ -1459,7 +1469,9 @@ async def server_script_hashes() -> dict | None:
 
 async def sync_cloud(force: bool = False) -> list[str]:
     """A new specter_cloud.lua of SCRIPT_BRANCH -> the license server, every plan that has another version (the loader
-    downloads the script from the server at every login). A short note goes to the staff channel. force: upload again."""
+    downloads the script from the server at every login). Its changelog goes to the public #updates channel (no sizes,
+    no link to the repo), once per version; #staff only hears about it when a plan could not be updated (once per version,
+    the loop keeps trying). force: upload again (no second changelog when the server had that version already)."""
     global _cloud_on_server
     async with _release_lock:
         try:
@@ -1472,6 +1484,7 @@ async def sync_cloud(force: bool = False) -> list[str]:
         if not ver["stripped"] or not is_cloud_script(ver["raw"].decode("utf-8", "replace")):
             return [f"`{CLOUD_FILE}` of `{SCRIPT_BRANCH}`: no auth gate or comments not removable, not uploaded"]
         have = await server_script_hashes()
+        new = (have is None or any(have.get(p) != full for p in VALID_PLANS)) and _cloud_told["updates"] != full
         plans = [p for p in VALID_PLANS if force or have is None or have.get(p) != full]
         if not plans:
             _cloud_on_server = full
@@ -1480,20 +1493,32 @@ async def sync_cloud(force: bool = False) -> list[str]:
         if len(done) == len(plans):
             _cloud_on_server = full
         report = [f"cloud script `{ver['hash'][:7]}` to the server: " + " ".join(lines)]
-        if not done:
-            return report
-        embed = discord.Embed(title="\u2601\ufe0f Cloud script updated on the server", color=0x82C3FF,
-                              description=(commit_points(ver["commit"]["commit"].get("message", "")) if ver["commit"]
-                                           else f"New `{CLOUD_FILE}` on `{SCRIPT_BRANCH}`") or "-")
-        if ver["commit"]:
-            embed.url = ver["commit"].get("html_url") or None
-        embed.add_field(name="Plans", value="\n".join(lines)[:1024], inline=False)
-        embed.set_footer(text="Customers get it at their next login (the loader downloads it from the server)")
-        for ch in staff_channels(report):
-            try:
-                await ch.send(embed=embed)
-            except discord.HTTPException as e:
-                report.append(f"could not post in {ch.mention}: {e}")
+        points = commit_points(ver["commit"]["commit"].get("message", "")) if ver["commit"] else ""
+        if done and new:
+            _cloud_told["updates"] = full
+            embed = discord.Embed(title="\u2601\ufe0f Specter updated", color=0x82C3FF, timestamp=discord.utils.utcnow(),
+                                  description=points or "A new version of the script is out.")
+            embed.set_footer(text="You get it at your next login (the loader downloads it)")
+            for guild in client.guilds:
+                ch = named_channel(guild, UPDATES_CHANNEL)
+                if ch is None:
+                    report.append(f"{guild.name}: no #{UPDATES_CHANNEL} channel (UPDATES_CHANNEL), changelog not posted")
+                    continue
+                try:
+                    await ch.send(embed=embed)
+                    report.append(f"changelog posted in {ch.mention}")
+                except discord.HTTPException as e:
+                    report.append(f"could not post in {ch.mention}: {e}")
+        if len(done) < len(plans) and (force or _cloud_told["staff"] != full):
+            _cloud_told["staff"] = full
+            embed = discord.Embed(title="\u26a0\ufe0f Cloud script upload failed", color=0xFF7878,
+                                  description=((points or f"`{CLOUD_FILE}` `{ver['hash'][:7]}`") + "\n\n" + "\n".join(lines))[:4096])
+            embed.set_footer(text="Those plans keep the old script; /release_check force=True tries again")
+            for ch in staff_channels(report):
+                try:
+                    await ch.send(embed=embed)
+                except discord.HTTPException as e:
+                    report.append(f"could not post in {ch.mention}: {e}")
         return report
 
 
