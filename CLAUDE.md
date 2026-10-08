@@ -181,6 +181,11 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   whose two values differ which one the records get (`timing_learn`, over all players), the hitlog and the learning use
   that one (`applied_value`). Sim: 0.92 with both timings on static / jitter / delayed jitter / anti brute; a random
   jitter side can not be predicted (read before: ~0.45, random hold 1-4: 0.63)
+- NaN guard (owners' shot logs, Oct 2026: 5 of 12 shots at 0 deg with confidence -1, every jitter player, `timing.s` NaN):
+  a NaN in the side / belief numbers spread through the pooled beliefs. `sane(v, d, where)` puts it back where it shows
+  (z, pi, beliefs, scores, timing, c) and notes it in `resolver.nan` (count, first / last place, in the shot logs as
+  `nann` / `nan1` / `nan`); `decide` with no weighable angle starts that belief and the pooled one again. The source is
+  not found yet (the sim never makes one): the next logs say where it first shows. The regress poisons them.
 - Results update the beliefs with Bayes: head hit = the body yaw was within TOL of the value the RECORD got (`P_HIT` 0.85), resolver miss =
   it was not; FORGET 0.02 pulls back toward the start so a changing target is followed.
 - Side: z per situation = how sure the target is on the positive side, measured by every head hit / resolver miss (Bayes). Side
