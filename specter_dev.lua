@@ -1205,6 +1205,15 @@ LPH_NO_VIRTUALIZE(function ()
             -- probability pi. temper < 1 for the beliefs of everybody
             local function update(b, c, v, hit, pi, temper)
                 c, v, pi = sane(c, 0, "c_result"), sane(v, 0, "v_result"), sane(pi, 0.5, "pi_result")
+                -- what a score is made of: the note says which part was not a number (d = DECAY, s = the old score, p = the
+                -- prediction, t = temper)
+                local dec = sane(DECAY, 0.9, "decay")
+                local function score(old, pred, f)
+                    local new = dec * old + temper * math.log(math.max(pred, 1e-6))
+                    if finite(new) then return new end
+                    return sane(nil, 0, "score" .. f .. ":" .. (finite(DECAY) and "" or "d") .. (finite(old) and "" or "s")
+                        .. (finite(pred) and "" or "p") .. (finite(temper) and "" or "t"))
+                end
                 for f = 1, 2 do
                     local h = b[f]
                     local pred, sum = 0, 0
@@ -1216,7 +1225,7 @@ LPH_NO_VIRTUALIZE(function ()
                     end
                     local p0 = prior(f)
                     for i = 1, #h do h[i] = (1 - FORGET) * h[i] / sum + FORGET * p0[i] end
-                    b.s[f] = DECAY * b.s[f] + temper * math.log(math.max(pred, 1e-6))
+                    b.s[f] = score(b.s[f], pred, f)
                 end
                 -- side model: which side the result was on (posterior), and each side's size learns as much as it was that side
                 -- (a miss with a 50 / 50 side says little about either size; with one size for both, it used to eat the size)
@@ -1239,7 +1248,7 @@ LPH_NO_VIRTUALIZE(function ()
                     local p0 = prior(3)
                     for j = 1, NM do h[j] = (1 - FORGET) * h[j] / sum + FORGET * p0[j] end
                 end
-                b.s[3] = DECAY * b.s[3] + temper * math.log(math.max(pred, 1e-6))
+                b.s[3] = score(b.s[3], pred, 3)
                 -- a NaN in a belief: back to where beliefs start
                 for f = 1, 4 do
                     for i = 1, #b[f] do
@@ -1249,7 +1258,7 @@ LPH_NO_VIRTUALIZE(function ()
                             break
                         end
                     end
-                    if f <= 3 then b.s[f] = sane(b.s[f], 0, "score" .. f) end
+                    if f <= 3 then b.s[f] = sane(b.s[f], 0, "score" .. f .. ":after") end
                 end
             end
 
@@ -1632,7 +1641,14 @@ LPH_NO_VIRTUALIZE(function ()
                     if hit then return m * P_HIT + (1 - m) * P_LUCK end
                     return m * (1 - P_HIT) + (1 - m) * (1 - P_LUCK)
                 end
-                timing.s = sane(clamp(timing.s * 0.995 + math.log(ll(s.v_pre) / ll(s.v_end)), -30, 30), 0, "timing")
+                local lp_, le_ = ll(s.v_pre), ll(s.v_end)
+                local t = clamp(timing.s * 0.995 + math.log(lp_ / le_), -30, 30)
+                if not finite(t) then
+                    sane(nil, 0, "timing:" .. (finite(timing.s) and "" or "s") .. (finite(lp_) and "" or "p") .. (finite(le_) and "" or "e")
+                        .. (finite(pi) and "" or "i") .. (finite(s.c) and "" or "c") .. (finite(P_HIT) and "" or "h"))
+                    t = 0
+                end
+                timing.s = t
                 if timing.pre and timing.s < -3 then timing.pre = false
                 elseif not timing.pre and timing.s > 3 then timing.pre = true end
             end
