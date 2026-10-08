@@ -6487,7 +6487,7 @@ LPH_NO_VIRTUALIZE(function ()
                         { offset = 6,  duration = 0.54, restart = true },
                     }
 
-                    ab.pending, ab.hurt_tick, ab.enemies = {}, {}, {}
+                    ab.pending, ab.hurt_tick, ab.team_hurt_tick, ab.enemies = {}, {}, {}, {}
                     ab.active, ab.active_until, ab.stage, ab.last_trigger, ab.side = false, 0, 0, 0, 1
 
                     local function wants(kind)
@@ -6531,8 +6531,23 @@ LPH_NO_VIRTUALIZE(function ()
                         self:trigger(string_format("hit, %d dmg", damage), attacker, 0)
                     end
 
+                    -- a teammate the attacker hit: that bullet was not for us
+                    function ab:on_team_hurt(attacker)
+                        self.team_hurt_tick[attacker] = globals_tickcount()
+                    end
+
+                    -- distance of a point to the bullet path (eye -> impact), nil when it is behind the shooter
+                    local function path_dist(ex, ey, ez, dx, dy, dz, len2, x, y, z)
+                        local t = ((x - ex) * dx + (y - ey) * dy + (z - ez) * dz) / len2
+                        if t < 0 then return nil end
+                        if t > 1 then t = 1 end
+                        local px, py, pz = ex + dx * t - x, ey + dy * t - y, ez + dz * t - z
+                        return math_sqrt(px * px + py * py + pz * pz)
+                    end
+
                     -- enemy bullet path passing within 40 units of our head (decided two ticks later,
-                    -- once player_hurt had the chance to say it was a hit)
+                    -- once player_hurt had the chance to say it was a hit). Not when it passed nearer to a teammate:
+                    -- standing next to each other (T spawn), the shot at the teammate was an "evaded" shot at us
                     function ab:on_impact(attacker, x, y, z)
                         local me = entity_get_local_player()
                         if not me or attacker == me or not x or not entity.is_alive(me) or not entity.is_enemy(attacker) then return end
@@ -6543,12 +6558,17 @@ LPH_NO_VIRTUALIZE(function ()
                         local dx, dy, dz = x - ex, y - ey, z - ez
                         local len2 = dx * dx + dy * dy + dz * dz
                         if len2 < 1 then return end
-                        local t = ((hx - ex) * dx + (hy - ey) * dy + (hz - ez) * dz) / len2
-                        if t < 0 then return end
-                        if t > 1 then t = 1 end
-                        local px, py, pz = ex + dx * t - hx, ey + dy * t - hy, ez + dz * t - hz
-                        local dist = math_sqrt(px * px + py * py + pz * pz)
-                        if dist > 40 then return end
+                        local dist = path_dist(ex, ey, ez, dx, dy, dz, len2, hx, hy, hz)
+                        if not dist or dist > 40 then return end
+                        for _, mate in ipairs(entity.get_players(false)) do
+                            if mate ~= me and mate ~= attacker and not entity.is_enemy(mate) and entity.is_alive(mate) then
+                                local mx, my, mz = entity.hitbox_position(mate, 0)
+                                local ox, oy, oz = entity_get_prop(mate, "m_vecOrigin")
+                                local dh = mx and path_dist(ex, ey, ez, dx, dy, dz, len2, mx, my, mz)
+                                local db = ox and path_dist(ex, ey, ez, dx, dy, dz, len2, ox, oy, oz + 40)
+                                if (dh and dh < dist) or (db and db < dist) then return end
+                            end
+                        end
                         -- which side of the head the bullet went past (seen from above)
                         local cross = dx * (hy - ey) - dy * (hx - ex)
                         local side = cross > 0.001 and 1 or (cross < -0.001 and -1 or 0)
@@ -6566,8 +6586,8 @@ LPH_NO_VIRTUALIZE(function ()
                         for attacker, p in pairs(self.pending) do
                             if tick - p.tick >= 2 or tick < p.tick then
                                 self.pending[attacker] = nil
-                                local hurt = self.hurt_tick[attacker]
-                                if not (hurt and math_abs(hurt - p.tick) <= 2) then
+                                local hurt, mate = self.hurt_tick[attacker], self.team_hurt_tick[attacker]
+                                if not (hurt and math_abs(hurt - p.tick) <= 2) and not (mate and math_abs(mate - p.tick) <= 2) then
                                     telemetry.evaded = telemetry.evaded + 1
                                     -- the hit log shows it ("evaded")
                                     if antiaimbot.on_evaded then pcall(antiaimbot.on_evaded, attacker, p.dist) end
@@ -14473,6 +14493,8 @@ LPH_NO_VIRTUALIZE(function ()
             local attacker = client.userid_to_entindex(event.attacker)
             if victim and attacker and victim == player.entindex and attacker ~= player.entindex then
                 antiaimbot.anti_brute:on_hurt(attacker, event.dmg_health or 0, event.hitgroup or 0)
+            elseif victim and attacker and victim ~= attacker and entity.is_enemy(attacker) and not entity.is_enemy(victim) then
+                antiaimbot.anti_brute:on_team_hurt(attacker)
             end
         end
 
