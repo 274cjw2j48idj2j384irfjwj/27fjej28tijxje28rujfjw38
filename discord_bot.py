@@ -33,6 +33,10 @@ ENV VARS (set in Discord bot host or .env):
   AUTO_PANELS         — 1 (default): at every start the prices / rules / how-to / ticket panels that changed (or are missing)
                         are posted again in their channels and the old posts deleted; a new specter_loader.lua of
                         CLOUD_BRANCH goes to #loader-download the same way (checked every RELEASE_MINUTES). 0: only by hand
+  LOG_TOKEN           — GitHub token that can WRITE the repo's contents (fine-grained, Contents: Read and write). The
+                        resolver shot logs of the dev build (license server /shotlog) go with it to SHOTLOG_BRANCH
+                        (default: shotlogs) every RELEASE_MINUTES, one file per round: shotlogs/<day>/<time>-<shots>.jsonl.
+                        Empty: GITHUB_TOKEN, if that is set; neither: the logs stay on the server (the newest 400 batches)
   SPECTER_LOGO_URL    — a lasting image link for the logo on the bot's posts (optional). Empty: assets/specter_icon.png /
                         specter_logo.png go with the messages. A Discord upload link expires in a day: it is ignored
 """
@@ -1315,6 +1319,8 @@ RELEASE_FILES   = [f.strip() for f in _env("RELEASE_FILES", "specter_dev.lua").s
 RELEASE_MINUTES = _env_int("RELEASE_MINUTES", 5)
 AUTO_UPLOAD     = _env("AUTO_UPLOAD", "1").lower() not in ("0", "false", "off", "no")
 AUTO_PANELS     = _env("AUTO_PANELS", "1").lower() not in ("0", "false", "off", "no")
+SHOTLOG_TOKEN   = _env("LOG_TOKEN", "") or GITHUB_TOKEN                # writes the shot logs (Contents: read + write)
+SHOTLOG_BRANCH  = _env("SHOTLOG_BRANCH", "shotlogs")
 RELEASE_ROLES   = [r for r in ROLE_CONFIG if r != "Staff"]     # never posted where one of these (or @everyone) reads
 RELEASE_FOOTER  = re.compile(r"^(\S+) @ ([0-9a-f]{16})$")       # the footer of a version post: file @ its SHA-256
 _release_seen: dict[int, dict[str, str]] = {}                   # channel id -> file -> SHA-256 of the newest post there
@@ -1603,6 +1609,59 @@ async def sync_cloud(force: bool = False) -> list[str]:
         return report
 
 
+async def gh_ensure_branch(token: str, branch: str) -> bool:
+    """The branch exists (made from SCRIPT_BRANCH when it does not)."""
+    h = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+    async with aiohttp.ClientSession() as s:
+        async with s.get(f"{GH_API}/repos/{GITHUB_REPO}/git/ref/heads/{branch}", headers=h) as r:
+            if r.status == 200:
+                return True
+        async with s.get(f"{GH_API}/repos/{GITHUB_REPO}/git/ref/heads/{SCRIPT_BRANCH}", headers=h) as r:
+            if r.status != 200:
+                return False
+            sha = (await r.json())["object"]["sha"]
+        async with s.post(f"{GH_API}/repos/{GITHUB_REPO}/git/refs", json={"ref": f"refs/heads/{branch}", "sha": sha}, headers=h) as r:
+            return r.status in (201, 422)
+
+
+async def sync_shotlogs() -> list[str]:
+    """The shot logs of the dev build (license server /shotlog) -> one new file on SHOTLOG_BRANCH, then dropped on the
+    server. Nothing is dropped when the write fails: the next round tries again."""
+    if not SHOTLOG_TOKEN:
+        return []
+    res = await api_get("/admin/shotlog")
+    items = res.get("items") if isinstance(res, dict) else None
+    if not items:
+        return []
+    lines = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        head = {"at": it.get("at"), "src": it.get("src"), "batch": it.get("id")}
+        for line in str(it.get("lines") or "").splitlines():
+            line = line.strip()
+            if line:
+                lines.append(json.dumps(head, separators=(",", ":")) + "\t" + line)
+    if not lines:
+        await api_get(f"/admin/shotlog?n={len(items)}")
+        return []
+    if not await gh_ensure_branch(SHOTLOG_TOKEN, SHOTLOG_BRANCH):
+        return [f"shot logs: branch {SHOTLOG_BRANCH} could not be made (token rights?)"]
+    now = time.gmtime()
+    path = f"shotlogs/{time.strftime('%Y-%m-%d', now)}/{time.strftime('%H%M%S', now)}-{len(lines)}.jsonl"
+    body = ("\n".join(lines) + "\n").encode("utf-8")
+    async with aiohttp.ClientSession() as s:
+        async with s.put(f"{GH_API}/repos/{GITHUB_REPO}/contents/{path}", json={
+            "message": f"Shot logs {time.strftime('%Y-%m-%d %H:%M', now)} ({len(lines)} shots)",
+            "content": base64.b64encode(body).decode("ascii"),
+            "branch": SHOTLOG_BRANCH,
+        }, headers={"Authorization": f"token {SHOTLOG_TOKEN}", "Accept": "application/vnd.github.v3+json"}) as r:
+            if r.status not in (200, 201):
+                return [f"shot logs: GitHub write failed ({r.status})"]
+    await api_get(f"/admin/shotlog?n={len(items)}")
+    return [f"shot logs: {len(lines)} shots -> {SHOTLOG_BRANCH}/{path}"]
+
+
 async def release_loop():
     """Checks GitHub every RELEASE_MINUTES; a problem is printed once, not every round."""
     await client.wait_until_ready()
@@ -1616,6 +1675,10 @@ async def release_loop():
                 report += await sync_loader()
         except Exception as e:
             report = [f"version check failed: {e!r}"]
+        try:
+            report += await sync_shotlogs()
+        except Exception as e:
+            report.append(f"shot logs failed: {e!r}")
         for line in report:
             if "posted in" in line or "to the server" in line or line not in last:
                 print(f"[release] {line}", flush=True)

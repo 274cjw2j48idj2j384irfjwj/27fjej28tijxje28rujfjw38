@@ -1169,6 +1169,16 @@ LPH_NO_VIRTUALIZE(function ()
                 return math.floor(best + 0.5), best_p
             end
 
+            -- how likely the body yaw is within TOL of the angle a
+            local function mass(b, c, pi, a)
+                local ang, prob = components(b, c, pi)
+                local p = 0
+                for i = 1, #ang do
+                    if math.abs(ang[i] - a) <= TOL then p = p + prob[i] end
+                end
+                return clamp(p, 0, 1)
+            end
+
             -- how likely a result is with the size model if the target was on the positive / negative side
             local function side_likelihoods(b, v, hit, ph)
                 local lp, lm = 0, 0
@@ -1420,6 +1430,26 @@ LPH_NO_VIRTUALIZE(function ()
                 -- resolver to need nothing but its switch
                 p.jitter = spread >= (p.jitter and JITTER_SPREAD * 2 / 3 or JITTER_SPREAD) and flips >= 2
                 p.side = p.jitter and last or 0
+                -- the side of the next record: how long this player holds a side (the last 24 runs). It switches when
+                -- most runs that got as long as the current one ended there (a tick jitter every record, a delayed one
+                -- after its period, a random hold at the length it ends most often)
+                p.next_side = nil
+                if not p.jitter then p.run_side, p.run_len = nil, 0; return end
+                p.runs = p.runs or {}
+                if p.side == p.run_side then p.run_len = p.run_len + 1
+                else
+                    if p.run_side then
+                        p.runs[#p.runs + 1] = p.run_len
+                        while #p.runs > 24 do table.remove(p.runs, 1) end
+                    end
+                    p.run_side, p.run_len = p.side, 1
+                end
+                local ended, longer = 0, 0
+                for _, len in ipairs(p.runs) do
+                    if len == p.run_len then ended = ended + 1 end
+                    if len >= p.run_len then longer = longer + 1 end
+                end
+                p.next_side = (longer == 0 or ended * 2 >= longer) and -p.side or p.side
             end
 
             -- ── players and records ────────────────────────────────────────────────
@@ -1529,6 +1559,11 @@ LPH_NO_VIRTUALIZE(function ()
                 p.records[#p.records + 1] = normalize(eye - math.deg(math.atan2(my - oy, mx - ox)) - 180)
                 while #p.records > WINDOW do table.remove(p.records, 1) end
                 jitter_of(p)
+                -- the eye yaw of each jitter side: the computed body yaw of the next record, before it arrives
+                if p.jitter then
+                    p.eye_side = p.eye_side or {}
+                    p.eye_side[p.side] = eye
+                end
                 return "record"
             end
 
@@ -1554,6 +1589,29 @@ LPH_NO_VIRTUALIZE(function ()
                     if h[i].st <= target then return h[i] end
                 end
                 return nil
+            end
+
+            -- When gamesense reads "Force body yaw value" for a new record: after our net_update_end (the value decided
+            -- for that record) or before it (then the record got the value set at net_update_start: the one predicted
+            -- for it). Which one is not documented; with the wrong guess every jitter record got the angle of the record
+            -- before it (sim: jitter 0.92 -> 0.08-0.15, the hitlog angle wrong). Both are written, and the shots whose two
+            -- values differ tell which one the records get: s = log likelihood of "before" minus "after", over all players
+            local timing = { s = 0, pre = false }
+            resolver.timing = timing
+            local function applied_value(h)
+                if timing.pre and h.pre ~= nil then return h.pre end
+                return h.value
+            end
+            local function timing_learn(b, s, pi, hit)
+                if s.v_pre == nil or s.v_end == nil or math.abs(s.v_pre - s.v_end) <= TOL then return end
+                local function ll(a)
+                    local m = mass(b, s.c or 0, pi, a)
+                    if hit then return m * P_HIT + (1 - m) * P_LUCK end
+                    return m * (1 - P_HIT) + (1 - m) * (1 - P_LUCK)
+                end
+                timing.s = clamp(timing.s * 0.995 + math.log(ll(s.v_pre) / ll(s.v_end)), -30, 30)
+                if timing.pre and timing.s < -3 then timing.pre = false
+                elseif not timing.pre and timing.s > 3 then timing.pre = true end
             end
 
             -- ── player list ────────────────────────────────────────────────────────
@@ -1659,6 +1717,59 @@ LPH_NO_VIRTUALIZE(function ()
                 end
             end
 
+            -- the angle for a record of player p in situation ctx with computed body yaw c, packet number n
+            local function pick(p, ctx, c, n)
+                local z = z_of(p, ctx)
+                local zs = {}
+                for k = 1, ND do zs[k] = z[k] end
+                local b = belief_of(p.key, ctx)
+                local pi = (1 + zs[best_delay(rates_of(p.key))]) / 2
+                local r = { zs = zs, b = b, pi_base = pi }
+                local pp, period, pgain = pat_predict(p.key, n)
+                local lcls, fcls = p.lcls, p.fcls_now
+                local lp_, lgain = feat_predict(p.key, "lay", lcls)
+                local fp_, fgain = feat_predict(p.key, "fs", fcls)
+                -- nothing proven on this player yet: what the other players showed
+                if not lp_ then lp_, lgain = gfeat_predict("lay", lcls) end
+                if not fp_ then fp_, fgain = gfeat_predict("fs", fcls) end
+                local best_gain = pp and pgain or 0
+                if pp then pi = pp end
+                if lp_ and lgain > best_gain then pi, period, r.layers, best_gain = lp_, nil, true, lgain end
+                if fp_ and fgain > best_gain then pi, period, r.layers, r.fs = fp_, nil, nil, true end
+                r.period = period
+                r.value, r.phit = decide(b, c, pi, p.maxd, math.abs(c) < ZERO_MIN and not zero_allowed(p.key, ctx, p))
+                return r
+            end
+
+            -- the value for the next record of p, decided when its newest one arrived (see timing): the jitter side it
+            -- will likely be on, its computed body yaw from the eye yaw of that side
+            local function predict_next(p)
+                local ctx, c = situation(p), p.model or 0
+                if p.jitter and p.next_side then
+                    ctx = p.next_side > 0 and "j+" or "j-"
+                    local eye = p.eye_side and p.eye_side[p.next_side]
+                    if eye and p.feet then c = clamp(normalize(eye - p.feet), -p.maxd, p.maxd) end
+                end
+                return pick(p, ctx, c, (p.rec_n or 0) + 1).value
+            end
+
+            -- before the update is read: the value for the record that may arrive now. Decided again while a shot of the
+            -- last 40 ticks (the longest delay of DELAYS + its result) may still flip the side
+            resolver.net_update_start = function()
+                if not enabled() then return end
+                local tick = globals.tickcount()
+                for idx, p in pairs(players) do
+                    if saved[idx] and p.next_value ~= nil then
+                        local ev = p.events[#p.events]
+                        if ev and (tick - ev.fire <= 40 or (ev.res and tick - ev.res <= 40)) and tick >= ev.fire then
+                            side_advance(p, tick)
+                            p.next_value = predict_next(p)
+                        end
+                        force(idx, p.next_value)
+                    end
+                end
+            end
+
             resolver.net_update = function()
                 local me = entity.get_local_player()
                 if not me or not enabled() then
@@ -1678,44 +1789,36 @@ LPH_NO_VIRTUALIZE(function ()
                             -- no record: the forced value stays the one of the newest normal record, the one the server
                             -- tests a shot at the shifted model against
                             p.method = p.method and (p.method:gsub(" / defensive$", "") .. " / defensive") or "Defensive"
-                        elseif kind then
+                        end
+                        if kind == "record" then
                             local ctx = situation(p)
                             local c = p.model or 0
                             side_advance(p, tick)
-                            local z = z_of(p, ctx)
-                            local zs = {}
-                            for k = 1, ND do zs[k] = z[k] end
-                            local b = belief_of(p.key, ctx)
-                            local pi = (1 + zs[best_delay(rates_of(p.key))]) / 2
-                            local pi_base, n = pi, p.rec_n
-                            local pp, period, pgain = pat_predict(p.key, n)
-                            local lcls, fcls = p.lcls, p.fcls_now
-                            local lp_, lgain = feat_predict(p.key, "lay", lcls)
-                            local fp_, fgain = feat_predict(p.key, "fs", fcls)
-                            -- nothing proven on this player yet: what the other players showed
-                            if not lp_ then lp_, lgain = gfeat_predict("lay", lcls) end
-                            if not fp_ then fp_, fgain = gfeat_predict("fs", fcls) end
-                            p.layers_used, p.fs_used = nil, nil
-                            local best_gain = pp and pgain or 0
-                            if pp then pi = pp end
-                            if lp_ and lgain > best_gain then pi, period, p.layers_used, best_gain = lp_, nil, true, lgain end
-                            if fp_ and fgain > best_gain then pi, period, p.layers_used, p.fs_used = fp_, nil, nil, true end
-                            local value, phit = decide(b, c, pi, p.maxd, math.abs(c) < ZERO_MIN and not zero_allowed(p.key, ctx, p))
-                            local w = weights(b)
+                            local n = p.rec_n
+                            local r = pick(p, ctx, c, n)
+                            local value, phit = r.value, r.phit
+                            local w = weights(r.b)
                             local model = (w[1] >= w[2] and w[1] >= w[3]) and "computed" or (w[2] >= w[3] and "mirrored" or "side")
+                            p.layers_used, p.fs_used = r.layers, r.fs
                             p.mode, p.value, p.ctx, p.phit, p.model_name = p.jitter and "j" or "d", value, ctx, phit, model
                             p.method = p.jitter and "Jitter" or (model ~= "side" and (p.stance == "stand" and "LBY" or "Dynamic") or "Static")
-                            if period then p.method = p.method .. " / cycle " .. period end
+                            if r.period then p.method = p.method .. " / cycle " .. r.period end
                             if p.layers_used then p.method = p.method .. " / layers" end
                             if p.fs_used then p.method = p.method .. " / hide head" end
                             -- remember what this record got: a shot at it later (backtrack) is judged by this. Kept for
-                            -- HIST_TIME (a fixed count covered 64 ticks only without choke on 64 tick)
+                            -- HIST_TIME (a fixed count covered 64 ticks only without choke on 64 tick). `pre` = what was
+                            -- set when it arrived (net_update_start), the value it got if gamesense reads it before now
                             local h = p.hist
-                            h[#h + 1] = { st = p.st, value = value, c = c, ctx = ctx, stance = p.stance, at = tick, phit = phit, zs = zs,
-                                          n = n, pi_base = pi_base, lcls = lcls, fcls = fcls, mode = p.mode, lc = p.lc_rec, o = p.last_o }
+                            h[#h + 1] = { st = p.st, value = value, pre = forced[idx], c = c, ctx = ctx, stance = p.stance, at = tick,
+                                          phit = phit, zs = r.zs, n = n, pi_base = r.pi_base, lcls = p.lcls, fcls = p.fcls_now,
+                                          mode = p.mode, lc = p.lc_rec, o = p.last_o }
                             local oldest = p.st - hist_ticks()
                             while #h > 1 and h[1].st < oldest do table.remove(h, 1) end
                             force(idx, value)
+                            p.next_value = predict_next(p)
+                        elseif p.value ~= nil and saved[idx] then
+                            -- no new record: back to the value of the newest one (net_update_start set the predicted one)
+                            force(idx, p.value)
                         end
                     end
                 end
@@ -1861,7 +1964,9 @@ LPH_NO_VIRTUALIZE(function ()
                     shot.ev = ev
                 end
                 if h then
-                    shot.value, shot.c, shot.ctx, shot.stance, shot.at, shot.zs, shot.mode = h.value, h.c, h.ctx, h.stance, h.at, h.zs, h.mode
+                    -- the angle the record got (see timing), and both candidates for learning the timing
+                    shot.value, shot.c, shot.ctx, shot.stance, shot.at, shot.zs, shot.mode = applied_value(h), h.c, h.ctx, h.stance, h.at, h.zs, h.mode
+                    shot.v_end, shot.v_pre = h.value, h.pre
                     shot.n, shot.pi_base, shot.lcls, shot.fcls = h.n, h.pi_base, h.lcls, h.fcls
                     shot.teleported = h.lc
                     shot.reason = shot.defensive and "defensive" or (h.ctx:sub(1, 1) == "j" and "jitter" or "desync")
@@ -1926,6 +2031,7 @@ LPH_NO_VIRTUALIZE(function ()
                 -- (gamesense calls most of those "prediction error", they never get here), so it counts half
                 local weight = (not hit and s.teleported) and 0.5 or 1
                 if math.abs(s.c or 0) < ZERO_MIN then zero_result(s.key, s.ctx, s.value, hit) end
+                timing_learn(b, s, pi, hit)
                 update(b, s.c, s.value, hit, pi, weight)
                 if not global[s.ctx] then global[s.ctx] = new_belief() end
                 update(global[s.ctx], s.c, s.value, hit, pi, 0.3)
@@ -1990,6 +2096,13 @@ LPH_NO_VIRTUALIZE(function ()
 
             do
                 local last_err = -10
+                client.set_event_callback("net_update_start", function()
+                    local ok, err = pcall(resolver.net_update_start)
+                    if not ok and globals.realtime() - last_err > 5 then
+                        last_err = globals.realtime()
+                        client.error_log("[specter resolver] " .. tostring(err))
+                    end
+                end)
                 client.set_event_callback("net_update_end", function()
                     local ok, err = pcall(resolver.net_update)
                     if not ok and globals.realtime() - last_err > 5 then
@@ -12371,19 +12484,125 @@ LPH_NO_VIRTUALIZE(function ()
                 cmd.sidemove = math.sin(diff) * power
             end
 
+            -- Shot logs (owners, Oct 2026: "a hitlogokat es misslogokat kigyujti githubra ... nem nekunk kene gyujteni"):
+            -- the dev build (no key; the cloud script sends nothing) writes one JSON line per shot of ours: the shot, what
+            -- the resolver gave its record, the target's netvars, the result. They go to the license server (/shotlog,
+            -- base64 parts like a config) every 40 shots and at round end; the bot puts them on GitHub (branch
+            -- "shotlogs"). No names: the target is a hash of its steam id with a salt of this load
+            miscellaneous.shot_log = {} do
+                local SERVER = _auth_data and _auth_data.server_url or ""
+                local on = http ~= nil and SERVER ~= "" and (_auth_data.key or "") == ""
+                local salt = tostring(client.unix_time()) .. tostring(math.random(1e6))
+                local pending, buf, sending = {}, {}, false
+
+                local function hash(s)
+                    local h = 5381
+                    s = salt .. tostring(s)
+                    for i = 1, #s do h = (h * 33 + s:byte(i)) % 4294967296 end
+                    return string_format("%08x", h)
+                end
+
+                local function num(v, digits)
+                    v = tonumber(v)
+                    if not v or v ~= v or v == math.huge or v == -math.huge then return nil end
+                    local m = 10 ^ (digits or 0)
+                    return math.floor(v * m + 0.5) / m
+                end
+
+                local function enc(v)
+                    return (tostring(v):gsub("([^%w%-_.~])", function(c) return string_format("%%%02X", string.byte(c)) end))
+                end
+
+                local function send()
+                    if sending or #buf == 0 then return end
+                    local lines = buf
+                    buf = {}
+                    local data = base64.encode(table_concat(lines, "\n"))
+                    local CHUNK, parts = 3000, {}
+                    for i = 1, #data, CHUNK do parts[#parts + 1] = data:sub(i, i + CHUNK - 1) end
+                    if #parts > 60 then return end
+                    local id = hash(globals.realtime() .. #lines):sub(1, 8) .. tostring(client.unix_time() % 100000)
+                    local base = SERVER .. "/shotlog?id=" .. id .. "&total=" .. #parts
+                    sending = true
+                    local function part(i)
+                        http.get(base .. "&idx=" .. (i - 1) .. "&data=" .. enc(parts[i]), function(ok)
+                            if not ok then sending = false; return end
+                            if i < #parts then return part(i + 1) end
+                            sending = false
+                        end)
+                    end
+                    part(1)
+                end
+
+                function miscellaneous.shot_log.fire(e)
+                    if not on or type(e) ~= "table" or not e.target then return end
+                    local idx = e.target
+                    local s = resolver.shots[e.id] or {}
+                    local p = resolver.database[idx] or {}
+                    local pitch, eye = entity_get_prop(idx, "m_angEyeAngles")
+                    local me = entity.get_local_player()
+                    local weapon = me and entity.get_player_weapon(me)
+                    local timing = resolver.timing or {}
+                    pending[e.id or 0] = {
+                        v = 1, t = client.unix_time(), map = globals.mapname(), tr = num(1 / globals.tickinterval()),
+                        ping = num(real_ping()), lat = num((client.latency() or 0) * 1000),
+                        wpn = weapon and entity_get_prop(weapon, "m_iItemDefinitionIndex") or nil,
+                        tg = hash(p.key or idx), hc = num(e.hit_chance), dmg = num(e.damage), hg = e.hitgroup,
+                        bt_gs = num(e.backtrack), tele = e.teleported or nil, boost = e.boosted or nil, prio = e.high_priority or nil,
+                        bt = num(s.bt), val = num(s.value), ve = num(s.v_end), vp = num(s.v_pre), c = num(s.c, 1), ctx = s.ctx,
+                        why_res = s.reason, def = s.defensive or nil, lc = s.teleported or nil,
+                        st = p.stance, spd = num(p.speed), ch = p.choke, jit = p.jitter or nil, side = p.side, nside = p.next_side,
+                        meth = p.method, mdl = p.model_name, ph = num(p.phit, 3), cm = p.consecutive_misses, maxd = num(p.maxd, 1),
+                        lcs = p.lc_state, nochoke = p.nochoke,
+                        eye = num(eye, 1), pitch = num(pitch, 1), lby = num(entity_get_prop(idx, "m_flLowerBodyYawTarget"), 1),
+                        ts = num(timing.s, 2), tpre = timing.pre or nil, at = globals.realtime(),
+                    }
+                end
+
+                function miscellaneous.shot_log.result(e, hit)
+                    if not on or type(e) ~= "table" then return end
+                    local now = globals.realtime()
+                    for id, row in pairs(pending) do
+                        if now - row.at > 5 or now < row.at then pending[id] = nil end
+                    end
+                    local row = pending[e.id or 0]
+                    if not row then return end
+                    pending[e.id or 0] = nil
+                    row.at = nil
+                    row.r = hit and "hit" or "miss"
+                    if hit then
+                        row.hhg, row.hdmg = e.hitgroup, num(e.damage)
+                        row.dead = (tonumber(entity_get_prop(e.target, "m_iHealth")) or 1) <= 0 or nil
+                    else
+                        row.why = tostring(e.reason or "?")
+                    end
+                    local ok, line = pcall(json.stringify, row)
+                    if ok and type(line) == "string" then
+                        buf[#buf + 1] = line
+                        while #buf > 400 do table.remove(buf, 1) end
+                    end
+                    if #buf >= 40 then send() end
+                end
+
+                client.set_event_callback("round_end", function() if on then pcall(send) end end)
+            end
+
             function miscellaneous:aim_fire(event)
                 -- the resolver first: the hitlog keeps the angle it gave the shot
                 resolver.on_fire(event)
                 self.event_logger.aim_fire(event)
+                pcall(self.shot_log.fire, event)
             end
 
             function miscellaneous:aim_hit(event)
                 self.event_logger.aim_hit(event)
+                pcall(self.shot_log.result, event, true)
                 resolver.on_hit(event)
             end
 
             function miscellaneous:aim_miss(event)
                 self.event_logger.aim_miss(event)
+                pcall(self.shot_log.result, event, false)
                 resolver.on_miss(event)
             end
 

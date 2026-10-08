@@ -579,6 +579,90 @@ app.get('/configs/delete', async (req, res) => {
     }
 })
 
+// ── GET /shotlog — the resolver's shot logs ───────────────────────────────
+// The dev build sends one line (JSON) per shot of ours: what the resolver gave the record, the result. They come in
+// base64 parts like a config (one GET each), a finished batch goes to a Redis list, the bot writes the list to GitHub
+// (branch "shotlogs") and then drops what it wrote (/admin/shotlog). No player names in it (the script hashes the ids).
+// Without a key (the dev build has none) a batch is "dev"; with key + hwid it is checked like a config upload.
+// Per IP at most SHOTLOG_RATE parts in 10 minutes, the list keeps the newest SHOTLOG_MAX batches.
+const SHOTLOG_KEY  = 'specter:shotlog'
+const SHOTLOG_MAX  = 400
+const SHOTLOG_RATE = 300
+const shotlog_parts = new Map()                 // batch id -> { total, parts, ts }
+const shotlog_rate  = new Map()                 // ip -> { n, since }
+setInterval(() => {
+    const now = Date.now()
+    for (const [id, u] of shotlog_parts) if (now - u.ts > 120000) shotlog_parts.delete(id)
+    for (const [ip, r] of shotlog_rate) if (now - r.since > 600000) shotlog_rate.delete(ip)
+}, 30000).unref()
+
+app.get('/shotlog', async (req, res) => {
+    const { key, hwid } = req.query
+    const id    = typeof req.query.id === 'string' ? req.query.id : ''
+    const part  = req.query.data
+    const idx   = parseInt(req.query.idx, 10)
+    const total = parseInt(req.query.total, 10)
+    if (!/^[A-Za-z0-9]{6,24}$/.test(id) || typeof part !== 'string' || !part)
+        return res.status(400).json({ ok: false, reason: 'missing_params' })
+    if (!Number.isInteger(idx) || !Number.isInteger(total) || total < 1 || total > 60 || idx < 0 || idx >= total || part.length > 4000)
+        return res.status(400).json({ ok: false, reason: 'invalid_part' })
+
+    const ip  = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '?').split(',')[0].trim()
+    const now = Date.now()
+    let r = shotlog_rate.get(ip)
+    if (!r || now - r.since > 600000) { r = { n: 0, since: now }; shotlog_rate.set(ip, r) }
+    if (++r.n > SHOTLOG_RATE) return res.status(429).json({ ok: false, reason: 'rate' })
+
+    let src = 'dev'
+    if (key) {
+        const db = await db_read()
+        const license = db[key]
+        if (!license || license.revoked || license.hwid !== hwid) return res.status(403).json({ ok: false, reason: 'invalid_key' })
+        src = license.plan + ':' + config_author(license, key)
+    }
+
+    const bid = `${ip}|${id}`
+    let u = shotlog_parts.get(bid)
+    if (!u || u.total !== total) {
+        u = { total, parts: new Array(total).fill(null), ts: now }
+        shotlog_parts.set(bid, u)
+    }
+    u.parts[idx] = part
+    u.ts = now
+    if (u.parts.some(p => p === null)) return res.json({ ok: true, done: false })
+
+    shotlog_parts.delete(bid)
+    let text = ''
+    try { text = Buffer.from(u.parts.join(''), 'base64').toString('utf8') } catch (e) {}
+    if (text.length < 2 || text.length > 200000)
+        return res.status(400).json({ ok: false, reason: 'invalid_data' })
+    try {
+        await redis.rpush(SHOTLOG_KEY, JSON.stringify({ at: now, src, id, lines: text }))
+        await redis.ltrim(SHOTLOG_KEY, -SHOTLOG_MAX, -1)
+        res.json({ ok: true, done: true })
+    } catch (e) {
+        res.status(500).json({ ok: false, reason: 'server_error' })
+    }
+})
+
+// ── GET /admin/shotlog — the bot takes the stored batches (oldest first) ───
+// ?n=<count> afterwards drops the first <count> once they are on GitHub (a failed write loses nothing)
+app.get('/admin/shotlog', async (req, res) => {
+    if (req.headers['x-admin-secret'] !== ADMIN_SECRET)
+        return res.status(403).json({ error: 'forbidden' })
+    try {
+        const n = parseInt(req.query.n, 10)
+        if (Number.isInteger(n) && n > 0) {
+            await redis.ltrim(SHOTLOG_KEY, n, -1)
+            return res.json({ ok: true, dropped: n })
+        }
+        const items = await redis.lrange(SHOTLOG_KEY, 0, 99)
+        res.json({ ok: true, items: (items || []).map(i => typeof i === 'string' ? JSON.parse(i) : i) })
+    } catch (e) {
+        res.status(500).json({ error: 'redis: ' + e.message })
+    }
+})
+
 // ── DELETE /configs ───────────────────────────────────────────────────────
 // Admin can delete any config
 app.delete('/configs', async (req, res) => {
