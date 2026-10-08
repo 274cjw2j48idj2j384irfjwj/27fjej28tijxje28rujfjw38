@@ -304,7 +304,8 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   stages), Adaptive / Cycle pick, damage threshold, hold. Kept: Constructor (all its modifiers), manual / freestanding /
   edge, safe head, warmup AA, legit AA on use, fast ladder, avoid backstab, animation breaker, air exploit, ideal tick.
 - Anti brute (`antiaimbot.anti_brute`): a hit, or an enemy bullet passing within 40 units of the head (decided 2 ticks
-  later, after player_hurt), starts a short window (0.54-0.86 s) of `PATTERNS` (6): the yaw moves 6-14 deg away from the side
+  later, after player_hurt; not when the path went nearer to a teammate's head / body or the bullet hurt a teammate:
+  owners, Oct 2026, "evaded" at T spawn for shots at the teammate next to us; the same check feeds the evaded log), starts a short window (0.54-0.86 s) of `PATTERNS` (6): the yaw moves 6-14 deg away from the side
   of the head the bullet passed (else alternating, never the same side twice), and the jitter switch restarts. The next
   trigger of the same enemy within 7 s takes the next pattern. The body side stays the coin flip. Menu: Anti Bruteforce,
   Trigger on (Hit / Near miss), Crosshair indicator. `ab.last_trigger` feeds the Constructor's "Logical" yaw logic.
