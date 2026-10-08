@@ -7,12 +7,12 @@ packet (yaw base at targets + yaw offset + native yaw jitter, body yaw side from
 freestanding, max desync by speed) and becomes the enemy of tests/resolver_world.lua, where resolvers shoot at it with
 backtrack and ping. Their hits / shots go back to the anti-aim as player_hurt / bullet_impact (its anti brute-force).
 
-The attackers are the resolver of this script in three setups (full, without the jitter split, with a fixed size). Lower hit
+The attackers are the resolver of this script in two setups (full, without the jitter split). Lower hit
 rate = harder to hit. This models the angles only: a real enemy cheat also reads animation layers, which the model
 does not have.
 
     python3 tests/aa_redteam.py                 every preset, standing / moving / air, 3 attackers
-    python3 tests/aa_redteam.py Nova Phantom    only those presets
+    python3 tests/aa_redteam.py Delay Distort   only those presets
 """
 import os
 import re
@@ -23,7 +23,7 @@ import lupa.luajit21 as L
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 
-PRESETS = ["Specter Godmode", "Specter Phantom", "Specter Elite", "Specter Nova", "Specter Distort", "Specter Mirage", "Specter Void"]
+PRESETS = ["Specter Delay", "Specter 3-Way", "Specter Distort"]
 STATES = {"stand": (0, 0, True, 0), "move": (230, 0, True, 0), "air": (180, 0, False, 0)}
 
 src_cloud = open(os.path.join(ROOT, "specter_cloud.lua"), encoding="utf-8").read()
@@ -32,12 +32,11 @@ PING = re.search(r"-- \[ping:begin\]\n(.*?)\n\s*-- \[ping:end\]", src_cloud, re.
 T = open(os.path.join(HERE, "resolver_regress.py"), encoding="utf-8").read()
 PRE = re.search(r"PRELUDE = '''(.*?)'''", T, re.S).group(1)
 POST = re.search(r"EPILOGUE = '''(.*?)'''", T, re.S).group(1)
-ATTACKER = PRE + PING + "\n" + BLOCK + POST
-# the resolver with its defaults, without the jitter split (sensitivity 90), and with a fixed size (side learned only)
+# the resolver as it is, and without the jitter split (a 90 degree spread before a target counts as a jitterer)
+assert "local JITTER_SPREAD = 30" in BLOCK
 ATTACKERS = {
-    "full": "",
-    "nojit": "ctl.item('Resolver jitter').value = 90",
-    "fixed": "ctl.item('Resolver override').value = true",
+    "full": PRE + PING + "\n" + BLOCK + POST,
+    "nojit": PRE + PING + "\n" + BLOCK.replace("local JITTER_SPREAD = 30", "local JITTER_SPREAD = 90") + POST,
 }
 
 BRIDGE = r'''
@@ -122,8 +121,7 @@ def run(preset, state, attacker, ping=40, ticks=3000, seed=1, dev=None):
         w.frame()
     d = bridge(w, rt.table_from({"vx": vx, "vy": vy}))
     spec = rt.table_from([rt.table_from({"driver": d, "name": "us"})])
-    conf = rt.eval(f"function(ctl) {ATTACKERS[attacker]} end")
-    s = world.run(ATTACKER, rt.table_from({"enemies": spec, "ticks": ticks, "ping": ping, "seed": seed, "configure": conf}))
+    s = world.run(ATTACKERS[attacker], rt.table_from({"enemies": spec, "ticks": ticks, "ping": ping, "seed": seed}))
     errs = list(s.ctl.errors.values()) + list(w.errors.values())
     return s.late_rate, errs, d
 

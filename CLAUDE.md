@@ -230,12 +230,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   shots), Force shot (hotkey + hit chance), Fake duck speed limit, Bizon air spray (Fun). Dormant aimbot: hitbox heights from the last
   visible frame, sound position prediction (`dormant_track`), hit chance from the weapon spread, kill first. Predict enemies: Active =
   Always / Ping 55+ / Ping under 40 (our real ping, `real_ping`).
-- Anti-bruteforce: Stage pick "Adaptive" (per enemy steam id and stage how often it got hit / dodged, Thompson style pick) or "Cycle",
-  Stages used, Refresh jitter on trigger. Roll anti-aim on a key.
 
 ## Recommended config
-- `settings.recommended()` (next to `settings.builtin`): resolver on, preset Distort (lowest best attacker in the red team), Yaw sway +
-  Edge on crouch, defensive with the new triggers, Adaptive fake lag, backtrack Maximum + extended 200 ms, multipoint auto, Resolver
+- `settings.recommended()` (next to `settings.builtin`): resolver on, preset Distort (lowest best attacker in the red team), anti brute
+  (hit + near miss), defensive with the new triggers, Adaptive fake lag, backtrack Maximum + extended 200 ms, multipoint auto, Resolver
   Safety, DT guard, tuning (air / ground / noscope / weapon profiles / peek). "Reset to defaults" applies it after the builtin string;
   the first start (no saved config) applies it and saves.
 
@@ -298,11 +296,20 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   freestanding body side (0.90 -> ~0.47).
 - The body yaw slider gets `sign * 120`: the sign is the side. +-1 only works if gamesense reads nothing but the sign; 120 is full desync
   whether the size is the desync amount or the offset of the choked ticks (180 would be the same angle for both sides as an offset).
-- Anti brute-force stages: body "Random" (default, first item) keeps the coin flip and only changes the yaw; "Opposite" / "Same" hold one
-  side for the hold time (a resolver that misses once knows that side, and "flips after a hit" is learnable).
+- Reworked AA (owners, Oct 2026: "simple aa with defensive and a simple antibrute", 2-3 presets; the public changelog says only
+  "Reworked AA system", never where the ideas came from). Presets: Delay (left / right yaw switched after a random 1-5 packets,
+  3-way air), 3-Way (5-way air), Distort (smooth wandering yaw with rare snaps, 5-way air), Constructor. Removed: Godmode,
+  Phantom, Elite, Nova, Mirage, Void; Modifications Yaw sway / Edge on crouch / Random desync size (+ readout) / Spin yaw /
+  Dormant preset; roll AA; defensive Activation / Delay / Random body yaw / Head guard; the anti brute stage editor (10
+  stages), Adaptive / Cycle pick, damage threshold, hold. Kept: Constructor (all its modifiers), manual / freestanding /
+  edge, safe head, warmup AA, legit AA on use, fast ladder, avoid backstab, animation breaker, air exploit, ideal tick.
+- Anti brute (`antiaimbot.anti_brute`): a hit, or an enemy bullet passing within 40 units of the head (decided 2 ticks
+  later, after player_hurt), starts a short window (0.54-0.86 s) of `PATTERNS` (6): the yaw moves 6-14 deg away from the side
+  of the head the bullet passed (else alternating, never the same side twice), and the jitter switch restarts. The next
+  trigger of the same enemy within 7 s takes the next pattern. The body side stays the coin flip. Menu: Anti Bruteforce,
+  Trigger on (Hit / Near miss), Crosshair indicator. `ab.last_trigger` feeds the Constructor's "Logical" yaw logic.
 - `antiaimbot.main:run` keeps gamesense's own AA switch (`reference.antiaim.master`) on while specter's AA is on, `release()` gives it
   back; it used to be set only by the menu code while the menu was open.
-- Modifications "Yaw sway" (a slow random drift of up to 12 deg on the 180 yaw) and "Edge on crouch" (edge yaw while standing crouched).
 - "Enhanced AA" is gone (owners, Oct 2026: "kellenek egyaltalan?"). Its 11 "jitter types" (Figure-8, Quantum, Chaos Theory,
   Anti-Aim Matrix ...) were sine / noise formulas added to the preset's yaw offset: red team (Distort, best attacker) 0.47-0.50
   against 0.48 without, Smooth Sine 0.57 / Figure-8 0.53 in the air; Quantum's 0.44 was noise (0.47 vs 0.48 on 4 more seeds).
@@ -316,11 +323,9 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   team has no walls. Most other ideas of those luas (delayed / sequence jitter, defensive pitch / yaw modes, safe head on knife /
   zeus / height, break-lc triggers, bomb E, body hold / pulse patterns) Specter already has, or its coin flip side beats them.
 - Defensive triggers also: On peek, Landing, Low HP (<= 40), Threat scoped.
-- Presets: Godmode, Phantom, Elite, Nova, Distort, Mirage (random-hold wide yaw, 5-way air), Void (asymmetric left / right with a random
-  switch delay, 3-way air), Constructor.
-- `python3 tests/aa_redteam.py [preset ...]` (~35 min for all): the REAL anti-aim of the dev build runs in the mock game of
+- `python3 tests/aa_redteam.py [preset ...]` (~1 min for the 3 presets): the REAL anti-aim of the dev build runs in the mock game of
   `tests/perf/mock.lua`; what gamesense would do with the settings it writes is modelled per sent packet and becomes the enemy of
-  `tests/resolver_world.lua`; the resolver of the repo (full / without the jitter split / fixed size; it does not track side switches) shoots at it, its hits / shots reach our anti brute-force.
-  Fails when the best attacker hits a preset / state above 0.60 (a forced side guess is ~0.47). Now (the owners' AA in the dev
-  build, Oct 2026): 0.39-0.53, mean 0.48 (was 0.63; 0.44 with the old repo AA).
+  `tests/resolver_world.lua`; the resolver of the repo (full / without the jitter split: `JITTER_SPREAD` 90 in its source) shoots at it, its hits / shots reach our anti brute-force.
+  Fails when the best attacker hits a preset / state above 0.60 (a forced side guess is ~0.47). Reworked AA (Oct 2026): 0.37-0.52,
+  mean 0.46 (the 7 old presets 0.39-0.53, mean 0.48; was 0.63 before the coin flip body side).
   It models the angles only, not the animation layers a real cheat also reads.
