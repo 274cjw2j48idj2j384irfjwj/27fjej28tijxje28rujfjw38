@@ -231,6 +231,17 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   visible frame, sound position prediction (`dormant_track`), hit chance from the weapon spread, kill first. Predict enemies: Active =
   Always / Ping 55+ / Ping under 40 (our real ping, `real_ping`).
 
+## Cloud loadouts
+- (owners, Oct 2026: "elé rak egy ☁ logót és oda írja melyik user presetje") The shared configs are in the Loadouts list,
+  after the own ones, newest first: "☁ name  by user". The old separate "Cloud Configs" block (Prev / Next / Load from cloud)
+  was never displayed by `menu_state` and is gone. At load the list asks `GET /configs` (the dev build too: its header has
+  the server URL; sharing / deleting needs a key + HWID, so not from the dev build). A cloud row selected: Load imports it,
+  Export copies it, Delete asks the server (only the own ones), Save makes an own loadout of it. "☁ Share to cloud" uploads
+  the loadout named in the box (else the current config under that name) through `/configs/upload_part`; "☁ Refresh cloud".
+  The author is the key's note, else `user-` + 6 hex of its SHA-256 (`config_author` in server.js; it was the key's last
+  6 chars, public). `_server_url` is `PUBLIC_URL`, else the host the script was downloaded from.
+  `python3 tests/cloud_loadouts.py` (mock http; `tests/perf/mock.lua` takes `opts.libs`)
+
 ## Recommended config
 - `settings.recommended()` (next to `settings.builtin`): resolver on, preset Distort (lowest best attacker in the red team), anti brute
   (hit + near miss), defensive with the new triggers, Adaptive fake lag, backtrack Maximum + extended 200 ms, multipoint auto, Resolver

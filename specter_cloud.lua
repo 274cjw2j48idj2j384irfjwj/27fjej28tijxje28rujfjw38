@@ -12650,6 +12650,8 @@ LPH_NO_VIRTUALIZE(function ()
                 :config_ignore()
             config.presets.selected = mui.row(mui.CONTENT, "✎", "Selected", function()
                 local name = config.presets.name and c_string.trim(tostring(config.presets.name:rawget() or "")) or ""
+                local pick = config.presets.cloud_pick
+                if pick and pick.name == name then return "☁ " .. name .. "  by " .. pick.author end
                 return (name == "" or name:find("^No loadouts yet")) and "-" or name
             end)
             config.presets.name = menu.new_item(ui.new_textbox, "AA", "Other", "\nloadout_name")
@@ -12667,6 +12669,13 @@ LPH_NO_VIRTUALIZE(function ()
                 :config_ignore()
             config.presets.export = menu.new_item(ui.new_button, "AA", "Anti-aimbot angles", "Export\nloadout", function () end)
                 :config_ignore()
+            -- cloud: the loadouts everyone shared are in the same list, "☁ name  by user"
+            config.presets.share = menu.new_item(ui.new_button, "AA", "Anti-aimbot angles", "☁ Share to cloud", function () end)
+                :config_ignore()
+            config.presets.refresh = menu.new_item(ui.new_button, "AA", "Anti-aimbot angles", "☁ Refresh cloud", function () end)
+                :config_ignore()
+            config.presets.cloud_msg = "press Refresh cloud to see the shared loadouts"
+            config.presets.cloud_status = mui.label(mui.CONTENT, function() return mui.D .. "      " .. config.presets.cloud_msg end)
         end
 
         config.settings = {} do
@@ -12868,216 +12877,6 @@ LPH_NO_VIRTUALIZE(function ()
                     menu_was_open = open
                 end)
             end
-
-            -- ── CLOUD CONFIG ─────────────────────────────────────────────
-            do
-                local SERVER = _auth_data and _auth_data.server_url or ""
-                local KEY    = _auth_data and _auth_data.key or ""
-                local HWID   = _auth_data and _auth_data.hwid or ""
-
-                local function _ue(s)
-                    return tostring(s):gsub("([^%w%-_.~])", function(c)
-                        return string_format("%%%02X", string.byte(c))
-                    end)
-                end
-
-                local cloud_configs = {}
-                local cloud_idx     = 0
-                local cloud_busy    = false
-
-                config.cloud = {} do
-                    config.cloud.gap     = mui.spacer(mui.CONTENT)
-                    config.cloud.label   = mui.header(mui.CONTENT, "☁", "Cloud Configs")
-                    config.cloud.name    = menu.new_item(ui.new_textbox, "AA", "Anti-aimbot angles", "\nCloud name", "", false)
-                        :config_ignore()
-                    config.cloud.upload  = menu.new_item(ui.new_button, "AA", "Anti-aimbot angles", "Upload to cloud", function() end)
-                        :config_ignore()
-                    config.cloud.refresh = menu.new_item(ui.new_button, "AA", "Anti-aimbot angles", "Refresh cloud list", function() end)
-                        :config_ignore()
-                    config.cloud.current = mui.hint(mui.CONTENT, "No configs loaded.")
-                    config.cloud.prev    = menu.new_item(ui.new_button, "AA", "Anti-aimbot angles", "◀ Prev", function() end)
-                        :config_ignore()
-                    config.cloud.next    = menu.new_item(ui.new_button, "AA", "Anti-aimbot angles", "Next ▶", function() end)
-                        :config_ignore()
-                    config.cloud.load_btn   = menu.new_item(ui.new_button, "AA", "Anti-aimbot angles", "Load from cloud", function() end)
-                        :config_ignore()
-                    config.cloud.delete_btn = menu.new_item(ui.new_button, "AA", "Anti-aimbot angles", "Delete from cloud", function() end)
-                        :config_ignore()
-                    config.cloud.status  = mui.hint(mui.CONTENT, "")
-                end
-
-                local function cloud_update_label()
-                    if #cloud_configs == 0 then
-                        pcall(function() config.cloud.current:set("No configs loaded.") end)
-                        return
-                    end
-                    local cfg = cloud_configs[cloud_idx]
-                    if not cfg then return end
-                    local txt = string_format("[%d/%d] %s  by %s", cloud_idx, #cloud_configs, cfg.name, cfg.author or "?")
-                    pcall(function() config.cloud.current:set(txt) end)
-                end
-
-                local function cloud_set_status(msg)
-                    pcall(function() config.cloud.status:set(msg) end)
-                end
-
-                local function cloud_refresh()
-                    if not http then cloud_set_status("Subscribe to gamesense/http for cloud configs."); return end
-                    if SERVER == "" then cloud_set_status("Server URL not set."); return end
-                    if cloud_busy then return end
-                    cloud_busy = true
-                    cloud_set_status("Loading...")
-
-                    http.get(SERVER .. "/configs", function(ok, resp)
-                        cloud_busy = false
-                        if not ok then cloud_set_status("Server unreachable."); return end
-                        local body = type(resp) == "table" and resp.body or resp
-                        local s, data = pcall(json.parse, body)
-                        if not s or type(data) ~= "table" then cloud_set_status("Bad response."); return end
-
-                        cloud_configs = data
-                        cloud_idx = #data > 0 and 1 or 0
-                        cloud_update_label()
-                        cloud_set_status(#data .. " config(s) found.")
-                    end)
-                end
-
-                local function cloud_upload()
-                    if not http then cloud_set_status("Subscribe to gamesense/http for cloud configs."); return end
-                    if SERVER == "" then cloud_set_status("Server URL not set."); return end
-                    if cloud_busy then return end
-                    local name = ""
-                    pcall(function() name = config.cloud.name:get() or "" end)
-                    name = name:match("^%s*(.-)%s*$")
-                    if name == "" then cloud_set_status("Enter a config name."); return end
-                    if #name > 32 then cloud_set_status("Name too long (max 32)."); return end
-
-                    cloud_busy = true
-                    cloud_set_status("Uploading...")
-
-                    local config_str = config_system.export_to_str()
-                    local encoded = base64.encode(config_str)
-
-                    -- a whole config does not fit into one URL: it goes up in small parts, one request each
-                    local CHUNK = 3000
-                    local parts = {}
-                    for i = 1, #encoded, CHUNK do parts[#parts + 1] = encoded:sub(i, i + CHUNK - 1) end
-                    if #parts > 150 then
-                        cloud_busy = false
-                        cloud_set_status("Config too large.")
-                        return
-                    end
-
-                    local base = SERVER .. "/configs/upload_part"
-                        .. "?key="   .. _ue(KEY)
-                        .. "&hwid="  .. _ue(HWID)
-                        .. "&name="  .. _ue(name)
-                        .. "&total=" .. #parts
-
-                    local function send(i)
-                        cloud_set_status(string_format("Uploading %d/%d...", i, #parts))
-                        http.get(base .. "&idx=" .. (i - 1) .. "&data=" .. _ue(parts[i]), function(ok, resp)
-                            if not ok then
-                                cloud_busy = false
-                                cloud_set_status(string_format("Upload failed (part %d/%d).", i, #parts))
-                                return
-                            end
-                            local body = type(resp) == "table" and resp.body or resp
-                            local s, data = pcall(json.parse, body)
-                            if not (s and type(data) == "table" and data.ok) then
-                                cloud_busy = false
-                                cloud_set_status("Upload error: " .. (type(data) == "table" and data.reason or "?"))
-                                return
-                            end
-                            if i < #parts then
-                                send(i + 1)
-                                return
-                            end
-                            cloud_busy = false
-                            cloud_set_status("Uploaded: " .. name)
-                            c_logger.log("Cloud config '%s' uploaded.", name)
-                            cloud_refresh()
-                        end)
-                    end
-                    send(1)
-                end
-
-                local function cloud_load()
-                    if cloud_idx < 1 or cloud_idx > #cloud_configs then
-                        cloud_set_status("Refresh the list first."); return
-                    end
-                    local cfg = cloud_configs[cloud_idx]
-                    if not cfg or not cfg.data then cloud_set_status("Invalid config."); return end
-
-                    local raw = cfg.data
-                    local decoded = base64.decode(raw)
-                    if not decoded or decoded == "" then decoded = raw end
-
-                    local ok, err = config_system.import_from_str(decoded)
-                    if ok then
-                        pcall(antiaimbot_builder.refresh)
-                        pcall(antiaimbot_builder.refresh_defensive)
-                        config_system:save_local(true)
-                        cloud_set_status("Loaded: " .. cfg.name)
-                        c_logger.log("Cloud config '%s' by %s loaded.", cfg.name, cfg.author or "?")
-                    else
-                        cloud_set_status("Import failed: " .. (err or "?"))
-                    end
-                end
-
-                local function cloud_delete()
-                    if not http then cloud_set_status("Subscribe to gamesense/http for cloud configs."); return end
-                    if SERVER == "" then cloud_set_status("Server URL not set."); return end
-                    if cloud_idx < 1 or cloud_idx > #cloud_configs then
-                        cloud_set_status("Nothing to delete."); return
-                    end
-                    if cloud_busy then return end
-                    local cfg = cloud_configs[cloud_idx]
-                    if not cfg then cloud_set_status("Select a config."); return end
-
-                    cloud_busy = true
-                    cloud_set_status("Deleting...")
-
-                    local url = SERVER .. "/configs/delete"
-                        .. "?key="  .. _ue(KEY)
-                        .. "&hwid=" .. _ue(HWID)
-                        .. "&name=" .. _ue(cfg.name)
-
-                    http.get(url, function(ok, resp)
-                        cloud_busy = false
-                        if not ok then cloud_set_status("Delete failed."); return end
-                        local body = type(resp) == "table" and resp.body or resp
-                        local s, data = pcall(json.parse, body)
-                        if s and type(data) == "table" and data.ok then
-                            cloud_set_status("Deleted: " .. cfg.name)
-                            c_logger.log("Cloud config '%s' deleted.", cfg.name)
-                            cloud_refresh()
-                        else
-                            cloud_set_status("Delete error: " .. (data and data.reason or "?"))
-                        end
-                    end)
-                end
-
-                config.cloud.upload:set_callback(cloud_upload)
-                config.cloud.refresh:set_callback(cloud_refresh)
-                config.cloud.load_btn:set_callback(cloud_load)
-                config.cloud.delete_btn:set_callback(cloud_delete)
-                config.cloud.prev:set_callback(function()
-                    if #cloud_configs > 0 then
-                        cloud_idx = cloud_idx - 1
-                        if cloud_idx < 1 then cloud_idx = #cloud_configs end
-                        cloud_update_label()
-                    end
-                end)
-                config.cloud.next:set_callback(function()
-                    if #cloud_configs > 0 then
-                        cloud_idx = cloud_idx + 1
-                        if cloud_idx > #cloud_configs then cloud_idx = 1 end
-                        cloud_update_label()
-                    end
-                end)
-            end
-            -- ── END CLOUD CONFIG ─────────────────────────────────────────
         end
     end
 
@@ -13089,6 +12888,40 @@ LPH_NO_VIRTUALIZE(function ()
         antiaim_presets = {} do
             local database_name = 'specter_presets'
             local list = {}
+
+            -- the loadouts everyone shared through the license server; they come after the own ones in the list
+            local SERVER = _auth_data and _auth_data.server_url or ""
+            local KEY    = _auth_data and _auth_data.key or ""
+            local HWID   = _auth_data and _auth_data.hwid or ""
+            local cloud, rows, cloud_busy = {}, {}, false
+
+            local function cloud_status(msg)
+                config.presets.cloud_msg = msg
+                mui.refresh(config.presets.cloud_status)
+            end
+
+            local function url_encode(v)
+                return (tostring(v):gsub("([^%w%-_.~])", function(c) return string_format("%%%02X", string.byte(c)) end))
+            end
+
+            -- names come from other users: printable, short
+            local function clean(v, n)
+                return (tostring(v or ""):gsub("[%c]", ""):sub(1, n))
+            end
+
+            local function cloud_ready()
+                if not http then cloud_status("subscribe to gamesense/http for the cloud"); return false end
+                if SERVER == "" then cloud_status("no server set"); return false end
+                if cloud_busy then return false end
+                return true
+            end
+
+            local function cloud_answer(ok, resp)
+                if not ok then return nil end
+                local body = type(resp) == "table" and resp.body or resp
+                local good, data = pcall(json.parse, body)
+                return good and type(data) == "table" and data or nil
+            end
 
             local create_preset, Preset do
                 Preset = {} do
@@ -13149,12 +12982,15 @@ LPH_NO_VIRTUALIZE(function ()
 
             function antiaim_presets.update_list()
                 local list_names = {}
-                local list_len = #list
+                rows = {}
 
-                for i=1, list_len do
-                    local preset = list[i]
-
-                    list_names[i] = preset.name
+                for i = 1, #list do
+                    rows[#rows + 1] = { preset = list[i] }
+                    list_names[#rows] = list[i].name
+                end
+                for i = 1, #cloud do
+                    rows[#rows + 1] = { cloud = cloud[i] }
+                    list_names[#rows] = "☁ " .. cloud[i].name .. "  by " .. cloud[i].author
                 end
 
                 if #list_names == 0 then
@@ -13200,18 +13036,121 @@ LPH_NO_VIRTUALIZE(function ()
             end
 
             function antiaim_presets.list_name_changed()
-                if #list == 0 then
+                if #rows == 0 then
                     return
                 end
 
                 local selected_id = config.presets.list:rawget() or 0
-                local selected = list[selected_id + 1]
+                local row = rows[selected_id + 1] or rows[#rows]
+                local selected = row.preset or row.cloud
 
-                if selected == nil then
-                    selected = list[#list]
-                end
-
+                config.presets.cloud_pick = row.cloud
                 config.presets.name:set(selected.name)
+            end
+
+            -- the cloud loadout that is selected (and whose name is still in the name box)
+            local function picked_cloud()
+                local pick = config.presets.cloud_pick
+                if pick and pick.name == c_string.trim(tostring(config.presets.name:rawget() or "")) then return pick end
+            end
+
+            -- the shared data is the export string in base64 (older uploads: the export string itself)
+            local function cloud_data(cfg)
+                local ok, decoded = pcall(base64.decode, cfg.data)
+                if ok and type(decoded) == "string" and decoded:find("_Specter$") then return decoded end
+                return cfg.data
+            end
+
+            function antiaim_presets.cloud_refresh()
+                if not cloud_ready() then return end
+                cloud_busy = true
+                cloud_status("loading the cloud...")
+                http.get(SERVER .. "/configs", function(ok, resp)
+                    cloud_busy = false
+                    local data = cloud_answer(ok, resp)
+                    if not data then cloud_status("cloud unreachable"); return end
+                    cloud = {}
+                    for i = #data, 1, -1 do -- newest first
+                        local c = data[i]
+                        if type(c) == "table" and type(c.data) == "string" and c.name then
+                            cloud[#cloud + 1] = { name = clean(c.name, 32), author = clean(c.author or "?", 20), data = c.data }
+                        end
+                    end
+                    antiaim_presets.update_list()
+                    antiaim_presets.list_name_changed()
+                    cloud_status(#cloud .. " shared loadout(s) in the cloud")
+                end)
+            end
+
+            -- uploads the loadout named in the box (or the current config under that name)
+            function antiaim_presets.cloud_share()
+                local name = c_string.trim(tostring(config.presets.name:rawget() or ""))
+                if name == "" or name:find("^No loadouts yet") then cloud_status("type a name first"); return end
+                if #name > 32 then cloud_status("name too long (max 32)"); return end
+                if picked_cloud() then cloud_status("that one is already in the cloud"); return end
+                if KEY == "" then cloud_status("log in with your key to share"); return end
+                if not cloud_ready() then return end
+
+                local preset = antiaim_presets.lookup(name)
+                local data = preset and preset.data or config_system.export_to_str()
+                local encoded = base64.encode(data)
+
+                -- a whole config does not fit into one URL: it goes up in small parts, one request each
+                local CHUNK, parts = 3000, {}
+                for i = 1, #encoded, CHUNK do parts[#parts + 1] = encoded:sub(i, i + CHUNK - 1) end
+                if #parts > 150 then cloud_status("loadout too large"); return end
+
+                local base = SERVER .. "/configs/upload_part?key=" .. url_encode(KEY) .. "&hwid=" .. url_encode(HWID)
+                    .. "&name=" .. url_encode(name) .. "&total=" .. #parts
+                cloud_busy = true
+                local function send(i)
+                    cloud_status(string_format("sharing %d/%d...", i, #parts))
+                    http.get(base .. "&idx=" .. (i - 1) .. "&data=" .. url_encode(parts[i]), function(ok, resp)
+                        local answer = cloud_answer(ok, resp)
+                        if not (answer and answer.ok) then
+                            cloud_busy = false
+                            cloud_status("share failed: " .. tostring(answer and answer.reason or "server unreachable"))
+                            return
+                        end
+                        if i < #parts then return send(i + 1) end
+                        cloud_busy = false
+                        c_logger.log('Loadout "%s" shared to the cloud.', name)
+                        antiaim_presets.cloud_refresh()
+                    end)
+                end
+                send(1)
+            end
+
+            function antiaim_presets.cloud_load(cfg)
+                local ok, err = config_system.import_from_str(cloud_data(cfg))
+                if not ok then
+                    c_logger.log_error('Failed to load cloud loadout [%s]', err)
+                    return
+                end
+                pcall(antiaimbot_builder.refresh)
+                pcall(antiaimbot_builder.refresh_defensive)
+                config_system:save_local(true)
+                c_logger.log('Cloud loadout "%s" by %s loaded.', cfg.name, cfg.author)
+            end
+
+            -- the server deletes only the user's own uploads
+            function antiaim_presets.cloud_delete(cfg)
+                if KEY == "" then cloud_status("log in with your key to delete"); return end
+                if not cloud_ready() then return end
+                cloud_busy = true
+                local url = SERVER .. "/configs/delete?key=" .. url_encode(KEY) .. "&hwid=" .. url_encode(HWID) .. "&name=" .. url_encode(cfg.name)
+                http.get(url, function(ok, resp)
+                    cloud_busy = false
+                    local answer = cloud_answer(ok, resp)
+                    if not (answer and answer.ok) then
+                        local reason = answer and answer.reason
+                        cloud_status(reason == "not_found" and "you can only delete your own loadouts"
+                            or "delete failed: " .. tostring(reason or "server unreachable"))
+                        return
+                    end
+                    c_logger.log('Cloud loadout "%s" deleted.', cfg.name)
+                    antiaim_presets.cloud_refresh()
+                end)
             end
 
             function antiaim_presets.delete(target)
@@ -13272,6 +13211,8 @@ LPH_NO_VIRTUALIZE(function ()
 
             antiaim_presets.methods = {} do
                 function antiaim_presets.methods.load()
+                    local pick = picked_cloud()
+                    if pick then return antiaim_presets.cloud_load(pick) end
                     local name = config.presets.name:rawget()
                     local preset, id = antiaim_presets.lookup(name)
 
@@ -13293,6 +13234,8 @@ LPH_NO_VIRTUALIZE(function ()
                         c_logger.log_error('Type a config name first')
                         return
                     end
+                    -- saving with a cloud loadout selected makes an own one with its name
+                    config.presets.cloud_pick = nil
                     local preset, id = antiaim_presets.lookup(name)
 
                     if preset == nil then
@@ -13324,6 +13267,11 @@ LPH_NO_VIRTUALIZE(function ()
                 end
 
                 function antiaim_presets.methods.export()
+                    local pick = picked_cloud()
+                    if pick then
+                        clipboard.set(cloud_data(pick))
+                        return c_logger.log('Cloud loadout "%s" exported.', pick.name)
+                    end
                     local name = config.presets.name:rawget()
                     local preset, id = antiaim_presets.lookup(name)
 
@@ -13371,6 +13319,8 @@ LPH_NO_VIRTUALIZE(function ()
                 end
 
                 function antiaim_presets.methods.remove()
+                    local pick = picked_cloud()
+                    if pick then return antiaim_presets.cloud_delete(pick) end
                     local name = config.presets.name:rawget()
                     local preset = antiaim_presets.lookup(name)
 
@@ -13388,12 +13338,15 @@ LPH_NO_VIRTUALIZE(function ()
             config.presets.export:set_callback(antiaim_presets.methods.export)
             config.presets.import:set_callback(antiaim_presets.methods.import)
             config.presets.remove:set_callback(antiaim_presets.methods.remove)
+            config.presets.share:set_callback(antiaim_presets.cloud_share)
+            config.presets.refresh:set_callback(antiaim_presets.cloud_refresh)
 
             config.presets.list:set_callback(function ()
                 antiaim_presets.list_name_changed()
             end)
 
             antiaim_presets.initialize()
+            if http and SERVER ~= "" then antiaim_presets.cloud_refresh() end
         end
     end
 
@@ -13559,6 +13512,7 @@ LPH_NO_VIRTUALIZE(function ()
                 for i = 1, #NAV.hdr.telemetry_rows do mui.refresh(NAV.hdr.telemetry_rows[i]) end
             elseif page == "Loadouts" then
                 mui.refresh(config.presets.selected)
+                mui.refresh(config.presets.cloud_status)
             end
         end
     end
@@ -14155,6 +14109,9 @@ LPH_NO_VIRTUALIZE(function ()
                 PR.save:display()
                 PR.export:display()
                 PR.remove:display()
+                PR.share:display()
+                PR.refresh:display()
+                PR.cloud_status:display()
 
                 ST.gap:display()
                 ST.label:display()
