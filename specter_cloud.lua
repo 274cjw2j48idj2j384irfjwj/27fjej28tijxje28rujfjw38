@@ -6181,6 +6181,20 @@ LPH_NO_VIRTUALIZE(function ()
                         return false
                     end
 
+                    -- bunny hop (jump held): no shift on the jump tick and the last 3 ticks before we land. A shift there
+                    -- ran the landing / the jump in shifted ticks and the hop lost its speed (owners, Oct 2026: "meg mindig
+                    -- szar de csak defensivenel"). The landing is the drop of the next 3 ticks traced down from the feet
+                    if cmd.in_jump == 1 then
+                        if player.onground then return false end
+                        local x, y, z = entity_get_prop(me, 'm_vecOrigin')
+                        local _, _, vz = entity_get_prop(me, 'm_vecVelocity')
+                        if x and z and vz then
+                            local t = globals_tickinterval() * 3
+                            local drop = math_max(0, -(vz * t - 400 * t * t)) + 2
+                            if client.trace_line(me, x, y, z, x, y, z - drop) < 1 then return false end
+                        end
+                    end
+
                     local conditions_met = true do
                         local doubletap_active = c_table.is_hotkey_active(reference.ragebot.doubletap.enable)
                         local hideshots_active = c_table.is_hotkey_active(reference.misc.onshot_antiaim) and not doubletap_active
