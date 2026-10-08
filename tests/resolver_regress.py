@@ -170,6 +170,19 @@ for d in (dict(body="static"), dict(body="opp"), dict(body="coin"), dict(body="s
     check(acc.moved == 0, f"jitter_defensive{d}: the forced value moved on {acc.moved} shifted updates")
     check(acc.srv == 0, f"jitter_defensive{d}: {acc.srv} of {acc.sh} shots at a shifted model not judged by the server's record")
     check(acc.bad == 0, f"jitter_defensive{d}: {acc.bad} shots judged by another value than their record got")
+# a target that moves left and right while it shifts (jiggle peek), aim points: the drawn shifted model lies near an
+# older record, its shots were taken for backtracked ones (14-16% of them not marked defensive, learned as resolver misses)
+for d in (dict(body="static"), dict(body="static", back=12, len=6)):
+    acc = lua("function() return { n = 0, z = 0, sh = 0, unmarked = 0, moved = 0, bad = 0, srv = 0 } end")()
+    for sd in (1, 2, 3):
+        for ping in (20, 80):
+            drv = H.drivers["jitter_defensive"](rt.table_from(dict(d, seed=sd * 31)))
+            spec = rt.table_from([rt.table_from({"driver": drv, "move": True})])
+            s = H.run(SCRIPT, rt.table_from(dict(enemies=spec, ticks=3000, ping=ping, seed=sd, on_shot=DEF(acc), aim=True)))
+            check(s.errors == 0 and not errors_of(s), f"jitter_defensive{d} moving: errors {errors_of(s)[:2]}")
+    print(f"   moving {str(d):<45} at shifted {acc.sh} (unmarked {acc.unmarked}, not the server's record {acc.srv})")
+    check(acc.sh > 10 and acc.unmarked == 0, f"jitter_defensive{d} moving: {acc.unmarked} of {acc.sh} shots at a shifted model not marked defensive")
+    check(acc.srv == 0, f"jitter_defensive{d} moving: {acc.srv} of {acc.sh} shots at a shifted model not judged by the server's record")
 for scn, d in (("defensive", dict(flick=110)), ("defensive", dict(flick=110, base="jitter")), ("choke_defensive", dict(choke=6))):
     c = avg(scn, d, 40, metric="valid_rate")
     print(f"   {scn + str(d):<52} valid {c:.2f}")

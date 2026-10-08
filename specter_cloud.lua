@@ -1909,7 +1909,9 @@ LPH_NO_VIRTUALIZE(function ()
             -- origin of the record the aimbot used; the stored record with the nearest origin is it. Only when the target
             -- moved enough between records to tell them apart; otherwise gamesense's number
             local HITBOX_OF = { [1] = 0, [2] = 5, [3] = 3, [4] = 17, [5] = 15, [6] = 8, [7] = 7, [8] = 1 }
-            -- the record the aim point belongs to (ticks back), nil when the position can not tell
+            -- the record the aim point belongs to (ticks back), DRAWN for the drawn shifted model, nil when the position
+            -- can not tell
+            local DRAWN = -1
             local function measured_backtrack(p, idx, event)
                 local ax, ay, az = tonumber(event.x), tonumber(event.y), tonumber(event.z)
                 if not (#p.hist > 1 and finite(ax) and finite(ay) and finite(az)) then return nil end
@@ -1931,6 +1933,15 @@ LPH_NO_VIRTUALIZE(function ()
                         local d = (h.o[1] - tx) ^ 2 + (h.o[2] - ty) ^ 2
                         if d < bd then best, bd, d2 = h, d, bd elseif d < d2 then d2 = d end
                     end
+                end
+                -- while it shifts the drawn model is no record: a target that moves (jiggle peek) put the aim point on it near
+                -- an older record, and the shot was taken for a backtracked one (sim: 14-16% of the shots at the shifted model)
+                if p.shifting then
+                    local d = (ox - tx) ^ 2 + (oy - ty) ^ 2
+                    if d < bd then
+                        if d <= 10 * 10 and math.sqrt(bd) - math.sqrt(d) >= 2 then return DRAWN end
+                        return nil
+                    elseif d < d2 then d2 = d end
                 end
                 if not best then return nil end
                 local no, bo = newest.o, best.o
@@ -1971,6 +1982,7 @@ LPH_NO_VIRTUALIZE(function ()
                 local tk = tonumber(event.tick)
                 if not finite(tk) then tk = nil end
                 local m = measured_backtrack(p, idx, event)
+                if m == DRAWN then return 0, 0 end
                 if m then
                     -- not while it shifts: the drawn model is the shifted one
                     if not p.shifting then
