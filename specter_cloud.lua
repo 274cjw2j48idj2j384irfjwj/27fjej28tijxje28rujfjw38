@@ -2231,36 +2231,17 @@ LPH_NO_VIRTUALIZE(function ()
                     body_yaw_type = "Jitter", body_yaw_value = -1
                 }
 
-                local function delay_state(l, r, d1, d2, mod, mv, rnd)
+                -- left / right yaw, switched after a random d1 .. d2 packets
+                local function delay_state(l, r, d1, d2)
                     return {
                         pitch = "Minimal", yaw_base = "At targets", yaw_type = "Left & Right",
                         left_offset = l, right_offset = r, yaw_delay = d1, yaw_delay_second = d2,
-                        yaw_modifier = mod or "Off", modifier_offset = mv or 0, modifier_randomize = rnd,
+                        yaw_modifier = "Off", modifier_offset = 0,
                         body_yaw_type = "Jitter", body_yaw_value = -1
                     }
                 end
 
-                local function center_state(off, mod, width, rnd)
-                    return {
-                        pitch = "Minimal", yaw_base = "At targets", yaw_type = "180", yaw_offset = off,
-                        yaw_modifier = mod, modifier_offset = width, modifier_randomize = rnd,
-                        body_yaw_type = "Jitter", body_yaw_value = -1
-                    }
-                end
-
-                -- (Elite used to hold one body yaw side picked by freestanding: tests/aa_redteam.py hit it 0.90 in every
-                -- state, one miss shows the side for good. The sway / offset yaw stays, the body side is the coin flip)
-                local function static_state(yaw_type, a, b, delay, speed, mod, mv, rnd)
-                    return {
-                        pitch = "Minimal", yaw_base = "At targets", yaw_type = yaw_type,
-                        yaw_offset = yaw_type == "180" and a or nil,
-                        left_offset = a, right_offset = b, yaw_delay = delay, yaw_speed = speed,
-                        yaw_modifier = mod or "Off", modifier_offset = mv or 0, modifier_randomize = rnd,
-                        body_yaw_type = "Sync", body_yaw_value = 1
-                    }
-                end
-
-                -- presets built on the packet-stepped jitters + synced body yaw
+                -- the packet-stepped jitters + the body side as a coin flip per sent packet
                 local function jit_state(off, mod, width, rnd)
                     return {
                         pitch = "Minimal", yaw_base = "At targets", yaw_type = "180", yaw_offset = off,
@@ -2269,18 +2250,35 @@ LPH_NO_VIRTUALIZE(function ()
                     }
                 end
 
-                c_constant.antiaim_presets["Specter Nova"] = {
+                -- Delay: the yaw sits left or right and switches after a random 1-5 packets (an asymmetric delayed
+                -- jitter), 3-way in the air
+                c_constant.antiaim_presets["Specter Delay"] = {
                     ["Legit AA"]      = LEGIT,
-                    ["Fake lag"]      = jit_state(3, "Delayed center", 56, 4),
-                    ["Standing"]      = jit_state(4, "5-Way", 54, 4),
-                    ["Slow-motion"]   = jit_state(2, "Delayed center", 48, 4),
-                    ["Moving"]        = jit_state(4, "Delayed center", 60, 6),
-                    ["Crouching"]     = jit_state(3, "5-Way", 50, 4),
-                    ["Crouch moving"] = jit_state(4, "Delayed center", 52, 5),
-                    ["Air"]           = jit_state(6, "3-Way", 46, 6),
-                    ["Air & Crouch"]  = jit_state(5, "3-Way", 42, 6),
+                    ["Fake lag"]      = delay_state(-24, 36, 1, 3),
+                    ["Standing"]      = delay_state(-22, 34, 2, 4),
+                    ["Slow-motion"]   = delay_state(-18, 28, 2, 4),
+                    ["Moving"]        = delay_state(-26, 38, 1, 3),
+                    ["Crouching"]     = delay_state(-20, 32, 2, 5),
+                    ["Crouch moving"] = delay_state(-24, 34, 1, 4),
+                    ["Air"]           = jit_state(5, "3-Way", 48, 6),
+                    ["Air & Crouch"]  = jit_state(4, "3-Way", 44, 6),
                 }
 
+                -- 3-Way: left / center / right per sent packet, 5-way (new random order every cycle) in the air
+                c_constant.antiaim_presets["Specter 3-Way"] = {
+                    ["Legit AA"]      = LEGIT,
+                    ["Fake lag"]      = jit_state(3, "3-Way", 54, 4),
+                    ["Standing"]      = jit_state(4, "3-Way", 58, 4),
+                    ["Slow-motion"]   = jit_state(2, "3-Way", 46, 4),
+                    ["Moving"]        = jit_state(4, "3-Way", 56, 5),
+                    ["Crouching"]     = jit_state(3, "3-Way", 50, 4),
+                    ["Crouch moving"] = jit_state(4, "3-Way", 52, 5),
+                    ["Air"]           = jit_state(5, "5-Way", 48, 6),
+                    ["Air & Crouch"]  = jit_state(4, "5-Way", 44, 6),
+                }
+
+                -- Distort: a smooth wandering yaw with rare snaps to the far side (no rhythm to time), 5-way in the air.
+                -- The lowest best attacker in tests/aa_redteam.py
                 c_constant.antiaim_presets["Specter Distort"] = {
                     ["Legit AA"]      = LEGIT,
                     ["Fake lag"]      = jit_state(2, "Distortion", 58, 0),
@@ -2291,70 +2289,6 @@ LPH_NO_VIRTUALIZE(function ()
                     ["Crouch moving"] = jit_state(4, "Distortion", 54, 0),
                     ["Air"]           = jit_state(5, "5-Way", 48, 6),
                     ["Air & Crouch"]  = jit_state(4, "5-Way", 44, 6),
-                }
-
-                c_constant.antiaim_presets["Specter Godmode"] = {
-                    ["Legit AA"]      = LEGIT,
-                    ["Fake lag"]      = delay_state(-24, 38, 1, 3),
-                    ["Standing"]      = delay_state(-22, 40, 2, 5),
-                    ["Slow-motion"]   = delay_state(-18, 34, 2, 4),
-                    ["Moving"]        = delay_state(-26, 42, 1, 3),
-                    ["Crouching"]     = delay_state(-20, 36, 3, 6),
-                    ["Crouch moving"] = delay_state(-24, 38, 2, 4),
-                    ["Air"]           = delay_state(-30, 46, 1, 2, "Center", 8, 6),
-                    ["Air & Crouch"]  = delay_state(-28, 42, 1, 3, "Center", 6, 6),
-                }
-
-                c_constant.antiaim_presets["Specter Phantom"] = {
-                    ["Legit AA"]      = LEGIT,
-                    ["Fake lag"]      = center_state(4, "Center", 58, 6),
-                    ["Standing"]      = center_state(3, "Center", 64, 6),
-                    ["Slow-motion"]   = center_state(2, "Center", 50, 5),
-                    ["Moving"]        = center_state(4, "Center", 56, 6),
-                    ["Crouching"]     = center_state(3, "Center", 60, 6),
-                    ["Crouch moving"] = center_state(4, "Center", 52, 5),
-                    ["Air"]           = center_state(6, "Skitter", 50, 8),
-                    ["Air & Crouch"]  = center_state(5, "Skitter", 44, 8),
-                }
-
-                -- Mirage: a wide yaw that holds each side a random 1-4 packets at 70-100% width (no rhythm to time a brute
-                -- force on), body side a coin flip per packet; 5-way in the air
-                c_constant.antiaim_presets["Specter Mirage"] = {
-                    ["Legit AA"]      = LEGIT,
-                    ["Fake lag"]      = jit_state(2, "Random hold", 62, 4),
-                    ["Standing"]      = jit_state(3, "Random hold", 66, 4),
-                    ["Slow-motion"]   = jit_state(2, "Random hold", 54, 4),
-                    ["Moving"]        = jit_state(4, "Random hold", 62, 5),
-                    ["Crouching"]     = jit_state(3, "Random hold", 60, 4),
-                    ["Crouch moving"] = jit_state(4, "Random hold", 56, 5),
-                    ["Air"]           = jit_state(5, "5-Way", 52, 6),
-                    ["Air & Crouch"]  = jit_state(4, "5-Way", 48, 6),
-                }
-
-                -- Void: an asymmetric left / right yaw that switches after a random number of packets, body side a coin
-                -- flip per packet; 3-way in the air
-                c_constant.antiaim_presets["Specter Void"] = {
-                    ["Legit AA"]      = LEGIT,
-                    ["Fake lag"]      = delay_state(-34, 44, 1, 4),
-                    ["Standing"]      = delay_state(-38, 46, 1, 5),
-                    ["Slow-motion"]   = delay_state(-30, 38, 2, 4),
-                    ["Moving"]        = delay_state(-36, 44, 1, 3),
-                    ["Crouching"]     = delay_state(-34, 42, 2, 5),
-                    ["Crouch moving"] = delay_state(-32, 40, 1, 4),
-                    ["Air"]           = jit_state(5, "3-Way", 50, 6),
-                    ["Air & Crouch"]  = jit_state(4, "3-Way", 46, 6),
-                }
-
-                c_constant.antiaim_presets["Specter Elite"] = {
-                    ["Legit AA"]      = LEGIT,
-                    ["Fake lag"]      = static_state("180", 4, nil, nil, nil, "Offset", 10, 5),
-                    ["Standing"]      = static_state("Sway", -12, 14, 6, 4, "Offset", 8, 4),
-                    ["Slow-motion"]   = static_state("Sway", -8, 10, 6, 3, "Offset", 6, 3),
-                    ["Moving"]        = static_state("180", 4, nil, nil, nil, "Offset", 14, 6),
-                    ["Crouching"]     = static_state("Sway", -10, 12, 7, 3, "Offset", 8, 4),
-                    ["Crouch moving"] = static_state("180", 3, nil, nil, nil, "Offset", 12, 5),
-                    ["Air"]           = delay_state(-20, 28, 1, 1, "Center", 10, 6),
-                    ["Air & Crouch"]  = delay_state(-18, 26, 1, 2, "Center", 8, 6),
                 }
             end
 
@@ -5227,46 +5161,11 @@ LPH_NO_VIRTUALIZE(function ()
             config.antiaimbot.hdr_mods = mui.header(mui.SIDE, "✦", "Modifications")
             config.antiaimbot.options = menu.new_item(ui.new_multiselect, "AA", "Other", "Modifications", {
                 "On use antiaim",
-                "Fast ladder",
-                "Dormant preset",
-                "Yaw sway",
-                "Edge on crouch",
-                "Random desync size",
-                "Spin yaw"
+                "Fast ladder"
             }):record("antiaimbot", "options"):save()
-            -- "Random desync size": every sent packet a new body yaw size between these two (the side stays the coin flip)
-            config.antiaimbot.random_size_min = menu.new_item(ui.new_slider, "AA", "Other", "•  Desync size min\nrnd_desync", 0, 58, 40, true, "°")
-                :record("antiaimbot", "random_size_min"):save()
-            config.antiaimbot.random_size_max = menu.new_item(ui.new_slider, "AA", "Other", "•  Desync size max\nrnd_desync", 0, 58, 58, true, "°")
-                :record("antiaimbot", "random_size_max"):save()
-            -- a new size every tick (also on the choked ones) or once per sent packet
-            config.antiaimbot.random_size_rate = menu.new_item(ui.new_combobox, "AA", "Other", "•  Change size\nrnd_desync", { "Every tick", "Every packet" })
-                :record("antiaimbot", "random_size_rate"):save()
-            config.antiaimbot.spin_speed = menu.new_item(ui.new_slider, "AA", "Other", "•  Spin speed\nspin", 1, 30, 8, true, "\xC2\xB0")
-                :record("antiaimbot", "spin_speed"):save()
-            -- shows the size the script asks for next to the body yaw the model really has (pose parameter 11)
-            config.antiaimbot.random_size_readout = menu.new_item(ui.new_checkbox, "AA", "Other", "•  Show AA readout\nrnd_desync")
-                :record("antiaimbot", "random_size_readout"):save()
-
             config.antiaimbot.preset = menu.new_item(ui.new_combobox, "AA", "Anti-aimbot angles", "Preset\naa",
-                TIER.HAS_BUILDER and {
-                    "Specter Godmode",
-                    "Specter Phantom",
-                    "Specter Elite",
-                    "Specter Nova",
-                    "Specter Distort",
-                    "Specter Mirage",
-                    "Specter Void",
-                    "Constructor"
-                } or {
-                    "Specter Godmode",
-                    "Specter Phantom",
-                    "Specter Elite",
-                    "Specter Nova",
-                    "Specter Distort",
-                    "Specter Mirage",
-                    "Specter Void",
-                }
+                TIER.HAS_BUILDER and { "Specter Delay", "Specter 3-Way", "Specter Distort", "Constructor" }
+                or { "Specter Delay", "Specter 3-Way", "Specter Distort" }
             ):record("antiaimbot", "preset"):save()
             config.uix.builder_hint = mui.hint(mui.CONTENT, "presets are fixed  ·  pick Constructor to edit states")
 
@@ -5391,31 +5290,6 @@ LPH_NO_VIRTUALIZE(function ()
                 "Threat scoped"
             }):record("antiaimbot", "defensive_triggers"):save()
 
-            -- when the forced states actually break lag comp: all the time, only while the threat can
-            -- see you, or in irregular bursts (keeps the charge up and the timing unreadable)
-            -- ticks a trigger has to hold before the defensive starts (0 = at once): a short peek does not burn the charge
-            config.antiaimbot.defensive_delay = menu.new_item(ui.new_slider, "AA", "Other", "•  Delay\ndefensive", 0, 16, 0, true, "t")
-                :record("antiaimbot", "defensive_delay"):save()
-            config.antiaimbot.defensive_activation = menu.new_item(ui.new_combobox, "AA", "Other", "•  Activation\ndefensive", {
-                "Always", "When visible", "Pulse"
-            }):record("antiaimbot", "defensive_activation"):save()
-
-            -- the body yaw of the shifted packets: a fresh random side AND size per packet (between the Random desync size
-            -- sliders). A resolver computes the body yaw of a flicked record from the angles it sees (sim: 1.00 hit on
-            -- defensive records with a random flick angle, 0.10-0.19 with a random body yaw on them)
-            config.antiaimbot.defensive_random_body = menu.new_item(ui.new_checkbox, "AA", "Other", "•  Random body yaw\ndefensive")
-                :record("antiaimbot", "defensive_random_body"):save()
-            pcall(function() config.antiaimbot.defensive_random_body:set(true) end)
-
-            -- "Head guard": every shifted packet puts the head somewhere else. The resolvers (gamesense, neverlose, fatality,
-            -- primordial ...) aim at the head they work out from the body yaw of the record; the pitch moves it up / down and
-            -- the yaw flick turns the whole model. A fresh random pitch from the extremes, a random sideways / backwards yaw and
-            -- (with Random body yaw) a random body side + size per packet: no two defensive records have the head in the
-            -- same place, and none of them where the next normal record has it
-            config.antiaimbot.defensive_head_guard = menu.new_item(ui.new_checkbox, "AA", "Other", "•  Head guard\ndefensive")
-                :record("antiaimbot", "defensive_head_guard"):save()
-            pcall(function() config.antiaimbot.defensive_head_guard:set(true) end)
-
             config.antiaimbot.defensive_preset = menu.new_item(ui.new_combobox, "AA", "Anti-aimbot angles", "•  Preset\ndefensive", {
                 "Auto",
                 "Constructor"
@@ -5500,47 +5374,13 @@ LPH_NO_VIRTUALIZE(function ()
             config.antiaimbot.anti_brute = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Anti Bruteforce")
                 :record("antiaimbot", "anti_brute"):save()
 
-            config.antiaimbot.anti_brute_threshold = menu.new_item(ui.new_slider, "AA", "Anti-aimbot angles", "•  Damage threshold\nanti_brute", 1, 100, 30, true, " hp", 1)
-                :record("antiaimbot", "anti_brute_threshold"):save()
-
-            config.antiaimbot.anti_brute_duration = menu.new_item(ui.new_slider, "AA", "Anti-aimbot angles", "•  Hold\nanti_brute", 1, 30, 8, true, "s", 1)
-                :record("antiaimbot", "anti_brute_duration"):save()
-
-            config.antiaimbot.anti_brute_triggers = menu.new_item(ui.new_multiselect, "AA", "Anti-aimbot angles", "•  Trigger on\nanti_brute", { "Hit", "Near miss", "Body hit" })
+            config.antiaimbot.anti_brute_triggers = menu.new_item(ui.new_multiselect, "AA", "Anti-aimbot angles", "•  Trigger on\nanti_brute", { "Hit", "Near miss" })
                 :record("antiaimbot", "anti_brute_triggers"):save()
-            pcall(function() config.antiaimbot.anti_brute_triggers:set({ "Hit", "Near miss", "Body hit" }) end)
-            -- under the crosshair while anti brute holds a stage: the stage and the time left
+            pcall(function() config.antiaimbot.anti_brute_triggers:set({ "Hit", "Near miss" }) end)
+            -- under the crosshair while anti brute is active: the stage and the time left
             config.antiaimbot.anti_brute_indicator = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "•  Crosshair indicator\nanti_brute")
                 :record("antiaimbot", "anti_brute_indicator"):save()
             pcall(function() config.antiaimbot.anti_brute_indicator:set(true) end)
-            -- Adaptive: per enemy, the stage that enemy's resolver handled worst is taken next (hits / dodged bullets
-            -- while each stage was on). Cycle: 1, 2, 3 ... like before
-            config.antiaimbot.anti_brute_mode = menu.new_item(ui.new_combobox, "AA", "Anti-aimbot angles", "•  Stage pick\nanti_brute", { "Adaptive", "Cycle" })
-                :record("antiaimbot", "anti_brute_mode"):save()
-            config.antiaimbot.anti_brute_count = menu.new_item(ui.new_slider, "AA", "Anti-aimbot angles", "•  Stages used\nanti_brute", 2, 10, 10, true, "", 1)
-                :record("antiaimbot", "anti_brute_count"):save()
-            -- every trigger rolls the stage modifier a little (+-10 deg) and restarts the yaw switch timing, so a resolver
-            -- that learned the stage values does not get the same angles twice
-            config.antiaimbot.anti_brute_refresh = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "•  Refresh jitter on trigger\nanti_brute")
-                :record("antiaimbot", "anti_brute_refresh"):save()
-            pcall(function() config.antiaimbot.anti_brute_refresh:set(true) end)
-
-            config.antiaimbot.anti_brute_stage = menu.new_item(ui.new_combobox, "AA", "Anti-aimbot angles", "•  Edit stage\nanti_brute",
-                { "1", "2", "3", "4", "5", "6", "7", "8", "9", "10" }):config_ignore()
-
-            config.antiaimbot.anti_brute_stages = {}
-            for i = 1, 10 do
-                config.antiaimbot.anti_brute_stages[i] = {}
-                config.antiaimbot.anti_brute_stages[i].yaw = menu.new_item(ui.new_slider, "AA", "Anti-aimbot angles",
-                    string_format("•  Yaw offset\nab_%d", i), -180, 180, ({0, 18, -18, 30, -30, 12, -12, 24, -24, 6})[i] or 0, true, "\xC2\xB0")
-                    :record("antiaimbot", "ab_stage_" .. i .. "_yaw"):save()
-                config.antiaimbot.anti_brute_stages[i].body = menu.new_item(ui.new_combobox, "AA", "Anti-aimbot angles",
-                    string_format("•  Body yaw\nab_%d", i), {"Random", "Opposite", "Same", "Jitter"})
-                    :record("antiaimbot", "ab_stage_" .. i .. "_body"):save()
-                config.antiaimbot.anti_brute_stages[i].modifier = menu.new_item(ui.new_slider, "AA", "Anti-aimbot angles",
-                    string_format("•  Modifier\nab_%d", i), -58, 58, ({0, 25, -25, 40, -40, 55, -55, 30, -30, 0})[i] or 0, true, "\xC2\xB0")
-                    :record("antiaimbot", "ab_stage_" .. i .. "_mod"):save()
-            end
 
             config.antiaimbot.backtrack_optimization = menu.new_item(ui.new_checkbox, "AA", "Other", "Backtrack optimization\nlegacy")
                 :record("antiaimbot", "backtrack_optimization")
@@ -5588,21 +5428,6 @@ LPH_NO_VIRTUALIZE(function ()
                 "Jitter disabled",
                 "Body freestanding",
             }):record("antiaimbot", "fs_options"):save()
-
-            -- roll anti-aim on a key (servers that clamp roll make it do nothing)
-            config.antiaimbot.roll_key = menu.new_item(ui.new_hotkey, "AA", "Anti-aimbot angles", "Roll anti-aim")
-                :record("antiaimbot", "roll_key"):save()
-            config.antiaimbot.roll_value = menu.new_item(ui.new_slider, "AA", "Anti-aimbot angles", "•  Roll\nroll_aa", -50, 50, 45, true, "\194\176")
-                :record("antiaimbot", "roll_value"):save()
-            client.set_event_callback("setup_command", function()
-                if not reference.antiaim.roll then return end
-                local ok, on = pcall(function() return config.antiaimbot.roll_key:get() end)
-                if ok and on then
-                    override.set(reference.antiaim.roll, config.antiaimbot.roll_value:get())
-                elseif override.get(reference.antiaim.roll) ~= nil then
-                    override.unset(reference.antiaim.roll)
-                end
-            end)
 
             config.antiaimbot.freestanding_disabler_states = menu.new_item(ui.new_multiselect, "AA", "Anti-aimbot angles", "•  Freestand ignore", c_constant.STATE_LIST)
                 :record("antiaimbot", "freestanding_disabler_states")
@@ -5665,9 +5490,6 @@ LPH_NO_VIRTUALIZE(function ()
                         override.set(reference.antiaim.yaw.base, yaw_base)
 
                         local edge_yaw = self.edge_yaw or false
-                        local mods = config.antiaimbot.options:get() or {}
-                        -- "Edge on crouch": standing crouched next to a wall, the head goes behind it
-                        if not edge_yaw and c_table.contains(mods, "Edge on crouch") and player.state == "Crouching" then edge_yaw = true end
 
                         override.set(reference.antiaim.yaw.edge, edge_yaw)
 
@@ -5683,21 +5505,6 @@ LPH_NO_VIRTUALIZE(function ()
 
                         local yaw_type = self.yaw_type or '180'
                         local yaw_offset = self.yaw_offset or 0
-                        -- "Yaw sway": a slow random drift of up to 12 degrees on top of the yaw, so the yaw of the records
-                        -- never sits on the same value (resolvers that learn an angle per yaw value keep starting over)
-                        -- "Spin yaw": the yaw offset turns round and round (per tick, the speed slider)
-                        if yaw_type == '180' and c_table.contains(mods, "Spin yaw") then
-                            AntiAim.spin = ((AntiAim.spin or 0) + config.antiaimbot.spin_speed:get()) % 360
-                            yaw_offset = math_floor(AntiAim.spin - 180)
-                        end
-                        if yaw_type == '180' and c_table.contains(mods, "Yaw sway") then
-                            local sw = AntiAim.sway or { v = 0, to = 0 }
-                            AntiAim.sway = sw
-                            if math_abs(sw.to - sw.v) < 1 then sw.to = client_random_int(-12, 12) end
-                            sw.v = sw.v + math_max(-1.5, math_min(1.5, sw.to - sw.v))
-                            yaw_offset = math_floor(yaw_offset + sw.v + 0.5)
-                            if yaw_offset > 180 then yaw_offset = yaw_offset - 360 elseif yaw_offset < -180 then yaw_offset = yaw_offset + 360 end
-                        end
 
                         override.set(reference.antiaim.yaw.yaw.type, yaw_type)
                         override.set(reference.antiaim.yaw.yaw.value, yaw_offset)
@@ -5724,13 +5531,8 @@ LPH_NO_VIRTUALIZE(function ()
                         -- if it reads the size too (desync amount, or how far the choked ticks turn away) +-1 is almost no desync.
                         -- 120: full desync under every reading (180 would be the same angle for both sides as an offset)
                         local body_sign = (body_yaw_value or 0) > 0 and 1 or ((body_yaw_value or 0) < 0 and -1 or 0)
-                        local body_amount = 120
-                        local def_random = config.antiaimbot.defensive_random_body:get() and player.defensive_active
-                        if body_yaw_type == 'Static' and antiaimbot.body_size and (c_table.contains(mods, "Random desync size") or def_random) then
-                            body_amount = antiaimbot.body_size()
-                        end
                         override.set(reference.antiaim.body.yaw.type, body_yaw_type)
-                        override.set(reference.antiaim.body.yaw.value, body_sign * body_amount)
+                        override.set(reference.antiaim.body.yaw.value, body_sign * 120)
 
                         local body_yaw_freestanding = self.body_yaw_freestanding or false
 
@@ -5756,7 +5558,6 @@ LPH_NO_VIRTUALIZE(function ()
                 antiaimbot.features.state = {
                     legit_antiaim = false,
                     safe_head = false,
-                    vanish_mode = false,
                     warmup_antiaim = false,
                     manual_antiaim = false,
                     freestanding = false
@@ -6114,77 +5915,6 @@ LPH_NO_VIRTUALIZE(function ()
                     end
                 end
 
-                antiaimbot.features.vanish_mode = {} do
-                    local vanish_weapons = {
-                        ['CKnife'] = true,
-                        ['CWeaponTaser'] = true,
-                        ['CSmokeGrenade'] = true,
-                        ['CDecoyGrenade'] = true,
-                        ['CHEGrenade'] = true,
-                        ['CMolotovGrenade'] = true,
-                        ['CIncendiaryGrenade'] = true
-                    }
-
-                    antiaimbot.features.vanish_state = { wanted = false, since = 0, active = false }
-
-                    function antiaimbot.features.vanish_mode.run(instance, cmd, me, wpn)
-                        antiaimbot.features.state.vanish_mode = false
-
-                        if antiaimbot.features.running then
-                            return 'Priority surpassed'
-                        end
-
-                        if not c_table.contains(config.antiaimbot.options:get(), 'Dormant preset') then
-                            return 'Not enabled'
-                        end
-
-                        local threat = client.current_threat();
-
-                        if not threat or not entity.is_alive(threat) then
-                            return 'Threat is invalid';
-                        end
-
-                        local threat_wpn = entity.get_player_weapon(threat);
-
-                        if threat_wpn then
-                            local wpn_classname = entity.get_classname(threat_wpn)
-                            local can_hit
-                            local esp_data = entity.get_esp_data(threat)
-
-                            if esp_data then
-                                can_hit = bit.band(esp_data.flags or 0, 2048) ~= 0
-                            end
-
-                            local wanted = vanish_weapons[wpn_classname] or (entity.is_dormant(threat) and not can_hit)
-                            local now = globals_curtime()
-                            local vs = antiaimbot.features.vanish_state
-                            if wanted ~= vs.wanted then vs.wanted, vs.since = wanted, now end
-                            if now - vs.since >= 0.5 then vs.active = wanted end
-
-                            if vs.active then
-                                instance.pitch = 'Minimal'
-
-                                instance.yaw_type = '180'
-                                instance.yaw_base = 'At targets'
-                                instance.yaw_offset = player.fakeyaw > 0 and 5 or -7
-                                instance.yaw_modifier = 'Off'
-
-                                instance.body_yaw_type = 'Jitter'
-                                instance.body_yaw_value = -1
-
-                                antiaimbot.features.state.vanish_mode = true
-                                antiaimbot.features.running = true
-
-                                return 'Vanish mode is running'
-                            else
-                                return 'Threat weapon invalid/Unsafe dormant state'
-                            end
-                        else
-                            return 'Threat weapon is invalid'
-                        end
-                    end
-                end
-
                 antiaimbot.features.avoid_backstab = {} do
                     function antiaimbot.features.avoid_backstab.run(instance, cmd, me, wpn)
                         local my_origin = vector(entity.get_origin(me))
@@ -6279,22 +6009,6 @@ LPH_NO_VIRTUALIZE(function ()
                     return seen, vis.since
                 end
 
-                -- irregular on / off bursts for the "Pulse" activation
-                local pulse = { tick = -1, on = true, left = 0 }
-                local function pulse_on()
-                    local tick = globals_tickcount()
-                    if pulse.tick ~= tick then
-                        pulse.tick = tick
-                        pulse.left = pulse.left - 1
-                        if pulse.left <= 0 then
-                            pulse.on = not pulse.on
-                            pulse.left = pulse.on and client.random_int(4, 10) or client.random_int(2, 6)
-                        end
-                    end
-                    return pulse.on
-                end
-                antiaimbot.defensive.pulse_on = pulse_on
-
                 function antiaimbot.defensive.force(cmd, me, wpn)
                     if not config.antiaimbot.defensive_aa:get() then
                         return false
@@ -6354,10 +6068,8 @@ LPH_NO_VIRTUALIZE(function ()
                     end
 
                     local now = globals.realtime()
-                    local activation = config.antiaimbot.defensive_activation and config.antiaimbot.defensive_activation:get() or "Always"
-                    local needs_sight = activation == "When visible" or c_table.contains(defensive_triggers, 'Enemy visible')
                     local visible, visible_since = false, -10
-                    if needs_sight then visible, visible_since = antiaimbot.defensive.threat_visible(me) end
+                    if c_table.contains(defensive_triggers, 'Enemy visible') then visible, visible_since = antiaimbot.defensive.threat_visible(me) end
 
                     -- peeking the threat, the ticks after landing, low on health, a threat that is scoped in (it is about to shoot)
                     if c_table.contains(defensive_triggers, 'On peek') and player.peeking
@@ -6380,21 +6092,7 @@ LPH_NO_VIRTUALIZE(function ()
                         defensive_triggered = true
                     end
 
-                    if defensive_check and not defensive_triggered then
-                        if activation == "When visible" and not visible then
-                            defensive_check = false
-                        elseif activation == "Pulse" and not pulse_on() then
-                            defensive_check = false
-                        end
-                    end
-
                     if defensive_check or defensive_triggered then
-                        local delay = config.antiaimbot.defensive_delay and config.antiaimbot.defensive_delay:get() or 0
-                        local tick = globals_tickcount()
-                        local d = antiaimbot.defensive
-                        if not d.want_since or tick < d.want_since or tick - (d.want_last or 0) > 1 then d.want_since = tick end
-                        d.want_last = tick
-                        if tick - d.want_since < delay then return false end
                         cmd.force_defensive = 1
 
                         return true, defensive_triggered
@@ -6504,7 +6202,7 @@ LPH_NO_VIRTUALIZE(function ()
                 end
 
                 function antiaimbot.defensive:run(instance, cmd, me, wpn, forcing, triggered)
-                    if antiaimbot.features.state.vanish_mode or antiaimbot.features.state.warmup_antiaim then
+                    if antiaimbot.features.state.warmup_antiaim then
                         return false, 'Overrided by superior features'
                     end
 
@@ -6662,27 +6360,6 @@ LPH_NO_VIRTUALIZE(function ()
                         yaw = self.get_scissor_offset(scissor_way, this) + client.random_int(0, randomize)
                     end
 
-                    -- Head guard: overrides the preset's pitch / yaw with a new head position per sent packet
-                    if config.antiaimbot.defensive_head_guard:get() then
-                        local hg = antiaimbot.defensive.head_guard or { last = -1 }
-                        antiaimbot.defensive.head_guard = hg
-                        if (player.packets or 0) ~= hg.last then
-                            hg.last = player.packets or 0
-                            local pitches = { -89, -70, -45, 0, 45, 70, 89 }
-                            -- never the same height twice in a row
-                            local p_new = hg.pitch
-                            for _ = 1, 4 do
-                                if p_new ~= hg.pitch then break end
-                                p_new = pitches[client.random_int(1, #pitches)]
-                            end
-                            hg.pitch = p_new
-                            local side = client.random_int(0, 1) == 1 and 1 or -1
-                            hg.yaw = side * client.random_int(60, 180)
-                        end
-                        pitch_mode, yaw_mode = 'Custom', 'Custom'
-                        pitch, yaw = hg.pitch, hg.yaw
-                    end
-
                     local _, view_angle_yaw = client.camera_angles()
 
                     view_angle_yaw = player:threat_yaw(me) or view_angle_yaw
@@ -6742,9 +6419,8 @@ LPH_NO_VIRTUALIZE(function ()
                 -- that has to pick a side is right half of the time at best. Steps once per sent packet so fake lag never
                 -- swallows a switch.
                 local DECORRELATE_BODY = true
-                local body_side, body_size do
-                    local bs = { side = 1, last = -1, size = 58, size_last = -1 }
-                    antiaimbot.body_state = bs
+                local body_side do
+                    local bs = { side = 1, last = -1 }
                     body_side = function()
                         local p = player.packets or 0
                         if p ~= bs.last then
@@ -6753,80 +6429,8 @@ LPH_NO_VIRTUALIZE(function ()
                         end
                         return bs.side
                     end
-                    -- the size of the body yaw for this packet: a fresh random one per sent packet between the two sliders.
-                    -- Keep it in the wide band (default 40 .. 58): the head hitbox forgives ~25-30 deg of resolver error, so
-                    -- small sizes do not hide the side, they only put the head where a centre / safe point shot lands
-                    body_size = function()
-                        local p = config.antiaimbot.random_size_rate:get() == "Every packet" and (player.packets or 0)
-                            or -globals.tickcount()
-                        if p ~= bs.size_last then
-                            bs.size_last = p
-                            local lo = config.antiaimbot.random_size_min:get()
-                            local hi = config.antiaimbot.random_size_max:get()
-                            if hi < lo then lo, hi = hi, lo end
-                            bs.size = client.random_int(lo, hi)
-                        end
-                        bs.asked = globals.realtime()
-                        return bs.size
-                    end
                 end
                 antiaimbot.body_side = function() return body_side() end
-                antiaimbot.body_size = function() return body_size() end
-
-                -- readout: per sent packet the size asked for and the real body yaw, the spread over the last 64 packets
-                do
-                    local ro = { last = -1, set = {}, real = {} }
-                    local function push(t, v) t[#t + 1] = v; if #t > 64 then table.remove(t, 1) end end
-                    local function span(t)
-                        local lo, hi = math.huge, -math.huge
-                        for _, v in ipairs(t) do lo, hi = math.min(lo, v), math.max(hi, v) end
-                        return lo, hi
-                    end
-                    client.set_event_callback("paint", function()
-                        if not config.antiaimbot.random_size_readout:get() then return end
-                        local me = entity_get_local_player()
-                        if not me or not entity.is_alive(me) then return end
-                        local bs = antiaimbot.body_state
-                        local p = player.packets or 0
-                        local active = bs.asked and globals.realtime() - bs.asked < 0.5
-                        if p ~= ro.last then
-                            ro.last = p
-                            if active then push(ro.set, bs.size) end
-                            push(ro.real, math.abs(player.fakeyaw or 0))
-                        end
-                        local sw, sh = client.screen_size()
-                        local x, y = math.floor(sw / 2), math.floor(sh / 2) + 70
-                        local sw0, sh0 = client.screen_size()
-                        local x0, y0 = math.floor(sw0 / 2), math.floor(sh0 / 2) + 70
-                        -- what the anti-aim does right now: gamesense's AA as the script wrote it, and the feature that runs
-                        local function g(ref) local ok, v = pcall(ui_get, ref); return ok and tostring(v) or "?" end
-                        local ref = reference.antiaim
-                        local line_a = string.format("gamesense AA %s   base %s   yaw %s %s   body %s %s", g(ref.master) == "true" and "on" or "OFF",
-                            g(ref.yaw.base), g(ref.yaw.yaw.type), g(ref.yaw.yaw.value), g(ref.body.yaw.type), g(ref.body.yaw.value))
-                        local st, act = antiaimbot.features.state or {}, {}
-                        local ms = antiaimbot.manual_antiaim and antiaimbot.manual_antiaim.state or -1
-                        if st.manual_antiaim then act[#act + 1] = "manual " .. (({ "left", "right", "back", "forward" })[ms] or tostring(ms)) end
-                        if st.legit_antiaim then act[#act + 1] = "legit (on use)" end
-                        if st.warmup_antiaim then act[#act + 1] = "warmup / round end" end
-                        if st.safe_head then act[#act + 1] = "safe head" end
-                        if st.vanish_mode then act[#act + 1] = "dormant preset" end
-                        if st.freestanding then act[#act + 1] = "freestanding" end
-                        local dbg = antiaimbot.main and antiaimbot.main.debug or {}
-                        if dbg.avoid_backstab then act[#act + 1] = "avoid backstab" end
-                        local line_b = "running: " .. (#act > 0 and table.concat(act, ", ") or (config.antiaimbot.preset:get() or "preset"))
-                        renderer.text(x0, y0 - 28, 230, 230, 240, 255, "c", 0, line_a)
-                        renderer.text(x0, y0 - 14, 255, 200, 120, 255, "c", 0, line_b)
-                        if #ro.real == 0 or (active and #ro.set == 0) then return end
-                        local rlo, rhi = span(ro.real)
-                        local line1 = active and string.format("asked %d\194\176   (last 64: %d - %d)", bs.size, span(ro.set))
-                            or "asked: not active (Static body yaw + Random desync size)"
-                        local line2 = string.format("real %d\194\176   (last 64: %d - %d)", math.floor(math.abs(player.fakeyaw or 0) + 0.5),
-                            math.floor(rlo + 0.5), math.floor(rhi + 0.5))
-                        renderer.text(x, y, 200, 200, 210, 255, "c", 0, "desync readout")
-                        renderer.text(x, y + 14, 180, 160, 255, 255, "c", 0, line1)
-                        renderer.text(x, y + 28, 120, 220, 160, 255, "c", 0, line2)
-                    end)
-                end
 
                 local function cj_shuffle(t)
                     for i = #t, 2, -1 do
@@ -7041,120 +6645,48 @@ LPH_NO_VIRTUALIZE(function ()
                     instance.body_yaw_freestanding = data.body_yaw_freestanding or data.body_yaw_type == 'Freestand'
                 end
 
-                --- Anti Brute-Force Module
-                -- Being hit, or an enemy bullet passing close to the head, means the enemy's resolver has our
-                -- angle (or is about to brute to the next one). Step to the next stage and HOLD it, so the side
-                -- they just learned stops working. A double-tap burst counts as one trigger.
+                --- Anti brute-force: an enemy bullet that hits us or passes within 40 units of the head means its resolver
+                -- is on our angle. For a short window (about half a second) the yaw moves a few degrees away from the side
+                -- the bullet came past, and the jitter switch restarts. Every next trigger by the same enemy within 7 s
+                -- takes the next pattern, after that it starts over. The body side stays the coin flip per packet
                 antiaimbot.anti_brute = {} do
                     local ab = antiaimbot.anti_brute
+                    local PATTERNS = {
+                        { offset = 7,  duration = 0.58, restart = true },
+                        { offset = 11, duration = 0.72, restart = false },
+                        { offset = 14, duration = 0.86, restart = true },
+                        { offset = 9,  duration = 0.64, restart = true },
+                        { offset = 13, duration = 0.78, restart = false },
+                        { offset = 6,  duration = 0.54, restart = true },
+                    }
 
-                    ab.per_player = {}
-                    ab.pending = {}
-                    ab.hurt_tick = {}
-                    ab.active = false
-                    ab.active_until = 0
-                    ab.defensive_until = 0
-                    ab.stage = 0
-                    ab.last_trigger = 0
-                    ab.hit_accumulator = 0
-                    ab.hit_window_start = 0
-                    ab.prev_stage, ab.stage_since = 0, 0
-                    ab.mod_roll = 0
-                    -- per enemy (steam id) and stage: how often that stage got hit (b) and dodged a bullet (a).
-                    -- Kept for the whole map (not reset on round start / death)
-                    ab.learn = {}
-
-                    local function stages_used()
-                        local item = config.antiaimbot.anti_brute_count
-                        return c_math.clamp(item and item:get() or 10, 2, 10)
-                    end
-
-                    local function enemy_key(idx)
-                        local ok, sid = pcall(entity.get_steam64, idx)
-                        if ok and sid and sid ~= 0 then return tostring(sid) end
-                        return "i" .. tostring(idx)
-                    end
-
-                    local function learn_row(attacker)
-                        local key = enemy_key(attacker)
-                        local row = ab.learn[key]
-                        if not row then
-                            row = {}
-                            for i = 1, 10 do row[i] = { a = 1, b = 1 } end
-                            ab.learn[key] = row
-                        end
-                        return row
-                    end
-
-                    -- the stage the enemy's bullet met: a stage switched on less than the shot's travel time ago
-                    -- (our ping + their ping, ~0.15 s) was not what the shot was aimed at yet
-                    local function stage_at_shot()
-                        if not ab.active then return 0 end
-                        if globals.realtime() - ab.stage_since < 0.15 + (client.latency() or 0) * 2 then return ab.prev_stage end
-                        return ab.stage
-                    end
-
-                    -- outcome of a bullet against a stage: dodged = true (near miss), false = hit. Old evidence fades (0.9)
-                    -- so an enemy that adapts is followed
-                    function ab:record(attacker, stage, dodged)
-                        if not attacker or not stage or stage < 1 then return end
-                        local cell = learn_row(attacker)[stage]
-                        if not cell then return end
-                        cell.a = 1 + (cell.a - 1) * 0.9
-                        cell.b = 1 + (cell.b - 1) * 0.9
-                        if dodged then cell.a = cell.a + 1 else cell.b = cell.b + 1 end
-                    end
-
-                    -- Thompson style pick: every stage gets a draw around its dodge rate (wider when it was tried less),
-                    -- the highest draw wins. Never the stage that was just beaten
-                    local function gauss()
-                        local u1, u2 = math.max(1e-6, math.random()), math.random()
-                        return math.sqrt(-2 * math.log(u1)) * math.cos(2 * math.pi * u2)
-                    end
-                    function ab:pick(attacker, current)
-                        local n = stages_used()
-                        local mode = config.antiaimbot.anti_brute_mode
-                        if not (mode and mode:get() == "Adaptive") or not attacker then
-                            return current % n + 1
-                        end
-                        local row = learn_row(attacker)
-                        local best, best_v = nil, -1e9
-                        for i = 1, n do
-                            if i ~= current then
-                                local c = row[i]
-                                local t = c.a + c.b
-                                local mean = c.a / t
-                                local sd = math.sqrt(c.a * c.b / (t * t * (t + 1)))
-                                local v = mean + sd * gauss()
-                                if v > best_v then best, best_v = i, v end
-                            end
-                        end
-                        return best or (current % n + 1)
-                    end
+                    ab.pending, ab.hurt_tick, ab.enemies = {}, {}, {}
+                    ab.active, ab.active_until, ab.stage, ab.last_trigger, ab.side = false, 0, 0, 0, 1
 
                     local function wants(kind)
-                        local item = config.antiaimbot.anti_brute_triggers
-                        local list = item and item:get()
-                        if type(list) ~= "table" or #list == 0 then return kind == "Hit" end
+                        local list = config.antiaimbot.anti_brute_triggers:get()
+                        if type(list) ~= "table" or #list == 0 then return true end
                         return c_table.contains(list, kind)
                     end
 
-                    function ab:trigger(reason, attacker)
+                    -- side: +1 / -1 = the side of the head the bullet passed (0: unknown, a hit)
+                    function ab:trigger(reason, attacker, side)
                         local master = config.navigation.aa_enable
                         if master and not master:get() then return end
                         local now = globals.realtime()
-                        if self.active and now - self.last_trigger < 0.35 then return end
-                        if not self.active then self.side = nil end   -- new sequence: flip away from the preset again
-                        self.last_trigger = now
-                        self.prev_stage, self.stage_since = self.active and self.stage or 0, now
-                        self.stage = self:pick(attacker, self.stage)
-                        local refresh = config.antiaimbot.anti_brute_refresh
-                        self.mod_roll = (refresh and refresh:get()) and client.random_int(-10, 10) or 0
-                        self.refresh_pending = refresh and refresh:get() or false
-                        self.active = true
-                        self.active_until = now + math_max(1, config.antiaimbot.anti_brute_duration:get() or 8)
-                        self.defensive_until = now + 0.3
-                        self.flip_pending = true
+                        local enemy = self.enemies[attacker] or { stage = 0, last = -10, side = 0 }
+                        if now - enemy.last < 0.08 then return end
+                        enemy.stage = (now - enemy.last > 7) and 1 or (enemy.stage % #PATTERNS + 1)
+                        -- away from the side the bullet passed, else alternating; never the same side twice in a row
+                        side = side ~= 0 and -side or (enemy.stage % 2 == 0 and -1 or 1)
+                        if side == enemy.side then side = -side end
+                        enemy.last, enemy.side = now, side
+                        self.enemies[attacker] = enemy
+
+                        local pattern = PATTERNS[enemy.stage]
+                        self.pattern, self.side, self.stage = pattern, side, enemy.stage
+                        self.active, self.active_until, self.last_trigger = true, now + pattern.duration, now
+                        self.restart_pending = pattern.restart
                         if c_logger.event then
                             local name = tostring(entity_get_player_name(attacker) or "?"):gsub("\a%x%x%x%x%x%x%x%x", ""):gsub("%c", "")
                             c_logger.event("ANTI-BRUTE", 180, 160, 255, {
@@ -7167,48 +6699,9 @@ LPH_NO_VIRTUALIZE(function ()
 
                     function ab:on_hurt(attacker, damage, hitgroup)
                         self.hurt_tick[attacker] = globals_tickcount()
-                        local want_hit, want_body = wants("Hit"), wants("Body hit")
-                        if not config.antiaimbot.anti_brute:get() or not (want_hit or want_body) then return end
-                        if not hitgroup or hitgroup == 0 then return end
-                        if not entity.is_enemy(attacker) then return end
-                        -- a head hit says the stage the bullet met was resolved
-                        if hitgroup == 1 then self:record(attacker, stage_at_shot(), false) end
-                        -- "Body hit": a chest / stomach hit means they found the body side, whatever the damage
-                        if want_body and (hitgroup == 2 or hitgroup == 3) then
-                            self:trigger(string_format("body hit, %d dmg", damage), attacker)
-                            return
-                        end
-                        if not want_hit then return end
-
-                        local curtime = globals_curtime()
-                        local threshold = config.antiaimbot.anti_brute_threshold:get()
-
-                        local pdata = self.per_player[attacker]
-                        if not pdata then
-                            pdata = { hits = 0, last_hit = 0, consecutive = 0, total_dmg = 0 }
-                            self.per_player[attacker] = pdata
-                        end
-                        pdata.hits = pdata.hits + 1
-                        pdata.total_dmg = pdata.total_dmg + damage
-
-                        if pdata.last_hit > 0 and curtime - pdata.last_hit < 1.5 then
-                            pdata.consecutive = pdata.consecutive + 1
-                        else
-                            pdata.consecutive = 1
-                        end
-                        pdata.last_hit = curtime
-
-                        if curtime - self.hit_window_start > 2.0 then
-                            self.hit_accumulator = 0
-                            self.hit_window_start = curtime
-                        end
-                        self.hit_accumulator = self.hit_accumulator + damage
-
-                        if damage >= threshold or self.hit_accumulator >= threshold * 2 or pdata.consecutive >= 2 or hitgroup == 1 then
-                            self.hit_accumulator = 0
-                            self.hit_window_start = curtime
-                            self:trigger(string_format("hit, %d dmg", damage), attacker)
-                        end
+                        if not config.antiaimbot.anti_brute:get() or not wants("Hit") then return end
+                        if not hitgroup or hitgroup == 0 or not entity.is_enemy(attacker) then return end
+                        self:trigger(string_format("hit, %d dmg", damage), attacker, 0)
                     end
 
                     -- enemy bullet path passing within 40 units of our head (decided two ticks later,
@@ -7229,12 +6722,15 @@ LPH_NO_VIRTUALIZE(function ()
                         local px, py, pz = ex + dx * t - hx, ey + dy * t - hy, ez + dz * t - hz
                         local dist = math_sqrt(px * px + py * py + pz * pz)
                         if dist > 40 then return end
+                        -- which side of the head the bullet went past (seen from above)
+                        local cross = dx * (hy - ey) - dy * (hx - ex)
+                        local side = cross > 0.001 and 1 or (cross < -0.001 and -1 or 0)
                         local tick = globals_tickcount()
                         local p = self.pending[attacker]
                         if not p or p.tick ~= tick then
-                            self.pending[attacker] = { tick = tick, dist = dist, stage = stage_at_shot() }
+                            self.pending[attacker] = { tick = tick, dist = dist, side = side }
                         elseif dist < p.dist then
-                            p.dist = dist
+                            p.dist, p.side = dist, side
                         end
                     end
 
@@ -7248,15 +6744,14 @@ LPH_NO_VIRTUALIZE(function ()
                                     telemetry.evaded = telemetry.evaded + 1
                                     -- the hit log shows it ("evaded")
                                     if antiaimbot.on_evaded then pcall(antiaimbot.on_evaded, attacker, p.dist) end
-                                    if p.dist < 24 then self:record(attacker, p.stage, true) end
                                     if config.antiaimbot.anti_brute:get() and wants("Near miss") then
-                                        self:trigger(string_format("near miss, %d u", math_floor(p.dist + 0.5)), attacker)
+                                        self:trigger(string_format("near miss, %d u", math_floor(p.dist + 0.5)), attacker, p.side)
                                     end
                                 end
                             end
                         end
                         if self.active and globals.realtime() > self.active_until then
-                            self.active, self.side = false, nil
+                            self.active = false
                         end
                     end
 
@@ -7266,96 +6761,32 @@ LPH_NO_VIRTUALIZE(function ()
                         local me = entity_get_local_player()
                         if not me or not entity.is_alive(me) then return end
                         local now = globals.realtime()
-                        local total = math_max(1, config.antiaimbot.anti_brute_duration:get() or 8)
-                        local left = math_max(0, ab.active_until - now)
-                        local frac = math.min(1, left / total)
+                        local frac = math.min(1, math_max(0, ab.active_until - now) / ab.pattern.duration)
                         local sw, sh = client.screen_size()
                         local x, y = math_floor(sw / 2), math_floor(sh / 2) + 46
                         local r, g, b = 180, 160, 255
                         if config.visuals and config.visuals.panels_color then r, g, b = config.visuals.panels_color:get() end
-                        local pulse = 0.7 + 0.3 * math.sin(now * 8)
-                        renderer.text(x, y, r, g, b, 255 * pulse, "c-", 0, string_format("ANTI-BRUTE  %d", ab.stage))
+                        renderer.text(x, y, r, g, b, 255, "c-", 0, string_format("ANTI-BRUTE  %d", ab.stage))
                         local w = 44
                         renderer.rectangle(x - w / 2, y + 7, w, 2, 0, 0, 0, 140)
                         renderer.rectangle(x - w / 2, y + 7, math_floor(w * frac + 0.5), 2, r, g, b, 230)
                     end)
 
-                    function ab:apply(instance, cmd, me)
-                        if not self.active then return false end
-                        if not config.antiaimbot.anti_brute:get() then return false end
-
-                        local stage = self.stage
-                        if stage < 1 then stage = 1 end
-                        if stage > 10 then stage = ((stage - 1) % 10) + 1 end
-
-                        -- restart the preset's yaw switch timing once per trigger (refresh)
-                        if self.refresh_pending then
-                            self.refresh_pending = false
-                            if antiaim_state then
-                                antiaim_state.last_packets = player.packets
-                                antiaim_state.delay = client.random_int(1, 4)
-                            end
+                    function ab:apply(instance)
+                        if not self.active or not config.antiaimbot.anti_brute:get() then return false end
+                        -- the jitter switch restarts once per trigger: the side the enemy timed is not the one that comes
+                        if self.restart_pending then
+                            self.restart_pending = false
+                            antiaim_state.switch = not antiaim_state.switch
+                            antiaim_state.last_packets = player.packets
                         end
-
-                        local stage_cfg = config.antiaimbot.anti_brute_stages[stage]
-                        if not stage_cfg then return false end
-
-                        -- break lag compensation right after the trigger only; the new angle is what gets held
-                        if globals.realtime() < self.defensive_until then
-                            cmd.force_defensive = 1
-                        end
-
-                        local yaw_offset = stage_cfg.yaw:get()
-                        local body_mode = stage_cfg.body:get()
-                        local modifier_val = stage_cfg.modifier:get()
-
-                        -- desync side flips on every trigger: first away from the side they hit / aimed at,
-                        -- then back when they adapt, and so on (relative to what the preset is doing)
-                        if self.flip_pending or not self.side then
-                            local cur
-                            if instance.body_yaw_value and instance.body_yaw_value ~= 0 then
-                                cur = instance.body_yaw_value > 0 and 1 or -1
-                            else
-                                cur = instance.inverter and -1 or 1
-                            end
-                            self.side = self.side and -self.side or -cur
-                            self.flip_pending = false
-                        end
-
-                        instance.yaw_offset = c_math.normalize_yaw((instance.yaw_offset or 0) + yaw_offset)
-
-                        if body_mode == "Random" and antiaimbot.body_side then
-                            -- holding one side for seconds after a hit made us EASIER to hit (one miss shows the side,
-                            -- and "flips after a hit" is learnable): keep the per-packet coin flip, only the yaw changes
-                            instance.body_yaw_type, instance.body_yaw_value = 'Static', antiaimbot.body_side()
-                        elseif body_mode == "Opposite" then
-                            instance.body_yaw_type, instance.body_yaw_value = 'Static', self.side
-                        elseif body_mode == "Same" then
-                            instance.body_yaw_type, instance.body_yaw_value = 'Static', -self.side
-                        elseif body_mode == "Jitter" then
-                            instance.body_yaw_type, instance.body_yaw_value = 'Jitter', self.side
-                        end
-
-                        -- a stage modifier replaces the preset's jitter; 0 keeps the preset's own jitter running
-                        if modifier_val ~= 0 then
-                            instance.yaw_modifier = 'Center'
-                            instance.modifier_offset = c_math.clamp(modifier_val + (self.mod_roll or 0), -58, 58)
-                        end
-
+                        instance.yaw_offset = c_math.normalize_yaw((instance.yaw_offset or 0) + self.pattern.offset * self.side)
                         return true
                     end
 
                     function ab:reset()
-                        self.active = false
-                        self.active_until = 0
-                        self.defensive_until = 0
-                        self.stage = 0
-                        self.hit_accumulator = 0
-                        self.hit_window_start = 0
-                        self.per_player = {}
-                        self.pending = {}
-                        self.side, self.flip_pending = nil, false
-                        self.prev_stage, self.stage_since, self.mod_roll, self.refresh_pending = 0, 0, 0, false
+                        self.active, self.active_until, self.stage = false, 0, 0
+                        self.pending, self.restart_pending = {}, false
                     end
                 end
 
@@ -7432,7 +6863,7 @@ LPH_NO_VIRTUALIZE(function ()
                     local move_type = entity_get_prop(me, 'm_MoveType')
                     local selected_options = config.antiaimbot.options:get()
 
-                    local anti_brute_active = antiaimbot.anti_brute:apply(instance, cmd, me)
+                    local anti_brute_active = antiaimbot.anti_brute:apply(instance)
                     antiaimbot.main.debug.anti_brute = anti_brute_active
 
                     local is_forcing, triggered_defensive = antiaimbot.defensive.force(cmd, me, wpn)
@@ -7457,14 +6888,12 @@ LPH_NO_VIRTUALIZE(function ()
                         antiaimbot.main.debug.manual_antiaim = antiaimbot.features.manual_antiaim.run(instance, cmd, me, wpn)
                         antiaimbot.main.debug.warmup_antiaim = antiaimbot.features.warmup_antiaim.run(instance, cmd, me, wpn)
                         antiaimbot.main.debug.safe_head = antiaimbot.features.safe_head.run(instance, cmd, me, wpn)
-                        antiaimbot.main.debug.vanish_mode = antiaimbot.features.vanish_mode.run(instance, cmd, me, wpn)
 
                         local avoid_backstab = antiaimbot.features.avoid_backstab.run(instance, cmd, me, wpn)
 
                         antiaimbot.main.debug.avoid_backstab = avoid_backstab
 
-                        -- no defensive while the dormant preset (vanish mode) holds: nobody to break lag comp against
-                        if config.antiaimbot.defensive_aa:get() and not avoid_backstab and not antiaimbot.features.state.vanish_mode then
+                        if config.antiaimbot.defensive_aa:get() and not avoid_backstab then
                             antiaimbot.main.debug.defensive = {antiaimbot.defensive:run(instance, cmd, me, wpn, is_forcing, triggered_defensive or false)}
                         end
                     end
@@ -8356,7 +7785,7 @@ LPH_NO_VIRTUALIZE(function ()
                 end
                 local aa, fl = config.antiaimbot, config.fakelag or {}
 
-                put(aa.options, { "On use antiaim", "Fast ladder", "Dormant preset" })
+                put(aa.options, { "On use antiaim", "Fast ladder" })
                 put(aa.defensive_aa, true)
                 put(aa.force_target_yaw, true)
                 put(aa.defensive_target, { "Double tap", "On shot anti-aim" })
@@ -8365,7 +7794,6 @@ LPH_NO_VIRTUALIZE(function ()
                 put(aa.safe_head, true)
                 put(aa.safe_head_conditions, { "Air knife", "Air zeus", "Air & Crouch", "Crouch moving", "Crouching" })
                 put(aa.anti_brute, true)
-                put(aa.anti_brute_threshold, 30)
                 put(aa.manual_yaw, true)
                 put(aa.manual_options, { "Jitter disabled" })
                 put(aa.fs_options, { "Jitter disabled" })
@@ -13297,23 +12725,15 @@ LPH_NO_VIRTUALIZE(function ()
 
                 -- resolver
                 set(RS.enabled, true)
-                set(RS.jitter, 30)
-                set(RS.hide_head, true)
                 set(RS.ping_scale, true)
                 set(RS.ping_mode, "Auto")
-                set(RS.override, false)
 
                 -- anti-aim
                 set(NAV.aa_enable, true)
                 set(A.preset, "Specter Distort")
-                set(A.options, { "On use antiaim", "Fast ladder", "Dormant preset", "Yaw sway", "Random desync size" })
-                set(A.random_size_min, 40)
-                set(A.random_size_max, 58)
-                set(A.random_size_rate, "Every tick")
+                set(A.options, { "On use antiaim", "Fast ladder" })
                 set(A.anti_brute, true)
-                set(A.anti_brute_threshold, 30)
-                set(A.anti_brute_duration, 8)
-                set(A.anti_brute_triggers, { "Hit", "Near miss", "Body hit" })
+                set(A.anti_brute_triggers, { "Hit", "Near miss" })
                 set(A.anti_brute_indicator, true)
                 set(A.safe_head, true)
                 set(A.safe_head_conditions, { "Air knife", "Air zeus", "Air & Crouch", "Crouching" })
@@ -13333,10 +12753,7 @@ LPH_NO_VIRTUALIZE(function ()
                 set(A.defensive_target, { "Double tap", "On shot anti-aim" })
                 set(A.defensive_conditions, { "Crouch moving", "Air", "Air & Crouch" })
                 set(A.defensive_triggers, { "Flashed", "Damage received", "Reloading", "Weapon switch", "After shot", "On peek", "Landing", "Threat scoped" })
-                set(A.defensive_activation, "When visible")
                 set(A.defensive_preset, "Auto")
-                set(A.defensive_random_body, true)
-                set(A.defensive_head_guard, true)
                 set(A.defensive_conditions_auto, { "On peek", "Safe head", "Triggered", "Crouch moving", "Air", "Air & Crouch" })
 
                 -- fake lag
@@ -14516,10 +13933,6 @@ LPH_NO_VIRTUALIZE(function ()
                         AA.defensive_target:display()
                         AA.defensive_conditions:display()
                         AA.defensive_triggers:display()
-                        AA.defensive_delay:display()
-                        AA.defensive_activation:display()
-                        AA.defensive_random_body:display()
-                        AA.defensive_head_guard:display()
                         AA.force_target_yaw:display()
                     end
 
@@ -14537,20 +13950,8 @@ LPH_NO_VIRTUALIZE(function ()
                     AA.hdr_ab:display()
                     AA.anti_brute:display()
                     if AA.anti_brute:get() then
-                        AA.anti_brute_threshold:display()
-                        AA.anti_brute_duration:display()
                         AA.anti_brute_triggers:display()
                         AA.anti_brute_indicator:display()
-                        AA.anti_brute_mode:display()
-                        AA.anti_brute_count:display()
-                        AA.anti_brute_refresh:display()
-                        AA.anti_brute_stage:display()
-                        local stage = AA.anti_brute_stages[tonumber(AA.anti_brute_stage:get()) or 1]
-                        if stage then
-                            stage.yaw:display()
-                            stage.body:display()
-                            stage.modifier:display()
-                        end
                     end
 
                     AA.hdr_manual:display()
@@ -14563,19 +13964,10 @@ LPH_NO_VIRTUALIZE(function ()
                         AA.fs_options:display()
                         AA.freestanding_disabler_states:display()
                     end
-                    AA.roll_key:display()
-                    AA.roll_value:display()
 
                     -- side: modifications, fake lag
                     AA.hdr_mods:display()
                     AA.options:display()
-                    if c_table.contains(AA.options:get() or {}, "Random desync size") then
-                        AA.random_size_min:display()
-                        AA.random_size_max:display()
-                        AA.random_size_rate:display()
-                    end
-                    AA.random_size_readout:display()
-                    if c_table.contains(AA.options:get() or {}, "Spin yaw") then AA.spin_speed:display() end
                     config.fakelag.hdr:display()
                     config.fakelag.enable:display()
                     if config.fakelag.enable:get() then
