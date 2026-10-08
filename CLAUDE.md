@@ -367,7 +367,11 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   wall, `player.fs_side`, instead of the coin flip). Off by default: holding manual / freestand means a wall is there, the red
   team has no walls. Most other ideas of those luas (delayed / sequence jitter, defensive pitch / yaw modes, safe head on knife /
   zeus / height, break-lc triggers, bomb E, body hold / pulse patterns) Specter already has, or its coin flip side beats them.
-- Defensive triggers also: On peek, Landing, Low HP (<= 40), Threat scoped.
+- Defensive triggers also: On peek, Landing, Low HP (<= 40), Threat scoped. Landing is skipped while jump is held (a shift
+  on the jump tick cost the bunny hop).
+- The defensive yaw writes `cmd.yaw` itself (`antiaimbot.defensive:run`, only on confirmed defensive ticks, needs double tap /
+  hide shots): forwardmove / sidemove are turned with it so the move stays where we look (owners, Oct 2026: "if i use dt i
+  cant bhop properly": with defensive forced in the air the air strafe went along the defensive yaw every tick).
 - `python3 tests/aa_redteam.py [preset ...]` (~1 min for the 3 presets): the REAL anti-aim of the dev build runs in the mock game of
   `tests/perf/mock.lua`; what gamesense would do with the settings it writes is modelled per sent packet and becomes the enemy of
   `tests/resolver_world.lua`; the resolver of the repo (full / without the jitter split: `JITTER_SPREAD` 90 in its source) shoots at it, its hits / shots reach our anti brute-force.

@@ -6232,9 +6232,10 @@ LPH_NO_VIRTUALIZE(function ()
                     local visible, visible_since = false, -10
                     if c_table.contains(defensive_triggers, 'Enemy visible') then visible, visible_since = antiaimbot.defensive.threat_visible(me) end
 
-                    -- peeking the threat, the ticks after landing, low on health, a threat that is scoped in (it is about to shoot)
+                    -- peeking the threat, the ticks after landing (not when jumping again: a shift on the jump tick cost the
+                    -- bunny hop), low on health, a threat that is scoped in (it is about to shoot)
                     if c_table.contains(defensive_triggers, 'On peek') and player.peeking
-                    or c_table.contains(defensive_triggers, 'Landing') and player.landing
+                    or c_table.contains(defensive_triggers, 'Landing') and player.landing and cmd.in_jump ~= 1
                     or c_table.contains(defensive_triggers, 'Low HP') and (entity_get_prop(me, 'm_iHealth') or 100) <= 40 then
                         defensive_triggered = true
                     end
@@ -6541,7 +6542,17 @@ LPH_NO_VIRTUALIZE(function ()
                             end
 
                             if yaw_mode ~= 'Default' then
-                                cmd.yaw = c_math.normalize_yaw(view_angle_yaw-yaw)
+                                -- the move keys go with the yaw of the command: turned with it, so we still move where
+                                -- we look (owners, Oct 2026: "if i use dt i cant bhop properly", the air strafe went
+                                -- along the defensive yaw on every forced tick in the air)
+                                local new_yaw = c_math.normalize_yaw(view_angle_yaw-yaw)
+                                local old_r, new_r = math.rad(cmd.yaw or 0), math.rad(new_yaw)
+                                local f, sm = cmd.forwardmove or 0, cmd.sidemove or 0
+                                local wx = f * math.cos(old_r) + sm * math.sin(old_r)
+                                local wy = f * math.sin(old_r) - sm * math.cos(old_r)
+                                cmd.forwardmove = wx * math.cos(new_r) + wy * math.sin(new_r)
+                                cmd.sidemove = wx * math.sin(new_r) - wy * math.cos(new_r)
+                                cmd.yaw = new_yaw
                             end
 
                             return true
