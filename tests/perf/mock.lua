@@ -447,6 +447,8 @@ function M.new(src, opts)
         ["gamesense/clipboard"] = { get = function() return "" end, set = function() end },
         ["gamesense/surface"] = { create_font = function() return 1 end, draw_text = function() end, get_text_size = function(f, s) return #(s or "") * 7, 12 end },
     }
+    -- a test can add / replace libraries (gamesense/http, a json with parse ...)
+    for name, lib in pairs(opts.libs or {}) do libs[name] = lib end
 
     -- ── sandbox ──────────────────────────────────────────────────────────────────
     local env = {}

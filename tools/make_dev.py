@@ -21,8 +21,8 @@ DEV_HEADER = """-- ── DEV BUILD ──────────────�
 -- The normal Specter script without login, auth gate, integrity monitor or loader: every feature unlocked.
 -- Generated from specter_cloud.lua by tools/make_dev.py - do not edit by hand, edit specter_cloud.lua and run the tool.
 --
--- Only the cloud configs talk to the license server and need these. Leave them empty to run without cloud configs.
-local DEV_SERVER_URL = ""
+-- Only the cloud loadouts talk to the license server: the server lists / loads them, a key + HWID also shares / deletes.
+local DEV_SERVER_URL = "https://specter-license-mh111-production.up.railway.app"
 local DEV_KEY        = ""
 local DEV_HWID       = ""
 

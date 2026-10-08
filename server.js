@@ -377,6 +377,9 @@ app.get('/script', async (req, res) => {
     const raw = await get_script(plan)
     if (!raw) return res.status(500).json({ ok: false, reason: 'script_missing' })
 
+    // the script talks back to this server (cloud loadouts, tamper reports); without PUBLIC_URL: the host it was asked on
+    const host = String(req.get('host') || '')
+    const public_url = env('PUBLIC_URL', '') || (/^[A-Za-z0-9.:-]+$/.test(host) ? 'https://' + host : '')
     const prefix = [
         `rawset(_G, "_auth_ok",        true)`,
         `rawset(_G, "_auth_alive",      true)`,
@@ -389,7 +392,7 @@ app.get('/script', async (req, res) => {
         `rawset(_G, "_auth_key",        ${JSON.stringify(key)})`,
         `rawset(_G, "_auth_hwid",       ${JSON.stringify(hwid)})`,
         `rawset(_G, "BUILD_VERSION",    ${JSON.stringify(plan)})`,
-        `rawset(_G, "_server_url",      ${JSON.stringify(env('PUBLIC_URL', ''))})`,
+        `rawset(_G, "_server_url",      ${JSON.stringify(public_url)})`,
     ].join('\n')
 
     // burn ticket
@@ -400,6 +403,12 @@ app.get('/script', async (req, res) => {
     res.type('text/plain').send(prefix + '\n\n' + raw)
 })
 
+
+// the name shown on a shared config ("by ..." in the Loadouts list, everyone sees it): the key's note (who it is for),
+// else a name made from the key's hash (a part of the key itself must not be public)
+function config_author(license, key) {
+    return license.note || 'user-' + sha256(key).slice(0, 6)
+}
 
 // ── GET /configs ──────────────────────────────────────────────────────────
 // Returns all public cloud configs
@@ -430,7 +439,7 @@ app.get('/configs/upload', async (req, res) => {
     if (!license || license.revoked) return res.status(403).json({ ok: false, reason: 'invalid_key' })
     if (license.expires_at && Date.now() > license.expires_at) return res.status(403).json({ ok: false, reason: 'expired' })
     if (license.hwid !== hwid) return res.status(403).json({ ok: false, reason: 'hwid_mismatch' })
-    const author = license.note || key.slice(-6)
+    const author = config_author(license, key)
     try {
         let configs = await redis.get('specter:configs') || []
         configs = configs.filter(c => !(c.name === name && c.author === author))
@@ -489,7 +498,7 @@ app.get('/configs/upload_part', async (req, res) => {
     if (data.length < 10 || data.length > 200000)
         return res.status(400).json({ ok: false, reason: 'invalid_data' })
 
-    const author = license.note || key.slice(-6)
+    const author = config_author(license, key)
     try {
         let configs = await redis.get('specter:configs') || []
         configs = configs.filter(c => !(c.name === name && c.author === author))
@@ -522,7 +531,7 @@ app.post('/configs', async (req, res) => {
     if (license.hwid !== hwid)
         return res.status(403).json({ ok: false, reason: 'hwid_mismatch' })
 
-    const author   = license.note || key.slice(-6)
+    const author   = config_author(license, key)
     const cfg_name = name.trim()
 
     try {
@@ -556,7 +565,7 @@ app.get('/configs/delete', async (req, res) => {
     const license = db[key]
     if (!license || license.revoked) return res.status(403).json({ ok: false, reason: 'invalid_key' })
     if (license.hwid !== hwid) return res.status(403).json({ ok: false, reason: 'hwid_mismatch' })
-    const author = license.note || key.slice(-6)
+    const author = config_author(license, key)
     try {
         let configs = await redis.get('specter:configs') || []
         const before = configs.length
