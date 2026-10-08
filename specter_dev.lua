@@ -803,6 +803,30 @@ LPH_NO_VIRTUALIZE(function ()
                 return type(v) == "number" and v == v and v > -1e9 and v < 1e9
             end
 
+            -- The natural log of our own. In game every score and the timing came out non-finite from finite parts (shot
+            -- logs, Oct 2026: "score3:" / "timing:" with no bad part): math.log of the shared global table gave no number
+            -- there (another script can replace it). x = m * 2^e with m in [1, 2), ln m = 2 atanh((m - 1) / (m + 1))
+            local LN2 = 0.6931471805599453
+            local function ln(x)
+                if x ~= x or x <= 0 then return -1e300 end
+                local e = 0
+                for _ = 1, 1100 do
+                    if x < 2 then break end
+                    x, e = x / 2, e + 1
+                end
+                for _ = 1, 1100 do
+                    if x >= 1 then break end
+                    x, e = x * 2, e - 1
+                end
+                local y = (x - 1) / (x + 1)
+                local y2, t, sum = y * y, y, 0
+                for k = 1, 41, 2 do
+                    sum = sum + t / k
+                    t = t * y2
+                end
+                return 2 * sum + e * LN2
+            end
+
             -- A NaN that gets into the side / belief numbers spreads to every player of that situation (through the
             -- pooled beliefs) and every angle became 0 with confidence -1 (owners' shot logs, Oct 2026: 5 of 12 shots
             -- on jitter players). Where it shows it is put back to d and noted (first / last place, count): the shot logs carry it
@@ -1052,7 +1076,7 @@ LPH_NO_VIRTUALIZE(function ()
                 do
                     local g = gfeat[name]
                     if not g then g = { obs = 0, base = 0, score = 0, c = {} }; gfeat[name] = g end
-                    local function lg(pr) return math.log(math.max(side > 0 and pr or 1 - pr, 0.02)) end
+                    local function lg(pr) return ln(math.max(side > 0 and pr or 1 - pr, 0.02)) end
                     local gc = g.c[cls]
                     if not gc then gc = { a = 0, b = 0 }; g.c[cls] = gc end
                     g.obs = g.obs + 1
@@ -1062,7 +1086,7 @@ LPH_NO_VIRTUALIZE(function ()
                 end
                 local t = feat_of(key, name)
                 t.obs = t.obs + 1
-                local function lg(pr) return math.log(math.max(side > 0 and pr or 1 - pr, 0.02)) end
+                local function lg(pr) return ln(math.max(side > 0 and pr or 1 - pr, 0.02)) end
                 local cl = t.c[cls]
                 if not cl then cl = { a = 0, b = 0 }; t.c[cls] = cl end
                 t.base = t.base * 0.97 + lg(pi_base)
@@ -1072,7 +1096,7 @@ LPH_NO_VIRTUALIZE(function ()
             local function pat_learn(key, n, side, pi_base)
                 local t = pat_of(key)
                 t.obs = t.obs + 1
-                local function lg(pr) return math.log(math.max(side > 0 and pr or 1 - pr, 0.02)) end
+                local function lg(pr) return ln(math.max(side > 0 and pr or 1 - pr, 0.02)) end
                 t.base = t.base * 0.97 + lg(pi_base)
                 for _, P in ipairs(PATTERNS) do
                     local cl = pat_class(t, P, n)
@@ -1209,7 +1233,7 @@ LPH_NO_VIRTUALIZE(function ()
                 -- prediction, t = temper)
                 local dec = sane(DECAY, 0.9, "decay")
                 local function score(old, pred, f)
-                    local new = dec * old + temper * math.log(math.max(pred, 1e-6))
+                    local new = dec * old + temper * ln(math.max(pred, 1e-6))
                     if finite(new) then return new end
                     return sane(nil, 0, "score" .. f .. ":" .. (finite(DECAY) and "" or "d") .. (finite(old) and "" or "s")
                         .. (finite(pred) and "" or "p") .. (finite(temper) and "" or "t"))
@@ -1380,8 +1404,8 @@ LPH_NO_VIRTUALIZE(function ()
                     local R, G = F[k], grates[k]
                     local pr = (1 + zs[k]) / 2
                     local pred = math.max(pr * lp + (1 - pr) * lm, 1e-4)
-                    R.score = R.score * RDECAY + math.log(pred)
-                    G.score = G.score * 0.99 + 0.3 * math.log(pred)
+                    R.score = R.score * RDECAY + ln(pred)
+                    G.score = G.score * 0.99 + 0.3 * ln(pred)
 
                     -- learn the flip rates: two sides in a row with the answer to one shot between them (a flip after a hit /
                     -- after a miss), or with nothing between them (a flip per tick)
@@ -1642,7 +1666,7 @@ LPH_NO_VIRTUALIZE(function ()
                     return m * (1 - P_HIT) + (1 - m) * (1 - P_LUCK)
                 end
                 local lp_, le_ = ll(s.v_pre), ll(s.v_end)
-                local t = clamp(timing.s * 0.995 + math.log(lp_ / le_), -30, 30)
+                local t = clamp(timing.s * 0.995 + ln(lp_ / le_), -30, 30)
                 if not finite(t) then
                     sane(nil, 0, "timing:" .. (finite(timing.s) and "" or "s") .. (finite(lp_) and "" or "p") .. (finite(le_) and "" or "e")
                         .. (finite(pi) and "" or "i") .. (finite(s.c) and "" or "c") .. (finite(P_HIT) and "" or "h"))
