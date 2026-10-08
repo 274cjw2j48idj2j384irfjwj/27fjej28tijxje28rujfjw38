@@ -848,29 +848,18 @@ LPH_NO_VIRTUALIZE(function ()
     local player, reference, ffi_helpers
 
     -- [ping:begin]
-    -- Our real ping in ms. The scoreboard ping has the fake ping in it (ping spike / extended backtrack: the server
-    -- compensates it and shows it), but the results of our shots and the enemies' answers come with the real one.
-    -- gamesense gives the latency with and without the fake part (client.latency / client.real_latency): the scoreboard
-    -- ping x real / total leaves the fake part out in whatever unit they count. No scoreboard yet: the real latency
-    -- (one way) twice
-    local function real_ping(me)
+    -- Our real ping in ms (round trip), without the fake ping of the ping spike / extended backtrack: the results of our
+    -- shots and the enemies' answers come with the real one. gamesense's real latency is the net channel's one way
+    -- latency without the fake part. The scoreboard ping is not used (owners, Oct 2026: "scoreboardrol szedi, nem jol
+    -- meri"): it has the fake ping in it, the server updates it every few seconds, and the old real / total scaling put
+    -- a 200 ms spike on the 150 ms row
+    local function real_ping()
         local function latency(fn)
+            if not fn then return nil end
             local ok, v = pcall(fn)
             return (ok and type(v) == "number" and v >= 0 and v < 5) and v or nil
         end
-        local total = latency(client.latency)
-        local real = client.real_latency and latency(client.real_latency) or nil
-        local board
-        local okr, res = pcall(entity.get_player_resource)
-        if okr and res and me then
-            local okp, v = pcall(entity.get_prop, res, "m_iPing", me)
-            if okp and type(v) == "number" and v > 0 and v < 2000 then board = v end
-        end
-        if board then
-            if total and real and real < total then return board * real / total end
-            return board
-        end
-        return (real or total or 0) * 2000
+        return (latency(client.real_latency) or latency(client.latency) or 0) * 2000
     end
     -- [ping:end]
 
@@ -916,6 +905,7 @@ LPH_NO_VIRTUALIZE(function ()
             -- So it gets no angle of its own (the forced value stays the one of the jitter / desync record), and a shot
             -- fired at it is judged by that record; its miss is about lag comp, not the angle.
             local MAX_DESYNC = 58
+            local JITTER_SPREAD = 30          -- degrees of yaw spread (with 2+ side flips) that make a jitterer
             local ZERO_MIN = 20               -- |angle| below this: "no desync" (it can hit neither side of a real desync)
             local STEP, TOL = 4, 12           -- angles -60 .. 60 in steps of 4; within TOL of the body yaw the head is hit
             local NB, NM = 31, 16             -- angle bins (-60 .. 60), size bins (0 .. 60)
@@ -1158,7 +1148,6 @@ LPH_NO_VIRTUALIZE(function ()
             resolver.eye_record = eye_record
             local function eye_seen_by(idx, tick)
                 local x, y, z = client.eye_position()
-                if option("hide_head", true) ~= true then return x, y, z end
                 local ping = 0
                 local okr, res = pcall(entity.get_player_resource)
                 if okr and res then
@@ -1166,7 +1155,7 @@ LPH_NO_VIRTUALIZE(function ()
                     if okp and finite(v) then ping = clamp(v, 0, 400) end
                 end
                 -- our side of it: the real one way latency (a fake ping does not delay what they see of us)
-                local lat = clamp(real_ping(entity.get_local_player()) / 2000, 0, 0.4)
+                local lat = clamp(real_ping() / 2000, 0, 0.4)
                 local back = clamp(math.floor((ping / 1000 + lat + 0.016) / globals.tickinterval() + 0.5), 0, 48)
                 local e = back > 0 and eye_hist[(tick - back) % 64]
                 if e and e[1] == tick - back then return e[2], e[3], e[4] end
@@ -1222,7 +1211,7 @@ LPH_NO_VIRTUALIZE(function ()
                 return clamp((cl.a + 0.5) / (cl.a + cl.b + 1), 0.05, 0.95), (t.score - t.base) * 0.25
             end
             local function feat_learn(key, name, cls, side, pi_base)
-                if option("hide_head", true) == true then
+                do
                     local g = gfeat[name]
                     if not g then g = { obs = 0, base = 0, score = 0, c = {} }; gfeat[name] = g end
                     local function lg(pr) return math.log(math.max(side > 0 and pr or 1 - pr, 0.02)) end
@@ -1600,9 +1589,9 @@ LPH_NO_VIRTUALIZE(function ()
                     if s ~= 0 and last ~= 0 and s ~= last then flips = flips + 1 end
                     if s ~= 0 then last = s end
                 end
-                -- "Jitter sensitivity": the yaw spread that makes a target a jitterer (it stays one down to 2/3 of it)
-                local enter = clamp(tonumber(option("jitter", 30)) or 30, 5, 90)
-                p.jitter = spread >= (p.jitter and enter * 2 / 3 or enter) and flips >= 2
+                -- the yaw spread that makes a target a jitterer (it stays one down to 2/3 of it); fixed, the owners want the
+                -- resolver to need nothing but its switch
+                p.jitter = spread >= (p.jitter and JITTER_SPREAD * 2 / 3 or JITTER_SPREAD) and flips >= 2
                 p.side = p.jitter and last or 0
             end
 
@@ -1818,7 +1807,7 @@ LPH_NO_VIRTUALIZE(function ()
             }
             local ping_state = { tick = -100, bucket = nil, ping = 0 }
             resolver.ping_state = ping_state
-            local function ping_update(me, tick)
+            local function ping_update(tick)
                 if tick - ping_state.tick < 32 and tick >= ping_state.tick then return end
                 ping_state.tick = tick
                 if option("ping_scale", true) ~= true or next(PING_TABLE) == nil then
@@ -1829,9 +1818,8 @@ LPH_NO_VIRTUALIZE(function ()
                 if option("ping_mode", "Auto") == "Manual" then
                     ping = tonumber(option("ping_manual", 50)) or 50
                 else
-                    ping = real_ping(me)
-                    -- smoothed: one lag spike (or the scoreboard catching up with a ping spike switched on / off) does
-                    -- not switch the row
+                    ping = real_ping()
+                    -- smoothed: one lag spike does not switch the row
                     ping = ping_state.ping + (ping - ping_state.ping) * (ping_state.bucket and 0.35 or 1)
                 end
                 ping = clamp(ping, 0, 150)
@@ -1851,7 +1839,7 @@ LPH_NO_VIRTUALIZE(function ()
                     return
                 end
                 local tick = globals.tickcount()
-                ping_update(me, tick)
+                ping_update(tick)
                 eye_record(tick)
                 local seen = {}
                 for _, idx in ipairs(entity.get_players(true)) do
@@ -1877,22 +1865,15 @@ LPH_NO_VIRTUALIZE(function ()
                             local lcls, fcls = p.lcls, p.fcls_now
                             local lp_, lgain = feat_predict(p.key, "lay", lcls)
                             local fp_, fgain = feat_predict(p.key, "fs", fcls)
-                            if option("hide_head", true) == true then
-                                -- nothing proven on this player yet: what the other players showed
-                                if not lp_ then lp_, lgain = gfeat_predict("lay", lcls) end
-                                if not fp_ then fp_, fgain = gfeat_predict("fs", fcls) end
-                            end
+                            -- nothing proven on this player yet: what the other players showed
+                            if not lp_ then lp_, lgain = gfeat_predict("lay", lcls) end
+                            if not fp_ then fp_, fgain = gfeat_predict("fs", fcls) end
                             p.layers_used, p.fs_used = nil, nil
                             local best_gain = pp and pgain or 0
                             if pp then pi = pp end
                             if lp_ and lgain > best_gain then pi, period, p.layers_used, best_gain = lp_, nil, true, lgain end
                             if fp_ and fgain > best_gain then pi, period, p.layers_used, p.fs_used = fp_, nil, nil, true end
                             local value, phit = decide(b, c, pi, p.maxd, math.abs(c) < ZERO_MIN and not zero_allowed(p.key, ctx, p))
-                            -- "Override size": the side from the resolver, the size from the menu
-                            if option("override", false) == true then
-                                local side = value > 0 and 1 or (value < 0 and -1 or (pi >= 0.5 and 1 or -1))
-                                value = side * math.floor(clamp(tonumber(option("override_size", 35)) or 35, 0, 60) + 0.5)
-                            end
                             local w = weights(b)
                             local model = (w[1] >= w[2] and w[1] >= w[3]) and "computed" or (w[2] >= w[3] and "mirrored" or "side")
                             p.mode, p.value, p.ctx, p.phit, p.model_name = p.jitter and "j" or "d", value, ctx, phit, model
@@ -3692,7 +3673,7 @@ LPH_NO_VIRTUALIZE(function ()
                 local on = config.ragebot.predict:get()
                 local when = config.ragebot.predict_when and config.ragebot.predict_when:get() or "Always"
                 if on and when ~= "Always" then
-                    local ping = real_ping(entity.get_local_player())
+                    local ping = real_ping()
                     -- 3 ms of hysteresis, or a ping that sits on the line switches the cvars every half second
                     local was = next(saved) ~= nil
                     if when == "Ping 55+" then on = ping >= (was and 52 or 55) else on = ping <= (was and 43 or 40) end
@@ -3720,32 +3701,7 @@ LPH_NO_VIRTUALIZE(function ()
             client.set_event_callback("shutdown", function() pcall(restore) end)
         end
 
-        -- Resolver safety: per enemy, from what the resolver knows about it. Body aim / safe point after the resolver missed it,
-        -- when the resolver is unsure of the angle of the newest record, or when the enemy is low; head when the resolver is
-        -- sure. Written to the player list (only on change), given back when it does not apply any more.
         config.ragebot.hdr_safety = mui.header(mui.CONTENT, "◎", "Body aim & safety")
-        config.ragebot.safety = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Resolver Safety")
-            :record("ragebot", "safety"):save()
-        config.ragebot.safety_on = menu.new_item(ui.new_multiselect, "AA", "Anti-aimbot angles", "•  Options\nsafety", {
-            "Body aim after misses", "Safe point after misses", "Body aim when unsure", "Body aim on low HP", "Head when sure",
-            "Body aim: height advantage", "Body aim: enemy higher"
-        }):record("ragebot", "safety_on"):save()
-        pcall(function() config.ragebot.safety_on:set({ "Body aim after misses", "Safe point after misses", "Body aim on low HP", "Head when sure" }) end)
-        config.ragebot.safety_misses = menu.new_item(ui.new_slider, "AA", "Anti-aimbot angles", "•  Misses\nsafety", 1, 5, 2)
-            :record("ragebot", "safety_misses"):save()
-        config.ragebot.safety_hp = menu.new_item(ui.new_slider, "AA", "Anti-aimbot angles", "•  Low HP\nsafety", 1, 100, 50, true, " hp")
-            :record("ragebot", "safety_hp"):save()
-        -- Smart body aim: the head when it is safe (the resolver is sure of the angle and has not missed since), even when a
-        -- body shot would kill. Not safe: the body when a body shot kills (this weapon's damage at this distance, the armor,
-        -- two shots with double tap), else the head on safe points only (points inside the head whatever the resolver
-        -- guessed). Body after the resolver missed, or when the enemy really breaks lag comp (teleport); a tickbase shift
-        -- (defensive) does not: the normal records stay backtrackable
-        config.ragebot.smart_baim = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "•  Smart body aim\nsafety")
-            :record("ragebot", "smart_baim"):save()
-        pcall(function() config.ragebot.smart_baim:set(true) end)
-        -- the resolver's confidence from which the head counts as safe (then head even when a body shot would kill)
-        config.ragebot.smart_conf = menu.new_item(ui.new_slider, "AA", "Anti-aimbot angles", "•  Safe head from\nsafety", 40, 95, 70, true, "%")
-            :record("ragebot", "smart_conf"):save()
         -- enemies that break lag compensation (teleport > 64 units between updates, tickbase shift): no backtrack is possible,
         -- the aimbot shoots the newest record extrapolated. Body aim / safe point are the big, safe hitboxes for that; the
         -- ping spike only makes the extrapolation longer
@@ -5351,13 +5307,6 @@ LPH_NO_VIRTUALIZE(function ()
                 }
                 config.resolver.log = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Show angle in hitlog\nresolver")
                     :record("resolver", "log"):save()
-                config.resolver.jitter = menu.new_item(ui.new_slider, "AA", "Anti-aimbot angles", "•  Jitter sensitivity\nresolver", 5, 60, 30, true, "°")
-                    :record("resolver", "jitter"):save()
-                -- the enemy's freestanding (head by the wall): traced from where the enemy saw us (ping late), learned
-                -- per player and over all players
-                config.resolver.hide_head = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Hide head predictor\nresolver")
-                    :record("resolver", "hide_head"):save()
-                pcall(function() config.resolver.hide_head:set(true) end)
                 -- the resolver's numbers for the ping (0 .. 150 ms, steps of 5)
                 config.resolver.ping_scale = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Ping scale\nresolver")
                     :record("resolver", "ping_scale"):save()
@@ -5371,10 +5320,6 @@ LPH_NO_VIRTUALIZE(function ()
                     if not (st and st.bucket) then return "default" end
                     return string_format("%d ms", st.bucket)
                 end)
-                config.resolver.override = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Override size\nresolver")
-                    :record("resolver", "override"):save()
-                config.resolver.override_size = menu.new_item(ui.new_slider, "AA", "Anti-aimbot angles", "•  Size\nresolver", 0, 60, 35, true, "°")
-                    :record("resolver", "override_size"):save()
                 config.uix.res_hint = mui.hint(mui.CONTENT, "computes the body yaw like the server, learns the rest from every shot")
                 client.set_event_callback("paint_ui", function()
                     if not ui_is_menu_open() then return end
@@ -5387,6 +5332,34 @@ LPH_NO_VIRTUALIZE(function ()
                 end)
             end
             end
+
+            -- Resolver safety (owners, Oct 2026: on the Resolver page): per enemy, from what the resolver knows about it.
+            -- Body aim / safe point after the resolver missed it, when the resolver is unsure of the angle of the newest
+            -- record, or when the enemy is low; head when the resolver is sure. Written to the player list (only on
+            -- change), given back when it does not apply any more. Created after the resolver's items: gamesense shows
+            -- them in that order
+            config.ragebot.safety = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Resolver Safety")
+                :record("ragebot", "safety"):save()
+            config.ragebot.safety_on = menu.new_item(ui.new_multiselect, "AA", "Anti-aimbot angles", "•  Options\nsafety", {
+                "Body aim after misses", "Safe point after misses", "Body aim when unsure", "Body aim on low HP", "Head when sure",
+                "Body aim: height advantage", "Body aim: enemy higher"
+            }):record("ragebot", "safety_on"):save()
+            pcall(function() config.ragebot.safety_on:set({ "Body aim after misses", "Safe point after misses", "Body aim on low HP", "Head when sure" }) end)
+            config.ragebot.safety_misses = menu.new_item(ui.new_slider, "AA", "Anti-aimbot angles", "•  Misses\nsafety", 1, 5, 2)
+                :record("ragebot", "safety_misses"):save()
+            config.ragebot.safety_hp = menu.new_item(ui.new_slider, "AA", "Anti-aimbot angles", "•  Low HP\nsafety", 1, 100, 50, true, " hp")
+                :record("ragebot", "safety_hp"):save()
+            -- Smart body aim: the head when it is safe (the resolver is sure of the angle and has not missed since), even when a
+            -- body shot would kill. Not safe: the body when a body shot kills (this weapon's damage at this distance, the armor,
+            -- two shots with double tap), else the head on safe points only (points inside the head whatever the resolver
+            -- guessed). Body after the resolver missed, or when the enemy really breaks lag comp (teleport); a tickbase shift
+            -- (defensive) does not: the normal records stay backtrackable
+            config.ragebot.smart_baim = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "•  Smart body aim\nsafety")
+                :record("ragebot", "smart_baim"):save()
+            pcall(function() config.ragebot.smart_baim:set(true) end)
+            -- the resolver's confidence from which the head counts as safe (then head even when a body shot would kill)
+            config.ragebot.smart_conf = menu.new_item(ui.new_slider, "AA", "Anti-aimbot angles", "•  Safe head from\nsafety", 40, 95, 70, true, "%")
+                :record("ragebot", "smart_conf"):save()
 
             config.antiaimbot.defensive_aa = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Defensive AA")
                 :record("antiaimbot", "defensive_aa")
@@ -14220,8 +14193,6 @@ LPH_NO_VIRTUALIZE(function ()
                     if RS.enabled:get() then
                         config.uix.res_hint:display()
                         for _, row in ipairs(RS.info) do row:display() end
-                        RS.jitter:display()
-                        if RS.hide_head then RS.hide_head:display() end
                         if RS.ping_scale then
                             RS.ping_scale:display()
                             if RS.ping_scale:get() then
@@ -14230,9 +14201,17 @@ LPH_NO_VIRTUALIZE(function ()
                                 RS.ping_row:display()
                             end
                         end
-                        RS.override:display()
-                        if RS.override:get() then RS.override_size:display() end
                         RS.log:display()
+                    end
+                    -- Resolver safety (it lives on the Resolver page; the tiers without the resolver have it on Accuracy)
+                    local R = config.ragebot
+                    R.safety:display()
+                    if R.safety:get() then
+                        R.smart_baim:display()
+                        if R.smart_baim:get() then R.smart_conf:display() end
+                        R.safety_on:display()
+                        R.safety_misses:display()
+                        if not R.smart_baim:get() then R.safety_hp:display() end
                     end
 
                     P.tools:display()
@@ -14342,13 +14321,15 @@ LPH_NO_VIRTUALIZE(function ()
                     R.predict:display()
                     if R.predict:get() then R.predict_mode:display(); R.predict_when:display() end
                     R.hdr_safety:display()
-                    R.safety:display()
-                    if R.safety:get() then
-                        R.smart_baim:display()
-                        if R.smart_baim:get() then R.smart_conf:display() end
-                        R.safety_on:display()
-                        R.safety_misses:display()
-                        if not R.smart_baim:get() then R.safety_hp:display() end
+                    if not TIER.HAS_RESOLVER then
+                        R.safety:display()
+                        if R.safety:get() then
+                            R.smart_baim:display()
+                            if R.smart_baim:get() then R.smart_conf:display() end
+                            R.safety_on:display()
+                            R.safety_misses:display()
+                            if not R.smart_baim:get() then R.safety_hp:display() end
+                        end
                     end
                     R.lc_handling:display()
                     R.aimtools:display()

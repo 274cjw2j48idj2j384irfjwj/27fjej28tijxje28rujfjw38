@@ -37,12 +37,8 @@ PRELUDE = '''
 local resolver = {}
 local enable_item = ui.new_checkbox("RAGE", "Other", "Resolver")
 local log_item = ui.new_checkbox("RAGE", "Other", "Resolver log")
-local jitter_item = ui.new_slider("RAGE", "Other", "Resolver jitter", 5, 60, 30)
-local override_item = ui.new_checkbox("RAGE", "Other", "Resolver override")
-local size_item = ui.new_slider("RAGE", "Other", "Resolver size", 0, 60, 35)
 local function wrap(it) return { get = function() return ui.get(it) end } end
-local config = { resolver = { enabled = wrap(enable_item), log = wrap(log_item), jitter = wrap(jitter_item),
-                              override = wrap(override_item), override_size = wrap(size_item) } }
+local config = { resolver = { enabled = wrap(enable_item), log = wrap(log_item) } }
 local c_logger = { log = function(fmt, ...) client.color_log(255, 255, 255, string.format(fmt, ...)) end }
 local hooks = { fire = 0, hit = 0, miss = 0 }
 resolver.stats_hook = function(kind) hooks[kind] = hooks[kind] + 1 end
@@ -262,22 +258,18 @@ G0 = lua('''function(tick, ent, name)
     return nil
 end''')
 
-# ── options ─────────────────────────────────────────────────────────────────────
-print("== options")
+# ── info / automatic jitter detection (owners, Oct 2026: the resolver needs nothing but its switch: no jitter
+# sensitivity, hide head predictor or override size any more) ──────────────────────────────────────────────────
+print("== info, jitter detection")
 SET = lambda name, v: lua(f"function(ctl) ctl.item('{name}').value = {v} end")
-s = run("anti_brute", dict(choke=6), ticks=3000, configure=SET("Resolver override", "true"))
-vals = set()
-for _, h in s.S.resolver.database[2].hist.items():
-    vals.add(h.value)
-check(vals and all(abs(v) == 35 for v in vals), f"override size: forced values {sorted(vals)[:6]} should all be +-35")
 s = run("choke_static", dict(choke=6), ticks=3000)
 d = s.S.resolver.database[2]
 check(d.method in ("Static", "LBY", "Dynamic") and d.phit is not None and d.phit > 0.5, f"info: method {d.method} confidence {d.phit}")
 s = run("jitter_tick", {}, ticks=2000)
 check(s.S.resolver.database[2].method == "Jitter" and s.S.resolver.database[2].mode == "j", "jitter target: method Jitter")
-s = run("jitter_tick", {}, ticks=2000, configure=SET("Resolver jitter", "90"))
-check(s.S.resolver.database[2].mode == "d", "jitter sensitivity 90: a 70 degree jitter is not a jitterer any more")
-print(f"   override size, info (method / confidence), jitter sensitivity")
+s = run("jitter_tick", dict(amp=10), ticks=2000)
+check(s.S.resolver.database[2].mode == "d", "a 20 degree jitter (below the fixed 30 degree spread) is not a jitterer")
+print(f"   info (method / confidence), jitter detection")
 
 # a shot at a record 60 ticks old is still judged by what that record got: 1 s of history (64 ticks on 64 tick)
 s = run("jitter_tick", {}, ticks=1500)

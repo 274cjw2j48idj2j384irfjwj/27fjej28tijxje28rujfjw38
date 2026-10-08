@@ -137,7 +137,7 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   The owners asked for "a completely new, simple resolver with no hardcode" and later for their `dynamic_resolver_simple.lua` to be put in:
   no guess lists / arm biases any more. The previous block (desync + jitter parts, arms, neural network) is in git history (commit 01e1bd2).
 - Every enemy update is read once (`ingest`): eye yaw, LBY target, speed, stance, duck, max desync (58 x speed factor, lower when moving
-  crouched like the server), choke, jitter detection (spread >= "Jitter sensitivity" (30) and 2+ side flips in the last 12 records).
+  crouched like the server), choke, jitter detection (spread >= `JITTER_SPREAD` 30, fixed, and 2+ side flips in the last 12 records).
   Tickbase shifted updates (sim time not moving forward, defensive) are NOT records: the server adds a lag record only when the sim time
   moves forward, a shot at the shifted model is tested against the newest normal record at or before its sim time. A shifted update
   only moves the feet model (the server animates it); the forced value stays the one of the newest normal record, nothing goes into
@@ -165,10 +165,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   (owners, Oct 2026: "teljesen ugyanaz"); the weaker repo version without side tracking is in git history (6ebf5ca).
 - Extra side signals, each used only when it predicted better than the side filter: packet cycles (`PATTERNS` 2/3/4/6), animation
   layer 6 playback rate classes (`resolver.read_layer6`, ffi, read only), hide head predictor (`fs_class`: where the enemy saw us from,
-  ping late; pooled over players in `gfeat`), "Hide head predictor" option. Ping scale: `PING_TABLE` (0-150 ms in steps of 5, from
-  the sim) sets FORGET / P_HIT / DECAY / TOL / RDECAY by our REAL ping ("Auto", `real_ping`: scoreboard ping x
-  client.real_latency / client.latency; the scoreboard has the fake ping in it and with a 200 ms ping spike put everyone on the 150 ms
-  row) or a manual value. The hide head predictor takes our real one way latency from it too.
+  ping late; pooled over players in `gfeat`, always on). Ping scale: `PING_TABLE` (0-150 ms in steps of 5, from
+  the sim) sets FORGET / P_HIT / DECAY / TOL / RDECAY by our REAL ping ("Auto", `real_ping`: client.real_latency x 2000, the net
+  channel's latency without the fake ping; no scoreboard any more, owners Oct 2026: "scoreboardrol szedi, nem jol meri": it has
+  the fake ping in it and updates every few seconds) or a manual value. The hide head predictor takes our real one way latency from it too.
 - Zero rule: on a record whose computed body yaw is ~0 (|c| < `ZERO_MIN` 20: micromovement keeps the LBY on the eye yaw, the netvars
   show no desync) a near-0 angle is only given after a head hit near 0 on such records (`zero_of`) or 2 resolver misses away from 0
   since the last hit (3 on jitter records `j+` / `j-`: the side switches, misses on both sides are normal). That near-0 try is ONE shot: a near-0 miss counts the misses again, and every failed try doubles the misses it takes
@@ -184,9 +184,11 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   (0.92-0.94 on the real records: a shot at a shifted model is a lag comp miss for everyone, the sim tests it against the server's lag
   record like the server), random switches 0.74-0.80, coin flip body side ~0.47-0.50 (a coin flip can not be beaten, 0.5 is the best
   any guess gets). The sim runs on 64 tick, `tickrate=128` for 128 tick, `fake_ping` for a ping spike, `bt_max` for older records.
-- Menu: Enable Resolver, info rows for the current threat (target, method = Static / LBY / Dynamic / Jitter (+ " / defensive" while it shifts) + winning model,
-  desync L/R, lag comp, confidence), Show angle in hitlog, Jitter sensitivity, Hide head predictor, Ping scale (Auto / Manual + value),
-  Override size (+ Size: the resolver keeps the side, the size is fixed), Reset memory. The resolver prints nothing itself: its last
+- Menu (owners, Oct 2026: "eleg legyen bekapcsolni a resolvert es mindent tud"): Enable Resolver, info rows for the current threat
+  (target, method = Static / LBY / Dynamic / Jitter (+ " / defensive" while it shifts) + winning model, desync L/R, lag comp,
+  confidence), Ping scale (Auto / Manual + value), Show angle in hitlog, Resolver Safety (the `config.ragebot.safety*` /
+  `smart_*` items, created after the resolver's so gamesense shows them below it; the tiers without the resolver see them on
+  Accuracy), Reset memory. Jitter sensitivity, Hide head predictor and Override size are gone (fixed / always on). The resolver prints nothing itself: its last
   line is `resolver.last_log`. The hitlog takes the shot from `resolver.shots` (aim_fire runs the resolver first): `bt` = the resolver's
   measured backtrack, `res N° jitter|desync` (+ " (def)" for a shot at a shifted model), and a "?" miss the resolver does not count is
   shown as "missed: defensive" / "missed: lag comp" (stats bucket lagcomp), not "resolver".
@@ -216,7 +218,7 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 
 ## Ragebot
 - Improved Multi-point "Auto" only lowers the scale (moving > 100, air, 2 misses); it no longer ADDS chest / stomach multipoints.
-- Resolver Safety (`config.ragebot.safety*`): per enemy player list "Override prefer body aim" / "Override safe point" from the resolver
+- Resolver Safety (`config.ragebot.safety*`, shown on the Resolver page): per enemy player list "Override prefer body aim" / "Override safe point" from the resolver
   (`database[idx]`): body aim / safe point after N resolver misses, body aim when the confidence is < 0.45 or HP <= the slider, prefer
   body aim "Off" (head) when confidence >= 0.8 and no miss. Written on change only, "-" given back when it no longer applies / round start.
 - Extended Backtrack (Ping spike) defaults to 200 ms, the most gamesense allows. The server compensates the real ping + the fake ping
