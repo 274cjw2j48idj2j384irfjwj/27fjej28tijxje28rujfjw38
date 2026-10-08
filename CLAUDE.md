@@ -110,6 +110,11 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   learning, own saved priors key). A change to one does not touch the other
 
 ## Editing Rules
+- How to work (owners, Oct 2026: "ezt a tesztelest meg mindent hagyjad ... a mock csak osszezavar"): decisions come from
+  the real shot logs (`shotlogs` branch), from how CS:GO / gamesense actually work (docs, the internet) and from reading
+  the code, NOT from the mock / sim numbers (tests/resolver_world.lua, tests/perf/mock.lua, aa_redteam): they model the
+  game wrong in ways that matter and the owners judge only what happens in game. Do not write new sim tests or tune by
+  them. Only `python3 tests/load_smoke.py --dev-file` (the script loads without an error) and luacheck stay before a push.
 - Edit `specter_cloud.lua` only. Then run `python3 tools/make_dev.py` (rewrites `specter_dev.lua`) and commit both together.
   `python3 tests/load_smoke.py --dev-file` fails when the dev build is out of date.
   The owners play the dev build WITHOUT a loader (Oct 2026): `specter_dev.lua` is what they test in game, so every change has to
