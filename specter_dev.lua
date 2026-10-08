@@ -12484,19 +12484,125 @@ LPH_NO_VIRTUALIZE(function ()
                 cmd.sidemove = math.sin(diff) * power
             end
 
+            -- Shot logs (owners, Oct 2026: "a hitlogokat es misslogokat kigyujti githubra ... nem nekunk kene gyujteni"):
+            -- the dev build (no key; the cloud script sends nothing) writes one JSON line per shot of ours: the shot, what
+            -- the resolver gave its record, the target's netvars, the result. They go to the license server (/shotlog,
+            -- base64 parts like a config) every 40 shots and at round end; the bot puts them on GitHub (branch
+            -- "shotlogs"). No names: the target is a hash of its steam id with a salt of this load
+            miscellaneous.shot_log = {} do
+                local SERVER = _auth_data and _auth_data.server_url or ""
+                local on = http ~= nil and SERVER ~= "" and (_auth_data.key or "") == ""
+                local salt = tostring(client.unix_time()) .. tostring(math.random(1e6))
+                local pending, buf, sending = {}, {}, false
+
+                local function hash(s)
+                    local h = 5381
+                    s = salt .. tostring(s)
+                    for i = 1, #s do h = (h * 33 + s:byte(i)) % 4294967296 end
+                    return string_format("%08x", h)
+                end
+
+                local function num(v, digits)
+                    v = tonumber(v)
+                    if not v or v ~= v or v == math.huge or v == -math.huge then return nil end
+                    local m = 10 ^ (digits or 0)
+                    return math.floor(v * m + 0.5) / m
+                end
+
+                local function enc(v)
+                    return (tostring(v):gsub("([^%w%-_.~])", function(c) return string_format("%%%02X", string.byte(c)) end))
+                end
+
+                local function send()
+                    if sending or #buf == 0 then return end
+                    local lines = buf
+                    buf = {}
+                    local data = base64.encode(table_concat(lines, "\n"))
+                    local CHUNK, parts = 3000, {}
+                    for i = 1, #data, CHUNK do parts[#parts + 1] = data:sub(i, i + CHUNK - 1) end
+                    if #parts > 60 then return end
+                    local id = hash(globals.realtime() .. #lines):sub(1, 8) .. tostring(client.unix_time() % 100000)
+                    local base = SERVER .. "/shotlog?id=" .. id .. "&total=" .. #parts
+                    sending = true
+                    local function part(i)
+                        http.get(base .. "&idx=" .. (i - 1) .. "&data=" .. enc(parts[i]), function(ok)
+                            if not ok then sending = false; return end
+                            if i < #parts then return part(i + 1) end
+                            sending = false
+                        end)
+                    end
+                    part(1)
+                end
+
+                function miscellaneous.shot_log.fire(e)
+                    if not on or type(e) ~= "table" or not e.target then return end
+                    local idx = e.target
+                    local s = resolver.shots[e.id] or {}
+                    local p = resolver.database[idx] or {}
+                    local pitch, eye = entity_get_prop(idx, "m_angEyeAngles")
+                    local me = entity.get_local_player()
+                    local weapon = me and entity.get_player_weapon(me)
+                    local timing = resolver.timing or {}
+                    pending[e.id or 0] = {
+                        v = 1, t = client.unix_time(), map = globals.mapname(), tr = num(1 / globals.tickinterval()),
+                        ping = num(real_ping()), lat = num((client.latency() or 0) * 1000),
+                        wpn = weapon and entity_get_prop(weapon, "m_iItemDefinitionIndex") or nil,
+                        tg = hash(p.key or idx), hc = num(e.hit_chance), dmg = num(e.damage), hg = e.hitgroup,
+                        bt_gs = num(e.backtrack), tele = e.teleported or nil, boost = e.boosted or nil, prio = e.high_priority or nil,
+                        bt = num(s.bt), val = num(s.value), ve = num(s.v_end), vp = num(s.v_pre), c = num(s.c, 1), ctx = s.ctx,
+                        why_res = s.reason, def = s.defensive or nil, lc = s.teleported or nil,
+                        st = p.stance, spd = num(p.speed), ch = p.choke, jit = p.jitter or nil, side = p.side, nside = p.next_side,
+                        meth = p.method, mdl = p.model_name, ph = num(p.phit, 3), cm = p.consecutive_misses, maxd = num(p.maxd, 1),
+                        lcs = p.lc_state, nochoke = p.nochoke,
+                        eye = num(eye, 1), pitch = num(pitch, 1), lby = num(entity_get_prop(idx, "m_flLowerBodyYawTarget"), 1),
+                        ts = num(timing.s, 2), tpre = timing.pre or nil, at = globals.realtime(),
+                    }
+                end
+
+                function miscellaneous.shot_log.result(e, hit)
+                    if not on or type(e) ~= "table" then return end
+                    local now = globals.realtime()
+                    for id, row in pairs(pending) do
+                        if now - row.at > 5 or now < row.at then pending[id] = nil end
+                    end
+                    local row = pending[e.id or 0]
+                    if not row then return end
+                    pending[e.id or 0] = nil
+                    row.at = nil
+                    row.r = hit and "hit" or "miss"
+                    if hit then
+                        row.hhg, row.hdmg = e.hitgroup, num(e.damage)
+                        row.dead = (tonumber(entity_get_prop(e.target, "m_iHealth")) or 1) <= 0 or nil
+                    else
+                        row.why = tostring(e.reason or "?")
+                    end
+                    local ok, line = pcall(json.stringify, row)
+                    if ok and type(line) == "string" then
+                        buf[#buf + 1] = line
+                        while #buf > 400 do table.remove(buf, 1) end
+                    end
+                    if #buf >= 40 then send() end
+                end
+
+                client.set_event_callback("round_end", function() if on then pcall(send) end end)
+            end
+
             function miscellaneous:aim_fire(event)
                 -- the resolver first: the hitlog keeps the angle it gave the shot
                 resolver.on_fire(event)
                 self.event_logger.aim_fire(event)
+                pcall(self.shot_log.fire, event)
             end
 
             function miscellaneous:aim_hit(event)
                 self.event_logger.aim_hit(event)
+                pcall(self.shot_log.result, event, true)
                 resolver.on_hit(event)
             end
 
             function miscellaneous:aim_miss(event)
                 self.event_logger.aim_miss(event)
+                pcall(self.shot_log.result, event, false)
                 resolver.on_miss(event)
             end
 

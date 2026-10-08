@@ -79,6 +79,21 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   A 429 at login (Cloudflare 1015: Discord bans the IP after too many logins, e.g. a crash loop that Railway restarts every
   second) makes the bot wait in the process (5, 10, 20 .. 60 min) instead of exiting; the command sync runs once per start
 
+## Shot logs (resolver data from real games)
+- (owners, Oct 2026: "a hitlogokat es misslogokat kigyujti githubra ... nem nekunk kene gyujteni") The dev build (no key;
+  the cloud script with a key sends nothing) writes one JSON line per shot of ours with a result (`miscellaneous.shot_log`,
+  next to `miscellaneous:aim_fire`): the shot (hit chance, damage, hitgroup, gamesense's / the resolver's backtrack,
+  weapon), what the resolver gave its record (`val` = the applied angle, `ve` / `vp` = the after / before net_update_end
+  candidates, `c`, `ctx`, method, model, confidence, misses), the target's netvars (eye yaw, pitch, LBY, speed, choke,
+  jitter side + predicted next side), our real ping / latency, tickrate, map, `resolver.timing`, the result (hit
+  hitgroup / damage / kill, or the miss reason). No names: `tg` = hash of the steam id with a salt of the load.
+- Every 40 shots and at round end: base64 parts (3000 chars) to `GET /shotlog` (server.js: rate per IP, a finished batch
+  is a Redis list item, the newest 400 kept). The bot (`sync_shotlogs`, every RELEASE_MINUTES) writes them with
+  `LOG_TOKEN` (fine-grained, Contents: read + write; else GITHUB_TOKEN) to the branch `shotlogs` (SHOTLOG_BRANCH, made
+  from main when missing): `shotlogs/<day>/<time>-<shots>.jsonl`, each line `{"at","src","batch"}<TAB>{shot}`, then
+  drops them on the server (`/admin/shotlog?n=`); a failed write drops nothing. Read them with
+  `git fetch origin shotlogs`. `python3 tests/shot_log.py`
+
 ## Tamper reports
 - The Discord webhook URL lives ONLY on the server (`TAMPER_WEBHOOK` on the license server service). It is never put in
   the Lua: whoever cracks the loader reads every string in it, and could then flood the channel or drop the request.
