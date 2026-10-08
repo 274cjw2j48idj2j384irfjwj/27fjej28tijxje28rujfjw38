@@ -976,6 +976,17 @@ LPH_NO_VIRTUALIZE(function ()
                 return type(v) == "number" and v == v and v > -1e9 and v < 1e9
             end
 
+            -- A NaN that gets into the side / belief numbers spreads to every player of that situation (through the
+            -- pooled beliefs) and every angle became 0 with confidence -1 (owners' shot logs, Oct 2026: 5 of 12 shots
+            -- on jitter players). Where it shows it is put back to d and noted (first / last place, count): the shot logs carry it
+            local nan = { n = 0 }
+            resolver.nan = nan
+            local function sane(v, d, where)
+                if finite(v) then return v end
+                nan.n, nan.last, nan.first = nan.n + 1, where, nan.first or where
+                return d
+            end
+
             local function normalize(a)
                 return (a + 180) % 360 - 180
             end
@@ -1366,6 +1377,7 @@ LPH_NO_VIRTUALIZE(function ()
             -- one shot result: the record got v, its computed body yaw was c, the target was on the positive side with
             -- probability pi. temper < 1 for the beliefs of everybody
             local function update(b, c, v, hit, pi, temper)
+                c, v, pi = sane(c, 0, "c_result"), sane(v, 0, "v_result"), sane(pi, 0.5, "pi_result")
                 for f = 1, 2 do
                     local h = b[f]
                     local pred, sum = 0, 0
@@ -1401,6 +1413,17 @@ LPH_NO_VIRTUALIZE(function ()
                     for j = 1, NM do h[j] = (1 - FORGET) * h[j] / sum + FORGET * p0[j] end
                 end
                 b.s[3] = DECAY * b.s[3] + temper * math.log(math.max(pred, 1e-6))
+                -- a NaN in a belief: back to where beliefs start
+                for f = 1, 4 do
+                    for i = 1, #b[f] do
+                        if not finite(b[f][i]) then
+                            b[f] = prior(f)
+                            sane(nil, 0, "belief" .. f)
+                            break
+                        end
+                    end
+                    if f <= 3 then b.s[f] = sane(b.s[f], 0, "score" .. f) end
+                end
             end
 
             -- ── side switches ──────────────────────────────────────────────────────
@@ -1479,14 +1502,14 @@ LPH_NO_VIRTUALIZE(function ()
                 for k = 1, ND do
                     local R = F[k]
                     local keep = (1 - 2 * per_tick(R)) ^ dt
-                    for _, z in pairs(p.z) do z[k] = z[k] * keep end
+                    for _, z in pairs(p.z) do z[k] = sane(z[k] * keep, 0, "z_tick") end
                     for i = 1, #p.events do
                         local ev = p.events[i]
                         local at = not ev.q[k] and due(ev, k)
                         if at and at <= t then
                             local q = q_of(R, ev.kind, ev.phit)
                             ev.q[k], ev.at[k] = q, at
-                            for _, z in pairs(p.z) do z[k] = z[k] * (1 - 2 * q) end
+                            for _, z in pairs(p.z) do z[k] = sane(z[k] * (1 - 2 * q), 0, "z_shot") end
                         end
                     end
                 end
@@ -1502,7 +1525,7 @@ LPH_NO_VIRTUALIZE(function ()
                         local q = q_of(F[k], kind)
                         local a = 1 - 2 * old
                         if math.abs(a) > 0.05 then
-                            for _, z in pairs(p.z) do z[k] = clamp(z[k] * (1 - 2 * q) / a, -1, 1) end
+                            for _, z in pairs(p.z) do z[k] = sane(clamp(z[k] * (1 - 2 * q) / a, -1, 1), 0, "z_result") end
                         end
                         ev.q[k] = q
                     end
@@ -1552,7 +1575,7 @@ LPH_NO_VIRTUALIZE(function ()
                     local q = (1 - keep) / 2
                     local np, nm = (1 - q) * lp + q * lm, (1 - q) * lm + q * lp
                     local cur = (1 + z[k]) / 2
-                    z[k] = clamp(2 * cur * np / math.max(cur * np + (1 - cur) * nm, 1e-9) - 1, -1, 1)
+                    z[k] = sane(clamp(2 * cur * np / math.max(cur * np + (1 - cur) * nm, 1e-9) - 1, -1, 1), 0, "z_measure")
                 end
                 if side and (not last or t > last.t) then p.obs[ctx] = { t = t, side = side } end
             end
@@ -1782,7 +1805,7 @@ LPH_NO_VIRTUALIZE(function ()
                     if hit then return m * P_HIT + (1 - m) * P_LUCK end
                     return m * (1 - P_HIT) + (1 - m) * (1 - P_LUCK)
                 end
-                timing.s = clamp(timing.s * 0.995 + math.log(ll(s.v_pre) / ll(s.v_end)), -30, 30)
+                timing.s = sane(clamp(timing.s * 0.995 + math.log(ll(s.v_pre) / ll(s.v_end)), -30, 30), 0, "timing")
                 if timing.pre and timing.s < -3 then timing.pre = false
                 elseif not timing.pre and timing.s > 3 then timing.pre = true end
             end
@@ -1896,7 +1919,7 @@ LPH_NO_VIRTUALIZE(function ()
                 local zs = {}
                 for k = 1, ND do zs[k] = z[k] end
                 local b = belief_of(p.key, ctx)
-                local pi = (1 + zs[best_delay(rates_of(p.key))]) / 2
+                local pi = sane((1 + zs[best_delay(rates_of(p.key))]) / 2, 0.5, "pi_side")
                 local r = { zs = zs, b = b, pi_base = pi }
                 local pp, period, pgain = pat_predict(p.key, n)
                 local lcls, fcls = p.lcls, p.fcls_now
@@ -1910,7 +1933,19 @@ LPH_NO_VIRTUALIZE(function ()
                 if lp_ and lgain > best_gain then pi, period, r.layers, best_gain = lp_, nil, true, lgain end
                 if fp_ and fgain > best_gain then pi, period, r.layers, r.fs = fp_, nil, nil, true end
                 r.period = period
-                r.value, r.phit = decide(b, c, pi, p.maxd, math.abs(c) < ZERO_MIN and not zero_allowed(p.key, ctx, p))
+                pi = sane(pi, 0.5, "pi_signal")
+                c = sane(c, 0, "c")
+                local nozero = math.abs(c) < ZERO_MIN and not zero_allowed(p.key, ctx, p)
+                r.value, r.phit = decide(b, c, pi, p.maxd, nozero)
+                if r.phit <= -1 then
+                    -- no angle could be weighed (a NaN in the belief): it and the pooled one start again
+                    sane(nil, 0, "decide")
+                    local fresh = new_belief()
+                    for f = 1, 4 do b[f] = fresh[f] end
+                    b.s = fresh.s
+                    global[ctx] = new_belief()
+                    r.value, r.phit = decide(b, c, pi, p.maxd, nozero)
+                end
                 return r
             end
 
@@ -2117,6 +2152,7 @@ LPH_NO_VIRTUALIZE(function ()
                     if now - s.time > 5 or now < s.time then shots[id] = nil end
                 end
                 local p = players[e.target]
+                timing.s = sane(timing.s, 0, "timing")
                 local bt, raw = resolver.shot_backtrack(e)
                 -- fired at the drawn model (0 ticks back) while the target's newest update is a shifted one: the server does
                 -- not have it and tests the shot against the newest normal record at or before its sim time. That record's
@@ -2155,7 +2191,7 @@ LPH_NO_VIRTUALIZE(function ()
                 if p and p.key == s.key then
                     -- the side the target was on when the record was made, and what this result says about it
                     local best = best_delay(rates_of(p.key))
-                    pi = (1 + s.zs[best]) / 2
+                    pi = sane((1 + s.zs[best]) / 2, 0.5, "pi_record")
                     -- for the sizes: what is known about the side of the record NOW (with the results that came in after it was
                     -- decided). With the side guessed before a switch was seen, the misses after the switch used to eat the
                     -- size (48 -> 4-24 deg)
@@ -2169,7 +2205,7 @@ LPH_NO_VIRTUALIZE(function ()
                             local ev = p.events[i]
                             if ev.at[best] and ev.at[best] > s.at then keep = keep * (1 - 2 * ev.q[best]) end
                         end
-                        pi = (1 + clamp(zn * keep, -1, 1)) / 2
+                        pi = sane((1 + clamp(zn * keep, -1, 1)) / 2, 0.5, "pi_learn")
                     end
                     local lp, lm = side_likelihoods(b, s.value, hit, reliability(s.key))
                     side_measure(p, s.ctx, s.at, s.zs, lp, lm)
@@ -12729,6 +12765,8 @@ LPH_NO_VIRTUALIZE(function ()
                         lcs = p.lc_state, nochoke = p.nochoke,
                         eye = num(eye, 1), pitch = num(pitch, 1), lby = num(entity_get_prop(idx, "m_flLowerBodyYawTarget"), 1),
                         ts = num(timing.s, 2), tpre = timing.pre or nil, at = globals.realtime(),
+                        nan = resolver.nan and resolver.nan.last or nil, nan1 = resolver.nan and resolver.nan.first or nil,
+                        nann = resolver.nan and resolver.nan.n or nil,
                     }
                 end
 

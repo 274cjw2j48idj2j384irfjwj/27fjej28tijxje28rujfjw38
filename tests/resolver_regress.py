@@ -424,6 +424,28 @@ for lag in (0, 1):
     check(bool(t.pre) == (lag == 1), f"timing {lag}: learned pre={t.pre} (s {t.s:.1f})")
     print(f"   jitter_random {'before' if lag else 'after'}: learned {'before' if t.pre else 'after'} (s {t.s:.1f}), hit rate {s.late_rate:.2f}")
 
+# ── a NaN in the side / belief numbers (owners' shot logs, Oct 2026: angle 0 with confidence -1 on 5 of 12 shots, every
+# jitter player: a NaN in the pooled belief) is put back and noted, the angles stay right
+print("== NaN in the beliefs / side numbers")
+poison = lua('''function(k, ctl, S)
+    if k ~= 2000 then return end
+    local nan = 0 / 0
+    for _, m in pairs(S.resolver.memory) do
+        for _, b in pairs(m.b) do b[3][1], b[1][5], b.s[2] = nan, nan, nan end
+    end
+    for _, p in pairs(S.resolver.database) do
+        for _, z in pairs(p.z) do z[1], z[5] = nan, nan end
+    end
+    S.resolver.timing.s = nan
+end''')
+for scn, d in [("jitter_tick", {}), ("choke_static", dict(choke=6))]:
+    s = run(scn, dict(d, seed=20), ticks=4000, ping=50, seed=1, on_tick=poison)
+    p = s.S.resolver.database[2]
+    t = s.S.resolver.timing.s
+    check(s.late_rate >= 0.85 and p.phit > -1 and t == t, f"NaN {scn}: rate {s.late_rate:.2f}, confidence {p.phit:.2f}, timing {t}")
+    check(s.S.resolver.nan.n > 0, f"NaN {scn}: noted ({s.S.resolver.nan.n}, last {s.S.resolver.nan.last})")
+    print(f"   {scn}: after the NaN {s.late_rate:.2f}, noted {s.S.resolver.nan.n}x (last: {s.S.resolver.nan.last})")
+
 # ── robustness ────────────────────────────────────────────────────────────────
 print("== robustness")
 G = lua('''function(tick, ent, name)
