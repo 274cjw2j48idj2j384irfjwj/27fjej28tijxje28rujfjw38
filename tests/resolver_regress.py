@@ -406,6 +406,24 @@ for ping, fake in ((20, 0), (40, 200), (80, 150), (110, 100)):
     check(b is not None and abs(b - ping) <= 5, f"ping spike {fake} on {ping} ms: profile {b} ms")
     check(s.late_rate >= 0.85, f"ping spike {fake} on {ping} ms: late rate {s.late_rate:.2f}")
 
+# ── when gamesense reads the forced value: after net_update_end (apply_lag 0) or before it (1: the record gets what was
+# set at net_update_start). Owners, Oct 2026: "a hitlog nem jol detektalja a szoget", many resolver misses on HvH; with
+# the value written only at net_update_end and a gamesense that reads it before, every jitter record got the angle of the
+# record before it (0.08-0.15). The predicted value is written at net_update_start, the shots tell which one is read
+print("== forced value timing (read after / before net_update_end)")
+for scn, d in [("jitter_tick", {}), ("jitter_delay", dict(period=3)), ("jitter_choke", dict(choke=3)), ("moving_jitter", {}),
+               ("choke_static", dict(choke=6)), ("anti_miss", dict(choke=6))]:
+    cells = [avg(scn, d, 50, apply_lag=lag) for lag in (0, 1)]
+    print(f"   {scn + (str(d) if d else ''):<30} after {cells[0]:.2f}  before {cells[1]:.2f}")
+    for lag, c in zip((0, 1), cells):
+        check(c >= 0.85, f"timing {lag}: {scn}{d} hit rate {c:.2f} < 0.85")
+# a random jitter can not be predicted: there the shots tell the timing, and the log / learning take the value read
+for lag in (0, 1):
+    s = run("jitter_random", dict(seed=20), ticks=4000, ping=50, seed=1, apply_lag=lag)
+    t = s.S.resolver.timing
+    check(bool(t.pre) == (lag == 1), f"timing {lag}: learned pre={t.pre} (s {t.s:.1f})")
+    print(f"   jitter_random {'before' if lag else 'after'}: learned {'before' if t.pre else 'after'} (s {t.s:.1f}), hit rate {s.late_rate:.2f}")
+
 # ── robustness ────────────────────────────────────────────────────────────────
 print("== robustness")
 G = lua('''function(tick, ent, name)

@@ -352,7 +352,7 @@ local function make_enemy(idx, spec, ping_ticks)
         srv = { feet = 0, lby = 0, timer = 0 }, rec = {}, recent = {}, valid = {},
         net = { sim = 0, eye = 0, pitch = 89, vel = 0, flags = 1, duck = 0, lby = 0, pose = 0.5 },
         max_st = 0, native_p = spec.native_p or 0.25, truth_pol = spec.truth_pol or 1, move = spec.move,
-        realign_until = 0, realign_since = 0, prev_value = nil,
+        realign_until = 0, realign_since = 0,
     }
     return e
 end
@@ -597,6 +597,16 @@ function H.run(script_src, opts)
         if opts.ping_fn then ctl.ping = opts.ping_fn(k) end
         if opts.on_tick then opts.on_tick(k, ctl, S) end
 
+        -- net_update_start runs before the update is read: opts.apply_lag = 1 is a gamesense that builds a new record
+        -- (and reads "Force body yaw value" for it) before net_update_end, so the record gets what is set before that
+        local oks, errs = pcall(fire, "net_update_start")
+        if not oks then stats.errors = stats.errors + 1; ctl.errors[#ctl.errors + 1] = "net_update_start: " .. tostring(errs) end
+        local pre = {}
+        for _, e in ipairs(enemies) do
+            local pl = ctl.plist[e.idx] or {}
+            pre[e.idx] = { pl["Force body yaw"] and pl["Force body yaw value"] or nil, pl["Force pitch"] and pl["Force pitch value"] or nil }
+        end
+
         local arrived = {}
         for _, e in ipairs(enemies) do
             local r = enemy_advance(e, k, opts)
@@ -610,16 +620,15 @@ function H.run(script_src, opts)
             if not okp then stats.errors = stats.errors + 1; ctl.errors[#ctl.errors + 1] = "paint: " .. tostring(errp) end
         end
 
-        -- what was applied to the records that arrived this tick (the value forced after this update, or one update later);
-        -- the pitch too ("Force pitch": the defensive pitch flick taken back)
+        -- what was applied to the records that arrived this tick (the value forced after this update, or, apply_lag 1,
+        -- the one set before it); the pitch too ("Force pitch": the defensive pitch flick taken back)
         for _, e in ipairs(enemies) do
             local pl = ctl.plist[e.idx] or {}
             local v = pl["Force body yaw"] and pl["Force body yaw value"] or nil
             local fp = pl["Force pitch"] and pl["Force pitch value"] or nil
             local r = arrived[e.idx]
             if r and apply_lag == 0 then r.applied, r.pitch = v, fp
-            elseif r then r.applied, r.pitch = e.prev_value, e.prev_pitch end
-            e.prev_value, e.prev_pitch = v, fp
+            elseif r then r.applied, r.pitch = pre[e.idx][1], pre[e.idx][2] end
             local cl = ctl.plist[e.idx] or {}
             if cl["Override prefer body aim"] == "On" then stats.ba_ticks = (stats.ba_ticks or 0) + 1 end
             if cl["Override safe point"] == "On" then stats.sp_ticks = (stats.sp_ticks or 0) + 1 end

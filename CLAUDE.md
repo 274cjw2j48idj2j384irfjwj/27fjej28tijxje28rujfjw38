@@ -157,6 +157,15 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   (`mem[key].b[ctx]`, started from the pooled `global[ctx]`) mixes three models, weighted by how well each predicted the shots:
   computed (c + learned offset), mirrored (-c + learned offset), side (a learned size on the side the target is on now).
   `decide` forces the angle with the most probability within TOL (12) of it, on exact angles (rounding c into a bin lost 1-2 deg = misses).
+- Forced value timing (owners, Oct 2026: "a hitlog nem jol detektalja a szoget", many resolver misses on HvH): when
+  gamesense reads "Force body yaw value" for a new record is not documented. Read before our net_update_end, every
+  record got the angle of the record before it (sim `apply_lag=1`: jitter 0.92 -> 0.08-0.15, the hitlog angle wrong).
+  So the value for the NEXT record (`predict_next`: the jitter side by how long the player holds a side, the eye yaw of
+  that side) is written at net_update_start, the record's own one at net_update_end (and back to the newest record's
+  value on updates without a record). Each record keeps both (`value`, `pre`); `resolver.timing` learns from the shots
+  whose two values differ which one the records get (`timing_learn`, over all players), the hitlog and the learning use
+  that one (`applied_value`). Sim: 0.92 with both timings on static / jitter / delayed jitter / anti brute; a random
+  jitter side can not be predicted (read before: ~0.45, random hold 1-4: 0.63)
 - Results update the beliefs with Bayes: head hit = the body yaw was within TOL of the value the RECORD got (`P_HIT` 0.85), resolver miss =
   it was not; FORGET 0.02 pulls back toward the start so a changing target is followed.
 - Side: z per situation = how sure the target is on the positive side, measured by every head hit / resolver miss (Bayes). Side
@@ -214,8 +223,9 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   (no near 0, no shifted value, every shot judged by its record, a shot at the shifted model by the server's record), the pitch never
   written, a standing target with a ping spike (backtrack taught by a moving one), 128 tick shots up to 120 ticks back, ping profile with a
   ping spike, player list / release / Correction active restore, shot attribution, garbage netvars, 5 enemies, slot reuse, resets,
-  last_log). The world (`tests/resolver_world.lua`): a shot at the drawn shifted model says 0 ticks back like gamesense; options
-  `def_head` ("same" / "pitch"), `aim` (aim points), `move` (per enemy spec), `native_off` + `bt_min` (ping spike), `ev_tick`.
+  last_log, forced value timing read after / before net_update_end). The world (`tests/resolver_world.lua`): a shot at the drawn shifted model says 0 ticks back like gamesense; options
+  `def_head` ("same" / "pitch"), `aim` (aim points), `move` (per enemy spec), `native_off` + `bt_min` (ping spike), `ev_tick`,
+  `apply_lag` (1: a record gets the value set before net_update_end).
 - Load smoke test: `python3 tests/load_smoke.py [--dev-file] [--plan=nightly|beta|specter]`. Run it after every change that touches
   load-time code, the loaders, the auth gate or the resolver.
 
