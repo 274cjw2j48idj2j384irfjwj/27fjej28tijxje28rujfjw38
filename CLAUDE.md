@@ -201,7 +201,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   measured ticks minus gamesense's number; each used once its last 8 agree, all but one within 1 tick). With a ping spike gamesense
   says 0 for a record ~fake latency old (owners: "rosszul logolja a shotokra az anglet, bt is"): every shot at a standing target was
   logged / learned as the newest record (sim, 12 tick spike: 273 of 273 -> 0 after the first 8 measured shots). Untaught: gamesense's
-  number, like before.
+  number, like before. While the target shifts the drawn model is a candidate too (`DRAWN`): an aim point nearest to it is a
+  shot at the shifted model (raw 0, defensive). Owners, Oct 2026 ("jitter / desync jo, a defensive nem"): a target that moved
+  while it shifted (jiggle peek) put the drawn model near an older record, 14-16% of its defensive shots were taken for
+  backtracked ones (not "defensive", learned as resolver misses, wrong bt / angle in the hitlog); the regress tests it.
 - Interface the rest of the script uses: `resolver.on_fire / on_hit / on_miss`, `new_round`, `reset_player`, `reset_all`, `shot_backtrack`,
   `shots[id]` (`reason` = desync / jitter / defensive / native, `value`, `mode`, `bt`, `ctx`, `defensive`, `teleported`), `database[idx]` (`stance`, `speed`, `consecutive_misses`,
   `mode` = "d" / "j", `method`, `model_name`, `phit` = confidence, `value`), `memory[key].hit_value[stance]` (aa stealer), `forced`,
