@@ -6221,18 +6221,22 @@ LPH_NO_VIRTUALIZE(function ()
                         return false
                     end
 
-                    -- bunny hop (jump held): no shift on the jump tick and the last 3 ticks before we land. A shift there
-                    -- ran the landing / the jump in shifted ticks and the hop lost its speed (owners, Oct 2026: "meg mindig
-                    -- szar de csak defensivenel"). The landing is the drop of the next 3 ticks traced down from the feet
-                    if cmd.in_jump == 1 then
-                        if player.onground then return false end
+                    -- bunny hop: no shift on the last 4 ticks before we land and the 2 ticks on the ground after (the jump
+                    -- tick). A shift there ran the landing / the jump in shifted ticks and the hop lost its speed (owners,
+                    -- Oct 2026: "still cant bhop"). Not by the jump key: gamesense's bunny hop lets it go in the air and a
+                    -- mouse wheel jump presses it for one tick only, so the old "jump held" check never saw the air
+                    local tick = globals_tickcount()
+                    if not player.onground then
+                        antiaimbot.defensive.air_tick = tick
                         local x, y, z = entity_get_prop(me, 'm_vecOrigin')
                         local _, _, vz = entity_get_prop(me, 'm_vecVelocity')
                         if x and z and vz then
-                            local t = globals_tickinterval() * 3
+                            local t = globals_tickinterval() * 4
                             local drop = math_max(0, -(vz * t - 400 * t * t)) + 2
                             if client.trace_line(me, x, y, z, x, y, z - drop) < 1 then return false end
                         end
+                    elseif tick - (antiaimbot.defensive.air_tick or -100) <= 2 then
+                        return false
                     end
 
                     local conditions_met = true do
