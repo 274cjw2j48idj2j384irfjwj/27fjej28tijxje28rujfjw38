@@ -383,8 +383,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - The defensive yaw writes `cmd.yaw` itself (`antiaimbot.defensive:run`, only on confirmed defensive ticks, needs double tap /
   hide shots): forwardmove / sidemove are turned with it so the move stays where we look (owners, Oct 2026: "if i use dt i
   cant bhop properly": with defensive forced in the air the air strafe went along the defensive yaw every tick).
-  Still bad with defensive (owners: "meg mindig szar de csak defensivenel"): with jump held `defensive.force` forces nothing on
-  the ground and in the last 3 ticks before landing (the drop of the next 3 ticks traced down from the feet).
+  Still bad with defensive (owners: "meg mindig szar de csak defensivenel", then "still cant bhop"): `defensive.force` forces
+  nothing in the last 4 ticks before landing (the drop of the next 4 ticks traced down from the feet) and the 2 ticks on the
+  ground after the air (the jump tick). NOT gated by the jump key: gamesense's bunny hop lets IN_JUMP go in the air and a
+  mouse wheel jump presses it for one tick, the first version ("jump held") never ran in the air.
 - `python3 tests/aa_redteam.py [preset ...]` (~1 min for the 3 presets): the REAL anti-aim of the dev build runs in the mock game of
   `tests/perf/mock.lua`; what gamesense would do with the settings it writes is modelled per sent packet and becomes the enemy of
   `tests/resolver_world.lua`; the resolver of the repo (full / without the jitter split: `JITTER_SPREAD` 90 in its source) shoots at it, its hits / shots reach our anti brute-force.
