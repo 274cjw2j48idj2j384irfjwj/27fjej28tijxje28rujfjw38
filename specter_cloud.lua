@@ -11805,20 +11805,30 @@ LPH_NO_VIRTUALIZE(function ()
                 local DISCORD = 'discord.gg/dxM89UUnVN'
                 local sponsor_messages = {
                     '{name} got tapped by Specter / sit down',
-                    'imagine dying to Specter {name}',
-                    'skill issue {name} / Specter said goodnight',
                     '1 {name} / sponsored by Specter - ' .. DISCORD,
-                    '{name} is a free kill for Specter / thanks for the frag',
-                    'L {name} / Specter on top',
-                    'ratio + L + no Specter {name}',
-                    '{name} spectating again / Specter keeps playing',
-                    'was that a hvh or a Specter tutorial {name}?',
+                    'imagine dying to Specter {name}',
                     '{name} uninstall / or get Specter at ' .. DISCORD,
+                    'skill issue {name} / Specter said goodnight',
+                    'want to stop dying {name}? / ' .. DISCORD,
+                    '{name} is a free kill for Specter / thanks for the frag',
+                    'Specter > your cheat {name} / ' .. DISCORD,
+                    'L {name} / Specter on top',
+                    '{name} needs Specter / ' .. DISCORD,
+                    'ratio + L + no Specter {name}',
+                    'still no Specter {name}? / ' .. DISCORD,
+                    '{name} spectating again / Specter keeps playing',
+                    'tired of the spectator view {name}? / Specter - ' .. DISCORD,
+                    'was that a hvh or a Specter tutorial {name}?',
+                    '{name} buy a real cheat / Specter - ' .. DISCORD,
                     '{name} you just paid the Specter tax',
+                    'refund your paste {name} / Specter - ' .. DISCORD,
                     'owned by Specter / next',
+                    'Specter does this every round {name} / ' .. DISCORD,
                     'iq check failed {name} / Specter passed it',
+                    'free lesson from Specter {name} / full course at ' .. DISCORD,
                     'dont rage quit {name} / Specter is not done with you',
-                    '{name} vs Specter / not even close'
+                    '{name} vs Specter / not even close / ' .. DISCORD,
+                    'sit {name} / join the winning side - ' .. DISCORD,
                 }
 
                 local list = {
