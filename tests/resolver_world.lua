@@ -559,6 +559,7 @@ function H.run(script_src, opts)
         error("module '" .. name .. "' not found")
     end
     env.client, env.entity, env.globals, env.ui, env.plist, env.renderer, env.database = client, entity, globals, ui, plist, renderer, database
+    env.set_cb = client.set_event_callback
     env._G = env
     setmetatable(env, {
         __index = function(t, k) error("undefined global read: " .. tostring(k), 2) end,

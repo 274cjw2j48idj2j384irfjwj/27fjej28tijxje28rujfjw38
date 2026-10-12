@@ -207,9 +207,9 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - Extra side signals, each used only when it predicted better than the side filter: packet cycles (`PATTERNS` 2/3/4/6), animation
   layer 6 playback rate classes (`resolver.read_layer6`, ffi, read only), hide head predictor (`fs_class`: where the enemy saw us from,
   ping late; pooled over players in `gfeat`, always on). Ping scale: `PING_TABLE` (0-150 ms in steps of 5, from
-  the sim) sets FORGET / P_HIT / DECAY / TOL / RDECAY by our REAL ping ("Auto", `real_ping`: client.real_latency x 2000, the net
+  the sim) sets FORGET / P_HIT / DECAY / TOL / RDECAY by our REAL ping (always automatic, no menu item since Oct 2026, `real_ping`: client.real_latency x 2000, the net
   channel's latency without the fake ping; no scoreboard any more, owners Oct 2026: "scoreboardrol szedi, nem jol meri": it has
-  the fake ping in it and updates every few seconds) or a manual value. The hide head predictor takes our real one way latency from it too.
+  the fake ping in it and updates every few seconds) The hide head predictor takes our real one way latency from it too.
 - Zero rule: on a record whose computed body yaw is ~0 (|c| < `ZERO_MIN` 20: micromovement keeps the LBY on the eye yaw, the netvars
   show no desync) a near-0 angle is only given after a head hit near 0 on such records (`zero_of`) or 2 resolver misses away from 0
   since the last hit (3 on jitter records `j+` / `j-`: the side switches, misses on both sides are normal). That near-0 try is ONE shot: a near-0 miss counts the misses again, and every failed try doubles the misses it takes
@@ -227,7 +227,7 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   any guess gets). The sim runs on 64 tick, `tickrate=128` for 128 tick, `fake_ping` for a ping spike, `bt_max` for older records.
 - Menu (owners, Oct 2026: "eleg legyen bekapcsolni a resolvert es mindent tud"): Enable Resolver, info rows for the current threat
   (target, method = Static / LBY / Dynamic / Jitter (+ " / defensive" while it shifts) + winning model, desync L/R, lag comp,
-  confidence), Ping scale (Auto / Manual + value), Show angle in hitlog, Resolver Safety (the `config.ragebot.safety*` /
+  confidence), Show angle in hitlog, Resolver Safety (the `config.ragebot.safety*` /
   `smart_*` items, created after the resolver's so gamesense shows them below it; the tiers without the resolver see them on
   Accuracy), Reset memory. Jitter sensitivity, Hide head predictor and Override size are gone (fixed / always on). The resolver prints nothing itself: its last
   line is `resolver.last_log`. The hitlog takes the shot from `resolver.shots` (aim_fire runs the resolver first): `bt` = the resolver's
@@ -273,8 +273,9 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - Tuning (`config.tuning`, rage UI flat in `SPECTER_SHARED.rage_ui`): quick peek options per weapon group (Early autostop: stop when the
   gun is ready within a per weapon window and our bullet can hurt the threat, held 0.1 s after the shot; Slow motion; Move between
   shots), Force shot (hotkey + hit chance), Fake duck speed limit, Bizon air spray (Fun). Dormant aimbot: hitbox heights from the last
-  visible frame, sound position prediction (`dormant_track`), hit chance from the weapon spread, kill first. Predict enemies: Active =
-  Always / Ping 55+ / Ping under 40 (our real ping, `real_ping`).
+  visible frame, sound position prediction (`dormant_track`), hit chance from the weapon spread, kill first. Predict enemies: always on while
+  enabled (no "Active" ping option, owners Oct 2026: nothing ping dependent in the menu, the lua decides). Extended Backtrack has no
+  Mode / Ping reducer items: only with a threat, off with a knife / grenade out and in freeze time.
 
 ## Cloud loadouts
 - (owners, Oct 2026: "elé rak egy ☁ logót és oda írja melyik user presetje") The shared configs are in the Loadouts list,
@@ -335,6 +336,14 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   cleaned and written back right after load. Not confirmed in game.
 
 ## Performance
+- FPS (owners, Oct 2026: ~120 fps instead of 400-500): in game every API call costs ~15-20 us, so the draw calls per frame
+  dominate. Draw helpers (`measure_text` memo, `rounded_rect` / `rounded_outline_rect` = cached SVG textures, 1 call instead of
+  a circle + rectangle set) are in the DRAW HELPERS block; the watermark is one colour-coded text. Removed: animated zoom, the
+  welcome message. The camera paint callback returns at once when none of its features is on.
+- In-game profiler (dev build only, `perf.dev` = no key): `spec_perf [seconds]` in the console times every callback
+  (`set_cb` wraps `client.set_event_callback`; the dispatchers use `perf.span`), `spec_bench` times single API calls. Both
+  print and send a JSON line (`kind` perf / bench) through the shot log channel to the `shotlogs` branch. It never patches
+  API tables (the cloud integrity monitor snapshots them).
 - `python3 tests/perf_profile.py [--hot N]` runs the WHOLE dev build in `tests/perf/mock.lua` (a mock game: local player, N enemies that
   move / jitter / choke, numeric ui handles like gamesense, real ffi memory for the animstate / usercmd helpers) and prints the script time
   per callback plus the game API calls per tick (the expensive ones in game: traces, `hitbox_position` = bone setup, player list writes,

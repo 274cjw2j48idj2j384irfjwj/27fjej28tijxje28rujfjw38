@@ -120,6 +120,219 @@ local user do
     end
 end
 
+-- ── PERFORMANCE MONITOR ──────────────────────────────────────────────
+-- Dev build only (console: spec_perf [seconds], spec_bench). Every event callback of the script is registered through
+-- set_cb, which times it while a measurement runs (QueryPerformanceCounter, else client.timestamp): the answer to "where
+-- do the fps go" comes from the game, not from a mock. spec_perf prints the callbacks by their share of the frame time and
+-- sends the same numbers to the shot log branch; spec_bench times single API calls (draw, entity, trace, ui) in a paint
+-- callback: how much one call costs in game. The cloud build never measures (the profiler does not touch any api table).
+local perf = { on = false, slots = {}, count = {}, by_label = {} }
+do
+    local clock = function() return client.timestamp() * 1000 end
+    pcall(function()
+        local ffi = require("ffi")
+        pcall(ffi.cdef, "int QueryPerformanceCounter(int64_t *c); int QueryPerformanceFrequency(int64_t *f);")
+        local freq, buf = ffi.new("int64_t[1]"), ffi.new("int64_t[1]")
+        ffi.C.QueryPerformanceFrequency(freq)
+        local inv = 1e6 / tonumber(freq[0])
+        ffi.C.QueryPerformanceCounter(buf)
+        clock = function() ffi.C.QueryPerformanceCounter(buf); return tonumber(buf[0]) * inv end
+    end)
+    perf.clock = clock
+    perf.dev = ((_auth_data and _auth_data.key) or "") == ""
+
+    function perf.slot(label)
+        local slot = perf.by_label[label]
+        if not slot then
+            slot = { label = label, n = 0, us = 0 }
+            perf.by_label[label] = slot
+            perf.slots[#perf.slots + 1] = slot
+        end
+        return slot
+    end
+
+    -- fn timed into slot while a measurement runs (up to 3 return values are passed on)
+    function perf.span(slot, fn, ...)
+        if not perf.on then return fn(...) end
+        local t = clock()
+        local a, b, c = fn(...)
+        slot.us, slot.n = slot.us + (clock() - t), slot.n + 1
+        return a, b, c
+    end
+
+    function perf.start(seconds)
+        if not perf.dev or perf.on then return end
+        seconds = math.max(2, math.min(60, tonumber(seconds) or 10))
+        for i = 1, #perf.slots do perf.slots[i].n, perf.slots[i].us = 0, 0 end
+        perf.t0, perf.f0, perf.k0 = globals.realtime(), globals.framecount(), globals.tickcount()
+        perf.on = true
+        client.color_log(180, 160, 255, "specter  \0")
+        client.color_log(255, 255, 255, string.format("measuring for %d s: play normally (move, shoot, peek)", seconds))
+        client.delay_call(seconds, function()
+            perf.on = false
+            local dur = math.max(0.1, globals.realtime() - perf.t0)
+            local fps = (globals.framecount() - perf.f0) / dur
+            local tps = (globals.tickcount() - perf.k0) / dur
+            local rows = {}
+            for i = 1, #perf.slots do
+                local sl = perf.slots[i]
+                if sl.n > 0 then rows[#rows + 1] = sl end
+            end
+            table.sort(rows, function(a, b) return a.us > b.us end)
+            client.color_log(180, 160, 255, "specter  \0")
+            client.color_log(255, 255, 255, string.format("%.0f fps, %.0f tick/s over %.1f s; script time per second, per callback:", fps, tps, dur))
+            local out = { kind = "perf", t = client.unix_time(), dur = dur, fps = fps, tps = tps, cb = {} }
+            local total = 0
+            for i = 1, #rows do total = total + rows[i].us end
+            for i = 1, math.min(#rows, 30) do
+                local sl = rows[i]
+                client.color_log(200, 200, 215, string.format("   %-22s %7.1f calls/s %8.1f us/call %8.2f ms/s", sl.label, sl.n / dur, sl.us / sl.n, sl.us / dur / 1000))
+                out.cb[#out.cb + 1] = { sl.label, sl.n, math.floor(sl.us) }
+            end
+            client.color_log(255, 255, 255, string.format("   total %.2f ms/s (%.1f %% of a second)", total / dur / 1000, total / dur / 10000))
+            if perf.upload then perf.upload(out) end
+        end)
+    end
+end
+
+-- the callback of an event, timed by the monitor (the one place the script registers its callbacks)
+local function set_cb(event, fn)
+    perf.count[event] = (perf.count[event] or 0) + 1
+    local slot = perf.slot(event .. "#" .. perf.count[event])
+    client.set_event_callback(event, function(...)
+        if not perf.on then return fn(...) end
+        local t = perf.clock()
+        local a, b, c = fn(...)
+        slot.us, slot.n = slot.us + (perf.clock() - t), slot.n + 1
+        return a, b, c
+    end)
+end
+
+-- spec_bench: what one api call costs in this game (microseconds), timed in a paint callback
+set_cb("paint", function()
+    if not perf.bench_pending then return end
+    perf.bench_pending = false
+    local clock, res = perf.clock, {}
+    local function run(name, n, fn)
+        pcall(fn)
+        local t = clock()
+        for _ = 1, n do fn() end
+        res[#res + 1] = { name, (clock() - t) / n }
+    end
+    local me = entity.get_local_player()
+    local ref = ui.reference("RAGE", "Aimbot", "Enabled")
+    run("renderer.rectangle", 400, function() renderer.rectangle(2, 2, 3, 3, 255, 255, 255, 1) end)
+    run("renderer.text", 400, function() renderer.text(2, 2, 255, 255, 255, 1, "", 0, "specter 123") end)
+    run("renderer.text bold", 400, function() renderer.text(2, 2, 255, 255, 255, 1, "b", 0, "specter 123") end)
+    run("renderer.measure_text", 400, function() renderer.measure_text("", "specter 123") end)
+    run("renderer.circle r6", 400, function() renderer.circle(8, 8, 255, 255, 255, 1, 6, 0, 1) end)
+    run("renderer.circle quarter r12", 400, function() renderer.circle(16, 16, 255, 255, 255, 1, 12, 180, 0.25) end)
+    run("renderer.circle_outline", 400, function() renderer.circle_outline(8, 8, 255, 255, 255, 1, 6, 0, 1, 1) end)
+    run("renderer.gradient", 400, function() renderer.gradient(2, 2, 30, 4, 255, 255, 255, 1, 255, 255, 255, 1, true) end)
+    run("renderer.line", 400, function() renderer.line(2, 2, 20, 12, 255, 255, 255, 1) end)
+    run("ui.get", 2000, function() ui.get(ref) end)
+    run("entity.get_players", 1000, function() entity.get_players(true) end)
+    run("globals.realtime", 2000, function() globals.realtime() end)
+    if me then
+        local x, y, z = entity.get_prop(me, "m_vecOrigin")
+        run("entity.get_prop", 2000, function() entity.get_prop(me, "m_iHealth") end)
+        run("entity.is_alive", 2000, function() entity.is_alive(me) end)
+        run("entity.get_player_weapon", 2000, function() entity.get_player_weapon(me) end)
+        run("entity.hitbox_position", 300, function() entity.hitbox_position(me, 0) end)
+        if x then run("client.trace_line", 500, function() client.trace_line(me, x, y, z + 50, x, y, z - 200) end) end
+    end
+    client.color_log(180, 160, 255, "specter  \0")
+    client.color_log(255, 255, 255, "api call cost (microseconds per call):")
+    local out = { kind = "bench", t = client.unix_time(), api = {} }
+    for i = 1, #res do
+        client.color_log(200, 200, 215, string.format("   %-30s %8.2f us", res[i][1], res[i][2]))
+        out.api[#out.api + 1] = { res[i][1], math.floor(res[i][2] * 100) / 100 }
+    end
+    if perf.upload then perf.upload(out) end
+end)
+-- ── END PERFORMANCE MONITOR ──────────────────────────────────────────
+
+-- ── DRAW HELPERS ─────────────────────────────────────────────────────
+-- Every call into the renderer costs the same however small the shape is (the game's own cost per call is what the fps
+-- go on: the monitor above measures it), so the helpers below turn many calls into one.
+--
+-- measure_text with a memory: the same strings are measured every frame
+local measure_cache, measure_n = {}, 0
+local function measure_text(flags, text, ...)
+    if type(text) ~= "string" or select("#", ...) > 0 then return renderer.measure_text(flags, text, ...) end
+    local by_flags = measure_cache[flags]
+    if not by_flags then by_flags = {}; measure_cache[flags] = by_flags end
+    local hit = by_flags[text]
+    if hit then return hit[1], hit[2] end
+    local w, h = renderer.measure_text(flags, text)
+    if measure_n > 3000 then measure_cache, measure_n = { [flags] = {} }, 0; by_flags = measure_cache[flags] end
+    by_flags[text] = { w, h }
+    measure_n = measure_n + 1
+    return w, h
+end
+
+-- Rounded rectangles / outlines as one svg texture each (a pill was 3 rectangles + 4 circles = 7 calls). A texture is made
+-- once per size and kept (new sizes per frame, an animated width, fall back to the old primitives: at most 24 new textures a
+-- second); when the game has no svg loader every call draws the primitives like before
+local rr_cache, rr_count, rr_made, rr_second = {}, 0, 0, 0
+local function rr_texture(w, h, rad, outline)
+    local key = (outline and "o" or "f") .. w .. "x" .. h .. "r" .. rad
+    local tex = rr_cache[key]
+    if tex ~= nil then return tex end
+    local now = globals.realtime()
+    if now - rr_second > 1 or now < rr_second then rr_second, rr_made = now, 0 end
+    if rr_made >= 24 then return nil end
+    rr_made = rr_made + 1
+    if rr_count >= 400 then rr_cache, rr_count = {}, 0 end
+    local svg = outline
+        and string.format('<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d"><rect x="0.5" y="0.5" width="%d" height="%d" rx="%.1f" fill="none" stroke="#fff" stroke-width="1"/></svg>', w, h, w - 1, h - 1, rad)
+        or string.format('<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d"><rect width="%d" height="%d" rx="%d" fill="#fff"/></svg>', w, h, w, h, rad)
+    local ok, t = pcall(renderer.load_svg, svg, w, h)
+    tex = (ok and t) or false
+    rr_cache[key] = tex
+    rr_count = rr_count + 1
+    return tex
+end
+
+local function rounded_rect(x, y, w, h, rad, r, g, b, a)
+    if a <= 0 or w <= 0 or h <= 0 then return end
+    x, y, w, h = math.floor(x + 0.5), math.floor(y + 0.5), math.floor(w + 0.5), math.floor(h + 0.5)
+    if w <= 0 or h <= 0 then return end
+    rad = math.max(0, math.min(math.floor(rad + 0.5), math.floor(h / 2), math.floor(w / 2)))
+    if rad == 0 then return renderer.rectangle(x, y, w, h, r, g, b, a) end
+    local tex = rr_texture(w, h, rad, false)
+    if tex then return renderer.texture(tex, x, y, w, h, r, g, b, a, "f") end
+    renderer.rectangle(x + rad, y, w - rad * 2, h, r, g, b, a)
+    renderer.rectangle(x, y + rad, rad, h - rad * 2, r, g, b, a)
+    renderer.rectangle(x + w - rad, y + rad, rad, h - rad * 2, r, g, b, a)
+    if a >= 32 then
+        renderer.circle(x + rad, y + rad, r, g, b, a, rad, 180, 0.25)
+        renderer.circle(x + w - rad, y + rad, r, g, b, a, rad, 90, 0.25)
+        renderer.circle(x + rad, y + h - rad, r, g, b, a, rad, 270, 0.25)
+        renderer.circle(x + w - rad, y + h - rad, r, g, b, a, rad, 0, 0.25)
+    end
+end
+
+local function rounded_outline_rect(x, y, w, h, rad, r, g, b, a)
+    if a <= 0 or w <= 2 or h <= 2 then return end
+    x, y, w, h = math.floor(x + 0.5), math.floor(y + 0.5), math.floor(w + 0.5), math.floor(h + 0.5)
+    if w <= 2 or h <= 2 then return end
+    rad = math.max(0, math.min(math.floor(rad + 0.5), math.floor(h / 2), math.floor(w / 2)))
+    local tex = rad > 0 and rr_texture(w, h, rad, true)
+    if tex then return renderer.texture(tex, x, y, w, h, r, g, b, a, "f") end
+    renderer.rectangle(x + rad, y, w - rad * 2, 1, r, g, b, a)
+    renderer.rectangle(x + rad, y + h - 1, w - rad * 2, 1, r, g, b, a)
+    renderer.rectangle(x, y + rad, 1, h - rad * 2, r, g, b, a)
+    renderer.rectangle(x + w - 1, y + rad, 1, h - rad * 2, r, g, b, a)
+    if rad > 0 then
+        renderer.circle_outline(x + rad, y + rad, r, g, b, a, rad, 180, 0.25, 1)
+        renderer.circle_outline(x + w - rad, y + rad, r, g, b, a, rad, 90, 0.25, 1)
+        renderer.circle_outline(x + rad, y + h - rad, r, g, b, a, rad, 270, 0.25, 1)
+        renderer.circle_outline(x + w - rad, y + h - rad, r, g, b, a, rad, 0, 0.25, 1)
+    end
+end
+-- ── END DRAW HELPERS ─────────────────────────────────────────────────
+
 LPH_NO_VIRTUALIZE(function ()
     local ffi = require 'ffi';
     -- gamesense normally provides toticks; keep a fallback so defensive timing never errors
@@ -1931,18 +2144,10 @@ LPH_NO_VIRTUALIZE(function ()
             local function ping_update(tick)
                 if tick - ping_state.tick < 32 and tick >= ping_state.tick then return end
                 ping_state.tick = tick
-                if option("ping_scale", true) ~= true or next(PING_TABLE) == nil then
-                    if ping_state.bucket ~= nil then ping_state.bucket = nil; resolver.set_tune(nil) end
-                    return
-                end
-                local ping
-                if option("ping_mode", "Auto") == "Manual" then
-                    ping = tonumber(option("ping_manual", 50)) or 50
-                else
-                    ping = real_ping()
-                    -- smoothed: one lag spike does not switch the row
-                    ping = ping_state.ping + (ping - ping_state.ping) * (ping_state.bucket and 0.35 or 1)
-                end
+                if next(PING_TABLE) == nil then return end
+                -- smoothed: one lag spike does not switch the row
+                local ping = real_ping()
+                ping = ping_state.ping + (ping - ping_state.ping) * (ping_state.bucket and 0.35 or 1)
                 ping = clamp(ping, 0, 150)
                 ping_state.ping = ping
                 local bucket = math.floor(ping / 5 + 0.5) * 5
@@ -2345,21 +2550,21 @@ LPH_NO_VIRTUALIZE(function ()
 
             do
                 local last_err = -10
-                client.set_event_callback("net_update_start", function()
+                set_cb("net_update_start", function()
                     local ok, err = pcall(resolver.net_update_start)
                     if not ok and globals.realtime() - last_err > 5 then
                         last_err = globals.realtime()
                         client.error_log("[specter resolver] " .. tostring(err))
                     end
                 end)
-                client.set_event_callback("net_update_end", function()
+                set_cb("net_update_end", function()
                     local ok, err = pcall(resolver.net_update)
                     if not ok and globals.realtime() - last_err > 5 then
                         last_err = globals.realtime()
                         client.error_log("[specter resolver] " .. tostring(err))
                     end
                 end)
-                client.set_event_callback("shutdown", function() pcall(release_all) end)
+                set_cb("shutdown", function() pcall(release_all) end)
             end
             -- [resolver:end]
         end
@@ -3440,15 +3645,15 @@ LPH_NO_VIRTUALIZE(function ()
         end
         telemetry.save()
 
-        client.set_event_callback("player_death", function(e)
+        set_cb("player_death", function(e)
             local me = entity_get_local_player()
             local victim, attacker = client.userid_to_entindex(e.userid), client.userid_to_entindex(e.attacker)
             if me and attacker == me and victim and victim ~= me and entity.is_enemy(victim) then
                 telemetry.kills = telemetry.kills + 1
             end
         end)
-        client.set_event_callback("round_end", function() telemetry.save() end)
-        client.set_event_callback("shutdown", function() telemetry.save() end)
+        set_cb("round_end", function() telemetry.save() end)
+        set_cb("shutdown", function() telemetry.save() end)
     end
 
     config.uix = {}
@@ -3643,9 +3848,6 @@ LPH_NO_VIRTUALIZE(function ()
 
         config.ragebot.extended_bt = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Extended Backtrack")
             :record("ragebot", "extended_bt"):save()
-        config.ragebot.extended_bt_mode = menu.new_item(ui.new_combobox, "AA", "Anti-aimbot angles", "•  Mode\nextended_bt", {
-            "Only with target", "Always"
-        }):record("ragebot", "extended_bt_mode"):save()
         config.ragebot.extended_bt_amount = menu.new_item(ui.new_slider, "AA", "Anti-aimbot angles", "•  Amount\nextended_bt", 50, 200, 200, true, "ms")
             :record("ragebot", "extended_bt_amount"):save()
         -- Adaptive record selection: the fake ping decides which records the server accepts (around now - our total
@@ -3653,14 +3855,8 @@ LPH_NO_VIRTUALIZE(function ()
         -- amount (the older, valid records); a target that runs / peeks: less (the newest record, where it came out)
         config.ragebot.adaptive_records = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "•  Adaptive record selection\nextended_bt")
             :record("ragebot", "adaptive_records"):save()
-        -- Ping reducer: no fake ping when it buys nothing, the real ping stays low
-        config.ragebot.ping_reducer = menu.new_item(ui.new_multiselect, "AA", "Anti-aimbot angles", "•  Ping reducer\nextended_bt", {
-            "Knife / grenade", "Freeze time", "No target for 3s"
-        }):record("ragebot", "ping_reducer"):save()
-
         do
             local refs, slider, saved, active, looked, last_amount = {}, nil, nil, false, false, nil
-            local extended_seen = 0
 
             local function lookup()
                 looked = true
@@ -3704,13 +3900,11 @@ LPH_NO_VIRTUALIZE(function ()
                 end
             end
 
-            client.set_event_callback("paint_ui", function()
+            set_cb("paint_ui", function()
                 if not looked then lookup() end
                 if #refs == 0 then return end
                 local want = config.ragebot.extended_bt:get() and entity_get_local_player() ~= nil
-                if want and config.ragebot.extended_bt_mode:get() ~= "Always" then
-                    want = client.current_threat() ~= nil
-                end
+                if want then want = client.current_threat() ~= nil end
                 -- the threat breaks lag comp: nothing to backtrack, the fake ping would only add to the extrapolation
                 if want and c_table.contains(config.ragebot.lc_handling:get() or {}, "No ping spike") then
                     local t = client.current_threat()
@@ -3718,22 +3912,14 @@ LPH_NO_VIRTUALIZE(function ()
                     if d and d.lc_state == "breaking" then want = false end
                 end
                 local me = entity_get_local_player()
-                local red = config.ragebot.ping_reducer:get() or {}
-                if want and me and #red > 0 then
-                    if c_table.contains(red, "Knife / grenade") then
-                        local wpn = entity.get_player_weapon(me)
-                        local info = wpn and csgo_weapons(wpn)
-                        if info and (info.type == "knife" or info.type == "grenade") then want = false end
-                    end
-                    if want and c_table.contains(red, "Freeze time") then
+                -- no fake ping when it buys nothing (knife / grenade out, freeze time): the real ping stays low
+                if want and me then
+                    local wpn = entity.get_player_weapon(me)
+                    local info = wpn and csgo_weapons(wpn)
+                    if info and (info.type == "knife" or info.type == "grenade") then want = false end
+                    if want then
                         local rules = entity.get_game_rules()
                         if rules and entity_get_prop(rules, "m_bFreezePeriod") == 1 then want = false end
-                    end
-                    if want and c_table.contains(red, "No target for 3s") then
-                        local t = client.current_threat()
-                        local now = globals.realtime()
-                        if t and not entity.is_dormant(t) then extended_seen = now end
-                        if now - (extended_seen or 0) > 3 then want = false end
                     end
                 end
                 if want then
@@ -3758,7 +3944,7 @@ LPH_NO_VIRTUALIZE(function ()
                 end
             end)
 
-            client.set_event_callback("shutdown", function() pcall(restore) end)
+            set_cb("shutdown", function() pcall(restore) end)
         end
 
         config.ragebot.multipoint = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Improved Multi-point")
@@ -3778,10 +3964,6 @@ LPH_NO_VIRTUALIZE(function ()
         config.ragebot.predict_mode = menu.new_item(ui.new_combobox, "AA", "Anti-aimbot angles", "•  Mode\npredict", {
             "Default", "Aggressive", "Ultimate"
         }):record("ragebot", "predict_mode"):save()
-        -- only at some pings (our real ping, without the fake ping): less interp helps most on a high ping
-        config.ragebot.predict_when = menu.new_item(ui.new_combobox, "AA", "Anti-aimbot angles", "•  Active\npredict", {
-            "Always", "Ping 55+", "Ping under 40"
-        }):record("ragebot", "predict_when"):save()
         do
             local MODES = {
                 Default    = { cl_interp_ratio = 1, cl_interp = 0.015625, cl_updaterate = 64, cl_cmdrate = 64 },
@@ -3801,18 +3983,11 @@ LPH_NO_VIRTUALIZE(function ()
                 end
                 saved = {}
             end
-            client.set_event_callback("paint_ui", function()
+            set_cb("paint_ui", function()
                 local now = globals.realtime()
                 if now < next_t and now > next_t - 2 then return end
                 next_t = now + 0.5
                 local on = config.ragebot.predict:get()
-                local when = config.ragebot.predict_when and config.ragebot.predict_when:get() or "Always"
-                if on and when ~= "Always" then
-                    local ping = real_ping()
-                    -- 3 ms of hysteresis, or a ping that sits on the line switches the cvars every half second
-                    local was = next(saved) ~= nil
-                    if when == "Ping 55+" then on = ping >= (was and 52 or 55) else on = ping <= (was and 43 or 40) end
-                end
                 if not on then
                     if next(saved) then restore() end
                     return
@@ -3833,7 +4008,7 @@ LPH_NO_VIRTUALIZE(function ()
                     end
                 end
             end)
-            client.set_event_callback("shutdown", function() pcall(restore) end)
+            set_cb("shutdown", function() pcall(restore) end)
         end
 
         config.ragebot.hdr_safety = mui.header(mui.CONTENT, "◎", "Body aim & safety")
@@ -3911,7 +4086,7 @@ LPH_NO_VIRTUALIZE(function ()
                 prio, held = {}, {}
             end
 
-            client.set_event_callback("net_update_end", function()
+            set_cb("net_update_end", function()
                 local me = entity_get_local_player()
                 local want = config.ragebot.priority:get() or {}
                 local delay = config.ragebot.delay_invalid:get()
@@ -3959,8 +4134,8 @@ LPH_NO_VIRTUALIZE(function ()
                 for idx in pairs(prio) do if not seen[idx] then set_prio(idx, false) end end
                 for idx, h in pairs(held) do if not seen[idx] and h.on then set_hold(idx, false) end end
             end)
-            client.set_event_callback("round_start", release_all)
-            client.set_event_callback("shutdown", function() pcall(release_all) end)
+            set_cb("round_start", release_all)
+            set_cb("shutdown", function() pcall(release_all) end)
         end
 
         config.ragebot.hdr_exploits = mui.header(mui.CONTENT, "↯", "Exploits")
@@ -3994,7 +4169,7 @@ LPH_NO_VIRTUALIZE(function ()
         do
             local misses, blocked_until, forced, os_forced = {}, 0, false, false
 
-            client.set_event_callback("aim_miss", function(e)
+            set_cb("aim_miss", function(e)
                 if e.reason == "death" or e.reason == "unregistered shot" then return end
                 local now = globals.realtime()
                 misses[#misses + 1] = now
@@ -4003,11 +4178,11 @@ LPH_NO_VIRTUALIZE(function ()
                     blocked_until, misses = now + 3, {}
                 end
             end)
-            client.set_event_callback("aim_hit", function() misses = {} end)
+            set_cb("aim_hit", function() misses = {} end)
             local last_fire = -100
-            client.set_event_callback("aim_fire", function() last_fire = globals.tickcount() end)
+            set_cb("aim_fire", function() last_fire = globals.tickcount() end)
 
-            client.set_event_callback("setup_command", function()
+            set_cb("setup_command", function()
                 local want_off = false
                 if config.ragebot.dt_guard:get() then
                     local on = config.ragebot.dt_guard_on:get() or {}
@@ -4089,7 +4264,7 @@ LPH_NO_VIRTUALIZE(function ()
                 for idx in pairs(written) do release(idx) end
             end
 
-            client.set_event_callback("net_update_end", function()
+            set_cb("net_update_end", function()
                 local lch = config.ragebot.lc_handling:get() or {}
                 local use_safety = config.ragebot.safety:get()
                 local aimtools = config.ragebot.aimtools:get()
@@ -4203,8 +4378,8 @@ LPH_NO_VIRTUALIZE(function ()
                     if not seen[idx] then release(idx) end
                 end
             end)
-            client.set_event_callback("round_start", release_all)
-            client.set_event_callback("shutdown", function() pcall(release_all) end)
+            set_cb("round_start", release_all)
+            set_cb("shutdown", function() pcall(release_all) end)
         end
 
         -- Tuning page: adaptive air chance, ground / noscope scaling, weapon profiles, peek assist.
@@ -4475,7 +4650,7 @@ LPH_NO_VIRTUALIZE(function ()
         end
 
         local next_refresh = 0
-        client.set_event_callback("paint_ui", function()
+        set_cb("paint_ui", function()
             if not ui_is_menu_open() then return end
             if config.navigation.page() ~= "Home" then return end
             local now = globals.realtime()
@@ -4499,8 +4674,8 @@ LPH_NO_VIRTUALIZE(function ()
             c_logger.log("Statistics reset.")
         end)
 
-        client.set_event_callback("round_end", function() pcall(save) end)
-        client.set_event_callback("shutdown", function() pcall(save) end)
+        set_cb("round_end", function() pcall(save) end)
+        set_cb("shutdown", function() pcall(save) end)
     end
 
     ---
@@ -5228,7 +5403,7 @@ LPH_NO_VIRTUALIZE(function ()
             -- what the server got from us: our origin at every new simulation time. More than 64 units from the last one =
             -- our lag compensation is broken (the enemy can only shoot the newest record, extrapolated)
             fakelag.lc = { broken = false, dist = 0, since = -100 }
-            client.set_event_callback("net_update_end", function()
+            set_cb("net_update_end", function()
                 local me = entity_get_local_player()
                 if not me or not entity.is_alive(me) then fakelag.lc.last = nil; return end
                 local sim = entity_get_prop(me, "m_flSimulationTime")
@@ -5407,24 +5582,10 @@ LPH_NO_VIRTUALIZE(function ()
                 }
                 config.resolver.log = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Show angle in hitlog\nresolver")
                     :record("resolver", "log"):save()
-                -- the resolver's numbers for the ping (0 .. 150 ms, steps of 5)
-                config.resolver.ping_scale = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Ping scale\nresolver")
-                    :record("resolver", "ping_scale"):save()
-                pcall(function() config.resolver.ping_scale:set(true) end)
-                config.resolver.ping_mode = menu.new_item(ui.new_combobox, "AA", "Anti-aimbot angles", "•  Ping\nresolver_ping", { "Auto", "Manual" })
-                    :record("resolver", "ping_mode"):save()
-                config.resolver.ping_manual = menu.new_item(ui.new_slider, "AA", "Anti-aimbot angles", "•  Ping value\nresolver_ping", 0, 150, 50, true, "ms")
-                    :record("resolver", "ping_manual"):save()
-                config.resolver.ping_row = mui.row(mui.CONTENT, "◷", "Ping profile", function()
-                    local st = resolver.ping_state
-                    if not (st and st.bucket) then return "default" end
-                    return string_format("%d ms", st.bucket)
-                end)
                 config.uix.res_hint = mui.hint(mui.CONTENT, "computes the body yaw like the server, learns the rest from every shot")
-                client.set_event_callback("paint_ui", function()
+                set_cb("paint_ui", function()
                     if not ui_is_menu_open() then return end
                     for _, row in ipairs(config.resolver.info) do mui.refresh(row) end
-                    if config.resolver.ping_row then mui.refresh(config.resolver.ping_row) end
                 end)
                 config.resolver.reset = menu.new_item(ui.new_button, "AA", "Other", "Reset memory\nresolver", function()
                     resolver.reset_all()
@@ -7007,7 +7168,7 @@ LPH_NO_VIRTUALIZE(function ()
                         end
                     end
 
-                    client.set_event_callback("paint", function()
+                    set_cb("paint", function()
                         if not ab.active or not config.antiaimbot.anti_brute:get() then return end
                         if not config.antiaimbot.anti_brute_indicator:get() then return end
                         local me = entity_get_local_player()
@@ -8206,7 +8367,7 @@ LPH_NO_VIRTUALIZE(function ()
                     if remove_scope_ref then pcall(ui_set, remove_scope_ref, scope.saved and true or false) end
                 end
 
-                client.set_event_callback("paint_ui", function()
+                set_cb("paint_ui", function()
                     if not config.visuals.custom_scope:get() then
                         release()
                         scope.progress = 0
@@ -8263,7 +8424,7 @@ LPH_NO_VIRTUALIZE(function ()
                 end
 
                 local scope_errors = {}
-                client.set_event_callback("paint", function()
+                set_cb("paint", function()
                     local ok, err = pcall(draw_scope)
                     if not ok then
                         err = tostring(err)
@@ -8274,7 +8435,7 @@ LPH_NO_VIRTUALIZE(function ()
                     end
                 end)
 
-                client.set_event_callback("shutdown", function() pcall(release) end)
+                set_cb("shutdown", function() pcall(release) end)
             end
             config.visuals.watermark = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Watermark")
                 :record("visuals", "watermark"):save()
@@ -8562,21 +8723,21 @@ LPH_NO_VIRTUALIZE(function ()
                     end
                     table.sort(list, function(x, y) return x.order < y.order end)
 
-                    local _, th = renderer.measure_text("", "A")
+                    local _, th = measure_text("", "A")
                     local RH = th + 5
                     local HEAD = style == "Minimal" and (th + 6) or (th + 12)
                     local PAD = 10
 
                     -- width
-                    local tw = renderer.measure_text("b", title)
+                    local tw = measure_text("b", title)
                     local need = PAD + 18 + tw + PAD
                     for _, row in ipairs(list) do
                         local it = row.item
-                        local w = PAD + renderer.measure_text("", it[1]) + 24
+                        local w = PAD + measure_text("", it[1]) + 24
                         row.value = (show_val and it[3]) and it[3] or nil
                         row.mode = (show_mode and it[2]) and string.upper(it[2]) or nil
-                        row.vw = row.value and renderer.measure_text("", row.value) or 0
-                        row.mw = row.mode and (renderer.measure_text("-", row.mode) + 8) or 0
+                        row.vw = row.value and measure_text("", row.value) or 0
+                        row.mw = row.mode and (measure_text("-", row.mode) + 8) or 0
                         w = w + row.vw + row.mw + ((row.value and row.mode) and 6 or 0)
                         need = math_max(need, w + PAD)
                     end
@@ -8637,7 +8798,7 @@ LPH_NO_VIRTUALIZE(function ()
                     end
                     renderer.text(x + PAD + 18, hy, 240, 240, 245, 255 * a, "b", 0, title)
                     local count = tostring(#items)
-                    local cw = renderer.measure_text("", count)
+                    local cw = measure_text("", count)
                     if #items > 0 and style ~= "Minimal" then
                         rounded(x + w - PAD - cw - 8, cy - 7, cw + 8, 14, 7, r, g, b, 60 * a)
                         renderer.text(x + w - PAD - cw - 4, cy - math_floor(th / 2), r, g, b, 255 * a, "", 0, count)
@@ -8688,20 +8849,7 @@ LPH_NO_VIRTUALIZE(function ()
                 local PILL_BG, PILL_W, PILL_D = { 18, 18, 22 }, { 235, 235, 245 }, { 135, 135, 146 }
                 local GRAD2 = { 110, 170, 255 }
 
-                local function rounded_outline(x, y, w, h, rad, r, g, b, a)
-                    if a <= 0 or w <= 2 or h <= 2 then return end
-                    rad = math_max(0, math_min(rad, math_floor(h / 2), math_floor(w / 2)))
-                    renderer.rectangle(x + rad, y, w - rad * 2, 1, r, g, b, a)
-                    renderer.rectangle(x + rad, y + h - 1, w - rad * 2, 1, r, g, b, a)
-                    renderer.rectangle(x, y + rad, 1, h - rad * 2, r, g, b, a)
-                    renderer.rectangle(x + w - 1, y + rad, 1, h - rad * 2, r, g, b, a)
-                    if rad > 0 then
-                        renderer.circle_outline(x + rad, y + rad, r, g, b, a, rad, 180, 0.25, 1)
-                        renderer.circle_outline(x + w - rad, y + rad, r, g, b, a, rad, 90, 0.25, 1)
-                        renderer.circle_outline(x + rad, y + h - rad, r, g, b, a, rad, 270, 0.25, 1)
-                        renderer.circle_outline(x + w - rad, y + h - rad, r, g, b, a, rad, 0, 0.25, 1)
-                    end
-                end
+                local rounded_outline = rounded_outline_rect
 
                 -- a rounded rectangle filled with a horizontal gradient: left corners color 1, right corners color 2
                 local function grad_rounded(x, y, w, h, rad, r1, g1, b1, a1, r2, g2, b2, a2)
@@ -8832,7 +8980,7 @@ LPH_NO_VIRTUALIZE(function ()
                         renderer.circle(cx_ + 44, iy, dr, dg, db, 255 * a, 2, 0, 1)
                         local tr, tg, tb = PILL_D[1], PILL_D[2], PILL_D[3]
                         if hot then tr, tg, tb = PILL_W[1], PILL_W[2], PILL_W[3] end
-                        local _, th = renderer.measure_text(hot and "b" or "", label)
+                        local _, th = measure_text(hot and "b" or "", label)
                         text_shadow(cx_ + 54, iy - math_floor(th / 2), tr, tg, tb, 255 * a, hot and "b" or "", label)
                     end
                 end
@@ -8884,15 +9032,15 @@ LPH_NO_VIRTUALIZE(function ()
                         if not row.value and show_mode and it[2] and it[2] ~= "toggle" and it[2] ~= "always" then row.mode = it[2] end
                         local right
                         if row.value then
-                            row.vw = renderer.measure_text("b", row.value)
+                            row.vw = measure_text("b", row.value)
                             right = grad and (row.vw + 12) or row.vw
                         elseif row.mode then
-                            row.vw = renderer.measure_text("", row.mode)
+                            row.vw = measure_text("", row.mode)
                             right = row.vw
                         else
                             right = 18
                         end
-                        need = math_max(need, name_x + renderer.measure_text("b", it[1]) + 18 + right + 12)
+                        need = math_max(need, name_x + measure_text("b", it[1]) + 18 + right + 12)
                     end
                     p.w = p.w == 0 and need or lerp(p.w, need, ft * 12)
                     local body = 0
@@ -8973,11 +9121,11 @@ LPH_NO_VIRTUALIZE(function ()
                         else
                             renderer.circle(px + 12, cyr, r, g, b, RA, 2.2, 0, 1)
                         end
-                        local _, nth = renderer.measure_text("b", it[1])
+                        local _, nth = measure_text("b", it[1])
                         text_shadow(px + name_x, cyr - math_floor(nth / 2), PILL_W[1], PILL_W[2], PILL_W[3], RA, "b", it[1])
                         local rx = px + w - 12
                         if row.value then
-                            local _, vth = renderer.measure_text("b", row.value)
+                            local _, vth = measure_text("b", row.value)
                             if grad then
                                 rounded(rx - row.vw - 10, cyr - 7, row.vw + 12, 14, 7, r, g, b, 60 * ra)
                                 renderer.text(rx - row.vw - 4, cyr - math_floor(vth / 2), 230, 220, 255, RA, "b", 0, row.value)
@@ -8987,7 +9135,7 @@ LPH_NO_VIRTUALIZE(function ()
                                 text_shadow(rx - row.vw, cyr - math_floor(vth / 2), r, g, b, RA, "b", row.value)
                             end
                         elseif row.mode then
-                            local _, mth = renderer.measure_text("", row.mode)
+                            local _, mth = measure_text("", row.mode)
                             text_shadow(rx - row.vw, cyr - math_floor(mth / 2), PILL_D[1], PILL_D[2], PILL_D[3], RA, "", row.mode)
                         else
                             if classic then
@@ -9037,7 +9185,7 @@ LPH_NO_VIRTUALIZE(function ()
                     pill_ctx(cx_, cy_, cw, ch, menu_open, mx, my, r, g, b, not classic, ft, a)
                 end
 
-                client.set_event_callback("paint_ui", function()
+                set_cb("paint_ui", function()
                     local ok, err = pcall(function()
                         local kb, sp = config.visuals.keybinds:get(), config.visuals.spectators:get()
                         if not kb and not sp then return end
@@ -9074,28 +9222,10 @@ LPH_NO_VIRTUALIZE(function ()
 
 
             do
-                local wm = { fps = 0, anim = 0, w = 0, x = nil, y = nil, drag = {}, day = nil }
+                local wm = { fps = 0, anim = 0, w = 0, x = nil, y = nil, drag = {} }
                 local BG = { 12, 12, 16 }
 
-                local function rounded(x, y, w, h, rad, r, g, b, a)
-                    if a <= 0 or w <= 0 or h <= 0 then return end
-                    rad = math_max(0, math_min(rad, math_floor(h / 2), math_floor(w / 2)))
-                    if a < 32 and rad > 0 then
-                        renderer.rectangle(x + rad, y, w - rad * 2, h, r, g, b, a)
-                        renderer.rectangle(x, y + rad, rad, h - rad * 2, r, g, b, a)
-                        renderer.rectangle(x + w - rad, y + rad, rad, h - rad * 2, r, g, b, a)
-                        return
-                    end
-                    renderer.rectangle(x + rad, y, w - rad * 2, h, r, g, b, a)
-                    if rad > 0 then
-                        renderer.rectangle(x, y + rad, rad, h - rad * 2, r, g, b, a)
-                        renderer.rectangle(x + w - rad, y + rad, rad, h - rad * 2, r, g, b, a)
-                        renderer.circle(x + rad, y + rad, r, g, b, a, rad, 180, 0.25)
-                        renderer.circle(x + w - rad, y + rad, r, g, b, a, rad, 90, 0.25)
-                        renderer.circle(x + rad, y + h - rad, r, g, b, a, rad, 270, 0.25)
-                        renderer.circle(x + w - rad, y + h - rad, r, g, b, a, rad, 0, 0.25)
-                    end
-                end
+                local rounded = rounded_rect
 
                 local function lerp(a, b, t)
                     return a + (b - a) * math_min(1, t)
@@ -9145,25 +9275,6 @@ LPH_NO_VIRTUALIZE(function ()
                     local k = animated and (0.55 + 0.45 * math.sin(now * 1.8)) or 1
                     renderer.gradient(x, y, half, 1, r, g, b, 0, r, g, b, 230 * k * a, true)
                     renderer.gradient(x + half, y, w - half, 1, r, g, b, 230 * k * a, r, g, b, 0, true)
-                    renderer.gradient(x + math_floor(w * 0.2), y - 1, math_floor(w * 0.3), 1, r, g, b, 0, r, g, b, 60 * k * a, true)
-                    renderer.gradient(x + math_floor(w * 0.5), y - 1, math_floor(w * 0.3), 1, r, g, b, 60 * k * a, r, g, b, 0, true)
-                end
-
-                local function sky(cx, cy, r, g, b, a, now, day)
-                    local night = 1 - day
-                    if night > 0.02 then
-                        renderer.circle(cx, cy, r, g, b, a, 4.5 * night, 0, 1)
-                        renderer.circle(cx + 2.2 * night, cy - 1.6 * night, BG[1], BG[2], BG[3], a, 3.8 * night, 0, 1)
-                    end
-                    if day > 0.02 then
-                        renderer.circle(cx, cy, 255, 222, 140, a, 3.2 * day, 0, 1)
-                        local spin = now * 0.5
-                        for k = 0, 7 do
-                            local ang = spin + k * math.pi / 4
-                            local ca, sa = math.cos(ang), math.sin(ang)
-                            renderer.line(cx + ca * 4.8 * day, cy + sa * 4.8 * day, cx + ca * 6.6 * day, cy + sa * 6.6 * day, 255, 222, 140, a)
-                        end
-                    end
                 end
 
                 local function icon(kind, cx, cy, a)
@@ -9188,20 +9299,24 @@ LPH_NO_VIRTUALIZE(function ()
                     end
                 end
 
+                -- one text call with a colour code per letter (the shimmer), rebuilt 20 times a second
                 local function brand_text(x, y, text, r, g, b, a, now)
-                    local cx = x
-                    for i = 1, #text do
-                        local ch = text:sub(i, i)
-                        local t = 0.5 + 0.5 * math.sin(now * 1.6 - i * 0.55)
-                        local cr = math_floor(245 + (r - 245) * t)
-                        local cg = math_floor(245 + (g - 245) * t)
-                        local cb = math_floor(250 + (b - 250) * t)
-                        renderer.text(cx, y, cr, cg, cb, a, "b", 0, ch)
-                        cx = cx + renderer.measure_text("b", ch)
+                    local key = string_format("%d|%d|%d|%d|%d", math_floor(now * 20), r, g, b, math_floor(a / 8))
+                    if wm.brand_key ~= key then
+                        wm.brand_key = key
+                        local parts = {}
+                        local alpha = math_floor(math_min(255, a))
+                        for i = 1, #text do
+                            local t = 0.5 + 0.5 * math.sin(now * 1.6 - i * 0.55)
+                            parts[i] = string_format("\a%02x%02x%02x%02x%s", math_floor(245 + (r - 245) * t), math_floor(245 + (g - 245) * t),
+                                math_floor(250 + (b - 250) * t), alpha, text:sub(i, i))
+                        end
+                        wm.brand_str = table_concat(parts)
                     end
+                    renderer.text(x, y, 255, 255, 255, 255, "b", 0, wm.brand_str)
                 end
 
-                client.set_event_callback("paint_ui", function()
+                set_cb("paint_ui", function()
                     local ft = globals_frametime()
                     local target = config.visuals.watermark:get() and 1 or 0
                     wm.anim = lerp(wm.anim, target, ft * 7)
@@ -9218,7 +9333,6 @@ LPH_NO_VIRTUALIZE(function ()
                     local icons = c_table.contains(effects, "Icons")
                     local now = globals.realtime()
                     local pulse = 0.7 + 0.3 * math.sin(now * 2)
-                    wm.day = lerp(wm.day or (user.is_day() and 1 or 0), user.is_day() and 1 or 0, ft * 3)
 
                     local W = { 230, 230, 236 }
                     local segs = {}
@@ -9246,15 +9360,15 @@ LPH_NO_VIRTUALIZE(function ()
                     end
 
                     local brand = "specter"
-                    local bw, th = renderer.measure_text("b", brand)
+                    local bw, th = measure_text("b", brand)
                     local H = th + 12
                     local PADX, GAP = 12, 11
                     local brand_w = PADX + 14 + 6 + bw + PADX
 
                     local info_w = 0
                     for _, sg in ipairs(segs) do
-                        sg.vw = renderer.measure_text("", sg[2])
-                        sg.uw = sg[3] ~= "" and renderer.measure_text("-", sg[3]) or 0
+                        sg.vw = measure_text("", sg[2])
+                        sg.uw = sg[3] ~= "" and measure_text("-", sg[3]) or 0
                         sg.w = (icons and 14 or 0) + sg.vw + sg.uw
                         info_w = info_w + sg.w
                     end
@@ -9308,7 +9422,6 @@ LPH_NO_VIRTUALIZE(function ()
                         end
                     end
 
-                    sky(x + PADX + 6, cy, r, g, b, 255 * a, now, wm.day)
                     brand_text(x + PADX + 14 + 6, ty, brand, r, g, b, 255 * a, now)
 
                     local tx = split and (x + brand_w + 6 + PADX) or (x + brand_w)
@@ -9322,8 +9435,7 @@ LPH_NO_VIRTUALIZE(function ()
                             sep = i == 1 and (tx - PADX + 1) or (tx - GAP)
                         end
                         if sep then
-                            renderer.gradient(sep, y + 6, 1, math_floor((H - 12) / 2), 255, 255, 255, 0, 255, 255, 255, 30 * a, false)
-                            renderer.gradient(sep, y + 6 + math_floor((H - 12) / 2), 1, math_floor((H - 12) / 2), 255, 255, 255, 30 * a, 255, 255, 255, 0, false)
+                            renderer.rectangle(sep, y + 6, 1, H - 12, 255, 255, 255, 20 * a)
                         end
                         local vx = tx
                         if icons then
@@ -9700,7 +9812,7 @@ LPH_NO_VIRTUALIZE(function ()
                         indicator_label = string_format('%s\a%s%s', indicator_label, indicator_label_t[i][2]:to_hex(), indicator_label_t[i][1])
                     end
 
-                    local indicator_label_size = vector(renderer.measure_text('b', 'specter'))
+                    local indicator_label_size = vector(measure_text('b', 'specter'))
                     local scope_offset = indicator_label_size.x * 0.5 * scope_animation + scope_animation * 4
 
                     renderer.text(indicator_position.x + scope_offset - indicator_label_size.x * 0.5 + 1, indicator_position.y - indicator_label_size.y * 0.5, 255, 255, 255, 255, 'b', 0, indicator_label)
@@ -9709,7 +9821,7 @@ LPH_NO_VIRTUALIZE(function ()
 
                     local indicator_body_yaw = c_math.clamp(player.smooth_fakeamount*0.0172, 0.0, 1.0)
                     local indicator_dsy = string_format('%d%%', indicator_body_yaw*100)
-                    local indicator_dsy_size = vector(renderer.measure_text('-', indicator_dsy))
+                    local indicator_dsy_size = vector(measure_text('-', indicator_dsy))
 
                     local scope_offset_dsy = indicator_dsy_size.x * 0.5 * scope_animation + scope_animation * 3
 
@@ -9733,7 +9845,7 @@ LPH_NO_VIRTUALIZE(function ()
                                 end
                             end
 
-                            local text_size = vector(renderer.measure_text('', indicator_text))
+                            local text_size = vector(measure_text('', indicator_text))
                             local _scope_offset = text_size.x*scope_animation*0.5 + scope_animation * 3
 
                             renderer.text(indicator_position.x + _scope_offset - text_size.x*0.5 + 1, indicator_position.y - text_size.y*0.5, indicator_color.r, indicator_color.g, indicator_color.b, indicator_color.a * indicator_animation*ctx_alpha, '', 0, indicator_text)
@@ -9862,7 +9974,7 @@ LPH_NO_VIRTUALIZE(function ()
                     local indicator_renewed = color(config.visuals.indicator_renewed_color:get())
 
                     local indicator_label = color.animated_text('specter', 1, indicator_renewed, indicator_accent, ctx_alpha*255)
-                    local indicator_label_size = vector(renderer.measure_text('b', 'specter'))
+                    local indicator_label_size = vector(measure_text('b', 'specter'))
 
                     local scope_offset = indicator_label_size.x * 0.5 * scope_animation + scope_animation * 3
 
@@ -9886,7 +9998,7 @@ LPH_NO_VIRTUALIZE(function ()
                                 end
                             end
 
-                            local text_size = vector(renderer.measure_text('-', indicator_text))
+                            local text_size = vector(measure_text('-', indicator_text))
                             local _x_offset = indicator.offset_x or 0
 
                             if type(_x_offset) == 'function' then
@@ -10007,14 +10119,14 @@ LPH_NO_VIRTUALIZE(function ()
                     local y = cy + (config.visuals.indicator_vertical_offset:get() or 20)
 
                     local brand = "specter"
-                    local bw, bh = renderer.measure_text("b", brand)
+                    local bw, bh = measure_text("b", brand)
                     local px = col_x(bw)
                     for i = 1, #brand do
                         local ch = brand:sub(i, i)
                         local t = 0.5 + 0.5 * math.sin(now * 2 - i * 0.6)
                         renderer.text(px + 1, y + 1, 0, 0, 0, 120 * a, "b", 0, ch)
                         renderer.text(px, y, math_floor(245 + (r - 245) * t), math_floor(245 + (g - 245) * t), math_floor(250 + (b - 250) * t), 255 * a, "b", 0, ch)
-                        px = px + renderer.measure_text("b", ch)
+                        px = px + measure_text("b", ch)
                     end
                     y = y + bh + 2
 
@@ -10031,10 +10143,10 @@ LPH_NO_VIRTUALIZE(function ()
                     y = y + 9
 
                     if st.fade < 0.99 and st.prev ~= "" then
-                        local pw = renderer.measure_text("-", st.prev)
+                        local pw = measure_text("-", st.prev)
                         renderer.text(col_x(pw), y - math_floor(st.fade * 4), 235, 235, 242, 255 * a * (1 - st.fade), "-", 0, st.prev)
                     end
-                    local sw1 = renderer.measure_text("-", st.state)
+                    local sw1 = measure_text("-", st.state)
                     renderer.text(col_x(sw1), y + math_floor((1 - st.fade) * 4), 235, 235, 242, 255 * a * st.fade, "-", 0, st.state)
                     y = y + 10
 
@@ -10047,7 +10159,7 @@ LPH_NO_VIRTUALIZE(function ()
                         if s > 0.01 then
                             local text = bind.name
                             if bind.key == "dmg" and dmg_value then text = "DMG " .. tostring(dmg_value) end
-                            local tw = renderer.measure_text("-", text)
+                            local tw = measure_text("-", text)
                             local tx = col_x(tw) + math_floor((1 - s) * 8)
                             local cr, cg, cb = r, g, b
                             if bind.key == "dt" then
@@ -10198,7 +10310,7 @@ LPH_NO_VIRTUALIZE(function ()
 
                     if has(el, "Brand") then
                         local brand = "specter"
-                        local bw, bh = renderer.measure_text("b", brand)
+                        local bw, bh = measure_text("b", brand)
                         local pw, ph = bw + 26, bh + 6
                         local px = col_x(pw)
                         visuals.rounded(px - 2, y - 1, pw + 4, ph + 4, 10, 0, 0, 0, 30 * a)
@@ -10212,7 +10324,7 @@ LPH_NO_VIRTUALIZE(function ()
                             local ch = brand:sub(i, i)
                             local t = 0.5 + 0.5 * math.sin(now * 2.4 - i * 0.7)
                             renderer.text(tx, y + 3, math_floor(245 + (r - 245) * t), math_floor(245 + (g - 245) * t), math_floor(250 + (b - 250) * t), 255 * a, "b", 0, ch)
-                            tx = tx + renderer.measure_text("b", ch)
+                            tx = tx + measure_text("b", ch)
                         end
                         local half = math_floor((pw - 16) / 2)
                         renderer.gradient(px + 8, y + ph - 1, half, 1, r, g, b, 0, r, g, b, 200 * a, true)
@@ -10222,10 +10334,10 @@ LPH_NO_VIRTUALIZE(function ()
 
                     if has(el, "State") then
                         if st.fade < 0.99 and st.prev ~= "" then
-                            local pw = renderer.measure_text("-", st.prev)
+                            local pw = measure_text("-", st.prev)
                             renderer.text(col_x(pw), y - math_floor(st.fade * 5), 230, 230, 238, 255 * a * (1 - st.fade), "-", 0, st.prev)
                         end
-                        local sw1 = renderer.measure_text("-", st.state)
+                        local sw1 = measure_text("-", st.state)
                         local sx = col_x(sw1)
                         local sy = y + math_floor((1 - st.fade) * 5)
                         renderer.text(sx + 1, sy + 1, 0, 0, 0, 150 * a * st.fade, "-", 0, st.state)
@@ -10245,7 +10357,7 @@ LPH_NO_VIRTUALIZE(function ()
                             if s > 0 then
                                 local text = c[2]
                                 if key == "dmg" and dmg_value then text = "DMG " .. tostring(dmg_value) end
-                                local tw = renderer.measure_text("-", text)
+                                local tw = measure_text("-", text)
                                 local w = tw + 10 + (key == "dt" and 9 or 0)
                                 row[#row + 1] = { key = key, text = text, tw = tw, w = w, s = s }
                                 total = total + (w + 3) * s
@@ -10276,7 +10388,7 @@ LPH_NO_VIRTUALIZE(function ()
 
                     if has(el, "Defensive") and st.def > 0.01 then
                         local t = "DEFENSIVE"
-                        local tw = renderer.measure_text("-", t)
+                        local tw = measure_text("-", t)
                         local dx = col_x(tw)
                         renderer.text(dx, y, r, g, b, 255 * a * st.def * pulse, "-", 0, t)
                     end
@@ -10630,25 +10742,7 @@ LPH_NO_VIRTUALIZE(function ()
                 return math_floor(r + (r2 - r) * t), math_floor(g + (g2 - g) * t), math_floor(b + (b2 - b) * t), math_floor(a + (a2 - a) * t)
             end
 
-            function visuals.rounded(x, y, w, h, rad, r, g, b, a)
-                if a <= 0 or w <= 0 or h <= 0 then return end
-                rad = math_max(0, math_min(rad, math_floor(h / 2), math_floor(w / 2)))
-                if a < 32 and rad > 0 then
-                    renderer.rectangle(x + rad, y, w - rad * 2, h, r, g, b, a)
-                    renderer.rectangle(x, y + rad, rad, h - rad * 2, r, g, b, a)
-                    renderer.rectangle(x + w - rad, y + rad, rad, h - rad * 2, r, g, b, a)
-                    return
-                end
-                renderer.rectangle(x + rad, y, w - rad * 2, h, r, g, b, a)
-                if rad > 0 then
-                    renderer.rectangle(x, y + rad, rad, h - rad * 2, r, g, b, a)
-                    renderer.rectangle(x + w - rad, y + rad, rad, h - rad * 2, r, g, b, a)
-                    renderer.circle(x + rad, y + rad, r, g, b, a, rad, 180, 0.25)
-                    renderer.circle(x + w - rad, y + rad, r, g, b, a, rad, 90, 0.25)
-                    renderer.circle(x + rad, y + h - rad, r, g, b, a, rad, 270, 0.25)
-                    renderer.circle(x + w - rad, y + h - rad, r, g, b, a, rad, 0, 0.25)
-                end
-            end
+            visuals.rounded = rounded_rect
 
             function visuals.over_menu(mx, my)
                 if not ui_is_menu_open() then return false end
@@ -10831,22 +10925,22 @@ LPH_NO_VIRTUALIZE(function ()
 
                         if e.cache_style ~= style then
                             e.cache_style = style
-                            e.lw, e.lh = renderer.measure_text("b", label)
+                            e.lw, e.lh = measure_text("b", label)
                             e.th = 0
                             e.sw = 0
                             for _, s in ipairs(e.segs or {}) do
-                                local w_, h_ = renderer.measure_text(s[5], s[1])
+                                local w_, h_ = measure_text(s[5], s[1])
                                 s.w = w_
                                 e.th = math_max(e.th, h_)
                                 e.sw = e.sw + w_
                             end
-                            e.mw = e.meta and renderer.measure_text("", e.meta) or 0
+                            e.mw = e.meta and measure_text("", e.meta) or 0
                             local name = e.segs and e.segs[1] and e.segs[1][1] or ""
-                            e.name_w = renderer.measure_text("b", name)
-                            e.short_w = renderer.measure_text("b", e.short or "")
+                            e.name_w = measure_text("b", name)
+                            e.short_w = measure_text("b", e.short or "")
                             local segs_ = e.segs or {}
                             e.rest_w = e.sw - ((segs_[1] and segs_[1].w or 0) + (segs_[2] and segs_[2].w or 0))
-                            e.lw_small = renderer.measure_text("-", string.upper(label))
+                            e.lw_small = measure_text("-", string.upper(label))
                             if style == "Compact" then
                                 e.w = 8 + 16 + 6 + e.name_w + 8 + e.short_w + 10
                             elseif style == "Glass" then
@@ -10854,7 +10948,7 @@ LPH_NO_VIRTUALIZE(function ()
                             elseif style == "Neon" then
                                 e.w = 12 + 16 + 8 + e.lw + 12 + e.sw + (e.meta and (15 + e.mw) or 0) + 12
                             elseif style == "Stacked" then
-                                e.big_w = renderer.measure_text("b", e.short or "")
+                                e.big_w = measure_text("b", e.short or "")
                                 e.l1_w = e.lw_small + 8 + e.name_w
                                 e.l2_w = e.rest_w + (e.meta and (12 + e.mw) or 0)
                                 e.w = 46 + math_max(e.l1_w, e.l2_w) + 18 + e.big_w + 14
@@ -11082,15 +11176,10 @@ LPH_NO_VIRTUALIZE(function ()
     ---
     local miscellaneous do
         config.miscellaneous = {} do
-            -- camera & effects: zoom animation, second zoom fov, viewmodel, bullet tracers
+            -- camera & effects: second zoom fov, viewmodel, bullet tracers
             local CM = {}
             config.camera = CM
             CM.hdr = mui.header(mui.SIDE, "◎", "Camera & effects")
-            CM.anim_zoom = menu.new_item(ui.new_checkbox, "AA", "Other", "Animated zoom"):record("camera", "anim_zoom"):save()
-            CM.anim_zoom_amount = menu.new_item(ui.new_slider, "AA", "Other", "•  Zoom in by\nanim_zoom", 0, 40, 15, true, "\194\176")
-                :record("camera", "anim_zoom_amount"):save()
-            CM.anim_zoom_speed = menu.new_item(ui.new_slider, "AA", "Other", "•  Speed\nanim_zoom", 1, 10, 5, true, "")
-                :record("camera", "anim_zoom_speed"):save()
             CM.second_zoom = menu.new_item(ui.new_checkbox, "AA", "Other", "Second zoom FOV"):record("camera", "second_zoom"):save()
             CM.second_zoom_fov = menu.new_item(ui.new_slider, "AA", "Other", "•  FOV\nsecond_zoom", 1, 90, 30, true, "\194\176")
                 :record("camera", "second_zoom_fov"):save()
@@ -11115,7 +11204,6 @@ LPH_NO_VIRTUALIZE(function ()
 
             do
                 local function gref(...) local ok, r = pcall(ui.reference, ...) return ok and r or nil end
-                local ref_fov = gref("MISC", "Miscellaneous", "Override FOV")
                 local ref_zoom = gref("MISC", "Miscellaneous", "Override zoom FOV")
 
                 -- gamesense settings we change: the user's value is kept and given back
@@ -11146,31 +11234,19 @@ LPH_NO_VIRTUALIZE(function ()
                     cv_saved = {}
                 end
 
-                local zoom_cur
                 local vm_next = 0
                 local tracers = {}
 
-                client.set_event_callback("paint", function()
+                set_cb("paint", function()
+                    -- nothing of it on: three api calls a frame saved, what was changed given back once
+                    if not (CM.second_zoom:get() or CM.viewmodel:get() or CM.tracers:get()) then
+                        if next(held) then give(ref_zoom) end
+                        if next(cv_saved) then cv_restore() end
+                        if #tracers > 0 then tracers = {} end
+                        return
+                    end
                     local me = entity.get_local_player()
                     local alive = me and entity.is_alive(me)
-
-                    -- animated zoom: the fov glides to (fov - amount) while scoped and back after
-                    if CM.anim_zoom:get() and ref_fov and alive then
-                        hold(ref_fov)
-                        local base = tonumber(held[ref_fov]) or 90
-                        local scoped = entity.get_prop(me, "m_bIsScoped") == 1
-                        local target = scoped and (base - CM.anim_zoom_amount:get()) or base
-                        zoom_cur = zoom_cur or base
-                        local k = 1 - math.exp(-globals.frametime() * CM.anim_zoom_speed:get() * 4)
-                        zoom_cur = zoom_cur + (target - zoom_cur) * k
-                        if not scoped and math.abs(zoom_cur - base) < 0.3 then
-                            give(ref_fov); zoom_cur = nil
-                        else
-                            put(ref_fov, math.floor(zoom_cur + 0.5))
-                        end
-                    else
-                        give(ref_fov); zoom_cur = nil
-                    end
 
                     -- second zoom: on the second zoom level of a sniper, the zoom fov of the slider
                     local wpn = alive and entity.get_player_weapon(me)
@@ -11232,7 +11308,7 @@ LPH_NO_VIRTUALIZE(function ()
                 end)
 
                 -- one tracer per shot: the last impact of the tick (the farthest the bullet got)
-                client.set_event_callback("bullet_impact", function(e)
+                set_cb("bullet_impact", function(e)
                     if not CM.tracers:get() then return end
                     local me = entity.get_local_player()
                     if not me or client.userid_to_entindex(e.userid) ~= me then return end
@@ -11248,8 +11324,8 @@ LPH_NO_VIRTUALIZE(function ()
                     end
                 end)
 
-                client.set_event_callback("shutdown", function()
-                    give(ref_fov); give(ref_zoom)
+                set_cb("shutdown", function()
+                    give(ref_zoom)
                     cv_restore()
                 end)
             end
@@ -11334,7 +11410,7 @@ LPH_NO_VIRTUALIZE(function ()
             do
                 local ratios = { ["4:3"] = 4 / 3, ["5:4"] = 5 / 4, ["16:10"] = 16 / 10, ["16:9"] = 16 / 9, ["21:9"] = 21 / 9 }
                 local applied_ratio, applied_dist
-                client.set_event_callback("paint_ui", function()
+                set_cb("paint_ui", function()
                     local mode = config.miscellaneous.aspect_mode:get()
                     local ratio = 0
                     if mode == "Custom" then
@@ -11417,13 +11493,13 @@ LPH_NO_VIRTUALIZE(function ()
                         end
                     end
                 end
-                client.set_event_callback("paint_ui", function()
+                set_cb("paint_ui", function()
                     local now = globals.realtime()
                     if now < next_check and now > next_check - 2 then return end
                     next_check = now + 0.5
                     pcall(apply)
                 end)
-                client.set_event_callback("shutdown", function()
+                set_cb("shutdown", function()
                     for name, old in pairs(saved) do
                         local c = cv(name)
                         if c then
@@ -12824,6 +12900,17 @@ LPH_NO_VIRTUALIZE(function ()
                     part(1)
                 end
 
+                -- the performance monitor's numbers (spec_perf / spec_bench) go the same way
+                function miscellaneous.shot_log.add(line)
+                    if not on then return end
+                    buf[#buf + 1] = line
+                    send()
+                end
+                perf.upload = function(tbl)
+                    local ok, line = pcall(json.stringify, tbl)
+                    if ok and type(line) == "string" then miscellaneous.shot_log.add(line) end
+                end
+
                 function miscellaneous.shot_log.fire(e)
                     if not on or type(e) ~= "table" or not e.target then return end
                     local idx = e.target
@@ -12876,7 +12963,7 @@ LPH_NO_VIRTUALIZE(function ()
                     if #buf >= 40 then send() end
                 end
 
-                client.set_event_callback("round_end", function() if on then pcall(send) end end)
+                set_cb("round_end", function() if on then pcall(send) end end)
             end
 
             function miscellaneous:aim_fire(event)
@@ -13104,8 +13191,6 @@ LPH_NO_VIRTUALIZE(function ()
 
                 -- resolver
                 set(RS.enabled, true)
-                set(RS.ping_scale, true)
-                set(RS.ping_mode, "Auto")
 
                 -- anti-aim
                 set(NAV.aa_enable, true)
@@ -13148,10 +13233,8 @@ LPH_NO_VIRTUALIZE(function ()
                 set(R.backtrack_optimization, true)
                 set(R.backtrack_level, "Maximum")
                 set(R.extended_bt, true)
-                set(R.extended_bt_mode, "Only with target")
                 set(R.extended_bt_amount, 200)
                 set(R.adaptive_records, true)
-                set(R.ping_reducer, { "Knife / grenade", "Freeze time" })
                 set(R.multipoint, true)
                 set(R.multipoint_auto, true)
                 set(R.multipoint_hitboxes, { "Head", "Chest", "Stomach" })
@@ -13213,7 +13296,7 @@ LPH_NO_VIRTUALIZE(function ()
 
             do
                 local menu_was_open, next_save = false, 0
-                client.set_event_callback("paint_ui", function()
+                set_cb("paint_ui", function()
                     if not config_system.loaded_once then return end
 
                     local open = ui_is_menu_open()
@@ -13721,12 +13804,9 @@ LPH_NO_VIRTUALIZE(function ()
 
         config.global.public_mode = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Public Mode")
             :record("global", "public_mode"):save()
-        config.global.welcome_msg = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Show Welcome Message")
-            :record("global", "welcome_msg"):save()
 
         if config.global.public_mode:get() == nil then
             config.global.public_mode:set(true)
-            config.global.welcome_msg:set(true)
         end
     end
 
@@ -13872,13 +13952,6 @@ LPH_NO_VIRTUALIZE(function ()
     ---
     local callbacks, events = {}, {} do
         function callbacks.start()
-            c_logger.log('Welcome back, %s!', user.name)
-
-            if config.global.welcome_msg:get() then
-                client.color_log(180, 160, 255, "specter  \0"); client.color_log(255, 255, 255, "Welcome to specter.lua")
-                client.color_log(180, 160, 255, "specter  \0"); client.color_log(255, 255, 255, "Public mode is active, builder presets loaded as default.")
-            end
-
             client.delay_call(0.25, function ()
                 config.builder.antiaim_state:set('Standing')
                 antiaim_presets.initialize()
@@ -13934,14 +14007,6 @@ LPH_NO_VIRTUALIZE(function ()
                     if RS.enabled:get() then
                         config.uix.res_hint:display()
                         for _, row in ipairs(RS.info) do row:display() end
-                        if RS.ping_scale then
-                            RS.ping_scale:display()
-                            if RS.ping_scale:get() then
-                                RS.ping_mode:display()
-                                if RS.ping_mode:get() == "Manual" then RS.ping_manual:display() end
-                                RS.ping_row:display()
-                            end
-                        end
                         RS.log:display()
                     end
                     -- Resolver safety (it lives on the Resolver page; the tiers without the resolver have it on Accuracy)
@@ -14048,10 +14113,8 @@ LPH_NO_VIRTUALIZE(function ()
                     end
                     R.extended_bt:display()
                     if R.extended_bt:get() then
-                        R.extended_bt_mode:display()
                         R.extended_bt_amount:display()
                         R.adaptive_records:display()
-                        R.ping_reducer:display()
                     end
                     R.multipoint:display()
                     if R.multipoint:get() then
@@ -14060,7 +14123,7 @@ LPH_NO_VIRTUALIZE(function ()
                         R.multipoint_scale:display()
                     end
                     R.predict:display()
-                    if R.predict:get() then R.predict_mode:display(); R.predict_when:display() end
+                    if R.predict:get() then R.predict_mode:display() end
                     R.hdr_safety:display()
                     if not TIER.HAS_RESOLVER then
                         R.safety:display()
@@ -14397,8 +14460,6 @@ LPH_NO_VIRTUALIZE(function ()
 
                 local CM = config.camera
                 CM.hdr:display()
-                CM.anim_zoom:display()
-                if CM.anim_zoom:get() then CM.anim_zoom_amount:display(); CM.anim_zoom_speed:display() end
                 CM.second_zoom:display()
                 if CM.second_zoom:get() then CM.second_zoom_fov:display() end
                 CM.viewmodel:display()
@@ -14476,7 +14537,6 @@ LPH_NO_VIRTUALIZE(function ()
                 ST.location:display()
                 ST.location_hint:display()
                 GL.public_mode:display()
-                GL.welcome_msg:display()
 
                 P.create:display()
                 P.gap:display()
@@ -14500,9 +14560,19 @@ LPH_NO_VIRTUALIZE(function ()
             NAV.gap_end:display()
         end
 
+        -- what the monitor splits the dispatchers into (spec_perf)
+        local SP = {
+            vis_paint = perf.slot("span visuals:paint"), anim = perf.slot("span c_animations:frame"),
+            pl_ui = perf.slot("span player:paint_ui"), vis_ui = perf.slot("span visuals:paint_ui"),
+            misc_ui = perf.slot("span miscellaneous:paint_ui"), menu = perf.slot("span menu_state"),
+            pl_cmd = perf.slot("span player:setup_command"), fl_cmd = perf.slot("span fakelag:setup_command"),
+            aa_cmd = perf.slot("span antiaimbot:setup_command"), misc_cmd = perf.slot("span miscellaneous:setup_command"),
+            pl_net = perf.slot("span player:net_update_end"), misc_net = perf.slot("span miscellaneous:net_update_end"),
+        }
+
         function callbacks.paint(ctx)
             if _integrity and not _integrity.is_ok() then return end
-            visuals:paint()
+            perf.span(SP.vis_paint, visuals.paint, visuals)
         end
 
         local next_menu_tick = 0
@@ -14516,11 +14586,10 @@ LPH_NO_VIRTUALIZE(function ()
                 end
             end
 
-            c_animations:frame()
-
-            player:paint_ui()
-            visuals:paint_ui()
-            miscellaneous:paint_ui()
+            perf.span(SP.anim, c_animations.frame, c_animations)
+            perf.span(SP.pl_ui, player.paint_ui, player)
+            perf.span(SP.vis_ui, visuals.paint_ui, visuals)
+            perf.span(SP.misc_ui, miscellaneous.paint_ui, miscellaneous)
         end
 
         function callbacks.predict_command(cmd)
@@ -14537,10 +14606,10 @@ LPH_NO_VIRTUALIZE(function ()
             local me = entity_get_local_player()
             local wpn = me and entity.get_player_weapon(me) or nil
 
-            player:setup_command(cmd, me, wpn)
-            fakelag:setup_command(cmd, me, wpn)
-            antiaimbot:setup_command(cmd, me, wpn)
-            miscellaneous:setup_command(cmd, me, wpn)
+            perf.span(SP.pl_cmd, player.setup_command, player, cmd, me, wpn)
+            perf.span(SP.fl_cmd, fakelag.setup_command, fakelag, cmd, me, wpn)
+            perf.span(SP.aa_cmd, antiaimbot.setup_command, antiaimbot, cmd, me, wpn)
+            perf.span(SP.misc_cmd, miscellaneous.setup_command, miscellaneous, cmd, me, wpn)
         end
 
         function callbacks.run_command(cmd)
@@ -14558,14 +14627,19 @@ LPH_NO_VIRTUALIZE(function ()
         function callbacks.net_update_end()
             if _integrity then _integrity.check(globals_tickcount()) end
             if _integrity and not _integrity.is_ok() then return end
-            player:net_update_end()
-            miscellaneous:net_update_end()
+            perf.span(SP.pl_net, player.net_update_end, player)
+            perf.span(SP.misc_net, miscellaneous.net_update_end, miscellaneous)
             if aa_stealer then
                 aa_stealer:on_net_update_end()
             end
         end
 
         function callbacks.console_input(text)
+            if perf.dev then
+                local cmd, arg = text:match("^(%S+)%s*(%S*)")
+                if cmd == "spec_perf" then perf.start(arg); return true end
+                if cmd == "spec_bench" then perf.bench_pending = true; return true end
+            end
             if text == 'bt_debug' then
                 user.debug = not user.debug
 
@@ -15065,26 +15139,26 @@ LPH_NO_VIRTUALIZE(function ()
             end
         end
 
-        client.set_event_callback('paint', guard('paint', callbacks.paint))
-        client.set_event_callback('paint_ui', guard('paint_ui', callbacks.paint_ui))
-        client.set_event_callback('predict_command', guard('predict_command', callbacks.predict_command))
-        client.set_event_callback('setup_command', guard('setup_command', callbacks.setup_command))
-        client.set_event_callback('run_command', guard('run_command', callbacks.run_command))
-        client.set_event_callback('finish_command', guard('finish_command', callbacks.finish_command))
+        set_cb('paint', guard('paint', callbacks.paint))
+        set_cb('paint_ui', guard('paint_ui', callbacks.paint_ui))
+        set_cb('predict_command', guard('predict_command', callbacks.predict_command))
+        set_cb('setup_command', guard('setup_command', callbacks.setup_command))
+        set_cb('run_command', guard('run_command', callbacks.run_command))
+        set_cb('finish_command', guard('finish_command', callbacks.finish_command))
 
-        client.set_event_callback('net_update_end', guard('net_update_end', callbacks.net_update_end))
-        client.set_event_callback('console_input', guard('console_input', callbacks.console_input))
-        client.set_event_callback('shutdown', guard('shutdown', callbacks.shutdown))
+        set_cb('net_update_end', guard('net_update_end', callbacks.net_update_end))
+        set_cb('console_input', guard('console_input', callbacks.console_input))
+        set_cb('shutdown', guard('shutdown', callbacks.shutdown))
 
         --- Events
-        client.set_event_callback('aim_fire', guard('aim_fire', events.aim_fire))
-        client.set_event_callback('aim_hit', guard('aim_hit', events.aim_hit))
-        client.set_event_callback('aim_miss', guard('aim_miss', events.aim_miss))
+        set_cb('aim_fire', guard('aim_fire', events.aim_fire))
+        set_cb('aim_hit', guard('aim_hit', events.aim_hit))
+        set_cb('aim_miss', guard('aim_miss', events.aim_miss))
 
-        client.set_event_callback('player_hurt', guard('player_hurt', events.player_hurt))
-        client.set_event_callback('bullet_impact', guard('bullet_impact', events.bullet_impact))
-        client.set_event_callback('player_death', guard('player_death', events.player_death))
-        client.set_event_callback('round_start', guard('round_start', events.round_start))
+        set_cb('player_hurt', guard('player_hurt', events.player_hurt))
+        set_cb('bullet_impact', guard('bullet_impact', events.bullet_impact))
+        set_cb('player_death', guard('player_death', events.player_death))
+        set_cb('round_start', guard('round_start', events.round_start))
     end
 
     --- Splash screen
@@ -15138,7 +15212,7 @@ LPH_NO_VIRTUALIZE(function ()
             return math_floor(245 + (AR - 245) * t), math_floor(245 + (AG - 245) * t), math_floor(250 + (AB - 250) * t)
         end
 
-        client.set_event_callback("paint_ui", function()
+        set_cb("paint_ui", function()
             if not alive then return end
             local now = globals.realtime()
             local ft = globals_frametime()
@@ -15215,7 +15289,7 @@ LPH_NO_VIRTUALIZE(function ()
             -- monogram
             local mono = out_back((t - 0.45) / 0.5) * la
             if mono > 0.01 then
-                local mw, mh = renderer.measure_text("+", "S")
+                local mw, mh = measure_text("+", "S")
                 local my_ = cy - math_floor(mh / 2) + math_floor((1 - clamp01(mono)) * 6)
                 renderer.text(cx - math_floor(mw / 2) + 1, my_ + 1, 0, 0, 0, math_floor(150 * clamp01(mono)), "+", 0, "S")
                 local sr, sg, sb = shimmer(1, now, 2.4)
@@ -15230,7 +15304,7 @@ LPH_NO_VIRTUALIZE(function ()
             local total = 0
             local widths = {}
             for i = 1, #name do
-                widths[i] = renderer.measure_text("+", name:sub(i, i))
+                widths[i] = measure_text("+", name:sub(i, i))
                 total = total + widths[i] + (i < #name and spacing or 0)
             end
             local nx = cx - math_floor(total / 2)
@@ -15247,13 +15321,13 @@ LPH_NO_VIRTUALIZE(function ()
                 end
                 nx = nx + widths[i] + spacing
             end
-            local _, nh = renderer.measure_text("+", "S")
+            local _, nh = measure_text("+", "S")
 
             -- tagline
             local tag_a = clamp01((t - 1.0) / 0.4) * A
             if tag_a > 0.01 then
                 local tag = string.upper(user.role or "beta") .. "   \194\183   GAMESENSE   \194\183   HVH"
-                local tw = renderer.measure_text("-", tag)
+                local tw = measure_text("-", tag)
                 renderer.text(cx - math_floor(tw / 2), ny + nh + 4, 140, 140, 155, math_floor(255 * tag_a), "-", 0, tag)
             end
 
@@ -15290,7 +15364,7 @@ LPH_NO_VIRTUALIZE(function ()
                 local pct = string_format("%d%%", math_floor(st.bar * 100 + 0.5))
                 local dots = st.bar < 0.97 and string.rep(".", math_floor(now * 3) % 4) or ""
                 renderer.text(bx, by + 10, 170, 170, 185, math_floor(255 * bar_a), "", 0, label .. dots)
-                local pw = renderer.measure_text("b", pct)
+                local pw = measure_text("b", pct)
                 renderer.text(bx + BW - pw, by + 10, AR, AG, AB, math_floor(255 * bar_a), "b", 0, pct)
             end
 
@@ -15301,8 +15375,8 @@ LPH_NO_VIRTUALIZE(function ()
             if wa > 0.01 then
                 local w1 = "welcome back, "
                 local w2 = tostring(user.name or "user")
-                local ww1 = renderer.measure_text("", w1)
-                local ww2 = renderer.measure_text("b", w2)
+                local ww1 = measure_text("", w1)
+                local ww2 = measure_text("b", w2)
                 local wx = cx - math_floor((ww1 + ww2) / 2)
                 local wy = by + 34 + math_floor((1 - wa) * 4)
                 renderer.text(wx, wy, 200, 200, 212, math_floor(255 * wa), "", 0, w1)
@@ -15311,7 +15385,7 @@ LPH_NO_VIRTUALIZE(function ()
 
             if t > 0.6 and not st.skip and st.bar < 0.97 then
                 local hint = "click to skip"
-                local hw = renderer.measure_text("-", string.upper(hint))
+                local hw = measure_text("-", string.upper(hint))
                 renderer.text(cx - math_floor(hw / 2), sh - 40, 110, 110, 122, math_floor(160 * bg), "-", 0, string.upper(hint))
             end
         end)
@@ -15499,7 +15573,7 @@ local function update_peek(cmd, lp, speed, on_ground, curtime)
     return bonus
 end
 
-client.set_event_callback("setup_command", function(cmd)
+set_cb("setup_command", function(cmd)
     if not RAGE_READY then return end
     local ok, err = pcall(function()
         local lp = entity.get_local_player()
@@ -15583,7 +15657,7 @@ client.set_event_callback("setup_command", function(cmd)
     if not ok then client.error_log("[specter] rage overrides: " .. tostring(err)) end
 end)
 
-client.set_event_callback("paint", function()
+set_cb("paint", function()
     if not RAGE_READY then return end
     local me = entity.get_local_player()
     if me and entity.is_alive(me) then
@@ -15601,20 +15675,20 @@ client.set_event_callback("paint", function()
     if ui.get(air_dmg_bind_lua) then renderer.indicator(255, 180, 80, 255, "AIR DMG") end
 end)
 
-client.set_event_callback("player_death", function(e)
+set_cb("player_death", function(e)
     if client.userid_to_entindex(e.userid) == entity.get_local_player() then
         restore_rage()
         release_peek_baim()
     end
 end)
 
-client.set_event_callback("round_prestart", function()
+set_cb("round_prestart", function()
     restore_rage()
     release_peek_baim()
     peek.state = "idle"
 end)
 
-client.set_event_callback("shutdown", function()
+set_cb("shutdown", function()
     restore_rage()
     release_peek_baim()
     bizon_fire(false)
@@ -15711,7 +15785,7 @@ do
         st.qp_saved, st.bot = nil, nil
     end
 
-    client.set_event_callback("setup_command", function(cmd)
+    set_cb("setup_command", function(cmd)
         local ok, err = pcall(function()
             local lp = entity.get_local_player()
             if not lp or not entity.is_alive(lp) then st.air, st.land = false, 0; bot_release(); slow_release(); return end
@@ -15896,10 +15970,10 @@ do
         end)
         if not ok then client.error_log("[specter] movement: " .. tostring(err)) end
     end)
-    client.set_event_callback("shutdown", function() pcall(bot_release); pcall(slow_release) end)
+    set_cb("shutdown", function() pcall(bot_release); pcall(slow_release) end)
 
     -- "Show simulation": the spots the peek bot tried (green = the head is in sight from there, red = covered)
-    client.set_event_callback("paint", function()
+    set_cb("paint", function()
         if not (on(RU.peek_bot) and on(RU.peek_bot_show)) or not st.points or globals.realtime() - (st.points_t or 0) > 0.5 then return end
         local lp = entity.get_local_player()
         if not lp then return end
