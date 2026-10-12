@@ -6216,6 +6216,7 @@ LPH_NO_VIRTUALIZE(function ()
                     end
 
                     if cmd.in_attack == 1 then antiaimbot.defensive.last_shot = globals.realtime() end
+                    if cmd.in_jump == 1 then antiaimbot.defensive.jump_tick = globals_tickcount() end
 
                     if not antiaimbot.defensive.is_exploit_ready_and_active(wpn) then
                         return false
@@ -6600,17 +6601,18 @@ LPH_NO_VIRTUALIZE(function ()
                             end
 
                             if yaw_mode ~= 'Default' then
-                                -- the move keys go with the yaw of the command: turned with it, so we still move where
-                                -- we look (owners, Oct 2026: "if i use dt i cant bhop properly", the air strafe went
-                                -- along the defensive yaw on every forced tick in the air)
-                                local new_yaw = c_math.normalize_yaw(view_angle_yaw-yaw)
-                                local old_r, new_r = math.rad(cmd.yaw or 0), math.rad(new_yaw)
-                                local f, sm = cmd.forwardmove or 0, cmd.sidemove or 0
-                                local wx = f * math.cos(old_r) + sm * math.sin(old_r)
-                                local wy = f * math.sin(old_r) - sm * math.cos(old_r)
-                                cmd.forwardmove = wx * math.cos(new_r) + wy * math.sin(new_r)
-                                cmd.sidemove = wx * math.sin(new_r) - wy * math.cos(new_r)
-                                cmd.yaw = new_yaw
+                                -- The defensive yaw is the yaw of the command itself. gamesense moves (and air strafes) along
+                                -- cmd.move_yaw, "the yaw used for movement, the view yaw when it is not set": the view yaw
+                                -- of a defensive tick is the flick, so the bunny hop went where the flick pointed (owners,
+                                -- Oct 2026: "if i use dt i cant bhop", "still cant bhop"). move_yaw keeps the movement on the
+                                -- yaw the player looks along. And while a hop is on (a jump in the last 0.6 s, in the air,
+                                -- air strafe on) the yaw stays untouched, only the pitch flicks
+                                local bhop = not player.onground and ui_get(reference.misc.air_strafe)
+                                    and globals_tickcount() - (antiaimbot.defensive.jump_tick or -1000) <= 40
+                                if not bhop then
+                                    cmd.move_yaw = cmd.yaw
+                                    cmd.yaw = c_math.normalize_yaw(view_angle_yaw - yaw)
+                                end
                             end
 
                             return true

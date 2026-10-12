@@ -382,12 +382,15 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - Defensive triggers also: On peek, Landing, Low HP (<= 40), Threat scoped. Landing is skipped while jump is held (a shift
   on the jump tick cost the bunny hop).
 - The defensive yaw writes `cmd.yaw` itself (`antiaimbot.defensive:run`, only on confirmed defensive ticks, needs double tap /
-  hide shots): forwardmove / sidemove are turned with it so the move stays where we look (owners, Oct 2026: "if i use dt i
-  cant bhop properly": with defensive forced in the air the air strafe went along the defensive yaw every tick).
-  Still bad with defensive (owners: "meg mindig szar de csak defensivenel", then "still cant bhop"): `defensive.force` forces
-  nothing in the last 4 ticks before landing (the drop of the next 4 ticks traced down from the feet) and the 2 ticks on the
-  ground after the air (the jump tick). NOT gated by the jump key: gamesense's bunny hop lets IN_JUMP go in the air and a
-  mouse wheel jump presses it for one tick, the first version ("jump held") never ran in the air.
+  hide shots). gamesense's setup_command docs: `cmd.move_yaw` = "the yaw used for movement, the view yaw when it is not set", and
+  the event runs BEFORE the cheat's own features (anti-aim, air strafe). So the flick yaw became the movement yaw and the bunny
+  hop went where the flick pointed (owners, Oct 2026: "if i use dt i cant bhop", "still cant bhop", their reading: "arra nez
+  es ezert a bhop arra megy"). Fix: `cmd.move_yaw = cmd.yaw` (the view yaw before the flick) on every defensive yaw write; no
+  manual forwardmove / sidemove rotation (that was the first, wrong try). While a hop is on (a jump in the last 40 ticks,
+  `defensive.jump_tick`, in the air, Air strafe on) the yaw is not written at all, only the pitch flicks, in case the air strafe
+  does not follow move_yaw. `defensive.force` forces nothing in the last 4 ticks before landing (the drop of the next 4 ticks traced
+  down from the feet) and the 2 ticks on the ground after the air (the jump tick); NOT gated by the jump key: gamesense's bunny
+  hop lets IN_JUMP go in the air and a mouse wheel jump presses it for one tick.
 - `python3 tests/aa_redteam.py [preset ...]` (~1 min for the 3 presets): the REAL anti-aim of the dev build runs in the mock game of
   `tests/perf/mock.lua`; what gamesense would do with the settings it writes is modelled per sent packet and becomes the enemy of
   `tests/resolver_world.lua`; the resolver of the repo (full / without the jitter split: `JITTER_SPREAD` 90 in its source) shoots at it, its hits / shots reach our anti brute-force.
