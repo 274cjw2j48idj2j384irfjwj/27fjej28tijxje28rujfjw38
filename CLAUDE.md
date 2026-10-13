@@ -265,7 +265,7 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - Improved Multi-point "Auto" only lowers the scale (moving > 100, air, 2 misses); it no longer ADDS chest / stomach multipoints.
 - Resolver Safety (`config.ragebot.safety*`, shown on the Resolver page): per enemy player list "Override prefer body aim" / "Override safe point" from the resolver
   (`database[idx]`): body aim / safe point after N resolver misses, body aim when the confidence is < 0.45 or HP <= the slider, prefer
-  body aim "Off" (head) when confidence >= 0.8 and no miss. Written on change only, "-" given back when it no longer applies / round start.
+  body aim "Off" (head) when the player's head rate >= 0.75 and no miss. The "confidence" is the resolver's hit rate per player (`database[idx].rate`: EWMA of head hits = 1 / resolver misses = 0, a new player starts at `resolver.pool_rate` of everybody), NOT `phit`: the mass of the guess is ~0.1 in the real shot logs (93% of shots under 0.45, 5% over 0.7), so "safe head" never came true and Smart body aim put a safe point on the head of everybody = it only shot the body (owners, Oct 2026: "smart baim nem mukodik, csak baimel"). `hr` in the shot logs. Written on change only, "-" given back when it no longer applies / round start.
 - Extended Backtrack (Ping spike) defaults to 200 ms, the most gamesense allows. The server compensates the real ping + the fake ping
   (+ interp, up to sv_maxunlag) and accepts records up to 0.2 s around that, so shots at 30-40 tick old records are normal (owners saw
   it in game; more on 128 tick). The resolver keeps 1 s of records per player (128 ticks on 128 tick), every one of those shots is
