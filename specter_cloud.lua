@@ -1169,15 +1169,6 @@ LPH_NO_VIRTUALIZE(function ()
                 return item ~= nil and item:get() == true
             end
 
-            -- a menu value, or the default when the item does not exist (tiers / tests without it)
-            local function option(name, default)
-                local item = config.resolver and config.resolver[name]
-                if item == nil then return default end
-                local ok, v = pcall(item.get, item)
-                if not ok or v == nil then return default end
-                return v
-            end
-
             -- ── helpers ────────────────────────────────────────────────────────────
             local function clamp(v, lo, hi)
                 if v < lo then return lo end
@@ -3965,11 +3956,13 @@ LPH_NO_VIRTUALIZE(function ()
             "Default", "Aggressive", "Ultimate"
         }):record("ragebot", "predict_mode"):save()
         do
-            local MODES = {
-                Default    = { cl_interp_ratio = 1, cl_interp = 0.015625, cl_updaterate = 64, cl_cmdrate = 64 },
-                Aggressive = { cl_interp_ratio = 1, cl_interp = 0, cl_updaterate = 128, cl_cmdrate = 128 },
-                Ultimate   = { cl_interp_ratio = 1, cl_interp = 0, cl_updaterate = 128, cl_cmdrate = 128, cl_interpolate = 0 },
-            }
+            -- the rates follow the server's tick rate (more than it sends is wasted, less adds interp): interp is one tick
+            local function mode_cvars(name)
+                local rate = c_math.clamp(math_floor(1 / globals_tickinterval() + 0.5), 30, 128)
+                local m = { cl_interp_ratio = 1, cl_interp = name == "Default" and 1 / rate or 0, cl_updaterate = rate, cl_cmdrate = rate }
+                if name == "Ultimate" then m.cl_interpolate = 0 end
+                return m
+            end
             local saved, next_t = {}, 0
             local function cv(name) local ok, c = pcall(function() return cvar[name] end) return ok and c or nil end
             local function getv(c, name) return name == "cl_interp" and c:get_float() or c:get_int() end
@@ -3992,7 +3985,7 @@ LPH_NO_VIRTUALIZE(function ()
                     if next(saved) then restore() end
                     return
                 end
-                local want = MODES[config.ragebot.predict_mode:get()] or MODES.Default
+                local want = mode_cvars(config.ragebot.predict_mode:get())
                 for name, old in pairs(saved) do
                     if want[name] == nil then
                         local c = cv(name)
@@ -9222,7 +9215,7 @@ LPH_NO_VIRTUALIZE(function ()
 
 
             do
-                local wm = { fps = 0, anim = 0, w = 0, x = nil, y = nil, drag = {} }
+                local wm = { fps = 0, anim = 0, w = 0, x = nil, y = nil, drag = {}, day = nil }
                 local BG = { 12, 12, 16 }
 
                 local rounded = rounded_rect
@@ -9299,6 +9292,23 @@ LPH_NO_VIRTUALIZE(function ()
                     end
                 end
 
+                local function sky(cx, cy, r, g, b, a, now, day)
+                    local night = 1 - day
+                    if night > 0.02 then
+                        renderer.circle(cx, cy, r, g, b, a, 4.5 * night, 0, 1)
+                        renderer.circle(cx + 2.2 * night, cy - 1.6 * night, BG[1], BG[2], BG[3], a, 3.8 * night, 0, 1)
+                    end
+                    if day > 0.02 then
+                        renderer.circle(cx, cy, 255, 222, 140, a, 3.2 * day, 0, 1)
+                        local spin = now * 0.5
+                        for k = 0, 7 do
+                            local ang = spin + k * math.pi / 4
+                            local ca, sa = math.cos(ang), math.sin(ang)
+                            renderer.line(cx + ca * 4.8 * day, cy + sa * 4.8 * day, cx + ca * 6.6 * day, cy + sa * 6.6 * day, 255, 222, 140, a)
+                        end
+                    end
+                end
+
                 -- one text call with a colour code per letter (the shimmer), rebuilt 20 times a second
                 local function brand_text(x, y, text, r, g, b, a, now)
                     local key = string_format("%d|%d|%d|%d|%d", math_floor(now * 20), r, g, b, math_floor(a / 8))
@@ -9333,6 +9343,7 @@ LPH_NO_VIRTUALIZE(function ()
                     local icons = c_table.contains(effects, "Icons")
                     local now = globals.realtime()
                     local pulse = 0.7 + 0.3 * math.sin(now * 2)
+                    wm.day = lerp(wm.day or (user.is_day() and 1 or 0), user.is_day() and 1 or 0, ft * 3)
 
                     local W = { 230, 230, 236 }
                     local segs = {}
@@ -9422,6 +9433,7 @@ LPH_NO_VIRTUALIZE(function ()
                         end
                     end
 
+                    sky(x + PADX + 6, cy, r, g, b, 255 * a, now, wm.day)
                     brand_text(x + PADX + 14 + 6, ty, brand, r, g, b, 255 * a, now)
 
                     local tx = split and (x + brand_w + 6 + PADX) or (x + brand_w)
