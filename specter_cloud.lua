@@ -2482,6 +2482,15 @@ LPH_NO_VIRTUALIZE(function ()
                 update(global[s.ctx], s.c, s.value, hit, pi, 0.3)
             end
 
+            -- how often the angle was right lately: a head hit counts 1, a resolver miss 0 (a body hit says nothing about the
+            -- angle). Per player, a new player starts at what the resolver managed on everybody. Resolver Safety reads it
+            local function head_result(p, ok)
+                if not p then return end
+                p.rate = (p.rate or resolver.pool_rate) * 0.75 + (ok and 0.25 or 0)
+                resolver.pool_rate = resolver.pool_rate * 0.97 + (ok and 0.03 or 0)
+            end
+            resolver.pool_rate = 0.5
+
             resolver.on_hit = function(e)
                 if type(e) ~= "table" then return end
                 local id = shot_id(e)
@@ -2494,6 +2503,7 @@ LPH_NO_VIRTUALIZE(function ()
                 if not s or s.value == nil or not s.key then return end
                 -- only a head hit says where the head was
                 if e.hitgroup ~= 1 then return end
+                head_result(p, true)
                 learn(s, true)
                 memory_of(s.key).hit_value[s.stance or "stand"] = s.value
                 resolver.last_log = string.format("%s: hit head with %d (%s)", name_of(e.target), s.value, s.ctx)
@@ -2514,6 +2524,7 @@ LPH_NO_VIRTUALIZE(function ()
                 if s and s.defensive then return end
                 if p then p.consecutive_misses = p.consecutive_misses + 1 end
                 if not s or s.value == nil or not s.key then return end
+                head_result(p, false)
                 learn(s, false)
                 resolver.last_log = string.format("%s: missed %d (%s)", name_of(e.target), s.value, s.ctx)
             end
@@ -4315,8 +4326,10 @@ LPH_NO_VIRTUALIZE(function ()
                     seen[idx] = true
                     local d = resolver.database and resolver.database[idx]
                     local missed = d and (d.consecutive_misses or 0) >= misses_needed
-                    local unsure = d and d.phit ~= nil and d.phit < 0.45
-                    local sure = d and d.phit ~= nil and d.phit >= 0.8 and (d.consecutive_misses or 0) == 0
+                    -- the share of the lately judged shots the angle was right (the mass of the guess is mostly low: ~0.1)
+                    local rate = d and (d.rate or resolver.pool_rate)
+                    local unsure = rate ~= nil and rate < 0.35
+                    local sure = rate ~= nil and rate >= 0.75 and (d.consecutive_misses or 0) == 0
                     local hp = entity_get_prop(idx, "m_iHealth") or 100
                     -- only a teleport breaks lag comp; a tickbase shift (defensive, "shifting") leaves the other records
                     local breaking = d and d.lc_state == "breaking"
@@ -4332,7 +4345,7 @@ LPH_NO_VIRTUALIZE(function ()
                     end
                     local baim, head_sp
                     if smart then
-                        local safe_head = d and d.phit ~= nil and d.phit * 100 >= config.ragebot.smart_conf:get()
+                        local safe_head = rate ~= nil and rate * 100 >= config.ragebot.smart_conf:get()
                             and (d.consecutive_misses or 0) == 0
                         if (breaking and c_table.contains(lch, "Body aim"))
                             or (missed and c_table.contains(on, "Body aim after misses")) or height then
@@ -5612,7 +5625,7 @@ LPH_NO_VIRTUALIZE(function ()
                 :record("ragebot", "smart_baim"):save()
             pcall(function() config.ragebot.smart_baim:set(true) end)
             -- the resolver's confidence from which the head counts as safe (then head even when a body shot would kill)
-            config.ragebot.smart_conf = menu.new_item(ui.new_slider, "AA", "Anti-aimbot angles", "•  Safe head from\nsafety", 40, 95, 70, true, "%")
+            config.ragebot.smart_conf = menu.new_item(ui.new_slider, "AA", "Anti-aimbot angles", "•  Safe head from\nsafety", 40, 95, 65, true, "%")
                 :record("ragebot", "smart_conf"):save()
 
             config.antiaimbot.defensive_aa = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Defensive AA")
@@ -12941,7 +12954,7 @@ LPH_NO_VIRTUALIZE(function ()
                         bt = num(s.bt), val = num(s.value), ve = num(s.v_end), vp = num(s.v_pre), c = num(s.c, 1), ctx = s.ctx,
                         why_res = s.reason, def = s.defensive or nil, lc = s.teleported or nil,
                         st = p.stance, spd = num(p.speed), ch = p.choke, jit = p.jitter or nil, side = p.side, nside = p.next_side,
-                        meth = p.method, mdl = p.model_name, ph = num(p.phit, 3), cm = p.consecutive_misses, maxd = num(p.maxd, 1),
+                        meth = p.method, mdl = p.model_name, ph = num(p.phit, 3), hr = num(p.rate, 3), cm = p.consecutive_misses, maxd = num(p.maxd, 1),
                         lcs = p.lc_state, nochoke = p.nochoke,
                         eye = num(eye, 1), pitch = num(pitch, 1), lby = num(entity_get_prop(idx, "m_flLowerBodyYawTarget"), 1),
                         ts = num(timing.s, 2), tpre = timing.pre or nil, at = globals.realtime(),
@@ -13256,7 +13269,7 @@ LPH_NO_VIRTUALIZE(function ()
                 set(R.safety_misses, 2)
                 set(R.safety_hp, 50)
                 set(R.smart_baim, true)
-                set(R.smart_conf, 70)
+                set(R.smart_conf, 65)
                 set(R.lc_handling, { "Body aim", "No ping spike" })
                 set(R.priority, { "Bomb carrier" })
                 set(R.delay_invalid, true)
