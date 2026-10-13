@@ -337,8 +337,8 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 
 ## Performance
 - FPS (owners, Oct 2026: ~120 fps instead of 400-500): in game every API call costs ~15-20 us, so the draw calls per frame
-  dominate. Draw helpers (`measure_text` memo, `rounded_rect` / `rounded_outline_rect` = cached SVG textures, 1 call instead of
-  a circle + rectangle set) are in the DRAW HELPERS block; the watermark is one colour-coded text. Removed: animated zoom, the
+  dominate. Draw helpers (`measure_text` memo, `rounded_rect` / `rounded_outline_rect` = rectangles + quarter circles; an SVG texture version came out SQUARE in game
+  (owners, Oct 2026: "miert lett kocka"), never use `renderer.load_svg` for the boxes) are in the DRAW HELPERS block; the watermark is one colour-coded text. Removed: animated zoom, the
   welcome message. The camera paint callback returns at once when none of its features is on.
 - In-game profiler (dev build only, `perf.dev` = no key): `spec_perf [seconds]` in the console times every callback
   (`set_cb` wraps `client.set_event_callback`; the dispatchers use `perf.span`), `spec_bench` times single API calls. Both

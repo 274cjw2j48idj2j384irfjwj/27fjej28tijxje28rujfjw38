@@ -216,7 +216,7 @@ end)
 
 -- ── DRAW HELPERS ─────────────────────────────────────────────────────
 -- Every call into the renderer costs the same however small the shape is (the game's own cost per call is what the fps
--- go on: the monitor above measures it), so the helpers below turn many calls into one.
+-- go on: the monitor above measures it).
 --
 -- measure_text with a memory: the same strings are measured every frame
 local measure_cache, measure_n = {}, 0
@@ -233,37 +233,14 @@ local function measure_text(flags, text, ...)
     return w, h
 end
 
--- Rounded rectangles / outlines as one svg texture each (a pill was 3 rectangles + 4 circles = 7 calls). A texture is made
--- once per size and kept (new sizes per frame, an animated width, fall back to the old primitives: at most 24 new textures a
--- second); when the game has no svg loader every call draws the primitives like before
-local rr_cache, rr_count, rr_made, rr_second = {}, 0, 0, 0
-local function rr_texture(w, h, rad, outline)
-    local key = (outline and "o" or "f") .. w .. "x" .. h .. "r" .. rad
-    local tex = rr_cache[key]
-    if tex ~= nil then return tex end
-    local now = globals.realtime()
-    if now - rr_second > 1 or now < rr_second then rr_second, rr_made = now, 0 end
-    if rr_made >= 24 then return nil end
-    rr_made = rr_made + 1
-    if rr_count >= 400 then rr_cache, rr_count = {}, 0 end
-    local svg = outline
-        and string.format('<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d"><rect x="0.5" y="0.5" width="%d" height="%d" rx="%.1f" fill="none" stroke="#fff" stroke-width="1"/></svg>', w, h, w - 1, h - 1, rad)
-        or string.format('<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d"><rect width="%d" height="%d" rx="%d" fill="#fff"/></svg>', w, h, w, h, rad)
-    local ok, t = pcall(renderer.load_svg, svg, w, h)
-    tex = (ok and t) or false
-    rr_cache[key] = tex
-    rr_count = rr_count + 1
-    return tex
-end
-
+-- Rounded rectangles / outlines out of rectangles and quarter circles. (An svg texture per size was tried to save calls: in game
+-- it came out square, so every box lost its corners.)
 local function rounded_rect(x, y, w, h, rad, r, g, b, a)
     if a <= 0 or w <= 0 or h <= 0 then return end
     x, y, w, h = math.floor(x + 0.5), math.floor(y + 0.5), math.floor(w + 0.5), math.floor(h + 0.5)
     if w <= 0 or h <= 0 then return end
     rad = math.max(0, math.min(math.floor(rad + 0.5), math.floor(h / 2), math.floor(w / 2)))
     if rad == 0 then return renderer.rectangle(x, y, w, h, r, g, b, a) end
-    local tex = rr_texture(w, h, rad, false)
-    if tex then return renderer.texture(tex, x, y, w, h, r, g, b, a, "f") end
     renderer.rectangle(x + rad, y, w - rad * 2, h, r, g, b, a)
     renderer.rectangle(x, y + rad, rad, h - rad * 2, r, g, b, a)
     renderer.rectangle(x + w - rad, y + rad, rad, h - rad * 2, r, g, b, a)
@@ -280,8 +257,6 @@ local function rounded_outline_rect(x, y, w, h, rad, r, g, b, a)
     x, y, w, h = math.floor(x + 0.5), math.floor(y + 0.5), math.floor(w + 0.5), math.floor(h + 0.5)
     if w <= 2 or h <= 2 then return end
     rad = math.max(0, math.min(math.floor(rad + 0.5), math.floor(h / 2), math.floor(w / 2)))
-    local tex = rad > 0 and rr_texture(w, h, rad, true)
-    if tex then return renderer.texture(tex, x, y, w, h, r, g, b, a, "f") end
     renderer.rectangle(x + rad, y, w - rad * 2, 1, r, g, b, a)
     renderer.rectangle(x + rad, y + h - 1, w - rad * 2, 1, r, g, b, a)
     renderer.rectangle(x, y + rad, 1, h - rad * 2, r, g, b, a)
