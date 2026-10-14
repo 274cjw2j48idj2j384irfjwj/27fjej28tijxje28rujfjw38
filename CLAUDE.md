@@ -9,7 +9,9 @@
   its changelog to #updates, its specter_loader.lua to #loader-download.
   RELEASE ("mehet cloudra", "rakd ki az updatet") = a PR `main` -> `cloud`, merged with a merge commit: its title (or the merge
   message: a short title + "- " points) IS the public #updates changelog, short and for players: "Sponsor kill added",
-  "Fixed ...". Never release without the owners asking. `server.js` deploys from `main` at once: keep it compatible with the
+  "Fixed ...". Never release without the owners asking. A PR into `main` (the dev build) is merged right away with a
+  merge commit once its tests pass (owners, Oct 2026: "always merge it"): every session pushes, opens the PR and merges
+  it itself, the bot only posts what is on `main` (owners: "mindig be kell olvasztani"); `cloud` still only when they ask. `server.js` deploys from `main` at once: keep it compatible with the
   loader / cloud script on `cloud` (an auth change is released together with them)
 
 ## Language
@@ -23,6 +25,7 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   gamesense textboxes take no Ctrl+V: the "Paste key" button reads the clipboard (`gamesense/clipboard`, else the same
   vgui2 VGUI_System010 calls through ffi with pcall), `spec_key <key>` in the console also sets it. Once the script runs the whole login
   menu is hidden (the script's menu is in the same tabs; `spec_logout` in the console). `python3 tests/loader_menu.py`
+- `specter_primordial_loader.lua` — the Primordial loader (see specter_primordial.lua below)
 - `specter_dev_loader.lua` — DEV loader for the owners: no login / key / HWID / server. Put it into the gamesense lua folder once; it
   downloads the newest `specter_dev.lua` from GitHub raw on every load (SOURCES list: main first, then the `dev` branch), saves it
   as `specter_dev_cache.lua` and falls back to that copy offline. `python3 tests/dev_loader.py` tests it. `specter_dev.lua` itself stays
@@ -40,7 +43,7 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   install steps into #loader-download and deletes the bot's older loader posts there. `is_customer_loader` refuses anything but the
   production loader: the cloud script, the dev build and the dev loader run the whole script without a key
   New versions by themselves (`release_loop`, every `RELEASE_MINUTES` = 5, `/release_check [force]` = now):
-  * `RELEASE_FILES` (default: specter_dev.lua only) of `SCRIPT_BRANCH`, without comments, into `RELEASE_CHANNEL` (#staff),
+  * `RELEASE_FILES` (default: specter_dev.lua and specter_primordial.lua) of `SCRIPT_BRANCH`, without comments, into `RELEASE_CHANNEL` (#staff),
     only when neither @everyone nor a member / customer / plan role can read it (managed bot roles do not count). The
     footer `file @ sha256` keeps a restart from posting it twice; a new post deletes the bot's older posts of that file
     there (`remove_older_posts`, owners: only the newest dev build stays). The commit message is posted short (`commit_points`:
@@ -67,7 +70,12 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   the automatic refresh): `AUTO_PANELS` (default on) checks them at every start (`startup_panels`, a deploy that changed a
   text) and posts the ones that are missing or say something else (`embed_text`: title, text, fields, footer and whether
   it has its logo: a post from before the logo is posted again), deleting the bot's older posts of that panel there
-  (`post_panel`, by title; a member's message stays). The #updates changelog carries the logo too, but every version is a
+  (`post_panel`, by title; a member's message stays). Every panel says the primordial lua is coming (owners, Oct 2026: "a pricesnal meg mindenhol
+  írd ki hogy primordial lua soon"): a "Specter for Primordial — Coming Soon" field and "primordial soon" on prices, a line on
+  how-to, "primordial lua soon" in the footers. The category "🔜 Specter·Primordial" (owners, Oct 2026: "csináld hozzá discord
+  chaneleket"): #primordial-news (read-only, the `primordial` panel = the "coming soon / sneak peeks" announcement),
+  #sneak-peeks (read-only), #primordial-chat (members). /setup_channels makes them on a running server and then posts
+  the panels of the new channels at once (`sync_panels`). The #updates changelog carries the logo too, but every version is a
   new post and the old ones stay (owners: the history stays there). A new
   specter_loader.lua of `CLOUD_BRANCH` goes to #loader-download the same way every `RELEASE_MINUTES` (`sync_loader`, the
   post's SHA-256 field says which one is out; only `is_customer_loader`). /post_* and /post_loader replace the old post too
@@ -78,6 +86,100 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - Railway: `Dockerfile` = license server, `Dockerfile.bot` = bot (service variable `RAILWAY_DOCKERFILE_PATH=Dockerfile.bot`)
   A 429 at login (Cloudflare 1015: Discord bans the IP after too many logins, e.g. a crash loop that Railway restarts every
   second) makes the bot wait in the process (5, 10, 20 .. 60 min) instead of exiting; the command sync runs once per start
+
+## Shot logs (resolver data from real games)
+- (owners, Oct 2026: "a hitlogokat es misslogokat kigyujti githubra ... nem nekunk kene gyujteni") The dev build (no key;
+  the cloud script with a key sends nothing) writes one JSON line per shot of ours with a result (`miscellaneous.shot_log`,
+  next to `miscellaneous:aim_fire`): the shot (hit chance, damage, hitgroup, gamesense's / the resolver's backtrack,
+  weapon), what the resolver gave its record (`val` = the applied angle, `ve` / `vp` = the after / before net_update_end
+  candidates, `c`, `ctx`, method, model, confidence, misses), the target's netvars (eye yaw, pitch, LBY, speed, choke,
+  jitter side + predicted next side), our real ping / latency, tickrate, map, `resolver.timing`, the result (hit
+  hitgroup / damage / kill, or the miss reason). No names: `tg` = hash of the steam id with a salt of the load.
+- Every 40 shots and at round end: base64 parts (3000 chars) to `GET /shotlog` (server.js: rate per IP, a finished batch
+  is a Redis list item, the newest 400 kept). The bot (`sync_shotlogs`, every RELEASE_MINUTES) writes them with
+  `LOG_TOKEN` (fine-grained, Contents: read + write; else GITHUB_TOKEN) to the branch `shotlogs` (SHOTLOG_BRANCH, made
+  from main when missing): `shotlogs/<day>/<time>-<shots>.jsonl`, each line `{"at","src","batch"}<TAB>{shot}`, then
+  drops them on the server (`/admin/shotlog?n=`); a failed write drops nothing. Read them with
+  `git fetch origin shotlogs`. `python3 tests/shot_log.py`
+- specter_primordial.lua sends its own (owners, Oct 2026: "ugyan úgy feltölti repoba a hitlogokat"):
+  batch ids start with "pm", every line has `"lua":"primordial"`, and the bot writes them to `shotlogs/primordial/<day>/` (the dev
+  build's stay in `shotlogs/<day>/`). Same server (`shotlog.server` in specter_primordial.lua), no key = src "dev". When it gets a
+  key system for customers, it must send nothing with a key (like the cloud script).
+
+## specter_primordial.lua (Primordial, was azura.lua)
+- The owner's own older PRIMORDIAL script "azura.uno" (author e0n3x, default user matehun111), renamed to Specter (owners,
+  Oct 2026: "minden azurat írj át specterre", it will be sold as Specter for primordial). Not gamesense, nothing to do with
+  Specter's gamesense code. Every text says Specter (menu, watermark, notifications, console, killsay, a "specter" clantag
+  of the same 45 frames), configs in csgo/specter/ (the old csgo/azura/ ones are not read). Edited directly (no generator). The bot posts it to #staff like the dev build (`RELEASE_FILES`).
+  That #staff file IS the Primordial dev build: no dev loader for it (owners, Oct 2026: "a devnek nem kell loader elég a
+  sima lua"; a server-side dev loader was made and taken out again).
+- Offline (owners, Oct 2026): the azura.uno login / HWID check, stats upload and cloud / sync sockets are gone (dummy sockets,
+  the cloud buttons say "Cloud is offline"); settings.json and the logo PNGs that the old loader installed are optional; the
+  lagcomp debug boxes are gone. default.cfg = the owner's config (`configs.default_config`), applied on the first start.
+- Resolver (owners, Oct 2026: "fixald teljesen"; their old stats: 1262 hits / 443 misses): Primordial's own "Resolve
+  Antiaim" does the resolving (its records and animation fix; no workshop lua writes an enemy's feet yaw, there is no
+  resolver hook). The block counts resolver misses per player (`resolver.misses`, a hit resets it) and puts a head safe
+  point through HITSCAN: Logic resolver = after 2 in a row, Custom resolver = Hit sensitivity / duck / weapons / peek / HP.
+  The lua side override (freestanding / jitter side written into the animstate, the old "Unsafe resolver" that switched
+  Primordial's resolver off) is "Lua side override (experimental)", off by default (the label changed so the old configs
+  do not switch it on).
+- Backtrack: Primordial's (its records, the tick count of its shot). The old "Improve backtrack" wrote cmd.tick_count on
+  every command from the enemy nearest the crosshair minus "dynamic ticks": the server rewound to a time the aimbot did
+  not aim at. Now Improve backtrack sets Primordial's fake ping amount (100 ms, Extended backtrack 200 ms; the server takes
+  records within 0.2 s of real + fake latency) while an enemy is alive, 0 with a knife / grenade / bomb, the own value back
+  when it goes off or on unload; the fake ping key itself stays the user's. Advanced prediction: each moving enemy's head
+  after our latency + 4 ticks (stopped by walls); shootable there but not now = about to peek -> `ctx:prioritize_target`
+  in TARGET_SELECTION (every 2 ticks, at most 5 enemies, trace_bullet).
+- Anti-aim (owners: "nagyon nehéz legyen ellőni"): the desync side is a fresh coin flip per sent packet through
+  `ctx:set_invert_desync`, not tied to the yaw side (it followed it 100%: the azura resolver hit 0.81, now 0.50); the
+  switch-every-packet modes use their own switch; anti bruteforce (enemy bullet within 50 units of the head or a hit: yaw
+  6-14 deg off for 0.5-0.85 s; the old check measured from our own eye, every bullet counted); the yaw add is kept apart
+  from the shift / crouch correction (it grew every tick). Menu: Settings "Random desync side", "Anti bruteforce".
+- Menu (owners, Oct 2026, chose the "buttons" mock-up): four main buttons (Config, Ragebot, Anti-Aim, Misc), under them
+  the "› " page buttons of the active one (`nav_pages`; the page is still `ui.nav.slider`: 1-9 kept, 10-14 new: Aimbot,
+  Tickbase, Yaw / Jitter, Desync, Defensive). The builder's items use `aa_page` (any anti-aim page), the Settings group
+  (Condition) shows on all of them. Primordial buttons can not be coloured: no 2x2 grid / highlighted main button.
+- Visuals (owners, Oct 2026: "same watermark same keybinds" as the GS lua, cleaner): `hud` + `draw_watermark` /
+  `draw_keybinds` / `draw_spectators` draw the gamesense look with Primordial's render calls: dark rounded panel, the
+  moon / sun, shimmering "specter", user / fps / ping / tick / time segments (Utils: Watermark style Specter / Split /
+  Glass / Neon, Watermark info incl. Icons), a "Hotkeys" header pill + one pill per bind (Keybinds style Pills icons /
+  classic, Show bind mode), spectators in the same pills with avatars. Dragged with the old `libs.etr` drags (M2 centers);
+  the watermark starts top right. `get_user_ping` = 1000 x (out + in) latency (the incoming part was not x1000).
+  Notifications (config load / save, users found ...; owners, Oct 2026: "cleanebben és szebben"): `notifications.render`
+  after the hud block, the same look: dark rounded cards under the watermark, a coloured round icon per kind (success /
+  warn / fail / info = accent), bold title, wrapped text, a thin bar that runs out in `notifications.delay` (3.5 s),
+  slide in from the right + fade. `notifications.create(head, body, kind)` is unchanged; the old emoji SVGs are gone.
+- User detection (owners, Oct 2026: "ugyan úgy ... a scoreboardon egy hold jel", through our own server): `presence` (in
+  the old lua network region): every 30 s `GET /presence?t=<version>&q=<hashes>[&me=<hash>]` (hash = 2x32 bit of
+  "specter|" .. steam id; `me` only with Shared ESP on). server.js keeps it IN MEMORY (`PRESENCE_TTL` 75 s, not Redis: Upstash
+  counts every command), answers `{on: {hash: version}}`. Found players: the moon on the scoreboard (the old panorama JS
+  `libs.tools.js`, image `file://{images}/icons/specter_moon.png`, downloaded once from `GET /moon.png` into
+  csgo/materials/panorama/images/icons/), a row "name ~ version" in Specter Revealer, a notification once per name,
+  `esp.sync_user` (talk back / chat mention). With Shared ESP on our own row gets the moon too (owners: "ha csak én vagyok
+  fent ... nem jelzi"; our hash goes into `q` as well, icon only, no list row / notification). The dead azura sync socket is gone.
+- Loader + versions (owners, Oct 2026: "beta és nightly ... a bétaba nincs resolver, a ragebot Helper maradhat"):
+  `specter_primordial_loader.lua` (key text input + Login, the key saved in csgo/specter/key.txt and used at the next
+  start, HWID = hash of the C: volume serial + computer name, steam http + filesystem libs copied from the script):
+  `/verify` -> `/script` like the gamesense loader; only `pm_nightly` / `pm_beta` keys (server `VALID_PLANS`, bot
+  `PM_PLANS` / `KEY_PLANS`, role "Primordial"). The server prefix sets BUILD_VERSION -> `info.plan` ("nightly" / "beta",
+  "dev" without a key): beta has no Resolver page (nav sub removed, groups hidden) and no lua resolver (`lets_resolve`
+  off = Primordial's own resolver, no HITSCAN safe point); Helpers stay. With a key no shot logs are sent. Upload:
+  `/primordial_upload [file] [branch]`, and `sync_primordial` puts specter_primordial.lua of CLOUD_BRANCH on the server
+  (no post anywhere: the Primordial lua is not out yet; main never reaches the server). pm_beta gets ITS OWN file (owners:
+  "a beta külön fájlt kapjon"): `primordial_builds` / `make_primordial_beta` in the bot cut everything between
+  `-- [pm-resolver:begin]` and `-- [pm-resolver:end]` (the whole resolver logic) and put `PM_BETA_STUB` (same names, does
+  nothing) there, before the comments are stripped. Keep the markers; nothing outside them may use the resolver's
+  internals (res_*, RES_*, resolver.update / freestand / ...). The script has no auth gate (it is also the #staff dev build).
+- Primordial API: docs.primordial.dev is blocked from the cloud container; the leaked workshop luas
+  (github.com/DuckOpenSourceFoundation/femordial-workshop-luas) show the calls. ANTIAIM ctx: set_yaw, set_pitch,
+  set_desync (-1..1), set_invert_desync, set_fakelag, set_body_lean; desync side items: none, left, right, jitter, peek
+  fake, peek real.
+- Shot logs (`--- @region: shot logs`): one JSON line per shot result from the AIMBOT_HIT / AIMBOT_MISS data (aim hitgroup,
+  backtrack ticks, hit chance, damage, the miss reason), our state (resolver misses of the target, Primordial's resolver
+  on, fake ping amount, predicted peeker, ping, weapon, map) and the target's netvars (speed, flags, eye yaw, LBY, HP);
+  every 40 lines and at round start to /shotlog (see Shot logs).
+- Tests: `python3 tests/primordial_regress.py` (compiles, survives the bot's comment stripping, removed parts stay out, the menu
+  shows the right groups on every page). No simulations (the owners' rule above).
 
 ## Tamper reports
 - The Discord webhook URL lives ONLY on the server (`TAMPER_WEBHOOK` on the license server service). It is never put in
@@ -94,6 +196,11 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   learning, own saved priors key). A change to one does not touch the other
 
 ## Editing Rules
+- How to work (owners, Oct 2026: "ezt a tesztelest meg mindent hagyjad ... a mock csak osszezavar"): decisions come from
+  the real shot logs (`shotlogs` branch), from how CS:GO / gamesense actually work (docs, the internet) and from reading
+  the code, NOT from the mock / sim numbers (tests/resolver_world.lua, tests/perf/mock.lua, aa_redteam): they model the
+  game wrong in ways that matter and the owners judge only what happens in game. Do not write new sim tests or tune by
+  them. Only `python3 tests/load_smoke.py --dev-file` (the script loads without an error) and luacheck stay before a push.
 - Edit `specter_cloud.lua` only. Then run `python3 tools/make_dev.py` (rewrites `specter_dev.lua`) and commit both together.
   `python3 tests/load_smoke.py --dev-file` fails when the dev build is out of date.
   The owners play the dev build WITHOUT a loader (Oct 2026): `specter_dev.lua` is what they test in game, so every change has to
@@ -125,10 +232,18 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 
 ## Tier System
 4-tier feature gating: `debug` (full) > `specter` (no AA stealer) > `nightly` (no resolver) > `beta` (minimal)
-- Misc "Sponsor Kill Say", every plan (first in the dev build only, then released to the cloud, owners Oct 2026):
-  14 toxic kill say lines, every one names Specter, 2 of them carry the Discord invite (owners: "csak 1-2be"), nothing about
-  the features; it wins over Kill Say / Trash Talk on a kill.
-  The victim's name is cleaned before it goes into `say "..."` (no quote / semicolon / % / control chars: a name could run a command)
+- Misc "Kill Say", every plan: ONE list (owners, Oct 2026: "nem kell ... külön sponsor killsay legyen egybe az egész killsay"; the
+  separate Sponsor Kill Say / Roast Kill Say checkboxes and lists are gone): `killsay_messages`, 58 roasts with {name}
+  ("olyan killsayeket ami megérinti az embereket": family / life, plus HvH / the cheat / the config / rank; no legit-only
+  lines like corner clearing or crosshair placement, owners: "felesleges az hvh"), no slurs and nothing about self harm (a
+  report gets the account banned). 10 of the cheat / lua lines end with the Discord invite (`DISCORD`), e.g. "{name}, your
+  lua is from youtube / and so is your skill / there is a working one at discord.gg/..." ("there is a working lua for you").
+  The Discord is a LUA server: the promo lines point to the lua, never to configs (owners: "config függő minek ha ez csak lua
+  szerver").
+  The victim's name is cleaned before it goes into `say "..."` (no quote / semicolon / % / control chars: a name could run a
+  command), every " / " part is its own chat line. specter_primordial.lua's Trash talk "Roast" has ITS OWN 58 lines (owners:
+  "írj a primordialnak külön készletet"; none of the gamesense ones), 10 of them with the Discord invite (`phrases_roast`,
+  `PM_DISCORD`, the same name cleaning, one `say` per part, `"` and `;` dropped from every part).
 
 ## Resolver (computed body yaw + learned models, one module)
 - Code lives between the `-- [resolver:begin]` / `-- [resolver:end]` markers in `specter_cloud.lua`. Keep the markers (tests extract the block).
@@ -137,13 +252,18 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   The owners asked for "a completely new, simple resolver with no hardcode" and later for their `dynamic_resolver_simple.lua` to be put in:
   no guess lists / arm biases any more. The previous block (desync + jitter parts, arms, neural network) is in git history (commit 01e1bd2).
 - Every enemy update is read once (`ingest`): eye yaw, LBY target, speed, stance, duck, max desync (58 x speed factor, lower when moving
-  crouched like the server), choke, jitter detection (spread >= "Jitter sensitivity" (30) and 2+ side flips in the last 12 records).
+  crouched like the server), choke, jitter detection (spread >= `JITTER_SPREAD` 30, fixed, and 2+ side flips in the last 12 records).
   Tickbase shifted updates (sim time not moving forward, defensive) are NOT records: the server adds a lag record only when the sim time
   moves forward, a shot at the shifted model is tested against the newest normal record at or before its sim time. A shifted update
   only moves the feet model (the server animates it); the forced value stays the one of the newest normal record, nothing goes into
-  `hist`, and it resets `p.nochoke` (a shifted packet carries ticks the server animates at once). A shot fired while the target's newest
-  update is a shift is `shots[id].defensive` (reason "defensive", attributed to that normal record): a resolver miss on it is lag comp,
-  it is not learned / not counted in `consecutive_misses`; a head hit is. Until Oct 2026 shifted updates had their own situation `def`:
+  `hist`, and it resets `p.nochoke` (a shifted packet carries ticks the server animates at once). A shot at the drawn shifted model
+  (gamesense says 0 ticks back: `raw` 0 of `shot_backtrack`) while the target's newest update is a shift is `shots[id].defensive`
+  (reason "defensive"); it is judged AND logged by the server's record, the newest normal one at or before the shift's sim time
+  (`p.shift_st`): `bt` = its age, the angle its value (owners, Oct 2026: "missed: defensive · bt 0t", the newest record's angle was
+  logged). A shot at an older normal record during a shift is a normal shot. A resolver miss on a defensive shot is lag comp,
+  it is not learned / not counted in `consecutive_misses`; a head hit is.
+  No "Force pitch" (owners, Oct 2026: the defensive pitch fix wrote it on every defensive burst and CS:GO froze when they
+  joined a game; reverted, the test checks the pitch is never written). Until Oct 2026 shifted updates had their own situation `def`:
   the computed body yaw of the flick (often ~0, exempt from the zero rule) was forced, and shots at normal records were judged by a
   shifted update with the same sim tick (owners: "a jittert es a defensive resot osszekeveri", "res 0°" at bt 58t; sim: 8% near 0 on a
   real desync, 14% misjudged, now 0).
@@ -152,6 +272,25 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   (`mem[key].b[ctx]`, started from the pooled `global[ctx]`) mixes three models, weighted by how well each predicted the shots:
   computed (c + learned offset), mirrored (-c + learned offset), side (a learned size on the side the target is on now).
   `decide` forces the angle with the most probability within TOL (12) of it, on exact angles (rounding c into a bin lost 1-2 deg = misses).
+- Forced value timing (owners, Oct 2026: "a hitlog nem jol detektalja a szoget", many resolver misses on HvH): when
+  gamesense reads "Force body yaw value" for a new record is not documented. Read before our net_update_end, every
+  record got the angle of the record before it (sim `apply_lag=1`: jitter 0.92 -> 0.08-0.15, the hitlog angle wrong).
+  So the value for the NEXT record (`predict_next`: the jitter side by how long the player holds a side, the eye yaw of
+  that side) is written at net_update_start, the record's own one at net_update_end (and back to the newest record's
+  value on updates without a record). Each record keeps both (`value`, `pre`); `resolver.timing` learns from the shots
+  whose two values differ which one the records get (`timing_learn`, over all players), the hitlog and the learning use
+  that one (`applied_value`). Sim: 0.92 with both timings on static / jitter / delayed jitter / anti brute; a random
+  jitter side can not be predicted (read before: ~0.45, random hold 1-4: 0.63)
+- NaN guard (owners' shot logs, Oct 2026: 5 of 12 shots at 0 deg with confidence -1, every jitter player, `timing.s` NaN):
+  a NaN in the side / belief numbers spread through the pooled beliefs. `sane(v, d, where)` puts it back where it shows
+  (z, pi, beliefs, scores, timing, c) and notes it in `resolver.nan` (count, first / last place, in the shot logs as
+  `nann` / `nan1` / `nan`); `decide` with no weighable angle starts that belief and the pooled one again. The source is
+  not found yet (the sim and the whole dev build in the mock never make one). The next logs (Oct 2026, 90 shots): every
+  result made all three scores of the player's and the pooled belief non-finite (6-7 notes per shot) while the beliefs
+  stayed finite: the score is `DECAY * old + temper * log(pred)`. `update` now takes DECAY through `sane` and notes which
+  part of a score / of `timing` was bad (`score1:dspt`, `timing:speich`). The next logs said "score3:" / "timing:" with no bad
+  part: finite inputs, a non-finite result, so `math.log` of the shared global table gave no number in game. The block uses
+  its own `ln` (frexp-like range reduction + atanh series, 1e-15 off) instead of math.log.
 - Results update the beliefs with Bayes: head hit = the body yaw was within TOL of the value the RECORD got (`P_HIT` 0.85), resolver miss =
   it was not; FORGET 0.02 pulls back toward the start so a changing target is followed.
 - Side: z per situation = how sure the target is on the positive side, measured by every head hit / resolver miss (Bayes). Side
@@ -160,10 +299,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   (owners, Oct 2026: "teljesen ugyanaz"); the weaker repo version without side tracking is in git history (6ebf5ca).
 - Extra side signals, each used only when it predicted better than the side filter: packet cycles (`PATTERNS` 2/3/4/6), animation
   layer 6 playback rate classes (`resolver.read_layer6`, ffi, read only), hide head predictor (`fs_class`: where the enemy saw us from,
-  ping late; pooled over players in `gfeat`), "Hide head predictor" option. Ping scale: `PING_TABLE` (0-150 ms in steps of 5, from
-  the sim) sets FORGET / P_HIT / DECAY / TOL / RDECAY by our REAL ping ("Auto", `real_ping`: scoreboard ping x
-  client.real_latency / client.latency; the scoreboard has the fake ping in it and with a 200 ms ping spike put everyone on the 150 ms
-  row) or a manual value. The hide head predictor takes our real one way latency from it too.
+  ping late; pooled over players in `gfeat`, always on). Ping scale: `PING_TABLE` (0-150 ms in steps of 5, from
+  the sim) sets FORGET / P_HIT / DECAY / TOL / RDECAY by our REAL ping (always automatic, no menu item since Oct 2026, `real_ping`: client.real_latency x 2000, the net
+  channel's latency without the fake ping; no scoreboard any more, owners Oct 2026: "scoreboardrol szedi, nem jol meri": it has
+  the fake ping in it and updates every few seconds) The hide head predictor takes our real one way latency from it too.
 - Zero rule: on a record whose computed body yaw is ~0 (|c| < `ZERO_MIN` 20: micromovement keeps the LBY on the eye yaw, the netvars
   show no desync) a near-0 angle is only given after a head hit near 0 on such records (`zero_of`) or 2 resolver misses away from 0
   since the last hit (3 on jitter records `j+` / `j-`: the side switches, misses on both sides are normal). That near-0 try is ONE shot: a near-0 miss counts the misses again, and every failed try doubles the misses it takes
@@ -179,31 +318,53 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   (0.92-0.94 on the real records: a shot at a shifted model is a lag comp miss for everyone, the sim tests it against the server's lag
   record like the server), random switches 0.74-0.80, coin flip body side ~0.47-0.50 (a coin flip can not be beaten, 0.5 is the best
   any guess gets). The sim runs on 64 tick, `tickrate=128` for 128 tick, `fake_ping` for a ping spike, `bt_max` for older records.
-- Menu: Enable Resolver, info rows for the current threat (target, method = Static / LBY / Dynamic / Jitter (+ " / defensive" while it shifts) + winning model,
-  desync L/R, lag comp, confidence), Show angle in hitlog, Jitter sensitivity, Hide head predictor, Ping scale (Auto / Manual + value),
-  Override size (+ Size: the resolver keeps the side, the size is fixed), Reset memory. The resolver prints nothing itself: its last
+- Menu (owners, Oct 2026: "eleg legyen bekapcsolni a resolvert es mindent tud"): Enable Resolver, info rows for the current threat
+  (target, method = Static / LBY / Dynamic / Jitter (+ " / defensive" while it shifts) + winning model, desync L/R, lag comp,
+  confidence), Show angle in hitlog, Resolver Safety (the `config.ragebot.safety*` /
+  `smart_*` items, created after the resolver's so gamesense shows them below it; the tiers without the resolver see them on
+  Accuracy), Reset memory. Jitter sensitivity, Hide head predictor and Override size are gone (fixed / always on). The resolver prints nothing itself: its last
   line is `resolver.last_log`. The hitlog takes the shot from `resolver.shots` (aim_fire runs the resolver first): `bt` = the resolver's
   measured backtrack, `res N° jitter|desync` (+ " (def)" for a shot at a shifted model), and a "?" miss the resolver does not count is
   shown as "missed: defensive" / "missed: lag comp" (stats bucket lagcomp), not "resolver".
 - History per player by time (`HIST_TIME` 1 s = sv_maxunlag's cap: 64 ticks on 64 tick, 128 on 128 tick; `hist_ticks()`): shots at old
   records (extended backtrack) are still judged by what that record got, the backtrack measurement looks that far too. It was 64
   records / 64 ticks: on 128 tick a 58+ tick old record fell out.
+- Backtrack of a shot (`shot_backtrack` -> ticks back, `raw`): measured from the aim point (`measured_backtrack`: the records apart,
+  the aim point near one and 2+ units nearer to it than to any other: where a target turns its records lie on each other). A target
+  that stands can not be measured: then what the measured shots taught (`cal`: aim_fire `tick` minus the record's sim tick, and the
+  measured ticks minus gamesense's number; each used once its last 8 agree, all but one within 1 tick). With a ping spike gamesense
+  says 0 for a record ~fake latency old (owners: "rosszul logolja a shotokra az anglet, bt is"): every shot at a standing target was
+  logged / learned as the newest record (sim, 12 tick spike: 273 of 273 -> 0 after the first 8 measured shots). Untaught: gamesense's
+  number, like before. While the target shifts the drawn model is a candidate too (`DRAWN`): an aim point nearest to it is a
+  shot at the shifted model (raw 0, defensive). Owners, Oct 2026 ("jitter / desync jo, a defensive nem"): a target that moved
+  while it shifted (jiggle peek) put the drawn model near an older record, 14-16% of its defensive shots were taken for
+  backtracked ones (not "defensive", learned as resolver misses, wrong bt / angle in the hitlog); the regress tests it.
 - Interface the rest of the script uses: `resolver.on_fire / on_hit / on_miss`, `new_round`, `reset_player`, `reset_all`, `shot_backtrack`,
   `shots[id]` (`reason` = desync / jitter / defensive / native, `value`, `mode`, `bt`, `ctx`, `defensive`, `teleported`), `database[idx]` (`stance`, `speed`, `consecutive_misses`,
   `mode` = "d" / "j", `method`, `model_name`, `phit` = confidence, `value`), `memory[key].hit_value[stance]` (aa stealer), `forced`,
   `stats_hook`. The tiers without the resolver get a stub with the same names.
 - Tests: `pip install lupa && python3 tests/resolver_regress.py` (hit rates per AA and ping, reaction delays, noise, inverted sign, options,
   zero rule on 60 new jitter + micromovement players, a never-hit target (<= 12% near 0), legit players, jitter + always-on defensive
-  (no near 0, no shifted value, every shot judged by its record), 128 tick shots up to 120 ticks back, ping profile with a ping spike, player list / release / Correction active restore, shot attribution, garbage
-  netvars, 5 enemies, slot reuse, resets, last_log).
+  (no near 0, no shifted value, every shot judged by its record, a shot at the shifted model by the server's record), the pitch never
+  written, a standing target with a ping spike (backtrack taught by a moving one), 128 tick shots up to 120 ticks back, ping profile with a
+  ping spike, player list / release / Correction active restore, shot attribution, garbage netvars, 5 enemies, slot reuse, resets,
+  last_log, forced value timing read after / before net_update_end). The world (`tests/resolver_world.lua`): a shot at the drawn shifted model says 0 ticks back like gamesense; options
+  `def_head` ("same" / "pitch"), `aim` (aim points), `move` (per enemy spec), `native_off` + `bt_min` (ping spike), `ev_tick`,
+  `apply_lag` (1: a record gets the value set before net_update_end).
 - Load smoke test: `python3 tests/load_smoke.py [--dev-file] [--plan=nightly|beta|specter]`. Run it after every change that touches
   load-time code, the loaders, the auth gate or the resolver.
 
+## Console
+- (owners, Oct 2026: "a GS luaba is ... a consolet ilyen színűre ahogy ebbe a luaba van") the console looks like the Primordial
+  lua's: `specter` in the watermark colour, ` · ` in a random colour of the purple / blue gradient (`c_logger.dot`), the text
+  grey (168) and every formatted value of `c_logger.log(format, ...)` white (`log_error`: the text red). No timestamp any more.
+  The hitlog / event lines (`console`, `c_logger.event`) start the same way; the ffi / layer notes go through `log_error`.
+
 ## Ragebot
 - Improved Multi-point "Auto" only lowers the scale (moving > 100, air, 2 misses); it no longer ADDS chest / stomach multipoints.
-- Resolver Safety (`config.ragebot.safety*`): per enemy player list "Override prefer body aim" / "Override safe point" from the resolver
+- Resolver Safety (`config.ragebot.safety*`, shown on the Resolver page): per enemy player list "Override prefer body aim" / "Override safe point" from the resolver
   (`database[idx]`): body aim / safe point after N resolver misses, body aim when the confidence is < 0.45 or HP <= the slider, prefer
-  body aim "Off" (head) when confidence >= 0.8 and no miss. Written on change only, "-" given back when it no longer applies / round start.
+  body aim "Off" (head) when the player's head rate >= 0.75 and no miss. The "confidence" is the resolver's hit rate per player (`database[idx].rate`: EWMA of head hits = 1 / resolver misses = 0, a new player starts at `resolver.pool_rate` of everybody), NOT `phit`: the mass of the guess is ~0.1 in the real shot logs (93% of shots under 0.45, 5% over 0.7), so "safe head" never came true and Smart body aim put a safe point on the head of everybody = it only shot the body (owners, Oct 2026: "smart baim nem mukodik, csak baimel"). `hr` in the shot logs. Written on change only, "-" given back when it no longer applies / round start.
 - Extended Backtrack (Ping spike) defaults to 200 ms, the most gamesense allows. The server compensates the real ping + the fake ping
   (+ interp, up to sv_maxunlag) and accepts records up to 0.2 s around that, so shots at 30-40 tick old records are normal (owners saw
   it in game; more on 128 tick). The resolver keeps 1 s of records per player (128 ticks on 128 tick), every one of those shots is
@@ -211,14 +372,24 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - Tuning (`config.tuning`, rage UI flat in `SPECTER_SHARED.rage_ui`): quick peek options per weapon group (Early autostop: stop when the
   gun is ready within a per weapon window and our bullet can hurt the threat, held 0.1 s after the shot; Slow motion; Move between
   shots), Force shot (hotkey + hit chance), Fake duck speed limit, Bizon air spray (Fun). Dormant aimbot: hitbox heights from the last
-  visible frame, sound position prediction (`dormant_track`), hit chance from the weapon spread, kill first. Predict enemies: Active =
-  Always / Ping 55+ / Ping under 40 (our real ping, `real_ping`).
-- Anti-bruteforce: Stage pick "Adaptive" (per enemy steam id and stage how often it got hit / dodged, Thompson style pick) or "Cycle",
-  Stages used, Refresh jitter on trigger. Roll anti-aim on a key.
+  visible frame, sound position prediction (`dormant_track`), hit chance from the weapon spread, kill first. Predict enemies: always on while
+  enabled (no "Active" ping option, owners Oct 2026: nothing ping dependent in the menu, the lua decides). Extended Backtrack has no
+  Mode / Ping reducer items: only with a threat, off with a knife / grenade out and in freeze time.
+
+## Cloud loadouts
+- (owners, Oct 2026: "elé rak egy ☁ logót és oda írja melyik user presetje") The shared configs are in the Loadouts list,
+  after the own ones, newest first: "☁ name  by user". The old separate "Cloud Configs" block (Prev / Next / Load from cloud)
+  was never displayed by `menu_state` and is gone. At load the list asks `GET /configs` (the dev build too: its header has
+  the server URL; sharing / deleting needs a key + HWID, so not from the dev build). A cloud row selected: Load imports it,
+  Export copies it, Delete asks the server (only the own ones), Save makes an own loadout of it. "☁ Share to cloud" uploads
+  the loadout named in the box (else the current config under that name) through `/configs/upload_part`; "☁ Refresh cloud".
+  The author is the key's note, else `user-` + 6 hex of its SHA-256 (`config_author` in server.js; it was the key's last
+  6 chars, public). `_server_url` is `PUBLIC_URL`, else the host the script was downloaded from.
+  `python3 tests/cloud_loadouts.py` (mock http; `tests/perf/mock.lua` takes `opts.libs`)
 
 ## Recommended config
-- `settings.recommended()` (next to `settings.builtin`): resolver on, preset Distort (lowest best attacker in the red team), Yaw sway +
-  Edge on crouch, defensive with the new triggers, Adaptive fake lag, backtrack Maximum + extended 200 ms, multipoint auto, Resolver
+- `settings.recommended()` (next to `settings.builtin`): resolver on, preset Distort (lowest best attacker in the red team), anti brute
+  (hit + near miss), defensive with the new triggers, Adaptive fake lag, backtrack Maximum + extended 200 ms, multipoint auto, Resolver
   Safety, DT guard, tuning (air / ground / noscope / weapon profiles / peek). "Reset to defaults" applies it after the builtin string;
   the first start (no saved config) applies it and saves.
 
@@ -257,7 +428,21 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   the whole script in `tests/perf/mock.lua` with every callback call on a 20 M instruction budget: normal play, usercmd
   from the wrong memory, garbage view angles (inf / NaN / 1e30 / 1e12), garbage netvars
 
+- Unload freeze (owners, Oct 2026: "amikor kikapcsoljuk a luat kifagy a jatek", dev build, in game and in the menu): the
+  shutdown callbacks run in ~2 ms in the mock, so it is native. Suspect: gamesense writes its database to disk on unload,
+  and `specter_stats` stored the raw names of up to 200 players (accents, cyrillic, colour codes, a multi byte character
+  cut at 32 bytes). Names going into the database go through `db_name` (printable ASCII, 20 chars); the saved ones are
+  cleaned and written back right after load. Not confirmed in game.
+
 ## Performance
+- FPS (owners, Oct 2026: ~120 fps instead of 400-500): in game every API call costs ~15-20 us, so the draw calls per frame
+  dominate. Draw helpers (`measure_text` memo, `rounded_rect` / `rounded_outline_rect` = rectangles + quarter circles; an SVG texture version came out SQUARE in game
+  (owners, Oct 2026: "miert lett kocka"), never use `renderer.load_svg` for the boxes) are in the DRAW HELPERS block; the watermark is one colour-coded text. Removed: animated zoom, the
+  welcome message. The camera paint callback returns at once when none of its features is on.
+- In-game profiler (dev build only, `perf.dev` = no key): `spec_perf [seconds]` in the console times every callback
+  (`set_cb` wraps `client.set_event_callback`; the dispatchers use `perf.span`), `spec_bench` times single API calls. Both
+  print and send a JSON line (`kind` perf / bench) through the shot log channel to the `shotlogs` branch. It never patches
+  API tables (the cloud integrity monitor snapshots them).
 - `python3 tests/perf_profile.py [--hot N]` runs the WHOLE dev build in `tests/perf/mock.lua` (a mock game: local player, N enemies that
   move / jitter / choke, numeric ui handles like gamesense, real ffi memory for the animstate / usercmd helpers) and prints the script time
   per callback plus the game API calls per tick (the expensive ones in game: traces, `hitbox_position` = bone setup, player list writes,
@@ -275,11 +460,21 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   freestanding body side (0.90 -> ~0.47).
 - The body yaw slider gets `sign * 120`: the sign is the side. +-1 only works if gamesense reads nothing but the sign; 120 is full desync
   whether the size is the desync amount or the offset of the choked ticks (180 would be the same angle for both sides as an offset).
-- Anti brute-force stages: body "Random" (default, first item) keeps the coin flip and only changes the yaw; "Opposite" / "Same" hold one
-  side for the hold time (a resolver that misses once knows that side, and "flips after a hit" is learnable).
+- Reworked AA (owners, Oct 2026: "simple aa with defensive and a simple antibrute", 2-3 presets; the public changelog says only
+  "Reworked AA system", never where the ideas came from). Presets: Delay (left / right yaw switched after a random 1-5 packets,
+  3-way air), 3-Way (5-way air), Distort (smooth wandering yaw with rare snaps, 5-way air), Constructor. Removed: Godmode,
+  Phantom, Elite, Nova, Mirage, Void; Modifications Yaw sway / Edge on crouch / Random desync size (+ readout) / Spin yaw /
+  Dormant preset; roll AA; defensive Activation / Delay / Random body yaw / Head guard; the anti brute stage editor (10
+  stages), Adaptive / Cycle pick, damage threshold, hold. Kept: Constructor (all its modifiers), manual / freestanding /
+  edge, safe head, warmup AA, legit AA on use, fast ladder, avoid backstab, animation breaker, air exploit, ideal tick.
+- Anti brute (`antiaimbot.anti_brute`): a hit, or an enemy bullet passing within 40 units of the head (decided 2 ticks
+  later, after player_hurt; not when the path went nearer to a teammate's head / body or the bullet hurt a teammate:
+  owners, Oct 2026, "evaded" at T spawn for shots at the teammate next to us; the same check feeds the evaded log), starts a short window (0.54-0.86 s) of `PATTERNS` (6): the yaw moves 6-14 deg away from the side
+  of the head the bullet passed (else alternating, never the same side twice), and the jitter switch restarts. The next
+  trigger of the same enemy within 7 s takes the next pattern. The body side stays the coin flip. Menu: Anti Bruteforce,
+  Trigger on (Hit / Near miss), Crosshair indicator. `ab.last_trigger` feeds the Constructor's "Logical" yaw logic.
 - `antiaimbot.main:run` keeps gamesense's own AA switch (`reference.antiaim.master`) on while specter's AA is on, `release()` gives it
   back; it used to be set only by the menu code while the menu was open.
-- Modifications "Yaw sway" (a slow random drift of up to 12 deg on the 180 yaw) and "Edge on crouch" (edge yaw while standing crouched).
 - "Enhanced AA" is gone (owners, Oct 2026: "kellenek egyaltalan?"). Its 11 "jitter types" (Figure-8, Quantum, Chaos Theory,
   Anti-Aim Matrix ...) were sine / noise formulas added to the preset's yaw offset: red team (Distort, best attacker) 0.47-0.50
   against 0.48 without, Smooth Sine 0.57 / Figure-8 0.53 in the air; Quantum's 0.44 was noise (0.47 vs 0.48 on 4 more seeds).
@@ -292,12 +487,21 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   wall, `player.fs_side`, instead of the coin flip). Off by default: holding manual / freestand means a wall is there, the red
   team has no walls. Most other ideas of those luas (delayed / sequence jitter, defensive pitch / yaw modes, safe head on knife /
   zeus / height, break-lc triggers, bomb E, body hold / pulse patterns) Specter already has, or its coin flip side beats them.
-- Defensive triggers also: On peek, Landing, Low HP (<= 40), Threat scoped.
-- Presets: Godmode, Phantom, Elite, Nova, Distort, Mirage (random-hold wide yaw, 5-way air), Void (asymmetric left / right with a random
-  switch delay, 3-way air), Constructor.
-- `python3 tests/aa_redteam.py [preset ...]` (~35 min for all): the REAL anti-aim of the dev build runs in the mock game of
+- Defensive triggers also: On peek, Landing, Low HP (<= 40), Threat scoped. Landing is skipped while jump is held (a shift
+  on the jump tick cost the bunny hop).
+- The defensive yaw writes `cmd.yaw` itself (`antiaimbot.defensive:run`, only on confirmed defensive ticks, needs double tap /
+  hide shots). gamesense's setup_command docs: `cmd.move_yaw` = "the yaw used for movement, the view yaw when it is not set", and
+  the event runs BEFORE the cheat's own features (anti-aim, air strafe). So the flick yaw became the movement yaw and the bunny
+  hop went where the flick pointed (owners, Oct 2026: "if i use dt i cant bhop", "still cant bhop", their reading: "arra nez
+  es ezert a bhop arra megy"). Fix: `cmd.move_yaw = cmd.yaw` (the view yaw before the flick) on every defensive yaw write; no
+  manual forwardmove / sidemove rotation (that was the first, wrong try). While a hop is on (a jump in the last 40 ticks,
+  `defensive.jump_tick`, in the air, Air strafe on) the yaw is not written at all, only the pitch flicks, in case the air strafe
+  does not follow move_yaw. `defensive.force` forces nothing in the last 4 ticks before landing (the drop of the next 4 ticks traced
+  down from the feet) and the 2 ticks on the ground after the air (the jump tick); NOT gated by the jump key: gamesense's bunny
+  hop lets IN_JUMP go in the air and a mouse wheel jump presses it for one tick.
+- `python3 tests/aa_redteam.py [preset ...]` (~1 min for the 3 presets): the REAL anti-aim of the dev build runs in the mock game of
   `tests/perf/mock.lua`; what gamesense would do with the settings it writes is modelled per sent packet and becomes the enemy of
-  `tests/resolver_world.lua`; the resolver of the repo (full / without the jitter split / fixed size; it does not track side switches) shoots at it, its hits / shots reach our anti brute-force.
-  Fails when the best attacker hits a preset / state above 0.60 (a forced side guess is ~0.47). Now (the owners' AA in the dev
-  build, Oct 2026): 0.39-0.53, mean 0.48 (was 0.63; 0.44 with the old repo AA).
+  `tests/resolver_world.lua`; the resolver of the repo (full / without the jitter split: `JITTER_SPREAD` 90 in its source) shoots at it, its hits / shots reach our anti brute-force.
+  Fails when the best attacker hits a preset / state above 0.60 (a forced side guess is ~0.47). Reworked AA (Oct 2026): 0.37-0.52,
+  mean 0.46 (the 7 old presets 0.39-0.53, mean 0.48; was 0.63 before the coin flip body side).
   It models the angles only, not the animation layers a real cheat also reads.

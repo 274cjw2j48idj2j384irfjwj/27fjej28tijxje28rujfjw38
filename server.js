@@ -93,7 +93,8 @@ async function get_script(plan) {
     }
 }
 
-const VALID_PLANS = ['beta', 'nightly', 'specter', 'debug']
+// pm_*: Specter for Primordial (specter_primordial_loader.lua), nightly = everything, beta = no resolver page
+const VALID_PLANS = ['beta', 'nightly', 'specter', 'debug', 'pm_nightly', 'pm_beta']
 
 function parse_duration(dur) {
     if (!dur || dur === 'lifetime') return null
@@ -377,6 +378,9 @@ app.get('/script', async (req, res) => {
     const raw = await get_script(plan)
     if (!raw) return res.status(500).json({ ok: false, reason: 'script_missing' })
 
+    // the script talks back to this server (cloud loadouts, tamper reports); without PUBLIC_URL: the host it was asked on
+    const host = String(req.get('host') || '')
+    const public_url = env('PUBLIC_URL', '') || (/^[A-Za-z0-9.:-]+$/.test(host) ? 'https://' + host : '')
     const prefix = [
         `rawset(_G, "_auth_ok",        true)`,
         `rawset(_G, "_auth_alive",      true)`,
@@ -389,7 +393,7 @@ app.get('/script', async (req, res) => {
         `rawset(_G, "_auth_key",        ${JSON.stringify(key)})`,
         `rawset(_G, "_auth_hwid",       ${JSON.stringify(hwid)})`,
         `rawset(_G, "BUILD_VERSION",    ${JSON.stringify(plan)})`,
-        `rawset(_G, "_server_url",      ${JSON.stringify(env('PUBLIC_URL', ''))})`,
+        `rawset(_G, "_server_url",      ${JSON.stringify(public_url)})`,
     ].join('\n')
 
     // burn ticket
@@ -400,6 +404,12 @@ app.get('/script', async (req, res) => {
     res.type('text/plain').send(prefix + '\n\n' + raw)
 })
 
+
+// the name shown on a shared config ("by ..." in the Loadouts list, everyone sees it): the key's note (who it is for),
+// else a name made from the key's hash (a part of the key itself must not be public)
+function config_author(license, key) {
+    return license.note || 'user-' + sha256(key).slice(0, 6)
+}
 
 // ── GET /configs ──────────────────────────────────────────────────────────
 // Returns all public cloud configs
@@ -430,7 +440,7 @@ app.get('/configs/upload', async (req, res) => {
     if (!license || license.revoked) return res.status(403).json({ ok: false, reason: 'invalid_key' })
     if (license.expires_at && Date.now() > license.expires_at) return res.status(403).json({ ok: false, reason: 'expired' })
     if (license.hwid !== hwid) return res.status(403).json({ ok: false, reason: 'hwid_mismatch' })
-    const author = license.note || key.slice(-6)
+    const author = config_author(license, key)
     try {
         let configs = await redis.get('specter:configs') || []
         configs = configs.filter(c => !(c.name === name && c.author === author))
@@ -489,7 +499,7 @@ app.get('/configs/upload_part', async (req, res) => {
     if (data.length < 10 || data.length > 200000)
         return res.status(400).json({ ok: false, reason: 'invalid_data' })
 
-    const author = license.note || key.slice(-6)
+    const author = config_author(license, key)
     try {
         let configs = await redis.get('specter:configs') || []
         configs = configs.filter(c => !(c.name === name && c.author === author))
@@ -522,7 +532,7 @@ app.post('/configs', async (req, res) => {
     if (license.hwid !== hwid)
         return res.status(403).json({ ok: false, reason: 'hwid_mismatch' })
 
-    const author   = license.note || key.slice(-6)
+    const author   = config_author(license, key)
     const cfg_name = name.trim()
 
     try {
@@ -556,7 +566,7 @@ app.get('/configs/delete', async (req, res) => {
     const license = db[key]
     if (!license || license.revoked) return res.status(403).json({ ok: false, reason: 'invalid_key' })
     if (license.hwid !== hwid) return res.status(403).json({ ok: false, reason: 'hwid_mismatch' })
-    const author = license.note || key.slice(-6)
+    const author = config_author(license, key)
     try {
         let configs = await redis.get('specter:configs') || []
         const before = configs.length
@@ -568,6 +578,134 @@ app.get('/configs/delete', async (req, res) => {
     } catch(e) {
         res.status(500).json({ ok: false, reason: 'server_error' })
     }
+})
+
+// ── GET /shotlog — the resolver's shot logs ───────────────────────────────
+// The dev build sends one line (JSON) per shot of ours: what the resolver gave the record, the result. They come in
+// base64 parts like a config (one GET each), a finished batch goes to a Redis list, the bot writes the list to GitHub
+// (branch "shotlogs") and then drops what it wrote (/admin/shotlog). No player names in it (the script hashes the ids).
+// Without a key (the dev build has none) a batch is "dev"; with key + hwid it is checked like a config upload.
+// Per IP at most SHOTLOG_RATE parts in 10 minutes, the list keeps the newest SHOTLOG_MAX batches.
+const SHOTLOG_KEY  = 'specter:shotlog'
+const SHOTLOG_MAX  = 400
+const SHOTLOG_RATE = 300
+const shotlog_parts = new Map()                 // batch id -> { total, parts, ts }
+const shotlog_rate  = new Map()                 // ip -> { n, since }
+setInterval(() => {
+    const now = Date.now()
+    for (const [id, u] of shotlog_parts) if (now - u.ts > 120000) shotlog_parts.delete(id)
+    for (const [ip, r] of shotlog_rate) if (now - r.since > 600000) shotlog_rate.delete(ip)
+}, 30000).unref()
+
+app.get('/shotlog', async (req, res) => {
+    const { key, hwid } = req.query
+    const id    = typeof req.query.id === 'string' ? req.query.id : ''
+    const part  = req.query.data
+    const idx   = parseInt(req.query.idx, 10)
+    const total = parseInt(req.query.total, 10)
+    if (!/^[A-Za-z0-9]{6,24}$/.test(id) || typeof part !== 'string' || !part)
+        return res.status(400).json({ ok: false, reason: 'missing_params' })
+    if (!Number.isInteger(idx) || !Number.isInteger(total) || total < 1 || total > 60 || idx < 0 || idx >= total || part.length > 4000)
+        return res.status(400).json({ ok: false, reason: 'invalid_part' })
+
+    const ip  = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '?').split(',')[0].trim()
+    const now = Date.now()
+    let r = shotlog_rate.get(ip)
+    if (!r || now - r.since > 600000) { r = { n: 0, since: now }; shotlog_rate.set(ip, r) }
+    if (++r.n > SHOTLOG_RATE) return res.status(429).json({ ok: false, reason: 'rate' })
+
+    let src = 'dev'
+    if (key) {
+        const db = await db_read()
+        const license = db[key]
+        if (!license || license.revoked || license.hwid !== hwid) return res.status(403).json({ ok: false, reason: 'invalid_key' })
+        src = license.plan + ':' + config_author(license, key)
+    }
+
+    const bid = `${ip}|${id}`
+    let u = shotlog_parts.get(bid)
+    if (!u || u.total !== total) {
+        u = { total, parts: new Array(total).fill(null), ts: now }
+        shotlog_parts.set(bid, u)
+    }
+    u.parts[idx] = part
+    u.ts = now
+    if (u.parts.some(p => p === null)) return res.json({ ok: true, done: false })
+
+    shotlog_parts.delete(bid)
+    let text = ''
+    try { text = Buffer.from(u.parts.join(''), 'base64').toString('utf8') } catch (e) {}
+    if (text.length < 2 || text.length > 200000)
+        return res.status(400).json({ ok: false, reason: 'invalid_data' })
+    try {
+        await redis.rpush(SHOTLOG_KEY, JSON.stringify({ at: now, src, id, lines: text }))
+        await redis.ltrim(SHOTLOG_KEY, -SHOTLOG_MAX, -1)
+        res.json({ ok: true, done: true })
+    } catch (e) {
+        res.status(500).json({ ok: false, reason: 'server_error' })
+    }
+})
+
+// ── GET /admin/shotlog — the bot takes the stored batches (oldest first) ───
+// ?n=<count> afterwards drops the first <count> once they are on GitHub (a failed write loses nothing)
+app.get('/admin/shotlog', async (req, res) => {
+    if (req.headers['x-admin-secret'] !== ADMIN_SECRET)
+        return res.status(403).json({ error: 'forbidden' })
+    try {
+        const n = parseInt(req.query.n, 10)
+        if (Number.isInteger(n) && n > 0) {
+            await redis.ltrim(SHOTLOG_KEY, n, -1)
+            return res.json({ ok: true, dropped: n })
+        }
+        const items = await redis.lrange(SHOTLOG_KEY, 0, 99)
+        res.json({ ok: true, items: (items || []).map(i => typeof i === 'string' ? JSON.parse(i) : i) })
+    } catch (e) {
+        res.status(500).json({ error: 'redis: ' + e.message })
+    }
+})
+
+// ── GET /presence — Specter user detection (specter_primordial.lua) ───────
+// Every 30 s a running script says it is online (?me = a hash of its steam id, ?t = its version) and asks which of the
+// players of its game are (?q = their hashes, at most 64): those get the moon on its scoreboard. Hashes only, no names.
+// Kept in memory, not in Redis (it is gone after PRESENCE_TTL anyway, and Upstash counts every command).
+const PRESENCE_TTL  = 75000
+const PRESENCE_RATE = 120                       // requests per IP in 10 minutes
+const presence      = new Map()                 // hash -> { tag, until }
+const presence_rate = new Map()                 // ip -> { n, since }
+setInterval(() => {
+    const now = Date.now()
+    for (const [h, p] of presence) if (now > p.until) presence.delete(h)
+    for (const [ip, r] of presence_rate) if (now - r.since > 600000) presence_rate.delete(ip)
+}, 30000).unref()
+
+app.get('/presence', (req, res) => {
+    const me  = typeof req.query.me === 'string' ? req.query.me : ''
+    const tag = ['nightly', 'beta', 'dev'].includes(req.query.t) ? req.query.t : 'dev'
+    const q   = typeof req.query.q === 'string' && req.query.q ? req.query.q.split(',') : []
+    if ((me && !/^[0-9a-f]{16}$/.test(me)) || q.length > 64 || q.some(h => !/^[0-9a-f]{16}$/.test(h)))
+        return res.status(400).json({ ok: false, reason: 'bad_params' })
+
+    const ip  = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '?').split(',')[0].trim()
+    const now = Date.now()
+    let r = presence_rate.get(ip)
+    if (!r || now - r.since > 600000) { r = { n: 0, since: now }; presence_rate.set(ip, r) }
+    if (++r.n > PRESENCE_RATE) return res.status(429).json({ ok: false, reason: 'rate' })
+
+    if (me) presence.set(me, { tag, until: now + PRESENCE_TTL })
+    const on = {}
+    for (const h of q) {
+        const p = presence.get(h)
+        if (p && now <= p.until) on[h] = p.tag
+    }
+    res.json({ ok: true, on })
+})
+
+// ── GET /moon.png — the scoreboard icon of a Specter user ─────────────────
+// the crescent of the watermark (accent 180 160 255), 64 x 64; the script saves it into the game's panorama icons
+const MOON_PNG = Buffer.from('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', 'base64')
+app.get('/moon.png', (req, res) => {
+    res.set('Cache-Control', 'public, max-age=86400')
+    res.type('png').send(MOON_PNG)
 })
 
 // ── DELETE /configs ───────────────────────────────────────────────────────

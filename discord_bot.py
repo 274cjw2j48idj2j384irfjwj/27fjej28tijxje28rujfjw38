@@ -25,7 +25,7 @@ ENV VARS (set in Discord bot host or .env):
                         below also gets its own GitHub API limit (without it: 60 calls / hour per IP, shared on Railway)
   RELEASE_CHANNEL     — staff channel (name or id) new script versions are posted in (default: staff). Only posted when
                         neither @everyone nor a member / customer / plan role can read it
-  RELEASE_FILES       — files posted there when a new commit changes them (default: specter_dev.lua)
+  RELEASE_FILES       — files posted there when a new commit changes them (default: specter_dev.lua, specter_primordial.lua)
   RELEASE_MINUTES     — how often GitHub is checked (default: 5, 0 = only /release_check)
   AUTO_UPLOAD         — 1 (default): a new specter_cloud.lua of CLOUD_BRANCH goes to the license server by itself (every
                         plan; the loader downloads it from there), 0: only /script_upload
@@ -33,6 +33,10 @@ ENV VARS (set in Discord bot host or .env):
   AUTO_PANELS         — 1 (default): at every start the prices / rules / how-to / ticket panels that changed (or are missing)
                         are posted again in their channels and the old posts deleted; a new specter_loader.lua of
                         CLOUD_BRANCH goes to #loader-download the same way (checked every RELEASE_MINUTES). 0: only by hand
+  LOG_TOKEN           — GitHub token that can WRITE the repo's contents (fine-grained, Contents: Read and write). The
+                        resolver shot logs of the dev build (license server /shotlog) go with it to SHOTLOG_BRANCH
+                        (default: shotlogs) every RELEASE_MINUTES, one file per round: shotlogs/<day>/<time>-<shots>.jsonl.
+                        Empty: GITHUB_TOKEN, if that is set; neither: the logs stay on the server (the newest 400 batches)
   SPECTER_LOGO_URL    — a lasting image link for the logo on the bot's posts (optional). Empty: assets/specter_icon.png /
                         specter_logo.png go with the messages. A Discord upload link expires in a day: it is ignored
 """
@@ -75,6 +79,10 @@ CLOUD_BRANCH      = _env("CLOUD_BRANCH", "cloud")       # release: what the cust
 SCRIPT_TOKEN      = _env("SCRIPT_TOKEN", "")
 
 VALID_PLANS     = ["beta", "nightly", "specter", "debug"]
+# Specter for Primordial (specter_primordial_loader.lua): nightly = everything, beta = no resolver page
+PM_PLANS        = ["pm_nightly", "pm_beta"]
+KEY_PLANS       = VALID_PLANS + PM_PLANS
+PRIMORDIAL_FILE = "specter_primordial.lua"
 VALID_DURATIONS = ["lifetime", "1d", "7d", "14d", "30d", "90d"]
 
 # what the Staff role may do on the server: moderation, not the server / roles / channels (those stay the owner's)
@@ -94,6 +102,7 @@ ROLE_CONFIG = {
     "Specter":  {"color": 0x82C3FF, "hoist": True,  "position": "mid"},
     "Nightly":  {"color": 0xFF82A0, "hoist": True,  "position": "mid"},
     "Beta":     {"color": 0xC882FF, "hoist": True,  "position": "mid"},
+    "Primordial": {"color": 0xB4A0FF, "hoist": True, "position": "mid"},
     "Customer": {"color": 0x60FF90, "hoist": True,  "position": "mid"},
     "Staff":    {"color": 0xFFC850, "hoist": True,  "position": "top", "permissions": STAFF_PERMISSIONS},
 }
@@ -103,6 +112,8 @@ PLAN_TO_ROLE = {
     "specter":  "Specter",
     "nightly":  "Nightly",
     "beta":     "Beta",
+    "pm_nightly": "Primordial",
+    "pm_beta":    "Primordial",
 }
 
 # ── Prices (edit these to match your pricing) ────────────────────────
@@ -209,6 +220,14 @@ CHANNEL_STRUCTURE = [
             {"name": "reviews",     "type": "forum", "access": "customer", "emoji": "\U0001f49c", "topic": "Leave a review"},
             {"name": "suggestions", "type": "forum", "access": "customer", "emoji": "\U0001f4a1", "topic": "Feature suggestions"},
             {"name": "bug-reports", "type": "forum", "access": "customer", "emoji": "\U0001f534", "topic": "Report bugs"},
+        ],
+    },
+    {
+        "category": "\U0001f51c Specter·Primordial",
+        "channels": [
+            {"name": "primordial-news", "type": "text", "readonly": True, "emoji": "\U0001f4e2", "topic": "Specter for primordial: news and the release"},
+            {"name": "sneak-peeks",     "type": "text", "readonly": True, "emoji": "\U0001f440", "topic": "Sneak peeks of the primordial lua"},
+            {"name": "primordial-chat", "type": "text", "access": "member", "emoji": "\U0001f4ac", "topic": "Talk about the primordial lua"},
         ],
     },
     {
@@ -649,9 +668,17 @@ async def setup_channels(interaction: discord.Interaction):
             except discord.HTTPException:
                 failed.append(f"#{ch_name}")
 
+    # the panels of the new channels at once (e.g. the primordial announcement), not only at the next start
+    try:
+        panels = [line.split(": ", 1)[-1] for line in await sync_panels() if line.startswith(guild.name + ":")]
+    except discord.HTTPException:
+        panels = []
+
     embed = discord.Embed(title="\U0001f319 Channel Setup Complete", color=0x82C3FF)
     if created:
         embed.add_field(name="Created", value="\n".join(created), inline=False)
+    if panels:
+        embed.add_field(name="Panels", value="\n".join(panels)[:1024], inline=False)
     if existed:
         embed.add_field(name="Already exist", value="\n".join(existed), inline=False)
     if failed:
@@ -731,7 +758,7 @@ async def remove_role(interaction: discord.Interaction, user: discord.Member, ro
     note="Who this key is for",
 )
 @app_commands.choices(
-    plan=[app_commands.Choice(name=p, value=p) for p in VALID_PLANS],
+    plan=[app_commands.Choice(name=p, value=p) for p in KEY_PLANS],
     duration=[app_commands.Choice(name=d, value=d) for d in VALID_DURATIONS],
 )
 async def key_create(
@@ -855,7 +882,7 @@ async def key_reset_hwid(interaction: discord.Interaction, key: str):
 @tree.command(name="key_list", description="List all license keys")
 @app_commands.describe(plan="Filter by plan (optional)")
 @app_commands.choices(
-    plan=[app_commands.Choice(name=p, value=p) for p in VALID_PLANS],
+    plan=[app_commands.Choice(name=p, value=p) for p in KEY_PLANS],
 )
 async def key_list(interaction: discord.Interaction, plan: str = ""):
     if not is_staff(interaction):
@@ -1172,6 +1199,81 @@ async def script_upload(
     await log_action(interaction.guild, log_embed)
 
 
+@tree.command(name="primordial_upload", description="Upload specter_primordial.lua to the license server (pm_nightly + pm_beta)")
+@app_commands.describe(
+    file="specter_primordial.lua (empty: taken from GitHub)",
+    branch="GitHub branch when no file is given (default: CLOUD_BRANCH)",
+)
+async def primordial_upload(interaction: discord.Interaction, file: discord.Attachment = None, branch: str = ""):
+    if not is_admin(interaction):
+        await interaction.response.send_message("No permission.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if file is not None:
+            raw, source = await file.read(), file.filename
+        else:
+            raw, source = await gh_fetch_file(PRIMORDIAL_FILE, branch)
+        builds = primordial_builds(raw.decode("utf-8"))
+    except GitHubFetchError as e:
+        await interaction.followup.send(str(e), ephemeral=True)
+        return
+    except Exception as e:
+        await interaction.followup.send(f"Could not read the script: {e}", ephemeral=True)
+        return
+    if not is_primordial_script(builds["pm_nightly"]):
+        await interaction.followup.send("This is not specter_primordial.lua. Nothing uploaded.", ephemeral=True)
+        return
+
+    lines = []
+    for p in PM_PLANS:
+        lines += (await upload_script(builds[p], [p]))[0]
+    embed = discord.Embed(title="Primordial Upload", color=0xB4A0FF, description="\n".join(lines))
+    embed.add_field(name="Source", value=source, inline=False)
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+    log_embed = discord.Embed(title="Primordial Script Uploaded", color=0xB4A0FF)
+    log_embed.add_field(name="Source", value=source, inline=True)
+    log_embed.add_field(name="By", value=interaction.user.mention, inline=True)
+    await log_action(interaction.guild, log_embed)
+
+
+PM_BETA_STUB = """-- beta: no resolver here (the nightly version has it); Primordial's own resolver does the resolving
+resolver.on_result = function() end
+resolver.hitscan = function() end
+resolver.native = function() end
+resolver.reset = function()
+    resolver.previous = {}
+    resolver.misses = {}
+end
+update_target = function(ctx)
+    resolver.previous.target = ctx.player:get_index()
+end
+lets_resolve = function() end
+"""
+
+
+def make_primordial_beta(text: str) -> str:
+    """The pm_beta script: specter_primordial.lua without the resolver code between its [pm-resolver:begin] / [pm-resolver:end]
+    markers (a stub with the same names instead), so a beta key never downloads it. Run BEFORE the comments are stripped."""
+    start = text.find("-- [pm-resolver:begin]")
+    end = text.find("-- [pm-resolver:end]")
+    if start < 0 or end < start:
+        raise ValueError("no [pm-resolver:begin] / [pm-resolver:end] markers in specter_primordial.lua")
+    return text[:start] + PM_BETA_STUB + text[end + len("-- [pm-resolver:end]"):]
+
+
+def primordial_builds(raw_text: str) -> dict[str, str]:
+    """plan -> comment-free script: pm_nightly = the whole file, pm_beta = without the resolver."""
+    return {"pm_nightly": strip_lua_comments(raw_text), "pm_beta": strip_lua_comments(make_primordial_beta(raw_text))}
+
+
+def is_primordial_script(text: str) -> bool:
+    """specter_primordial.lua (Primordial API, the eui menu), not the gamesense script or a loader."""
+    return "e_callbacks" in text and "libs.eui" in text and "_specter_loader_loaded" not in text and "AUTH GATE" not in text
+
+
 # ── /post_loader — the customer loader in #loader-download ──────────
 
 LOADER_FILE = "specter_loader.lua"
@@ -1311,10 +1413,12 @@ def _env_int(name: str, default: int) -> int:
 
 RELEASE_CHANNEL = _env("RELEASE_CHANNEL", "staff")
 UPDATES_CHANNEL = _env("UPDATES_CHANNEL", "updates")
-RELEASE_FILES   = [f.strip() for f in _env("RELEASE_FILES", "specter_dev.lua").split(",") if f.strip()]
+RELEASE_FILES   = [f.strip() for f in _env("RELEASE_FILES", "specter_dev.lua,specter_primordial.lua").split(",") if f.strip()]
 RELEASE_MINUTES = _env_int("RELEASE_MINUTES", 5)
 AUTO_UPLOAD     = _env("AUTO_UPLOAD", "1").lower() not in ("0", "false", "off", "no")
 AUTO_PANELS     = _env("AUTO_PANELS", "1").lower() not in ("0", "false", "off", "no")
+SHOTLOG_TOKEN   = _env("LOG_TOKEN", "") or GITHUB_TOKEN                # writes the shot logs (Contents: read + write)
+SHOTLOG_BRANCH  = _env("SHOTLOG_BRANCH", "shotlogs")
 RELEASE_ROLES   = [r for r in ROLE_CONFIG if r != "Staff"]     # never posted where one of these (or @everyone) reads
 RELEASE_FOOTER  = re.compile(r"^(\S+) @ ([0-9a-f]{16})$")       # the footer of a version post: file @ its SHA-256
 _release_seen: dict[int, dict[str, str]] = {}                   # channel id -> file -> SHA-256 of the newest post there
@@ -1603,6 +1707,88 @@ async def sync_cloud(force: bool = False) -> list[str]:
         return report
 
 
+async def gh_ensure_branch(token: str, branch: str) -> bool:
+    """The branch exists (made from SCRIPT_BRANCH when it does not)."""
+    h = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+    async with aiohttp.ClientSession() as s:
+        async with s.get(f"{GH_API}/repos/{GITHUB_REPO}/git/ref/heads/{branch}", headers=h) as r:
+            if r.status == 200:
+                return True
+        async with s.get(f"{GH_API}/repos/{GITHUB_REPO}/git/ref/heads/{SCRIPT_BRANCH}", headers=h) as r:
+            if r.status != 200:
+                return False
+            sha = (await r.json())["object"]["sha"]
+        async with s.post(f"{GH_API}/repos/{GITHUB_REPO}/git/refs", json={"ref": f"refs/heads/{branch}", "sha": sha}, headers=h) as r:
+            return r.status in (201, 422)
+
+
+async def sync_shotlogs() -> list[str]:
+    """The shot logs (license server /shotlog) -> new files on SHOTLOG_BRANCH, then dropped on the server. The dev build's
+    go to shotlogs/<day>/, specter_primordial.lua's (batch ids "pm...") to shotlogs/primordial/<day>/. Nothing is dropped when a write
+    fails: the next round tries again."""
+    if not SHOTLOG_TOKEN:
+        return []
+    res = await api_get("/admin/shotlog")
+    items = res.get("items") if isinstance(res, dict) else None
+    if not items:
+        return []
+    folders: dict[str, list[str]] = {}
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        batch = str(it.get("id") or "")
+        folder = "shotlogs/primordial" if batch.startswith("pm") else "shotlogs"
+        head = {"at": it.get("at"), "src": it.get("src"), "batch": batch}
+        for line in str(it.get("lines") or "").splitlines():
+            line = line.strip()
+            if line:
+                folders.setdefault(folder, []).append(json.dumps(head, separators=(",", ":")) + "\t" + line)
+    if not folders:
+        await api_get(f"/admin/shotlog?n={len(items)}")
+        return []
+    if not await gh_ensure_branch(SHOTLOG_TOKEN, SHOTLOG_BRANCH):
+        return [f"shot logs: branch {SHOTLOG_BRANCH} could not be made (token rights?)"]
+    now = time.gmtime()
+    report = []
+    async with aiohttp.ClientSession() as s:
+        for folder, lines in folders.items():
+            path = f"{folder}/{time.strftime('%Y-%m-%d', now)}/{time.strftime('%H%M%S', now)}-{len(lines)}.jsonl"
+            body = ("\n".join(lines) + "\n").encode("utf-8")
+            async with s.put(f"{GH_API}/repos/{GITHUB_REPO}/contents/{path}", json={
+                "message": f"Shot logs {time.strftime('%Y-%m-%d %H:%M', now)} ({len(lines)} shots)",
+                "content": base64.b64encode(body).decode("ascii"),
+                "branch": SHOTLOG_BRANCH,
+            }, headers={"Authorization": f"token {SHOTLOG_TOKEN}", "Accept": "application/vnd.github.v3+json"}) as r:
+                if r.status not in (200, 201):
+                    return report + [f"shot logs: GitHub write failed ({r.status})"]
+            report.append(f"shot logs: {len(lines)} shots -> {SHOTLOG_BRANCH}/{path}")
+    await api_get(f"/admin/shotlog?n={len(items)}")
+    return report
+
+
+async def sync_primordial(force: bool = False) -> list[str]:
+    """A new specter_primordial.lua of CLOUD_BRANCH -> the license server for pm_nightly and pm_beta (the Primordial loader
+    downloads it at every login). Nothing is posted: the Primordial lua is not out yet; main never reaches the server."""
+    try:
+        ver = await newest_version(PRIMORDIAL_FILE, CLOUD_BRANCH)
+    except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError) as e:
+        return [f"`{PRIMORDIAL_FILE}`: {e}"]
+    try:
+        builds = primordial_builds(ver["raw"].decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as e:
+        return [f"`{PRIMORDIAL_FILE}` of `{CLOUD_BRANCH}`: {e}, not uploaded"]
+    if not is_primordial_script(builds["pm_nightly"]):
+        return [f"`{PRIMORDIAL_FILE}` of `{CLOUD_BRANCH}`: not the primordial script, not uploaded"]
+    have = await server_script_hashes()
+    lines = []
+    for p in PM_PLANS:
+        if force or have is None or have.get(p) != hashlib.sha256(builds[p].encode("utf-8")).hexdigest():
+            lines += (await upload_script(builds[p], [p]))[0]
+    if not lines:
+        return []
+    return [f"primordial script `{ver['hash'][:7]}` to the server: " + " ".join(lines)]
+
+
 async def release_loop():
     """Checks GitHub every RELEASE_MINUTES; a problem is printed once, not every round."""
     await client.wait_until_ready()
@@ -1612,10 +1798,15 @@ async def release_loop():
             report = await check_releases()
             if AUTO_UPLOAD:
                 report += await sync_cloud()
+                report += await sync_primordial()
             if AUTO_PANELS:
                 report += await sync_loader()
         except Exception as e:
             report = [f"version check failed: {e!r}"]
+        try:
+            report += await sync_shotlogs()
+        except Exception as e:
+            report.append(f"shot logs failed: {e!r}")
         for line in report:
             if "posted in" in line or "to the server" in line or line not in last:
                 print(f"[release] {line}", flush=True)
@@ -1633,6 +1824,7 @@ async def release_check(interaction: discord.Interaction, force: bool = False):
     report = await check_releases(force)
     if AUTO_UPLOAD:
         report += await sync_cloud(force)
+        report += await sync_primordial(force)
     if AUTO_PANELS:
         report += await sync_loader(force)
     text = "\n".join(report) or "Nothing new: the newest versions are already out."
@@ -1741,7 +1933,7 @@ def tickets_embed() -> discord.Embed:
         ),
         color=0x82C3FF,
     )
-    embed.set_footer(text="Specter \U0001f319")
+    embed.set_footer(text="Specter \U0001f319 • primordial lua soon")
     return embed
 
 
@@ -1757,7 +1949,15 @@ def prices_embed() -> discord.Embed:
         value=(
             "• *Versions* — `beta` | `nightly` | `specter`\n"
             "• *Status* — fully updated for 2026\n"
-            "• *Platform* — gamesense"
+            "• *Platform* — gamesense (primordial soon)"
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="\U0001f51c Specter for Primordial — Coming Soon",
+        value=(
+            "• The Specter lua for **primordial** is on its way\n"
+            "• Sneak peeks in #sneak-peeks, the release and prices in #primordial-news"
         ),
         inline=False,
     )
@@ -1770,7 +1970,7 @@ def prices_embed() -> discord.Embed:
         ),
         inline=False,
     )
-    embed.set_footer(text="Specter \U0001f319 • gamesense lua")
+    embed.set_footer(text="Specter \U0001f319 • gamesense lua • primordial lua soon")
     return embed
 
 
@@ -1787,7 +1987,7 @@ def rules_embed() -> discord.Embed:
         "**8.** Staff decisions are final.\n\n"
         "*Breaking any rule may result in a mute, kick, or ban.*"
     )
-    embed.set_footer(text="Specter \U0001f319")
+    embed.set_footer(text="Specter \U0001f319 • primordial lua soon")
     return embed
 
 
@@ -1823,8 +2023,25 @@ def howto_embed() -> discord.Embed:
         ),
         inline=False,
     )
+    embed.add_field(name="Primordial?", value="Specter for **primordial** is coming soon: sneak peeks in #sneak-peeks, news in #primordial-news.", inline=False)
     embed.add_field(name="Trouble?", value="Open a ticket in #support-ticket and we'll help.", inline=False)
-    embed.set_footer(text="Specter \U0001f319")
+    embed.set_footer(text="Specter \U0001f319 • primordial lua soon")
+    return embed
+
+
+def primordial_embed() -> discord.Embed:
+    embed = discord.Embed(title="\U0001f319 Specter is coming to Primordial \U0001f51c", color=0x82C3FF)
+    embed.description = (
+        "We've been working on something new: **Specter for primordial**.\n\n"
+        "The lua is almost ready and will be released **soon**. Before that, we'll share a few **sneak peeks**: "
+        "the menu, the anti-aim, and how it plays in game.\n\n"
+        "\U0001f440 Sneak peeks: #sneak-peeks\n"
+        "\U0001f514 Release and prices: #primordial-news\n"
+        "\U0001f4ac Talk about it: #primordial-chat\n"
+        "\u2753 Questions: open a ticket in #support-ticket\n\n"
+        "Stay tuned. \U0001f440"
+    )
+    embed.set_footer(text="Specter \U0001f319 • primordial lua soon")
     return embed
 
 
@@ -1834,6 +2051,7 @@ PANELS = {
     "rules":   {"channel": "rules",          "build": rules_embed,   "banner": False, "button": False},
     "howto":   {"channel": "how-to-use",     "build": howto_embed,   "banner": False, "button": False},
     "tickets": {"channel": "support-ticket", "build": tickets_embed, "banner": False, "button": True},
+    "primordial": {"channel": "primordial-news", "build": primordial_embed, "banner": True, "button": False},
 }
 
 
