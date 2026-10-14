@@ -241,8 +241,9 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   The Discord is a LUA server: the promo lines point to the lua, never to configs (owners: "config függő minek ha ez csak lua
   szerver").
   The victim's name is cleaned before it goes into `say "..."` (no quote / semicolon / % / control chars: a name could run a
-  command), every " / " part is its own chat line. specter_primordial.lua has the same list as Trash talk "Roast"
-  (`phrases_roast`, `PM_DISCORD`, the same cleaning, one `say` per part).
+  command), every " / " part is its own chat line. specter_primordial.lua's Trash talk "Roast" has ITS OWN 58 lines (owners:
+  "írj a primordialnak külön készletet"; none of the gamesense ones), 10 of them with the Discord invite (`phrases_roast`,
+  `PM_DISCORD`, the same name cleaning, one `say` per part, `"` and `;` dropped from every part).
 
 ## Resolver (computed body yaw + learned models, one module)
 - Code lives between the `-- [resolver:begin]` / `-- [resolver:end]` markers in `specter_cloud.lua`. Keep the markers (tests extract the block).
