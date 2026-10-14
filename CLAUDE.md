@@ -238,6 +238,8 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   lines like corner clearing or crosshair placement, owners: "felesleges az hvh"), no slurs and nothing about self harm (a
   report gets the account banned). 10 of the cheat / lua lines end with the Discord invite (`DISCORD`), e.g. "{name}, your
   lua is from youtube / and so is your skill / there is a working one at discord.gg/..." ("there is a working lua for you").
+  The Discord is a LUA server: the promo lines point to the lua, never to configs (owners: "config függő minek ha ez csak lua
+  szerver").
   The victim's name is cleaned before it goes into `say "..."` (no quote / semicolon / % / control chars: a name could run a
   command), every " / " part is its own chat line. specter_primordial.lua has the same list as Trash talk "Roast"
   (`phrases_roast`, `PM_DISCORD`, the same cleaning, one `say` per part).
