@@ -10,7 +10,8 @@
   RELEASE ("mehet cloudra", "rakd ki az updatet") = a PR `main` -> `cloud`, merged with a merge commit: its title (or the merge
   message: a short title + "- " points) IS the public #updates changelog, short and for players: "Sponsor kill added",
   "Fixed ...". Never release without the owners asking. A PR into `main` (the dev build) is merged right away with a
-  merge commit once its tests pass (owners, Oct 2026: "always merge it"); `cloud` still only when they ask. `server.js` deploys from `main` at once: keep it compatible with the
+  merge commit once its tests pass (owners, Oct 2026: "always merge it"): every session pushes, opens the PR and merges
+  it itself, the bot only posts what is on `main` (owners: "mindig be kell olvasztani"); `cloud` still only when they ask. `server.js` deploys from `main` at once: keep it compatible with the
   loader / cloud script on `cloud` (an auth change is released together with them)
 
 ## Language
