@@ -3655,8 +3655,13 @@ dmg_prediction = function(ctx, cmd, unpredicted_data)
                 stomach = damage:calculate(enemy, "stomach")
             }
         
-            for k, v in pairs(enemy_dmg) do
-                if (v > enemy:get_prop("m_iHealth") or v > get_dmg()) then
+            -- head first (owners, Oct 2026: "nagyon sok a body hit"): `pairs` went through the three in the table's hash
+            -- order, so the chest / stomach got the 70 % hitchance and the push while the head was shootable too. The head
+            -- is skipped when Smart body aim took it out for this target (resolver.safe 3: only a lethal body shot)
+            local nohead = resolver.safe ~= nil and resolver.safe[enemy:get_index()] == 3
+            for _, k in ipairs({ "head", "chest", "stomach" }) do
+                local v = enemy_dmg[k]
+                if ((k ~= "head" or not nohead) and (v > enemy:get_prop("m_iHealth") or v > get_dmg())) then
                     local bullet = trace_bullet(local_pos, enemy_pos[k], entity_list_get_local_player(), enemy)
                     if (bullet.valid and (client_get_hitgroup_name(bullet.hitgroup) == k)) then
                         local hitgroup = e_hitscan_groups[string.upper(k)]

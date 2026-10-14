@@ -418,5 +418,39 @@ check(r == (True, 2, "aimbot/auto/accuracy"), "menu_find: each item looked up on
 check('perf.add(e_callbacks.PAINT, "PAINT"' in SRC and "perf.span(\"watermark\", draw_watermark)" in SRC
       and "    callbacks.add(e_callbacks.PAINT, function()" not in SRC, "FPS profiler wraps the callbacks and the PAINT parts")
 
+# body hits (owners, Oct 2026: "nagyon sok a body hit"): Multipoint correction pushes the head first when it is
+# shootable, the body only when Smart body aim took the head out
+DP = chunk("dmg_prediction = function(ctx, cmd, unpredicted_data)", "--- @endregion")
+dp = L.LuaRuntime(unpack_returned_tuples=True)
+dp.execute("""
+local function item(v) return { get = function() return v end } end
+ui = { ragebot = { multipoint_pred = item(true) } }
+defensive = { is_active = function() return false end }
+local LP = { get_eye_position = function() return 0 end }
+entity_list_get_local_player = function() return LP end
+e_hitboxes = { HEAD = "head", CHEST = "chest", PELVIS = "stomach" }
+e_hitscan_groups = { HEAD = 0, CHEST = 1, STOMACH = 2 }
+damage = { calculate = function(_, _, box) return ({ head = 300, chest = 80, stomach = 100 })[box] end }
+get_dmg = function() return 40 end
+trace_bullet = function(_, pos) return { valid = true, hitgroup = pos } end
+client_get_hitgroup_name = function(g) return g end
+resolver = { safe = {} }
+ENEMY = { get_index = function() return 5 end, get_hitbox_pos = function(_, b) return b end,
+    get_prop = function() return 100 end }
+""" + DP + """
+function RUNDP()
+    local c = { hc = {}, on = {} }
+    c.player = ENEMY
+    c.set_hitchance = function(self, v, g) self.hc[#self.hc + 1] = g end
+    c.set_hitscan_group_state = function(self, g, on) self.on[#self.on + 1] = g end
+    dmg_prediction(c)
+    return c.hc[1], #c.on
+end""")
+r = [tuple(dp.eval("RUNDP()")) for _ in range(20)]
+dp.execute("resolver.safe[5] = 3")
+r2 = dp.eval("RUNDP()")
+check(all(x == (0, 1) for x in r) and tuple(r2) == (1, 1),
+      "Multipoint correction: the head first every time, the chest when Smart body aim took the head out (%s %s)" % (r[0], r2))
+
 print("\n%d failed" % len(FAILS) if FAILS else "\nall passed")
 sys.exit(1 if FAILS else 0)
