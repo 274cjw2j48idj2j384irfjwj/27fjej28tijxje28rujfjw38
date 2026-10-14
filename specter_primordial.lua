@@ -8,7 +8,7 @@
 
 -- Advanced engineering revision. Native resolver remains the default.
 -- Hard-coded FFI offsets require the exact original game/client build.
-local client_version = "5.5-advanced.2"
+local client_version = "5.5-advanced.3"
 
 local config_version = "1.0"
 local config_build = "beta"
@@ -159,129 +159,128 @@ libs.tools.http = libs.httpcreator.new(
 
 libs.tools.js2 = libs.panorama.open()
 libs.tools.js = libs.panorama.loadstring([[
-let entity_panels = {}
-let entity_data = {}
-let event_callbacks = {}
-	let SLOT_LAYOUT = `
-		<root>
-			<Panel style="min-width: 3px; padding-top: 2px; padding-left: 0px;" scaling='stretch-to-fit-y-preserve-aspect'>
-				<Image id="smaller" textureheight="15" style="horizontal-align: center; opacity: 0.01; transition: opacity 0.1s ease-in-out 0.0s, img-shadow 0.12s ease-in-out 0.0s; overflow: noclip; padding: 3px 5px; margin: -3px -5px;"	/>
-				<Image id="small" textureheight="17" style="horizontal-align: center; opacity: 0.01; transition: opacity 0.1s ease-in-out 0.0s, img-shadow 0.12s ease-in-out 0.0s; overflow: noclip; padding: 3px 5px; margin: -3px -5px;" />
-				<Image id="image" textureheight="21" style="opacity: 0.01; transition: opacity 0.1s ease-in-out 0.0s, img-shadow 0.12s ease-in-out 0.0s; padding: 3px 5px; margin: -3px -5px; margin-top: -5px;" />
-			</Panel>
-		</root>
-	`
-	let _DestroyEntityPanel = function (key) {
-		let panel = entity_panels[key]
-		if(panel != null && panel.IsValid()) {
-			var parent = panel.GetParent()
-			let musor = parent.GetChild(0)
-			musor.visible = true
-			if(parent.FindChildTraverse("id-sb-skillgroup-image") != null) {
-				parent.FindChildTraverse("id-sb-skillgroup-image").style.margin = "0px 0px 0px 0px"
-			}
-			panel.DeleteAsync(0.0)
-		}
-		delete entity_panels[key]
-	}
-	let _DestroyEntityPanels = function() {
-		for(key in entity_panels){
-			_DestroyEntityPanel(key)
-		}
-	}
-	let _GetOrCreateCustomPanel = function(xuid) {
-		if(entity_panels[xuid] == null || !entity_panels[xuid].IsValid()){
-			entity_panels[xuid] = null
-			let scoreboard_context_panel = $.GetContextPanel().FindChildTraverse("ScoreboardContainer").FindChildTraverse("Scoreboard") || $.GetContextPanel().FindChildTraverse("id-eom-scoreboard-container").FindChildTraverse("Scoreboard")
-			if(scoreboard_context_panel == null){
-				_Clear()
-				_DestroyEntityPanels()
-				return
-			}
-			scoreboard_context_panel.FindChildrenWithClassTraverse("sb-row").forEach(function(el){
-				let scoreboard_el
-				if(el.m_xuid == xuid) {
-					el.Children().forEach(function(child_frame){
-						let stat = child_frame.GetAttributeString("data-stat", "")
-						if(stat == "rank")
-							scoreboard_el = child_frame.GetChild(0)
-					})
-					if(scoreboard_el) {
-						let scoreboard_el_parent = scoreboard_el.GetParent()
-						let custom_icons = $.CreatePanel("Panel", scoreboard_el_parent, "revealer-icon", {
-						})
-						if(scoreboard_el_parent.FindChildTraverse("id-sb-skillgroup-image") != null) {
-							scoreboard_el_parent.FindChildTraverse("id-sb-skillgroup-image").style.margin = "0px 0px 0px 0px"
-						}
-						scoreboard_el_parent.MoveChildAfter(custom_icons, scoreboard_el_parent.GetChild(1))
-						let prev_panel = scoreboard_el_parent.GetChild(0)
-						prev_panel.visible = false
-						let panel_slot_parent = $.CreatePanel("Panel", custom_icons, `icon`)
-						panel_slot_parent.visible = false
-						panel_slot_parent.BLoadLayoutFromString(SLOT_LAYOUT, false, false)
-						entity_panels[xuid] = custom_icons
-						return custom_icons
-					}
-				}
-			})
-		}
-		return entity_panels[xuid]
-	}
-	let _UpdatePlayer = function(entindex, path_to_image) {
-		if(entindex == null || entindex == 0)
-			return
-		entity_data[entindex] = {
-			applied: false,
-			image_path: path_to_image
-		}
-	}
-	let _ApplyPlayer = function(entindex) {
-		let xuid = GameStateAPI.GetPlayerXuidStringFromEntIndex(entindex)
-		let panel = _GetOrCreateCustomPanel(xuid)
-		if(panel == null)
-			return
-		let panel_slot_parent = panel.FindChild(`icon`)
-		panel_slot_parent.visible = true
-		let panel_slot = panel_slot_parent.FindChild("image")
-		panel_slot.visible = true
-		panel_slot.style.opacity = "1"
-		panel_slot.SetImage(entity_data[entindex].image_path)
-		return true
-	}
-	let _ApplyData = function() {
-		for(entindex in entity_data) {
-			entindex = parseInt(entindex)
-			let xuid = GameStateAPI.GetPlayerXuidStringFromEntIndex(entindex)
-			if(!entity_data[entindex].applied || entity_panels[xuid] == null || !entity_panels[xuid].IsValid()) {
-				if(_ApplyPlayer(entindex)) {
-					entity_data[entindex].applied = true
-				}
-			}
-		}
-	}
-	let _Create = function() {
-		event_callbacks["OnOpenScoreboard"] = $.RegisterForUnhandledEvent("OnOpenScoreboard", _ApplyData)
-		event_callbacks["Scoreboard_UpdateEverything"] = $.RegisterForUnhandledEvent("Scoreboard_UpdateEverything", function(){
-			_ApplyData()
-		})
-		event_callbacks["Scoreboard_UpdateJob"] = $.RegisterForUnhandledEvent("Scoreboard_UpdateJob", _ApplyData)
-	}
-	let _Clear = function() { entity_data = {} }
-	let _Destroy = function() {
-		_Clear()
-		_DestroyEntityPanels()
-		for(event in event_callbacks){
-			$.UnregisterForUnhandledEvent(event, event_callbacks[event])
-			delete event_callbacks[event]
-		}
-	}
-	return {
-		create: _Create,
-		destroy: _Destroy,
-		clear: _Clear,
-		update: _UpdatePlayer,
-		destroy_panel: _DestroyEntityPanels
-	}
+let entity_panels = {};
+let entity_data = {};
+let event_callbacks = {};
+const valid = function(panel) {
+    return panel != null && typeof panel.IsValid === "function" && panel.IsValid();
+};
+const destroy_panel = function(xuid) {
+    const panel = entity_panels[xuid];
+    if (valid(panel)) panel.DeleteAsync(0);
+    delete entity_panels[xuid];
+};
+const destroy_panels = function() {
+    Object.keys(entity_panels).forEach(destroy_panel);
+};
+const scoreboard = function() {
+    const context = $.GetContextPanel();
+    if (!valid(context)) return null;
+    const ids = ["ScoreboardContainer", "id-eom-scoreboard-container"];
+    for (let i = 0; i < ids.length; i++) {
+        const container = context.FindChildTraverse(ids[i]);
+        const board = valid(container) && container.FindChildTraverse("Scoreboard");
+        if (valid(board)) return board;
+    }
+    const board = context.FindChildTraverse("Scoreboard");
+    return valid(board) ? board : null;
+};
+const player_xuid = function(index) {
+    try {
+        const value = String(GameStateAPI.GetPlayerXuidStringFromEntIndex(index) || "");
+        return /^\d{17}$/.test(value) ? value : null;
+    } catch (_) { return null; }
+};
+const get_panel = function(xuid) {
+    const board = scoreboard();
+    if (!valid(board)) return null;
+    const rows = board.FindChildrenWithClassTraverse("sb-row") || [];
+    let row = null;
+    for (let i = 0; i < rows.length; i++) {
+        if (valid(rows[i]) && String(rows[i].GetAttributeString("xuid", "") || rows[i].m_xuid || "") === xuid) {
+            row = rows[i];
+            break;
+        }
+    }
+    if (!valid(row)) return null;
+    const current = entity_panels[xuid];
+    if (valid(current) && current.specter_row === row) return current;
+    destroy_panel(xuid);
+    const cells = row.Children() || [];
+    let parent = row;
+    for (let i = 0; i < cells.length; i++) {
+        if (valid(cells[i]) && cells[i].GetAttributeString("data-stat", "") === "rank") {
+            parent = cells[i];
+            break;
+        }
+    }
+    const panel = $.CreatePanel("Panel", parent, "specter-presence-" + xuid);
+    panel.specter_row = row;
+    panel.style.flowChildren = "right";
+    panel.style.marginLeft = "4px";
+    panel.style.verticalAlign = "center";
+    const image = $.CreatePanel("Image", panel, "specter-image");
+    image.style.width = "18px";
+    image.style.height = "18px";
+    const fallback = $.CreatePanel("Label", panel, "specter-fallback");
+    fallback.text = "S";
+    fallback.style.color = "#b4a0ff";
+    fallback.style.fontSize = "16px";
+    entity_panels[xuid] = panel;
+    return panel;
+};
+const apply_data = function() {
+    Object.keys(entity_data).forEach(function(key) {
+        const data = entity_data[key];
+        const xuid = player_xuid(parseInt(key, 10));
+        if (xuid == null) {
+            if (data.xuid) destroy_panel(data.xuid);
+            return;
+        }
+        if (data.xuid && data.xuid !== xuid) {
+            destroy_panel(data.xuid);
+            delete entity_data[key];
+            return;
+        }
+        const panel = get_panel(xuid);
+        if (!valid(panel)) return;
+        const image = panel.FindChild("specter-image");
+        const fallback = panel.FindChild("specter-fallback");
+        if (!valid(image) || !valid(fallback)) return;
+        image.visible = data.ready;
+        fallback.visible = !data.ready;
+        if (data.ready && image.specter_path !== data.path) {
+            image.SetImage(data.path);
+            image.specter_path = data.path;
+        }
+    });
+};
+const update = function(index, path, ready, expected_xuid) {
+    if (!index || index < 1 || index > 64) return false;
+    entity_data[index] = { path: path, ready: ready === true, xuid: expected_xuid || player_xuid(index) };
+    apply_data();
+    return true;
+};
+const clear = function() { entity_data = {}; destroy_panels(); };
+const destroy = function() {
+    clear();
+    Object.keys(event_callbacks).forEach(function(event) {
+        $.UnregisterForUnhandledEvent(event, event_callbacks[event]);
+        delete event_callbacks[event];
+    });
+};
+const create = function() {
+    Object.keys(event_callbacks).forEach(function(event) {
+        $.UnregisterForUnhandledEvent(event, event_callbacks[event]);
+    });
+    event_callbacks = {};
+    ["OnOpenScoreboard", "Scoreboard_UpdateEverything", "Scoreboard_UpdateJob"].forEach(function(event) {
+        event_callbacks[event] = $.RegisterForUnhandledEvent(event, apply_data);
+    });
+    apply_data();
+};
+return { create: create, destroy: destroy, clear: clear, update: update,
+    destroy_panel: destroy_panels, apply: apply_data };
 ]], "CSGOHud")()
 
 --- @endregion
@@ -805,7 +804,8 @@ local player_pose = {}
 local shared_data = {}
 local presence = { server = "https://specter-license-mh111-production.up.railway.app", next = 0, shown = {}, announced = {},
                    icon = "file://{images}/icons/specter_moon.png",
-                   version = info.plan }
+                   version = info.plan, epoch = 0, sequence = 0, failures = 0,
+                   icon_ready = false, icon_next = 0, last_success = nil }
 local animlayer_average_t = {}
 local cnl_material = {}
 local animlayer_rec_t = {}
@@ -2977,153 +2977,280 @@ presence.hash = function(s)
     return string.format("%08x%08x", h1, h2)
 end
 
-presence.steamid = function(player)
-    local ok, sid = pcall(player.get_steamids, player)
-    if (ok and type(sid) == "string" and sid:find("%d%d%d%d")) then
-        return sid
+-- Steam64 must never pass through a Lua double: it exceeds exact integer precision.
+presence.account_steam64 = function(account)
+    account = tonumber(account)
+    if (account == nil or account ~= account or account < 1 or account > 4294967295
+        or account ~= math.floor(account)) then return nil end
+    local base, add, out, carry = "76561197960265728", string.format("%.0f", account), {}, 0
+    for i = #base, 1, -1 do
+        local j = #add - (#base - i)
+        local value = tonumber(base:sub(i, i)) + (j > 0 and tonumber(add:sub(j, j)) or 0) + carry
+        out[i], carry = tostring(value % 10), math.floor(value / 10)
     end
-    return nil
+    return table.concat(out)
 end
-
--- the moon for the scoreboard, downloaded once into the game's panorama icons
+presence.normalize_id = function(value)
+    if (type(value) == "number") then return presence.account_steam64(value) end
+    if (type(value) ~= "string" and type(value) ~= "cdata") then return nil end
+    local text = tostring(value):gsub("ULL$", ""):gsub("LL$", ""):match("^%s*(.-)%s*$")
+    if (#text == 17 and text:match("^%d+$") and text > "76561197960265728"
+        and text <= "76561202255233023") then return text end
+    local parity, half = text:match("^STEAM_[01]:([01]):(%d+)$")
+    if (parity) then
+        half = tonumber(half)
+        return half and presence.account_steam64(half * 2 + tonumber(parity)) or nil
+    end
+    local account = text:match("^%[U:1:(%d+)%]$") or (#text <= 10 and text:match("^%d+$"))
+    return account and presence.account_steam64(account) or nil
+end
+presence.identity = function(player)
+    if (player == nil) then return nil end
+    local ok, first, second = pcall(function() return player:get_steamids() end)
+    local a, b = ok and presence.normalize_id(first) or nil, ok and presence.normalize_id(second) or nil
+    local sid = b or a
+    if (sid == nil) then
+        local api = libs.tools.js2 and libs.tools.js2.GameStateAPI
+        local success, value = pcall(function() return api.GetPlayerXuidStringFromEntIndex(player:get_index()) end)
+        sid = success and presence.normalize_id(value) or nil
+    end
+    if (sid == nil) then return nil end
+    local aliases, seen = { sid }, { [sid] = true }
+    for _, value in ipairs({ first or false, second or false }) do
+        if (type(value) == "string" and presence.normalize_id(value) == sid and not seen[value]) then
+            aliases[#aliases + 1], seen[value] = value, true
+        end
+    end
+    return { sid = sid, aliases = aliases }
+end
+presence.steamid = function(player)
+    local identity = presence.identity(player)
+    return identity and identity.sid or nil
+end
+presence.is_user = function(player)
+    local sid = presence.steamid(player)
+    for _, known in ipairs(esp.sync_user) do
+        if (sid ~= nil and sid == known) then return true end
+    end
+    return false
+end
+presence.refresh_icons = function()
+    for idx, row in pairs(presence.shown) do
+        pcall(libs.tools.js.update, idx, presence.icon, presence.icon_ready, row.sid)
+    end
+end
+-- An "S" badge remains visible while the moon is unavailable; retry image failures.
 presence.install_icon = function()
+    local now = globals.real_time()
+    if (now < presence.icon_next - 60) then presence.icon_next = 0 end
+    if (presence.icon_ready or presence.icon_busy or now < presence.icon_next) then return end
     local path = "materials/panorama/images/icons/specter_moon.png"
     local ok, exists = pcall(libs.filesystem.exists, path, "MOD")
     if (ok and exists) then
+        presence.icon_ready = true
+        presence.refresh_icons()
         return
     end
     pcall(libs.filesystem.create_directory, "materials/panorama/images/icons", "MOD")
-    pcall(libs.tools.http.download_image, libs.tools.http, presence.server .. "/moon.png", path)
+    presence.icon_busy, presence.icon_next = now, now + 30
+    local sent = pcall(libs.tools.http.download_image, libs.tools.http, presence.server .. "/moon.png", path,
+        function(success)
+            presence.icon_busy = nil
+            local checked, saved = pcall(libs.filesystem.exists, path, "MOD")
+            presence.icon_ready = success == true and checked and saved == true
+            if (presence.icon_ready) then presence.refresh_icons() end
+        end)
+    if (not sent) then presence.icon_busy = nil end
 end
-
--- forgets who was found (map change, game end, "Restart esp")
-presence.reset = function(announce)
-    presence.shown = {}
-    esp.sync_user = {}
-    for _, item in ipairs(shared_data) do
-        ui.nav.shared_esp.ref:remove_item(item)
-    end
-    shared_data = {}
+presence.clear_view = function()
+    presence.shown, esp.sync_user, shared_data = {}, {}, {}
+    pcall(ui.nav.shared_esp.ref.set_items, ui.nav.shared_esp.ref, {})
     pcall(libs.tools.js.clear)
-    pcall(libs.tools.js.destroy_panel)
+end
+-- Invalidates pending callbacks as well as clearing map-local UI state.
+presence.reset = function(announce)
+    presence.epoch, presence.sequence = presence.epoch + 1, presence.sequence + 1
+    presence.busy, presence.next, presence.last_success = nil, 0, nil
+    presence.announced, presence.failures = {}, 0
+    presence.clear_view()
     if (announce) then
         notifications.create("Specter", "Shared data has been reset!", notifications.types.success)
         print("shared data has been reset.")
     end
 end
-
--- the answer of the server: hash -> version of every Specter user among the players we asked about
+presence.failure = function(why)
+    local now = globals.real_time()
+    presence.failures = math.min(4, presence.failures + 1)
+    presence.next = now + math.min(30, 2 ^ presence.failures * 2)
+    presence.status = tostring(why)
+    if (presence.report) then
+        presence.report = false
+        notifications.create("Specter", "Shared ESP: " .. presence.status .. ".", notifications.types.warning)
+    end
+end
+-- Verify each returned slot against the identity captured when the request began.
 presence.apply = function(on, asked)
-    local found, changed = {}, false
-    for hash, idx in pairs(asked) do
-        if (on[hash] ~= nil) then
-            found[idx] = tostring(on[hash])
-            changed = changed or presence.shown[idx] == nil
-        end
-    end
-    for idx in pairs(presence.shown) do
-        changed = changed or found[idx] == nil
-    end
-
-    if (changed) then
-        presence.reset(false)
-        local names = {}
-        for idx, version in pairs(found) do
-            local player = entity_list_get_entity(idx)
-            local local_player = entity_list_get_local_player()
-            if (player ~= nil and local_player ~= nil and idx == local_player:get_index()) then
-                pcall(libs.tools.js.update, idx, presence.icon) -- our own row: the moon only
-                presence.shown[idx] = true
-            elseif (player ~= nil) then
-                local name = tostring(player:get_name())
-                pcall(libs.tools.js.update, idx, presence.icon)
-                ui.nav.shared_esp.ref:add_item(name .. " ~ " .. version)
-                shared_data[#shared_data + 1] = name .. " ~ " .. version
-                esp.sync_user[#esp.sync_user + 1] = presence.steamid(player)
-                presence.shown[idx] = true
-                if (not presence.announced[name]) then
-                    presence.announced[name] = true
-                    names[#names + 1] = name
+    local found, changed, names, unique = {}, false, {}, {}
+    local me = entity_list_get_local_player()
+    for hash, entry in pairs(asked) do
+        local version = on[hash]
+        if (version == "dev" or version == "beta" or version == "nightly") then
+            local player = entity_list_get_entity(entry.idx)
+            if (presence.steamid(player) == entry.sid) then
+                local previous = found[entry.idx]
+                if (previous == nil or entry.canonical) then
+                    found[entry.idx] = { sid = entry.sid, version = version, name = tostring(player:get_name()) }
                 end
             end
         end
-        if (#names > 0) then
-            notifications.create("Specter", "Specter user" .. (#names > 1 and "s" or "") .. " here: " .. table.concat(names, ", "), notifications.types.information)
-            print("found users who use Specter: ", get_text_color(), table.concat(names, ", "))
-        end
+        unique[entry.idx] = true
     end
-
+    for idx, row in pairs(found) do
+        local old = presence.shown[idx]
+        if (old == nil or old.sid ~= row.sid or old.name ~= row.name or old.version ~= row.version) then changed = true end
+    end
+    for idx in pairs(presence.shown) do if (found[idx] == nil) then changed = true end end
+    if (changed) then
+        presence.clear_view()
+        local order = {}
+        for idx in pairs(found) do order[#order + 1] = idx end
+        table.sort(order)
+        for _, idx in ipairs(order) do
+            local row = found[idx]
+            presence.shown[idx] = row
+            if (me == nil or idx ~= me:get_index()) then
+                shared_data[#shared_data + 1] = row.name .. " ~ " .. row.version
+                esp.sync_user[#esp.sync_user + 1] = row.sid
+                if (not presence.announced[row.sid]) then
+                    presence.announced[row.sid] = true
+                    names[#names + 1] = row.name
+                end
+            end
+        end
+        pcall(ui.nav.shared_esp.ref.set_items, ui.nav.shared_esp.ref, shared_data)
+        presence.refresh_icons()
+    end
+    if (#names > 0) then
+        notifications.create("Specter", "Specter users here: " .. table.concat(names, ", "), notifications.types.information)
+    end
     if (presence.report) then
         presence.report = false
-        local n = 0
-        for _ in pairs(asked) do
-            n = n + 1
-        end
-        if (#shared_data == 0) then
-            notifications.create("Specter", "No other Specter users in this game (" .. n .. " players asked"
-                .. (ui.utils.shared_esp:get() and ", you are visible" or ", turn Shared ESP on to be seen") .. ").",
-                notifications.types.information)
-        end
+        local count = 0
+        for _ in pairs(unique) do count = count + 1 end
+        local visible = me ~= nil and found[me:get_index()] ~= nil
+        local visibility = visible and "your badge is active"
+            or (ui.utils.shared_esp:get() and "your badge is not confirmed yet" or "your visibility is off")
+        notifications.create("Specter", "Shared ESP: " .. #shared_data .. " other user(s) found, " .. count
+            .. " player(s) checked; " .. visibility .. ".",
+            notifications.types.information)
     end
 end
-
 presence.update = function(force)
-    local now = globals.real_time()
-    if (presence.busy and now - presence.busy < 20 and now >= presence.busy) then
+    -- PAINT also calls this outside a match so disconnects invalidate late replies.
+    local connected = check_conditions()
+    if (not connected) then
+        if (presence.connected ~= false) then presence.reset(false) end
+        presence.connected = false
         return
     end
-    if (not force and now < presence.next and now > presence.next - 60) then
-        return
+    if (presence.connected == false) then presence.reset(false) end
+    presence.connected = true
+    local now, enabled = globals.real_time(), ui.utils.shared_esp:get()
+    if (presence.enabled ~= nil and enabled ~= presence.enabled) then presence.reset(false) end
+    presence.enabled = enabled
+    local map = engine_get_level_name and engine_get_level_name() or nil
+    if (presence.map ~= nil and map ~= presence.map) then presence.reset(false) end
+    presence.map = map
+    if (presence.last_success ~= nil and (now < presence.last_success or now - presence.last_success > 75)) then
+        presence.clear_view()
+        presence.last_success = nil
     end
-    presence.next = now + 30
-
+    if (presence.icon_busy and (now < presence.icon_busy or now - presence.icon_busy > 25)) then
+        presence.icon_busy = nil
+        presence.icon_next = 0
+    end
+    presence.install_icon()
+    if (presence.busy ~= nil) then
+        if (now >= presence.busy.time and now - presence.busy.time < 25) then return end
+        presence.sequence = presence.sequence + 1
+        presence.busy = nil
+        presence.failure("presence request timed out; retrying")
+    end
+    if (not force and now < presence.next and now > presence.next - 60) then return end
     local me = entity_list_get_local_player()
-    if (me == nil) then
+    local own = presence.identity(me)
+    if (me == nil or own == nil) then
+        if (next(presence.shown) ~= nil) then presence.clear_view() end
+        presence.next = now + 2
+        if (presence.report) then presence.failure("local Steam identity is not available yet; retrying") end
         return
     end
-    local asked, list = {}, {}
-    for _, player in pairs(entity_list_get_players() or {}) do
-        if (player:get_index() ~= me:get_index() and #list < 63) then
-            local sid = presence.steamid(player)
-            if (sid ~= nil) then
-                local hash = presence.hash(sid)
-                asked[hash] = player:get_index()
+    local asked, list, own_hash = {}, {}, enabled and presence.hash(own.sid) or nil
+    local function add(player, identity, aliases)
+        for i, sid in ipairs(identity.aliases) do
+            local hash = presence.hash(sid)
+            if ((aliases or i == 1) and asked[hash] == nil and #list < 64) then
+                asked[hash] = { idx = player:get_index(), sid = identity.sid, canonical = i == 1 }
                 list[#list + 1] = hash
             end
         end
     end
-
-    local own = presence.steamid(me)
-    if (ui.utils.shared_esp:get() and own ~= nil) then
-        local hash = presence.hash(own)
-        asked[hash] = me:get_index()
-        list[#list + 1] = hash
+    local peers = {}
+    if (enabled) then add(me, own, false) end
+    for _, player in pairs(entity_list_get_players() or {}) do
+        if (player:get_index() ~= me:get_index()) then
+            local identity = presence.identity(player)
+            if (identity ~= nil) then
+                add(player, identity, false)
+                peers[#peers + 1] = { player = player, identity = identity }
+            end
+        end
     end
-    local url = presence.server .. "/presence?t=" .. presence.version .. "&q=" .. table.concat(list, ",")
-    if (asked[list[#list]] == me:get_index()) then
-        url = url .. "&me=" .. list[#list]
-    end
-    presence.busy = now
-    libs.tools.http:get(url, function(response)
+    for _, peer in ipairs(peers) do add(peer.player, peer.identity, true) end
+    local version = presence.version == "beta" and "beta" or presence.version == "nightly" and "nightly" or "dev"
+    local url = presence.server .. "/presence?t=" .. version .. "&q=" .. table.concat(list, ",")
+    if (own_hash ~= nil) then url = url .. "&me=" .. own_hash end
+    presence.sequence = presence.sequence + 1
+    local request = { id = presence.sequence, epoch = presence.epoch, time = now, sid = own.sid, map = map }
+    presence.busy, presence.next = request, now + 30
+    local sent = pcall(libs.tools.http.get, libs.tools.http, url, function(response)
+        if (presence.busy ~= request or request.epoch ~= presence.epoch) then return end
         presence.busy = nil
-        local ok, data = pcall(libs.json.parse, response.body or "")
-        if (ok and type(data) == "table" and type(data.on) == "table") then
+        local current = entity_list_get_local_player()
+        if (not check_conditions() or presence.steamid(current) ~= request.sid or ui.utils.shared_esp:get() ~= enabled
+            or (engine_get_level_name and engine_get_level_name() ~= request.map)) then
+            presence.clear_view()
+            presence.next = 0
+            return
+        end
+        local ok, data = pcall(libs.json.parse, response and response.body or "")
+        if (ok and type(data) == "table" and data.ok == true and type(data.on) == "table") then
+            presence.last_success, presence.failures, presence.status = globals.real_time(), 0, "online"
             presence.apply(data.on, asked)
-        elseif (presence.report) then
-            -- "Refresh players" says why nothing shows (owners, Oct 2026: "a shared esp nem működik")
-            presence.report = false
-            local why = (ok and type(data) == "table" and data.reason) or (response.body == nil and "no answer") or "bad answer"
-            notifications.create("Specter", "User detection: the server did not answer (" .. tostring(why) .. ").",
-                notifications.types.warning)
-            print("user detection failed: ", get_text_color(), tostring(why))
+            -- Older scripts hash their primary Steam string. Register that alias
+            -- as well while migrating, without sending a raw Steam ID or name.
+            if (enabled and own.aliases[2] ~= nil) then
+                local legacy = presence.hash(own.aliases[2])
+                pcall(libs.tools.http.get, libs.tools.http, presence.server .. "/presence?t=" .. version
+                    .. "&q=&me=" .. legacy, function() end)
+            end
+        else
+            local why = ok and type(data) == "table" and data.reason or (response == nil and "no answer") or "bad answer"
+            presence.failure("server error (" .. tostring(why) .. "); retrying")
         end
     end)
+    if (not sent) then
+        presence.busy = nil
+        presence.failure("could not send presence request; retrying")
+    end
 end
 
 on_shared_players = function()
     if (check_conditions()) then
         presence.report = true
         presence.update(true)
+    else
+        notifications.create("Specter", "Shared ESP: join a game before refreshing players.", notifications.types.information)
     end
 end
 
@@ -3132,32 +3259,11 @@ on_shared_esp = function(announce)
 end
 
 on_chatsync = function(event)
-    if (ui.utils.synced_players:get(3)) then
-        local entity = entity_list_get_player_from_userid(event.userid)
-        if (entity ~= nil) then
-            if (entity:get_steamids() ~= entity_list_get_local_player():get_steamids()) then
-                local steamid, _ = entity:get_steamids()
-                local is_sync = false
-
-                for i = 1, #esp.sync_user do
-                    local chat_sync = esp.sync_user[i]
-                    if (chat_sync == steamid) then
-                        is_sync = true
-                    end
-                end
-
-                if (is_sync) then
-                    chat_print("{blue}[{lightgreen}Specter{blue}]{white}:{yellow} A user said something on the chat{white}!")
-                end
-                return
-            else
-                return
-            end
-        else
-            return
-        end
-    else
-        return
+    if (not ui.utils.synced_players:get(3)) then return end
+    local entity = entity_list_get_player_from_userid(event.userid)
+    local me = entity_list_get_local_player()
+    if (entity ~= nil and me ~= nil and entity:get_index() ~= me:get_index() and presence.is_user(entity)) then
+        chat_print("{blue}[{lightgreen}Specter{blue}]{white}:{yellow} A user said something on the chat{white}!")
     end
 end
 
@@ -4084,16 +4190,9 @@ on_talkback = function(event)
     if (ui.player.talk_back:get()) then
         local entity = entity_list_get_player_from_userid(event.userid)
         if (entity ~= nil) then
-            if (entity:get_steamids() ~= entity_list_get_local_player():get_steamids()) then
-                local steamid, _ = entity:get_steamids()
-                local is_sync = false
-
-                for i = 1, #esp.sync_user do
-                    local chat_sync = esp.sync_user[i]
-                    if (chat_sync == steamid) then
-                        is_sync = true
-                    end
-                end
+            local me = entity_list_get_local_player()
+            if (me ~= nil and entity:get_index() ~= me:get_index()) then
+                local is_sync = presence.is_user(entity)
 
                 if (is_sync) then
                     if (ui.utils.synced_players:get(2)) then
@@ -8781,6 +8880,7 @@ do_paint = function()
 
         perf.span("game handle", game_handle)
         perf.span("menu handle", menu_handle)
+        perf.span("presence", lets_sync)
 
         if (engine_is_in_game() and engine_is_connected()) then
             perf.span("clantag", run_clantag)
@@ -8789,7 +8889,6 @@ do_paint = function()
         if (check_conditions()) then
             local local_player = entity_list_get_local_player()
 
-            perf.span("presence", lets_sync)
             perf.span("hit logs", handle_logs)
         
             if (local_player:is_alive()) then
