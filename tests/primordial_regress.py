@@ -148,40 +148,5 @@ check("/verify?key=" in LOADER and "/script?key=" in LOADER and 'plan:find("^pm_
       "loader: verify -> script, only pm_ keys")
 check("[resolver:begin]" not in LOADER and "shotlog" not in LOADER, "loader carries no script code")
 
-# the dev loader (specter_primordial_dev_loader.lua): newest main build, saved copy when GitHub does not answer
-DEV = open(os.path.join(ROOT, "specter_primordial_dev_loader.lua"), encoding="utf-8").read()
-ok, err = compiles(DEV)
-check(ok, "dev loader compiles under LuaJIT" + ("" if ok else ": " + str(err)))
-check("/dev/script?token=" in DEV and "%%DEV_TOKEN%%" in DEV and "/verify" not in DEV,
-      "dev loader: the server's dev build with the token the bot writes in, no key")
-dev_rt = L.LuaRuntime(unpack_returned_tuples=True)
-DEV_RUN = dev_rt.eval("""function(src, reply, cached)
-    RAN = nil   -- the downloaded chunk runs in the real globals (loadstring), not in g
-    local env = { logs = {}, files = { ["specter/specter_primordial_dev_cache.lua"] = cached }, urls = {} }
-    local g = setmetatable({}, { __index = _G })
-    g.client = { log = function(m) env.logs[#env.logs + 1] = m end, get_unix_time = function() return 1000 end }
-    g.SPECTER_DEV_TEST_IO = {
-        get = function(url, cb) env.urls[#env.urls + 1] = url; cb(reply) end,
-        read = function(name) return env.files[name] end,
-        write = function(name, body) env.files[name] = body end,
-    }
-    local f = assert(loadstring(src, "@dev_loader"))
-    setfenv(f, g)
-    f()
-    env.ran = g.RAN
-    env.saved = env.files["specter/specter_primordial_dev_cache.lua"]
-    return env
-end""")
-script = "RAN = '%s'\n" + "-- padding\n" * 300
-e = DEV_RUN(DEV, script % "new", script % "old")
-check(e.ran == "new" and e.saved == script % "new" and "/dev/script?token=" in e.urls[1],
-      "dev loader: downloads, runs and saves the newest build")
-e = DEV_RUN(DEV, None, script % "old")
-check(e.ran == "old", "dev loader: GitHub down -> the saved copy runs")
-e = DEV_RUN(DEV, "not found", script % "old")
-check(e.ran == "old" and e.saved == script % "old", "dev loader: an error page is not run and not saved")
-e = DEV_RUN(DEV, None, None)
-check(e.ran is None and any("no saved copy" in str(m) for m in e.logs.values()), "dev loader: nothing at all -> says so")
-
 print("\n%d failed" % len(FAILS) if FAILS else "\nall passed")
 sys.exit(1 if FAILS else 0)

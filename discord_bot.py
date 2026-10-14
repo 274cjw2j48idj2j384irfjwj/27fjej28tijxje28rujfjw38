@@ -25,7 +25,7 @@ ENV VARS (set in Discord bot host or .env):
                         below also gets its own GitHub API limit (without it: 60 calls / hour per IP, shared on Railway)
   RELEASE_CHANNEL     — staff channel (name or id) new script versions are posted in (default: staff). Only posted when
                         neither @everyone nor a member / customer / plan role can read it
-  RELEASE_FILES       — files posted there when a new commit changes them (default: specter_dev.lua, specter_primordial.lua, specter_primordial_dev_loader.lua)
+  RELEASE_FILES       — files posted there when a new commit changes them (default: specter_dev.lua, specter_primordial.lua)
   RELEASE_MINUTES     — how often GitHub is checked (default: 5, 0 = only /release_check)
   AUTO_UPLOAD         — 1 (default): a new specter_cloud.lua of CLOUD_BRANCH goes to the license server by itself (every
                         plan; the loader downloads it from there), 0: only /script_upload
@@ -1269,41 +1269,6 @@ def primordial_builds(raw_text: str) -> dict[str, str]:
     return {"pm_nightly": strip_lua_comments(raw_text), "pm_beta": strip_lua_comments(make_primordial_beta(raw_text))}
 
 
-def dev_token() -> str:
-    """The token of GET /dev/script (server.js computes the same from ADMIN_SECRET; "" = off)."""
-    if ADMIN_SECRET == "change_this_secret_now":
-        return ""
-    return hashlib.sha256(f"specter-dev|{ADMIN_SECRET}".encode()).hexdigest()[:32]
-
-
-DEV_LOADER_FILE = "specter_primordial_dev_loader.lua"
-
-
-def release_body(path: str, body: bytes) -> bytes:
-    """What goes into #staff: the Primordial dev loader gets the dev token (the repo has a placeholder)."""
-    if path.rsplit("/", 1)[-1] == DEV_LOADER_FILE:
-        return body.replace(b"%%DEV_TOKEN%%", dev_token().encode())
-    return body
-
-
-async def sync_primordial_dev() -> list[str]:
-    """The newest specter_primordial.lua of SCRIPT_BRANCH (main) -> the server as pm_dev, for the owners' dev loader."""
-    if not dev_token():
-        return []
-    try:
-        ver = await newest_version(PRIMORDIAL_FILE, SCRIPT_BRANCH)
-    except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError) as e:
-        return [f"`{PRIMORDIAL_FILE}` (dev): {e}"]
-    body = ver["body"].decode("utf-8", "replace")
-    if not ver["stripped"] or not is_primordial_script(body):
-        return []
-    have = await server_script_hashes()
-    if have is not None and have.get("pm_dev") == hashlib.sha256(ver["body"]).hexdigest():
-        return []
-    lines, _ = await upload_script(body, ["pm_dev"])
-    return [f"primordial dev build `{ver['hash'][:7]}` to the server: " + " ".join(lines)]
-
-
 def is_primordial_script(text: str) -> bool:
     """specter_primordial.lua (Primordial API, the eui menu), not the gamesense script or a loader."""
     return "e_callbacks" in text and "libs.eui" in text and "_specter_loader_loaded" not in text and "AUTH GATE" not in text
@@ -1448,7 +1413,7 @@ def _env_int(name: str, default: int) -> int:
 
 RELEASE_CHANNEL = _env("RELEASE_CHANNEL", "staff")
 UPDATES_CHANNEL = _env("UPDATES_CHANNEL", "updates")
-RELEASE_FILES   = [f.strip() for f in _env("RELEASE_FILES", "specter_dev.lua,specter_primordial.lua,specter_primordial_dev_loader.lua").split(",") if f.strip()]
+RELEASE_FILES   = [f.strip() for f in _env("RELEASE_FILES", "specter_dev.lua,specter_primordial.lua").split(",") if f.strip()]
 RELEASE_MINUTES = _env_int("RELEASE_MINUTES", 5)
 AUTO_UPLOAD     = _env("AUTO_UPLOAD", "1").lower() not in ("0", "false", "off", "no")
 AUTO_PANELS     = _env("AUTO_PANELS", "1").lower() not in ("0", "false", "off", "no")
@@ -1667,7 +1632,7 @@ async def check_releases(force: bool = False) -> list[str]:
                     continue
                 try:
                     msg = await ch.send(embed=release_embed(path, ver),
-                                        file=discord.File(io.BytesIO(release_body(path, ver["body"])), filename=path.rsplit("/", 1)[-1]))
+                                        file=discord.File(io.BytesIO(ver["body"]), filename=path.rsplit("/", 1)[-1]))
                 except discord.HTTPException as e:
                     report.append(f"`{path}`: could not post in {ch.mention}: {e}")
                     continue
@@ -1842,10 +1807,6 @@ async def release_loop():
             report += await sync_shotlogs()
         except Exception as e:
             report.append(f"shot logs failed: {e!r}")
-        try:
-            report += await sync_primordial_dev()
-        except Exception as e:
-            report.append(f"primordial dev build failed: {e!r}")
         for line in report:
             if "posted in" in line or "to the server" in line or line not in last:
                 print(f"[release] {line}", flush=True)
