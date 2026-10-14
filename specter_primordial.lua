@@ -3129,7 +3129,11 @@ presence.apply = function(on, asked)
         local names = {}
         for idx, version in pairs(found) do
             local player = entity_list_get_entity(idx)
-            if (player ~= nil) then
+            local local_player = entity_list_get_local_player()
+            if (player ~= nil and local_player ~= nil and idx == local_player:get_index()) then
+                pcall(libs.tools.js.update, idx, presence.icon) -- our own row: the moon only
+                presence.shown[idx] = true
+            elseif (player ~= nil) then
                 local name = tostring(player:get_name())
                 pcall(libs.tools.js.update, idx, presence.icon)
                 ui.nav.shared_esp.ref:add_item(name .. " ~ " .. version)
@@ -3172,7 +3176,7 @@ presence.update = function(force)
     end
     local asked, list = {}, {}
     for _, player in pairs(entity_list_get_players() or {}) do
-        if (player:get_index() ~= me:get_index() and #list < 64) then
+        if (player:get_index() ~= me:get_index() and #list < 63) then
             local sid = presence.steamid(player)
             if (sid ~= nil) then
                 local hash = presence.hash(sid)
@@ -3182,10 +3186,15 @@ presence.update = function(force)
         end
     end
 
-    local url = presence.server .. "/presence?t=" .. presence.version .. "&q=" .. table.concat(list, ",")
     local own = presence.steamid(me)
     if (ui.utils.shared_esp:get() and own ~= nil) then
-        url = url .. "&me=" .. presence.hash(own)
+        local hash = presence.hash(own)
+        asked[hash] = me:get_index()
+        list[#list + 1] = hash
+    end
+    local url = presence.server .. "/presence?t=" .. presence.version .. "&q=" .. table.concat(list, ",")
+    if (asked[list[#list]] == me:get_index()) then
+        url = url .. "&me=" .. list[#list]
     end
     presence.busy = now
     libs.tools.http:get(url, function(response)
@@ -4403,6 +4412,7 @@ end
 
 --- @info: resolver: side from freestanding / jitter, learned per player and state from hits and misses
 --- @region: resolver
+-- [pm-resolver:begin] the loader's beta version is built without this part (make_primordial_beta in discord_bot.py)
 
 -- Primordial's own resolver does the resolving (its animation fix and records; no workshop lua writes an enemy's feet
 -- yaw, and the lua has no hook into it). This block adds what the API allows: resolver misses per player -> head safe
@@ -4765,6 +4775,7 @@ lets_resolve = function()
         end
     end
 end
+-- [pm-resolver:end]
 
 --- @endregion
 

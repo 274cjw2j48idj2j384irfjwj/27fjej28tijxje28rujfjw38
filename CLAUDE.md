@@ -149,7 +149,8 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   counts every command), answers `{on: {hash: version}}`. Found players: the moon on the scoreboard (the old panorama JS
   `libs.tools.js`, image `file://{images}/icons/specter_moon.png`, downloaded once from `GET /moon.png` into
   csgo/materials/panorama/images/icons/), a row "name ~ version" in Specter Revealer, a notification once per name,
-  `esp.sync_user` (talk back / chat mention). The dead azura sync socket is gone.
+  `esp.sync_user` (talk back / chat mention). With Shared ESP on our own row gets the moon too (owners: "ha csak én vagyok
+  fent ... nem jelzi"; our hash goes into `q` as well, icon only, no list row / notification). The dead azura sync socket is gone.
 - Loader + versions (owners, Oct 2026: "beta és nightly ... a bétaba nincs resolver, a ragebot Helper maradhat"):
   `specter_primordial_loader.lua` (key text input + Login, the key saved in csgo/specter/key.txt and used at the next
   start, HWID = hash of the C: volume serial + computer name, steam http + filesystem libs copied from the script):
@@ -158,8 +159,11 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   "dev" without a key): beta has no Resolver page (nav sub removed, groups hidden) and no lua resolver (`lets_resolve`
   off = Primordial's own resolver, no HITSCAN safe point); Helpers stay. With a key no shot logs are sent. Upload:
   `/primordial_upload [file] [branch]`, and `sync_primordial` puts specter_primordial.lua of CLOUD_BRANCH on the server
-  for both plans (no post anywhere: the Primordial lua is not out yet; main never reaches the server). The script has no
-  auth gate (it is also the #staff dev build): a beta key holder who dumps it gets the whole script.
+  (no post anywhere: the Primordial lua is not out yet; main never reaches the server). pm_beta gets ITS OWN file (owners:
+  "a beta külön fájlt kapjon"): `primordial_builds` / `make_primordial_beta` in the bot cut everything between
+  `-- [pm-resolver:begin]` and `-- [pm-resolver:end]` (the whole resolver logic) and put `PM_BETA_STUB` (same names, does
+  nothing) there, before the comments are stripped. Keep the markers; nothing outside them may use the resolver's
+  internals (res_*, RES_*, resolver.update / freestand / ...). The script has no auth gate (it is also the #staff dev build).
 - Primordial API: docs.primordial.dev is blocked from the cloud container; the leaked workshop luas
   (github.com/DuckOpenSourceFoundation/femordial-workshop-luas) show the calls. ANTIAIM ctx: set_yaw, set_pitch,
   set_desync (-1..1), set_invert_desync, set_fakelag, set_body_lean; desync side items: none, left, right, jitter, peek

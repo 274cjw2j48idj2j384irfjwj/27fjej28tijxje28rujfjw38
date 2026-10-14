@@ -51,6 +51,21 @@ check(r[1], "specter_primordial.lua without comments (the #staff post) compiles 
 for gone in ("udp_connect", "auth.check_user", "send_logs", "sigmoid_adjustment", "resolver_helper", "cmd.tick_count ="):
     check(gone not in SRC, "no %s (login / server / old random resolver / tick count override)" % gone)
 
+# the loader's two versions, built like the bot does (primordial_builds): beta has no resolver code at all
+tree = ast.parse(open(os.path.join(ROOT, "discord_bot.py"), encoding="utf-8").read())
+want = {"strip_lua_comments", "make_primordial_beta", "primordial_builds", "PM_BETA_STUB"}
+body = [n for n in tree.body if (isinstance(n, ast.FunctionDef) and n.name in want)
+        or (isinstance(n, ast.Assign) and any(getattr(t, "id", "") in want for t in n.targets))]
+ns = {"re": re}
+exec(compile(ast.Module(body=body, type_ignores=[]), "builds", "exec"), ns)
+builds = ns["primordial_builds"](SRC)
+for plan in ("pm_nightly", "pm_beta"):
+    r = compiles(builds[plan])
+    check(r[1], "%s build compiles (%s)" % (plan, r[2]))
+check("resolver.update = function" in builds["pm_nightly"] and "resolver.update = function" not in builds["pm_beta"]
+      and "RES_NOCHOKE" not in builds["pm_beta"] and "lets_resolve = function() end" in builds["pm_beta"],
+      "pm_beta: the resolver code is cut out (a stub with the same names), pm_nightly keeps it")
+
 # ── menu: four main points, the pages of the active one ───────────────
 
 NAV = chunk("-- menu (owners, Oct 2026): four main points", "--- @endregion")
