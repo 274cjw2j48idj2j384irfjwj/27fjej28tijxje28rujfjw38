@@ -449,12 +449,31 @@ function config_author(license, key) {
 
 // ── GET /configs ──────────────────────────────────────────────────────────
 // Returns all public cloud configs
+// ?lua=pm: the Primordial lua's configs (name / author / time only, the data through /configs/get); without it the
+// gamesense ones with their data, like before (a Primordial config can not be imported by the gamesense lua)
+const config_lua = q => (q === 'pm' ? 'pm' : 'gs')
 app.get('/configs', async (req, res) => {
     try {
         const data = await redis.get('specter:configs') || []
-        res.json(data)
+        if (config_lua(req.query.lua) === 'pm')
+            return res.json(data.filter(c => c.lua === 'pm').map(c => ({ name: c.name, author: c.author, ts: c.ts })))
+        res.json(data.filter(c => (c.lua || 'gs') === 'gs'))
     } catch(e) {
         res.json([])
+    }
+})
+
+// ── GET /configs/get — one config's data (the Primordial lua loads it by name + author) ──
+app.get('/configs/get', async (req, res) => {
+    const { name, author } = req.query
+    const lua = config_lua(req.query.lua)
+    try {
+        const data = await redis.get('specter:configs') || []
+        const c = data.find(c => c.name === name && c.author === author && (c.lua || 'gs') === lua)
+        if (!c) return res.status(404).json({ ok: false, reason: 'not_found' })
+        res.json({ ok: true, name: c.name, author: c.author, data: c.data })
+    } catch(e) {
+        res.status(500).json({ ok: false, reason: 'server_error' })
     }
 })
 
@@ -479,7 +498,7 @@ app.get('/configs/upload', async (req, res) => {
     const author = config_author(license, key)
     try {
         let configs = await redis.get('specter:configs') || []
-        configs = configs.filter(c => !(c.name === name && c.author === author))
+        configs = configs.filter(c => !(c.name === name && c.author === author && (c.lua || 'gs') === 'gs'))
         if (configs.length >= 200) configs = configs.slice(-199)
         configs.push({ name, author, data, plan: license.plan, ts: Date.now() })
         await redis.set('specter:configs', configs)
@@ -519,7 +538,7 @@ app.get('/configs/upload_part', async (req, res) => {
     if (license.hwid !== hwid) return res.status(403).json({ ok: false, reason: 'hwid_mismatch' })
 
     // the first part always starts a fresh upload, so an abandoned one cannot mix into the next
-    const id = `${key}|${name}`
+    const id = `${key}|${name}|${config_lua(req.query.lua)}`
     let u = uploads.get(id)
     if (!u || idx === 0 || u.total !== total) {
         u = { total, parts: new Array(total).fill(null), ts: Date.now() }
@@ -536,13 +555,15 @@ app.get('/configs/upload_part', async (req, res) => {
         return res.status(400).json({ ok: false, reason: 'invalid_data' })
 
     const author = config_author(license, key)
+    const lua = config_lua(req.query.lua)
     try {
         let configs = await redis.get('specter:configs') || []
-        configs = configs.filter(c => !(c.name === name && c.author === author))
+        configs = configs.filter(c => !(c.name === name && c.author === author && (c.lua || 'gs') === lua))
         if (configs.length >= 200) configs = configs.slice(-199)
-        configs.push({ name, author, data, plan: license.plan, ts: Date.now() })
+        configs.push(lua === 'pm' ? { name, author, data, plan: license.plan, ts: Date.now(), lua }
+                                  : { name, author, data, plan: license.plan, ts: Date.now() })
         await redis.set('specter:configs', configs)
-        console.log(`[CONFIG UPLOAD] ${name} by ${author} (${total} parts)`)
+        console.log(`[CONFIG UPLOAD] ${name} by ${author} (${total} parts, ${lua})`)
         res.json({ ok: true, done: true, name, author })
     } catch (e) {
         res.status(500).json({ ok: false, reason: 'server_error' })
@@ -574,7 +595,7 @@ app.post('/configs', async (req, res) => {
     try {
         let configs = await redis.get('specter:configs') || []
         // prevent duplicates by same author+name
-        configs = configs.filter(c => !(c.name === cfg_name && c.author === author))
+        configs = configs.filter(c => !(c.name === cfg_name && c.author === author && (c.lua || 'gs') === 'gs'))
         // max 200 total configs
         if (configs.length >= 200)
             configs = configs.slice(configs.length - 199)
@@ -603,10 +624,11 @@ app.get('/configs/delete', async (req, res) => {
     if (!license || license.revoked) return res.status(403).json({ ok: false, reason: 'invalid_key' })
     if (license.hwid !== hwid) return res.status(403).json({ ok: false, reason: 'hwid_mismatch' })
     const author = config_author(license, key)
+    const lua = config_lua(req.query.lua)
     try {
         let configs = await redis.get('specter:configs') || []
         const before = configs.length
-        configs = configs.filter(c => !(c.name === name && c.author === author))
+        configs = configs.filter(c => !(c.name === name && c.author === author && (c.lua || 'gs') === lua))
         if (configs.length === before) return res.json({ ok: false, reason: 'not_found' })
         await redis.set('specter:configs', configs)
         console.log(`[CONFIG DELETE] ${name} by ${author}`)

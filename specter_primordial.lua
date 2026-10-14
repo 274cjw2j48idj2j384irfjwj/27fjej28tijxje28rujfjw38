@@ -282,63 +282,6 @@ let event_callbacks = {}
 	}
 ]], "CSGOHud")()
 
-xor_encrypt = function(data, key)
-    local result = {}
-    
-    local key_length = #key
-    local data_length = #data
-
-    for i = 1, data_length do
-        local data_byte = string.byte(data, i)
-        local xor_result = data_byte
-
-        for round = 1, 3 do
-            local key_byte = string.byte(key, (i + round - 1) % key_length + 1)
-            xor_result = bit.bxor(xor_result, key_byte)
-        end
-        table.insert(result, string.char(xor_result))
-    end
-    return table.concat(result)
-end
-
-generate_key = function(length)
-    local key = {}
-
-    math.randomseed(globals.tick_count())
-    for i = 1, length do
-        key[i] = string.char(math.random(0, 255))
-    end
-
-    local stretched_key = table.concat(key)
-    for i = 1, 1000 do
-        stretched_key = xor_encrypt(stretched_key, stretched_key)
-    end
-    return stretched_key
-end
-
-encode = function(text)
-    local key = generate_key(16)
-    local salt = generate_key(8)
-    local iv = generate_key(8)
-
-    local base64_text = libs.base64.encode(text)
-    local xor_result = xor_encrypt(base64_text, salt)
-
-    local final_data = iv .. salt .. xor_result
-    return libs.base64.encode(final_data)
-end
-
-decode = function(text)
-    local decoded_text = libs.base64.decode(text)
-
-    local iv = decoded_text:sub(1, 8)
-    local salt = decoded_text:sub(9, 16)
-    local xor_encrypted = decoded_text:sub(17)
-
-    local decoded_base64 = xor_encrypt(xor_encrypted, salt)
-    return libs.base64.decode(decoded_base64)
-end
-
 --- @endregion
 
 --- @info: shit codes
@@ -693,12 +636,6 @@ end
 
 --- @endregion
 
--- offline: no Specter server, the cloud / sync sockets send nothing and receive nothing
-local offline_client = {
-    send = function(data) end,
-    receive = function(buffer_size) return nil end
-}
-local app_client = offline_client
 
 --- @info: authentication
 --- @region: main cloud
@@ -2503,281 +2440,216 @@ configs.reload_configs = function()
     ui.configs.list.ref:set_items(libs.filesystem.get_files())
 end
 
-configs.reload_cloud_configs = function()
-    local encoded_data = {
-        type = "refresh_list",
-        is_beta = tostring(info.beta_build)
-    }
-    app_client.send(libs.json.encode(encoded_data))
+-- cloud configs (owners, Oct 2026: "a cloud cfg ... nem működik"): the old azura.uno socket is gone, the configs are on
+-- our license server next to the gamesense lua's (lua=pm keeps them apart). The list and loading need nothing; sharing,
+-- updating and deleting need the key: the Primordial loader keeps it in csgo/specter/key.txt (the dev build reads it
+-- from there too), the HWID is the loader's (the server locked the key to it). A config goes up in 3000 char parts
+-- (a URL can not carry it whole): part 0 first (it starts the upload on the server), then the rest together
+local cloud = { items = {}, part = 3000 }
 
-    local response_success, response_result = app_client.receive(65535)
-    if (not response_success) then
-        notifications.create("Specter", "Cloud is offline!", notifications.types.warning)
+cloud.url = function(s)
+    return (tostring(s):gsub("([^%w%-_.~])", function(c) return string.format("%%%02X", c:byte()) end))
+end
+
+-- the HWID of the Primordial loader (same text, same hash)
+cloud.hwid = function()
+    local raw = "specter-pm"
+    pcall(ffi.cdef, [[
+        int GetVolumeInformationA(const char*, char*, unsigned long, unsigned long*, unsigned long*, unsigned long*, char*, unsigned long);
+        int GetComputerNameA(char*, unsigned long*);
+    ]])
+    pcall(function()
+        local serial = ffi.new("unsigned long[1]")
+        if (ffi.C.GetVolumeInformationA("C:\\", nil, 0, serial, nil, nil, nil, 0) ~= 0) then
+            raw = raw .. "|" .. tostring(tonumber(serial[0]))
+        end
+        local name, size = ffi.new("char[256]"), ffi.new("unsigned long[1]", 256)
+        if (ffi.C.GetComputerNameA(name, size) ~= 0) then
+            raw = raw .. "|" .. ffi.string(name)
+        end
+    end)
+    local h1, h2 = 5381, 52711
+    for i = 1, #raw do
+        local c = raw:byte(i)
+        h1 = (h1 * 33 + c) % 4294967296
+        h2 = (h2 * 31 + c * 7) % 4294967296
+    end
+    return string.format("PM-%08X%08X", h1, h2)
+end
+
+-- "&key=..&hwid=.." for the server, nil (and a message) without a saved key
+cloud.auth = function()
+    local ok, exists = pcall(libs.filesystem.exists, "specter/key.txt", "MOD")
+    local key = ""
+    if (ok and exists) then
+        local ok2, text = pcall(libs.filesystem.read, "specter/key.txt")
+        key = ok2 and tostring(text):match("^%s*(.-)%s*$") or ""
+    end
+    if (key == "") then
+        notifications.create("Specter", "Log in once with the Specter loader to share configs (your key is saved then).",
+            notifications.types.warning)
+        return nil
+    end
+    return "&key=" .. cloud.url(key) .. "&hwid=" .. cloud.url(cloud.hwid())
+end
+
+-- GET from the server, the callback gets the parsed JSON (nil when the server did not answer / sent no JSON)
+cloud.get = function(path, callback)
+    libs.tools.http:get(presence.server .. path, function(response)
+        local ok, data = pcall(libs.json.parse, response.body or "")
+        callback((ok and type(data) == "table") and data or nil)
+    end)
+end
+
+-- the selected row of the cloud list: { name, author }
+cloud.selected = function()
+    local ok, item = pcall(ui.configs.cloud_list.ref.get_active_item_name, ui.configs.cloud_list.ref)
+    return ok and cloud.items[item] or nil
+end
+
+configs.reload_cloud_configs = function(report)
+    cloud.get("/configs?lua=pm", function(list)
+        if (list == nil) then
+            if (report) then
+                notifications.create("Specter", "The cloud did not answer, try again.", notifications.types.warning)
+            end
+            return
+        end
+        table.sort(list, function(x, y) return (x.ts or 0) > (y.ts or 0) end)
+        local rows = {}
+        cloud.items = {}
+        for _, c in ipairs(list) do
+            if (type(c.name) == "string" and type(c.author) == "string") then
+                local row = c.author .. " ~ " .. c.name
+                cloud.items[row] = { name = c.name, author = c.author }
+                rows[#rows + 1] = row
+            end
+        end
+        ui.configs.cloud_list.ref:set_items(rows)
+        if (report) then
+            notifications.create("Specter", #rows .. " cloud config" .. (#rows == 1 and "" or "s") .. ".", notifications.types.information)
+        end
+    end)
+end
+
+-- the current settings to the cloud under `name` (a config of ours with that name is replaced)
+cloud.upload = function(name)
+    name = tostring(name or ""):match("^%s*(.-)%s*$")
+    if (name == "" or #name > 32) then
+        notifications.create("Specter", "Pick a config name (1-32 characters).", notifications.types.warning)
         return
     end
-
-    local decode_success, decode_result = libs.json.parse(response_success)
-    if (not decode_success) then
-        print("connection has failed. ", get_text_color(), "(error parsing response)")
-        error("specter · an internal error has occurred ~ 0xA9EFD4")
+    local auth = cloud.auth()
+    if (auth == nil) then
+        return
     end
-
-    if (decode_success.status == "refresh_list") then
-        local decoded_data = decode(decode_success.encrypted_data)
-        local data = libs.json.parse(decoded_data)
-
-        if (data) then
-            ui.configs.cloud_list.ref:set_items(data or {})
-        else
-            print("connection has failed. ", get_text_color(), "(error parsing data)")
-            error("specter · an internal error has occurred ~ 0x2C4E78")
+    local ok, config_table = pcall(libs.json.parse, libs.eui.export())
+    if (not ok or type(config_table) ~= "table") then
+        notifications.create("Specter", "Unable to export the config!", notifications.types.failure)
+        return
+    end
+    config_table["System"] = { { "version", config_version }, { "build", config_build } }
+    local data = libs.base64.encode(libs.json.encode(config_table))
+    local parts = {}
+    for i = 1, #data, cloud.part do
+        parts[#parts + 1] = data:sub(i, i + cloud.part - 1)
+    end
+    local base = "/configs/upload_part?lua=pm" .. auth .. "&name=" .. cloud.url(name) .. "&total=" .. #parts
+    local done = false
+    local function finished(res)
+        if (done or res == nil) then
+            return
         end
-    else
-        print("connection has failed. ", get_text_color(), "(unexpected response)")
-        error("specter · an internal error has occurred ~ 0xFF9847")
+        if (res.ok == false) then
+            done = true
+            notifications.create("Specter", "The cloud refused the config (" .. tostring(res.reason) .. ").", notifications.types.failure)
+        elseif (res.done) then
+            done = true
+            notifications.create("Specter", "Config \"" .. name .. "\" shared to the cloud by " .. tostring(res.author) .. ".",
+                notifications.types.success)
+            configs.reload_cloud_configs()
+        end
     end
+    notifications.create("Specter", "Uploading the config to the cloud...", notifications.types.information)
+    cloud.get(base .. "&idx=0&data=" .. cloud.url(parts[1]), function(res)
+        finished(res)
+        if (done or res == nil) then
+            if (res == nil) then
+                notifications.create("Specter", "The cloud did not answer, try again.", notifications.types.warning)
+            end
+            return
+        end
+        for i = 2, #parts do
+            cloud.get(base .. "&idx=" .. (i - 1) .. "&data=" .. cloud.url(parts[i]), finished)
+        end
+    end)
 end
 
 ui.reload_cloud_config = menu_add_button("Cloud configs", "Refresh",
     function()
-        configs.reload_cloud_configs()
+        configs.reload_cloud_configs(true)
     end
 )
 
+-- Update: the current settings to the selected cloud config's name (yours: replaced, someone else's: your own copy)
 ui.update_cloud_config = menu_add_button("Cloud configs", "Update",
     function()
-        local config = libs.eui.export()
-        local config_table = libs.json.parse(config)
-        
-        config_table["System"] = {
-            {"version", config_version},
-            {"build", config_build}
-        }
-
-        local encoded_data = {
-            type = "update_config",
-
-            username = encode(tostring(info.user)),
-            is_beta = tostring(info.beta_build),
-
-            config_name = encode(ui.configs.cloud_list.ref:get_active_item_name():match("~ (.+)$")),
-            config_data = libs.base64.encode(libs.json.encode(config_table))
-        }
-        app_client.send(libs.json.encode(encoded_data))
-
-        local response_success, response_result = app_client.receive(65535)
-        if (not response_success) then
-            notifications.create("Specter", "Cloud is offline!", notifications.types.warning)
+        local sel = cloud.selected()
+        if (sel == nil) then
+            notifications.create("Specter", "Select a cloud config first.", notifications.types.warning)
             return
         end
-
-        local decode_success, decode_result = libs.json.parse(response_success)
-        if (not decode_success) then
-            print("connection has failed. ", get_text_color(), "(error parsing response)")
-            error("specter · an internal error has occurred ~ 0x3AB6D1")
-        end
-
-        if (decode_success.status == "update_config") then
-            local decoded_data = decode(decode_success.encrypted_data)
-            local data = libs.json.parse(decoded_data)
-    
-            if (data) then
-                if (data.status == "success") then
-                    notifications.create("Specter", "Config update completed! Changes saved to the cloud.", notifications.types.success)
-                    print("config has been synced to the cloud.")
-                elseif (data.message == "no_perm") then
-                    notifications.create("Specter", "Insufficient permissions to modify this config!", notifications.types.warning)
-                    print("modification of this config is not permitted.")
-                elseif (data.message == "bad_cfg") then
-                    notifications.create("Specter", "The config does not appear to exist!", notifications.types.failure)
-                    print("config does not appear to exist.")
-                else
-                    print("connection has failed. ", get_text_color(), "(", data.message or "unknown error", ")")
-                    error("specter · an internal error has occurred ~ 0x9E25C8")
-                end
-            else
-                print("connection has failed. ", get_text_color(), "(error parsing data)")
-                error("specter · an internal error has occurred ~ 0xB74C8E")
-            end
-        else
-            print("connection has failed. ", get_text_color(), "(unexpected response)")
-            error("specter · an internal error has occurred ~ 0xF47E9A")
-        end
+        cloud.upload(sel.name)
     end
 )
 
 ui.delete_cloud_config = menu_add_button("Cloud configs", "Delete",
     function()
-        local encoded_data = {
-            type = "delete_config",
-            
-            username = encode(tostring(info.user)),
-            config_name = encode(ui.configs.cloud_list.ref:get_active_item_name():match("~ (.+)$"))
-        }
-        app_client.send(libs.json.encode(encoded_data))
-
-        local response_success, response_result = app_client.receive(65535)
-        if (not response_success) then
-            notifications.create("Specter", "Cloud is offline!", notifications.types.warning)
+        local sel = cloud.selected()
+        local auth = sel and cloud.auth()
+        if (sel == nil or auth == nil) then
             return
         end
-
-        local decode_success, decode_result = libs.json.parse(response_success)
-        if (not decode_success) then
-            print("connection has failed. ", get_text_color(), "(error parsing response)")
-            error("specter · an internal error has occurred ~ 0x7C58E3")
-        end
-
-        if (decode_success.status == "delete_config") then
-            local decoded_data = decode(decode_success.encrypted_data)
-            local data = libs.json.parse(decoded_data)
-    
-            if (data) then
-                if (data.status == "success") then
-                    notifications.create("Specter", "Config deleted successfully from the cloud!", notifications.types.success)
-                    print("config has been deleted from the cloud.")
-
-                    configs.reload_cloud_configs()
-                elseif (data.message == "no_perm") then
-                    notifications.create("Specter", "Insufficient permissions to delete this config!", notifications.types.warning)
-                    print("deletion of this config is not permitted.")
-                elseif (data.message == "bad_cfg") then
-                    notifications.create("Specter", "The config does not appear to exist!", notifications.types.failure)
-                    print("config does not appear to exist.")
-                else
-                    print("connection has failed. ", get_text_color(), "(", data.message or "unknown error", ")")
-                    error("specter · an internal error has occurred ~ 0xD4A83F")
-                end
+        cloud.get("/configs/delete?lua=pm" .. auth .. "&name=" .. cloud.url(sel.name), function(res)
+            if (res ~= nil and res.ok) then
+                notifications.create("Specter", "Config deleted from the cloud.", notifications.types.success)
+                configs.reload_cloud_configs()
+            elseif (res ~= nil and res.reason == "not_found") then
+                notifications.create("Specter", "You can only delete your own configs.", notifications.types.warning)
             else
-                print("connection has failed. ", get_text_color(), "(error parsing data)")
-                error("specter · an internal error has occurred ~ 0xD4E78B")
+                notifications.create("Specter", "The cloud refused it (" .. tostring(res and res.reason or "no answer") .. ").",
+                    notifications.types.failure)
             end
-        else
-            print("connection has failed. ", get_text_color(), "(unexpected response)")
-            error("specter · an internal error has occurred ~ 0x4FA6BD")
-        end
+        end)
     end
 )
 
 ui.load_cloud_config = menu_add_button("Cloud configs", "Use",
     function()
-        local active_item_name = ui.configs.cloud_list.ref:get_active_item_name()
-        
-        local username = active_item_name:match("^(.-) %~")
-        local config_name = active_item_name:match("~ (.+)$")
-    
-        local encoded_data = {
-            type = "load_config",
-
-            username = encode(username),
-            config_name = encode(config_name)
-        }
-        app_client.send(libs.json.encode(encoded_data))
-    
-        local response_success, response_result = app_client.receive(65535)
-        if (not response_success) then
-            notifications.create("Specter", "Cloud is offline!", notifications.types.warning)
+        local sel = cloud.selected()
+        if (sel == nil) then
+            notifications.create("Specter", "Select a cloud config first.", notifications.types.warning)
             return
         end
-
-        local decode_success, decode_result = libs.json.parse(response_success)
-        if (not decode_success) then
-            print("connection has failed. ", get_text_color(), "(error parsing response)")
-            error("specter · an internal error has occurred ~ 0xB8459E")
-        end
-
-        if (decode_success.status == "load_config") then
-            local decoded_data = libs.base64.decode(decode_success.encrypted_data)
-            local data = libs.json.parse(decoded_data)
-
-            if (data.status ~= "success") then
-                if (data.message == "bad_cfg") then
-                    notifications.create("Specter", "The config does not appear to exist!", notifications.types.failure)
-                    print("config does not appear to exist.")
-                else
-                    print("connection has failed. ", get_text_color(), "(", data and data.message or "unknown error", ")")
-                    error("specter · an internal error has occurred ~ 0x47DA9F")
-                end
-            else
-                local run_success, run_result = pcall(libs.base64.decode, data.message)
-                if (not run_success) then
-                    notifications.create("Specter", "Unable to decode the config!", notifications.types.failure)
-                    print("failed to decode config. (" .. run_result .. ")")
-                    
-                    return
-                end
-            
-                run_success, config_table = pcall(libs.json.parse, run_result)
-                if (not run_success) then
-                    notifications.create("Specter", "Unable to parse the config!", notifications.types.failure)
-                    print("failed to parse config. (" .. config_table .. ")")
-                    
-                    return
-                end
-            
-                if (type(config_table) ~= "table") then
-                    notifications.create("Specter", "The config is not a valid table!", notifications.types.failure)
-                    print("config is not a valid table.")
-                    
-                    return
-                end
-            
-                local system_data = config_table["System"]
-                if (not system_data) then
-                    notifications.create("Specter", "The config lacks build informations!", notifications.types.warning)
-                    print("config does not contain build informations.")
-                    
-                    return
-                end
-            
-                local version, build
-                for _, entry in ipairs(system_data) do
-                    if (type(entry) == "table" and #entry == 2) then
-                        if (entry[1] == "version") then
-                            version = entry[2]
-                        elseif (entry[1] == "build") then
-                            build = entry[2]
-                        end
-                    end
-                end
-            
-                if (version ~= config_version) then
-                    notifications.create("Specter", "Config version mismatch!", notifications.types.warning)
-                    print("config version does not match.")
-                    
-                    return
-                end
-            
-                if (build ~= config_build) then
-                    notifications.create("Specter", "Config build mismatch!", notifications.types.warning)
-                    print("config build does not match.")
-                    
-                    return
-                end
-            
-                local tmp = ui.nav.slider:get()
-                run_success, run_result = pcall(libs.eui.import, libs.json.encode(config_table))
-            
-                if (not run_success) then
-                    notifications.create("Specter", "Unable to import the config!", notifications.types.failure)
-                    print("failed to import config. (" .. run_result .. ")")
-                else
-                    notifications.create("Specter", "Config loaded successfully from the cloud!", notifications.types.success)
-                    print("config has been loaded from the cloud.")   
-
-                    local settings = read_settings()
-        
-                    settings.accent_color = get_accent_color() or settings.accent_color
-                    settings.text_color = get_text_color() or settings.text_color
-                    
-                    libs.filesystem.write(settings_file, libs.json.encode(settings))
-                    ui.nav.slider.ref:set(tmp)
-                end
+        cloud.get("/configs/get?lua=pm&name=" .. cloud.url(sel.name) .. "&author=" .. cloud.url(sel.author), function(res)
+            if (res == nil or not res.ok or type(res.data) ~= "string") then
+                notifications.create("Specter", "The config is not on the cloud any more.", notifications.types.failure)
+                return
             end
-        else
-            print("connection has failed. ", get_text_color(), "(unexpected response)")
-            error("specter · an internal error has occurred ~ 0x2E9F71")
-        end
+            local ok, decoded = pcall(libs.base64.decode, res.data)
+            local tmp = ui.nav.slider:get()
+            if (not ok or not pcall(libs.eui.import, decoded)) then
+                notifications.create("Specter", "Unable to import the config!", notifications.types.failure)
+                return
+            end
+            ui.nav.slider.ref:set(tmp)
+            local settings = read_settings()
+            settings.accent_color = get_accent_color() or settings.accent_color
+            settings.text_color = get_text_color() or settings.text_color
+            libs.filesystem.write(settings_file, libs.json.encode(settings))
+            notifications.create("Specter", "Loaded \"" .. sel.name .. "\" by " .. sel.author .. " from the cloud.",
+                notifications.types.success)
+        end)
     end
 )
 
@@ -2887,66 +2759,11 @@ ui.reload_config = menu_add_button("Configs", "Refresh",
     end
 )
 
+-- Upload: the current settings to the cloud under the selected local config's name
 ui.upload_config = menu_add_button("Configs", "Upload",
     function()
-        local config = libs.eui.export()
-        local config_table = libs.json.parse(config)
-        
-        config_table["System"] = {
-            {"version", config_version},
-            {"build", config_build}
-        }
-
-        local encoded_data = {
-            type = "upload_config",
-            
-            username = encode(tostring(info.user)),
-            is_beta = tostring(info.beta_build),
-
-            config_name = encode(ui.configs.list.ref:get_active_item_name():gsub("%.cfg$", "")),
-            config_data = libs.base64.encode(libs.json.encode(config_table))
-        }
-        app_client.send(libs.json.encode(encoded_data))
-
-        local response_success, response_result = app_client.receive(65535)
-        if (not response_success) then
-            notifications.create("Specter", "Cloud is offline!", notifications.types.warning)
-            return
-        end
-    
-        local decode_success, decode_result = libs.json.parse(response_success)
-        if (not decode_success) then
-            print("connection has failed. ", get_text_color(), "(error parsing response)")
-            error("specter · an internal error has occurred ~ 0xB892EF")
-        end
-    
-        if (decode_success.status == "upload_config") then
-            local decoded_data = decode(decode_success.encrypted_data)
-            local data = libs.json.parse(decoded_data)
-    
-            if (data) then
-                if (data.status ~= "success") then
-                    if (data.message == "cfg_alr") then
-                        notifications.create("Specter", "Config already exists in the cloud!", notifications.types.warning)
-                        print("config already exists in the cloud.")
-                    else
-                        print("connection has failed. ", get_text_color(), "(", data.message or "unknown error", ")")
-                        error("specter · an internal error has occurred ~ 0x83D2FA")
-                    end
-                else
-                    notifications.create("Specter", "Config uploaded to the cloud successfully!", notifications.types.success)
-                    print("config has been uploaded.")
-                    
-                    configs.reload_cloud_configs()
-                end
-            else
-                print("connection has failed. ", get_text_color(), "(error parsing data)")
-                error("specter · an internal error has occurred ~ 0x9C42F3")
-            end
-        else
-            print("connection has failed. ", get_text_color(), "(unexpected response)")
-            error("specter · an internal error has occurred ~ 0x3F4D6A")
-        end
+        local ok, item = pcall(ui.configs.list.ref.get_active_item_name, ui.configs.list.ref)
+        cloud.upload(ok and tostring(item or ""):gsub("%.cfg$", "") or "")
     end
 )
 
@@ -3229,8 +3046,14 @@ presence.apply = function(on, asked)
 
     if (presence.report) then
         presence.report = false
+        local n = 0
+        for _ in pairs(asked) do
+            n = n + 1
+        end
         if (#shared_data == 0) then
-            notifications.create("Specter", "No other Specter users in this game.", notifications.types.information)
+            notifications.create("Specter", "No other Specter users in this game (" .. n .. " players asked"
+                .. (ui.utils.shared_esp:get() and ", you are visible" or ", turn Shared ESP on to be seen") .. ").",
+                notifications.types.information)
         end
     end
 end
@@ -3277,6 +3100,13 @@ presence.update = function(force)
         local ok, data = pcall(libs.json.parse, response.body or "")
         if (ok and type(data) == "table" and type(data.on) == "table") then
             presence.apply(data.on, asked)
+        elseif (presence.report) then
+            -- "Refresh players" says why nothing shows (owners, Oct 2026: "a shared esp nem működik")
+            presence.report = false
+            local why = (ok and type(data) == "table" and data.reason) or (response.body == nil and "no answer") or "bad answer"
+            notifications.create("Specter", "User detection: the server did not answer (" .. tostring(why) .. ").",
+                notifications.types.warning)
+            print("user detection failed: ", get_text_color(), tostring(why))
         end
     end)
 end
