@@ -215,6 +215,19 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   control, an own set_yaw took the head out from behind the wall). The Freestand state of default.cfg / "Apply advanced
   preset" was a static yaw with the desync always "Right" and no defensive: now Random desync, a small lua jitter (8) and
   Smart defensive (Peek / Shot at / Threat aim); Move and Air also trigger on Threat aim.
+- Adaptive AA (Settings "Adaptive AA", default.cfg + "Apply advanced preset" on; owners, Oct 2026: "az aa sokkal jobb
+  volt [the old azura] ... nagyon advanced aa improve ami tényleg unhittable"). The old azura (the owner's asd.cfg) played
+  "delay jitter": left / right every Delay (+ fluctuation) ticks with the DESYNC ON THE YAW SIDE; ours made the desync a
+  coin flip (Random desync side) everywhere. No fixed AA beats every resolver, so a Thompson sampling bandit
+  (`builder.adv.ARMS` / `brain_*`, pure, tested) plays profiles per state group (`arm_group`: still / moving / air /
+  rest): Packet coin (the state's own yaw mode + coin flip side), Delay tied (the old azura), Delay inverse, Delay coin,
+  Packet tied. Beliefs Beta(a, b): a bullet past the head (aa_record "evaded") = a + 1, a head hit = b + 1 and an other
+  profile at once; body hits teach nothing; every result decays all toward the prior (0.9, resolvers adapt); a profile
+  is held 6-10 s; Delay tied starts one evade ahead. Draws are mean + sd x Irwin-Hall (no math.log). `builder.brain_apply`
+  runs after random_side in run_antiaim: not on a static yaw (manual / fakelag) and the side only where random_side
+  would set it; direct control records it like the rest. default.cfg's Left / Right / randomization per state are the
+  owner's old values (the delay profiles use them). The AA stats / shot log lines carry `arm` (the stats key is
+  "state · profile" while it runs): tune the profile list by those, not by guesses.
 - FPS (owners, Oct 2026: "az FPS nagyon gatya van 70 fpsem"): `menu_find` is memoized (menu.find walked the whole menu
   for the same items every frame / tick); the double tap speed cvar (set every frame, 15 with Better DT off), the console
   colour materials and the jumpshot autostrafer / in-air autostop are written only on change. Profiler (dev build):
