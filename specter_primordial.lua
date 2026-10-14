@@ -6,7 +6,9 @@
 
 ]]
 
-local client_version = "5.5"
+-- Advanced engineering revision. Native resolver remains the default.
+-- Hard-coded FFI offsets require the exact original game/client build.
+local client_version = "5.5-advanced.2"
 
 local config_version = "1.0"
 local config_build = "beta"
@@ -884,7 +886,7 @@ local builder = { misses = 0, invert_defensive = false, old_defensive = false, i
 local indicator = { font = render_get_default_font(), shot_count = 0, data = {}, pos = vec2_t(100, 100), size = vec2_t(200, 100), difference = vec2_t(0, 0), dragging = false }
 local console_material = { "vgui_white", "vgui/hud/800corner1", "vgui/hud/800corner2", "vgui/hud/800corner3", "vgui/hud/800corner4" }
 local esp = { sync_user = {}, unsync_user = {}, sync_update = 0 }
-local resolver = { data = {}, mem = {}, previous = {}, misses = {}, trust = { fs = 0, jitter = 0 } }
+local resolver = { data = {}, mem = {}, previous = {}, misses = {}, trust = { fs = 0, jitter = 0 }, shots = {}, epoch = 0 }
 local delay = { tick_delay = client_time_to_ticks(1), last_tick = globals.tick_count() }
 local animation = { alpha = 0, appearing = 0 }
 local toss = { target_angles = vec3_t(0, 0, 0) }
@@ -1086,7 +1088,11 @@ local ui = {
         logic_reso = groups.resolver:checkbox("Logic resolver"),
         nexzu_reso = groups.resolver:checkbox("Improve resolver"),
         smart_baim = groups.resolver:checkbox("Smart body aim", true),
-        
+        smart_baim_hp = groups.resolver:slider("Body aim below HP", 0, 100, 1, 0, "hp"),
+        smart_baim_lethal = groups.resolver:checkbox("Body aim if lethal on risky target", true),
+        latency_guard = groups.resolver:checkbox("High ping protection", true),
+        latency_limit = groups.resolver:slider("High ping threshold", 40, 250, 1, 0, "ms"),
+        fast_peek = groups.resolver:checkbox("Fast crouch / peek scan", true),
         pose_reso = groups.resolver_beta:checkbox("Pose resolver"),
         resolver = {
             enable_resolver = groups.resolver_beta:checkbox("Custom resolver"),
@@ -1432,7 +1438,10 @@ local ui = {
         )
     }
 }
-
+-- EUI slider arguments specify step size, not a default value.
+-- Initialize before saved configurations are imported.
+ui.ragebot.smart_baim_hp.ref:set(40)
+ui.ragebot.latency_limit.ref:set(80)
 ui.antiaim.builder.ab_mode = groups.settings:selection("Anti brute mode", {"Shift", "Phases"})
 ui.antiaim.builder.direct = groups.settings:checkbox("Direct control (dev)", true)
 ui.antiaim.builder.adaptive = groups.settings:checkbox("Adaptive AA", false)
@@ -3420,7 +3429,32 @@ end
 --- @info: defensive safepoint
 --- @region: safe def
 
+-- Network budgets are measured in seconds; menu thresholds are milliseconds.
+resolver.network = function()
+    local function finite(value, lo, hi)
+        value = tonumber(value)
+        if (value == nil or value ~= value or math.abs(value) == math.huge) then return lo end
+        return math.max(lo, math.min(hi, value))
+    end
+    local outgoing = finite(engine_get_latency(e_latency_flows.OUTGOING), 0, 1)
+    local incoming = finite(engine_get_latency(e_latency_flows.INCOMING), 0, 1)
+    local ping = (outgoing + incoming) * 1000
+    local guarded = ui.ragebot.latency_guard:get()
+        and ping >= ui.ragebot.latency_limit:get()
+    return { outgoing = outgoing, incoming = incoming, ping = ping, high = guarded }
+end
+resolver.fast_target = function(ent)
+    if (ent == nil or not ui.ragebot.fast_peek:get()) then return false end
+    local flags = tonumber(ent:get_prop("m_fFlags")) or 0
+    local p = resolver.data[ent:get_index()]
+    local peek = ragebot_get_autopeek_pos()
+    return bit.band(flags, 2) ~= 0 or (peek ~= nil and peek ~= false)
+        or resolver.network().high
+        or (p ~= nil and (p.defensive_until or 0) > globals.real_time())
+end
 safe_defensive = function(ctx, cmd, unpredicted_data)
+    if (ctx.player == nil or resolver.fast_target(ctx.player)
+        or (resolver.safe and resolver.safe[ctx.player:get_index()] == 3)) then return end
     if (ui.ragebot.safe_defensive:get()) then
         if (defensive:is_active(ctx.player)) then
             ctx:set_safepoint_state(true, e_hitscan_groups.HEAD)
@@ -3498,8 +3532,9 @@ dmg_prediction = function(ctx, cmd, unpredicted_data)
                     local bullet = trace_bullet(local_pos, enemy_pos[k], entity_list_get_local_player(), enemy)
                     if (bullet.valid and (client_get_hitgroup_name(bullet.hitgroup) == k)) then
                         local hitgroup = e_hitscan_groups[string.upper(k)]
-        
-                        ctx:set_hitchance(70, hitgroup)
+                        if (not resolver.fast_target(enemy)) then
+                            ctx:set_hitchance(70, hitgroup)
+                        end
                         ctx:set_hitscan_group_state(hitgroup, true, false)
                         
                         break
@@ -3520,6 +3555,9 @@ end
 --- @region: accuracy boost
 
 accuracy_boost = function(ctx, cmd, unpredicted_data)
+    -- Preserve native accuracy requirements on latency-sensitive peeks.
+    -- Do not inject the script's 90% damage-accuracy requirement here.
+    if (resolver.fast_target(ctx.player)) then return end
     if (ui.ragebot.accuracy_boost.enable_booster:get()) then
         if (ui.ragebot.accuracy_boost.booster_mode:get() == 1) then
             ctx:set_damage_accuracy(45)
@@ -4245,8 +4283,8 @@ do
     backtrack.ping = ok and item or nil
 end
 
--- the fake ping amount: 100 ms (Extended backtrack: 200 ms) while an enemy is alive, 0 with a knife / grenade / bomb out
--- or nobody to shoot; written on change only, the own value back when Improve backtrack goes off
+-- Fake ping uses a 100/200 ms total RTT budget with protection enabled.
+-- Guarded high ping adds nothing; the saved value returns when disabled.
 backtrack.update = function(local_player)
     if (backtrack.ping == nil) then
         return
@@ -4270,7 +4308,13 @@ backtrack.update = function(local_player)
             end
         end
     end
-
+    if (ui.ragebot.latency_guard:get()) then
+        local net = resolver.network()
+        local now = globals.real_time()
+        if (net.high) then backtrack.high_until = now + 0.5 end
+        -- Added fake latency must fit inside the desired TOTAL RTT budget.
+        want = (backtrack.high_until or 0) > now and 0 or math.max(0, math.floor(want - net.ping))
+    end
     if (want ~= backtrack.amount) then
         if (backtrack.saved == nil) then
             backtrack.saved = backtrack.ping:get()
@@ -4279,23 +4323,24 @@ backtrack.update = function(local_player)
         backtrack.amount = want
     end
 end
-
--- advanced prediction: where every moving enemy's head will be after our latency + 4 ticks (its velocity, stopped by
--- walls); one that can be shot there but not now is about to peek: it goes first in the target selection
+backtrack.horizon = function(net, ducking)
+    local interval = math.max(0.001, math.min(0.1, globals.interval_per_tick()))
+    local limit = ducking and 0.04 or net.high and 0.06 or 0.10
+    return math.min(limit, math.max(interval, net.outgoing + interval * 2))
+end
 backtrack.predict = function(local_player)
     local tick = globals.tick_count()
+    if (tick >= backtrack.predict_tick and tick - backtrack.predict_tick < 2) then return end
+    backtrack.peekers, backtrack.peek_until = {}, 0
     if (not ui.ragebot.backtrack.prediction:get()) then
-        backtrack.peekers = {}
         return
     end
-    if (tick - backtrack.predict_tick < 2 and tick >= backtrack.predict_tick) then
-        return
-    end
+    -- Lists expire after three ticks; skipped scans never extend their life.
     backtrack.predict_tick = tick
 
     local eye = local_player:get_eye_position()
-    local ahead = engine_get_latency(e_latency_flows.OUTGOING) + engine_get_latency(e_latency_flows.INCOMING)
-        + 4 * globals.interval_per_tick()
+    if (eye == nil) then return end
+    local net = resolver.network()
     local peekers, checked = {}, 0
     for _, enemy in pairs(entity_list_get_players(true) or {}) do
         if (checked >= 5) then
@@ -4304,16 +4349,33 @@ backtrack.predict = function(local_player)
         if (enemy:is_alive() and not enemy:is_dormant()) then
             local head = enemy:get_hitbox_pos(e_hitboxes.HEAD)
             local velocity = enemy:get_prop("m_vecVelocity")
-            if (head ~= nil and velocity ~= nil and math.vec_length2d(velocity) > 40) then
+            local sim = tonumber(enemy:get_prop("m_flSimulationTime"))
+            backtrack.records = backtrack.records or {}
+            local record = backtrack.records[enemy:get_index()]
+            local now = globals.real_time()
+            if (sim == nil or sim ~= sim or math.abs(sim) == math.huge) then
+                record = nil
+                backtrack.records[enemy:get_index()] = nil
+            elseif (record == nil or record.sim ~= sim) then
+                local rewound = record ~= nil and sim < record.sim
+                record = { sim = sim, time = now, defensive_until = rewound and now + 0.25
+                    or (record and record.defensive_until or 0) }
+                backtrack.records[enemy:get_index()] = record
+            end
+            local fresh = record ~= nil and now >= record.time and now - record.time <= 0.12
+                and now >= record.defensive_until
+            if (fresh and head ~= nil and velocity ~= nil and math.vec_length2d(velocity) > 8) then
                 checked = checked + 1
+                local ducking = bit.band(tonumber(enemy:get_prop("m_fFlags")) or 0, 2) ~= 0
+                local ahead = backtrack.horizon(net, ducking)
                 local to = vec3_t(head.x + velocity.x * ahead, head.y + velocity.y * ahead, head.z)
-                local wall = trace_line(head, to, enemy, 0x400B).fraction
-                to = vec3_t(head.x + (to.x - head.x) * wall, head.y + (to.y - head.y) * wall, head.z)
-
-                local later = trace_bullet(eye, to, local_player, enemy)
-                if (later.valid and later.damage > 0) then
-                    local now = trace_bullet(eye, head, local_player, enemy)
-                    if (not (now.valid and now.damage > 0)) then
+                local wall = trace_line(head, to, enemy, 0x400B)
+                if (wall ~= nil and type(wall.fraction) == "number" and wall.fraction == wall.fraction
+                    and wall.fraction >= 0.98) then
+                    local later = trace_bullet(eye, to, local_player, enemy)
+                    local current = trace_bullet(eye, head, local_player, enemy)
+                    if (later ~= nil and later.valid and (later.damage or 0) > 0
+                        and not (current ~= nil and current.valid and (current.damage or 0) > 0)) then
                         peekers[#peekers + 1] = enemy:get_index()
                     end
                 end
@@ -4321,11 +4383,15 @@ backtrack.predict = function(local_player)
         end
     end
     backtrack.peekers = peekers
+    backtrack.peek_until = globals.real_time() + math.min(0.10, globals.interval_per_tick() * 3)
 end
 
 backtrack.target_selection = function(ctx)
+    local now = globals.real_time()
+    if (now > (backtrack.peek_until or 0) or now < (backtrack.peek_until or 0) - 0.10) then return end
     for _, idx in ipairs(backtrack.peekers) do
-        ctx:prioritize_target(idx)
+        local enemy = entity_list_get_entity(idx)
+        if (enemy ~= nil and enemy:is_alive() and not enemy:is_dormant()) then ctx:prioritize_target(idx) end
     end
 end
 
@@ -4361,7 +4427,8 @@ local RES_SCOPE_CFG = { 0, 1, 2, 6 }
 local RES_SAFE_CFG = { 0, 2, 3, 7 }
 
 local function res_clamp(v, lo, hi)
-    if (v ~= v) then
+    v = tonumber(v)
+    if (v == nil or v ~= v or v == math.huge or v == -math.huge) then
         return lo
     end
     if (v < lo) then
@@ -4374,6 +4441,10 @@ local function res_clamp(v, lo, hi)
 end
 
 local function res_norm(a)
+    a = tonumber(a)
+    if (a == nil or a ~= a or a == math.huge or a == -math.huge) then
+        return 0
+    end
     a = math.fmod(a + 180, 360)
     if (a ~= a) then
         return 0
@@ -4394,7 +4465,7 @@ end
 
 resolver.animstate = function(idx)
     local ptr = get_entity_address(idx)
-    if (ptr == nil) then
+    if (ptr == nil or ptr == ffi.NULL or tonumber(ffi.cast("uintptr_t", ptr)) == 0) then
         return nil
     end
     local state = ffi.cast("CPlayer_animation_State**", ffi.cast("uintptr_t", ptr) + 0x9960)[0]
@@ -4420,15 +4491,15 @@ resolver.max_desync = function(st)
 end
 
 resolver.state_of = function(ent)
-    local flags = ent:get_prop("m_fFlags")
+    local flags = tonumber(ent:get_prop("m_fFlags")) or 0
     if (bit.band(flags, 1) == 0) then
         return "air"
     end
     if (bit.band(flags, 2) ~= 0) then
         return "duck"
     end
-
-    local speed = math.vec_length2d(ent:get_prop("m_vecVelocity"))
+    local velocity = ent:get_prop("m_vecVelocity")
+    local speed = velocity and math.vec_length2d(velocity) or 0
     if (speed > 100) then
         return "move"
     elseif (speed > 5) then
@@ -4453,8 +4524,12 @@ resolver.freestand = function(local_player, ent)
 
     local width = res_custom() and res_clamp(ui.ragebot.resolver.calc_box:get(), 10, 35) or 25
     local rx, ry = -dy / len * width, dx / len * width
-    local left = trace_line(eye, vec3_t(head.x + rx, head.y + ry, head.z), local_player, 0x200400B).fraction
-    local right = trace_line(eye, vec3_t(head.x - rx, head.y - ry, head.z), local_player, 0x200400B).fraction
+    local lt = trace_line(eye, vec3_t(head.x + rx, head.y + ry, head.z), local_player, 0x200400B)
+    local rt = trace_line(eye, vec3_t(head.x - rx, head.y - ry, head.z), local_player, 0x200400B)
+    if (lt == nil or rt == nil or lt.fraction == nil or rt.fraction == nil) then
+        return 0
+    end
+    local left, right = res_clamp(lt.fraction, 0, 1), res_clamp(rt.fraction, 0, 1)
     if (math.abs(left - right) < 0.05) then
         return 0
     end
@@ -4491,27 +4566,79 @@ resolver.memory = function(idx, key, kind)
         resolver.mem[idx] = mem
     end
     if (mem[key] == nil) then
-        mem[key] = { rel = (kind and resolver.trust[kind] < 0) and -1 or 1, flip = true, misses = 0, half = false }
+        mem[key] = { rel = 1, misses = 0, candidates = {}, selected = 1 }
+        for i = 1, 5 do
+            mem[key].candidates[i] = { good = 1, bad = 1 }
+        end
     end
     return mem[key]
 end
-
--- jitter detector (owners, Oct 2026: "max 1-2 jitter miss 20-30 lövésenként"). Primordial resolves the enemies itself and
--- the lua api gives no way to tell its aimbot which side the body is on; what the lua decides is WHERE it may shoot.
--- A jittering target gets safe points (only points that hit on both desync sides), so a wrong side guess can not miss.
--- Per new record (the sim time moved forward) the eye yaw step goes into the last RES_JIT_N steps; the target jitters
--- when 3+ of them are big (RES_JIT_MIN, or the Custom resolver's "Shot prediction") AND the big ones change direction
--- 2+ times AND they cancel out (net turn under half of the movement): a fast mouse turn is big steps one way, a spin
--- never comes back, center / 3-way / 5-way / random jitter goes back and forth. It stays a jitter target for
--- RES_JIT_HOLD seconds of its sim time after the last time it looked like one: with a high real or fake ping the aimbot
--- shoots records up to ~1 s old, those were jittering too.
--- Small jitter (owners: "van small jitter is ami akár lehet 5-6 is"): steps under the big step, so the eye yaw itself is
--- read: it keeps coming back to the same few values (within RES_JIT_TOL of the yaw 2-4 records before) while it moved
--- RES_JIT_SMALL+ from the previous record, on RES_JIT_RETURNS+ of the last records. A mouse moves on and does not come
--- back to the exact angle, a still player does not move; a 2-way / 3-way / 4-way jitter of any size does both.
+-- Per-target/per-state hypotheses. Side hint is evidence, not a guarantee.
+resolver.choose = function(mem, confidence, allow_half)
+    local best, score = 1, -math.huge
+    for i, c in ipairs(mem.candidates) do
+        local n = c.good + c.bad
+        local prior = ({ 0.14, 0.02, 0.08, 0.00, -0.03 })[i] * confidence
+        local value = c.good / n + 0.10 / math.sqrt(n) + prior
+        if (mem.last_failed == i) then
+            value = value - 0.25
+        end
+        if ((allow_half ~= false or (i ~= 3 and i ~= 4)) and value > score) then
+            best, score = i, value
+        end
+    end
+    mem.selected = best
+    return best
+end
+resolver.shot_id = function(event)
+    return event and (event.id or event.shot_id) or nil
+end
+resolver.prune_shots = function(now)
+    for i = #resolver.shots, 1, -1 do
+        local s = resolver.shots[i]
+        if (now < s.time or now - s.time > 4 or s.epoch ~= resolver.epoch) then
+            table.remove(resolver.shots, i)
+        end
+    end
+end
+resolver.capture = function(shot)
+    if (shot == nil or shot.player == nil) then return end
+    local now, idx = globals.real_time(), shot.player:get_index()
+    resolver.prune_shots(now)
+    local p, prev = resolver.data[idx], resolver.previous[idx]
+    local s = { id = resolver.shot_id(shot), idx = idx, time = now,
+        epoch = resolver.epoch, track = p, aimpos = shot.player:get_hitbox_pos(1) }
+    if (prev ~= nil) then
+        s.key, s.kind, s.rel = prev.key, prev.kind, prev.rel
+        s.candidate, s.desync = prev.candidate, prev.m_flDesync
+    end
+    resolver.shots[#resolver.shots + 1] = s
+    if (#resolver.shots > 128) then table.remove(resolver.shots, 1) end
+end
+resolver.take_shot = function(event, idx)
+    resolver.prune_shots(globals.real_time())
+    local id, found, count = resolver.shot_id(event), nil, 0
+    for i, s in ipairs(resolver.shots) do
+        if (s.idx == idx and (id == nil or s.id == id)) then
+            found, count = i, count + 1
+        end
+    end
+    -- Without a usable unique ID, overlapping shots are ambiguous.
+    -- Never train against the latest global shot or guess their order.
+    if (count ~= 1) then
+        if (id == nil and count > 1) then
+            for _, s in ipairs(resolver.shots) do
+                if (s.idx == idx) then s.ambiguous = true end
+            end
+        end
+        return nil
+    end
+    if (id == nil and resolver.shots[found].ambiguous) then return nil end
+    return table.remove(resolver.shots, found)
+end
 local RES_JIT_N = 12
 local RES_JIT_MIN = 20
-local RES_JIT_HOLD = 1.0
+local RES_JIT_HOLD = 0.25
 local RES_JIT_SMALL = 4
 local RES_JIT_TOL = 1.5
 local RES_JIT_RETURNS = 6
@@ -4566,34 +4693,66 @@ resolver.jit_record = function(p, delta, sim, min, eye)
         p.jit_sim = sim
     end
     p.jitter = p.jit_sim ~= nil and sim - p.jit_sim >= 0 and sim - p.jit_sim <= RES_JIT_HOLD
+    local big, flips, last, total, net = 0, 0, 0, 0, 0
+    for _, d in ipairs(p.jd) do
+        total, net = total + math.abs(d), net + d
+        if (math.abs(d) >= min) then
+            local sign = res_sign(d)
+            big = big + 1
+            if (last ~= 0 and last ~= sign) then flips = flips + 1 end
+            last = sign
+        end
+    end
+    p.confidence = big >= 3 and res_clamp((flips / math.max(1, big - 1))
+        * (1 - math.abs(net) / math.max(1, total)), 0, 1) or 0
+    if (resolver.jit_returns(p.jy) >= RES_JIT_RETURNS) then
+        p.confidence = math.max(p.confidence, 0.75)
+    end
 end
 
 -- every enemy, every net update, whichever resolver is on (also none): choke count and the jitter detector
 resolver.track = function(ent, eye)
     local idx = ent:get_index()
     local p = resolver.data[idx]
-    if (p == nil) then
-        p = { sim = 0, eye = eye, nochoke = 0, jd = {}, jy = {}, dir = 1, jitter = false, fs = 0, fs_tick = -RES_FS_TICKS }
-        resolver.data[idx] = p
-    end
-
     local sim = ent:get_prop("m_flSimulationTime")
-    if (type(sim) ~= "number" or sim ~= sim) then
+    if (type(sim) ~= "number" or sim ~= sim or sim == math.huge or sim == -math.huge) then
+        return nil
+    end
+    local spawn = ent:get_prop("m_flSpawnTime")
+    local state, now = resolver.state_of(ent), globals.real_time()
+    if (p == nil or sim < p.sim or sim - p.sim > 1
+        or (spawn ~= nil and p.spawn ~= nil and spawn ~= p.spawn)) then
+        resolver.mem[idx], resolver.previous[idx], resolver.misses[idx] = nil, nil, nil
+        local rewind = p ~= nil and sim < p.sim
+        p = { sim = sim, eye = eye, nochoke = 0, jd = {}, jy = {}, dir = 1,
+            jitter = false, fs = 0, fs_tick = -RES_FS_TICKS, confidence = 0,
+            spawn = spawn, samples = 0, choke = 0, state = state,
+            updated = now, defensive_until = rewind and now + 0.25 or 0 }
+        resolver.data[idx] = p
         return p
     end
-    if (sim < p.sim) then -- a new player in the slot / a new map
-        p.sim, p.jd, p.jy, p.jit_sim, p.jitter = 0, {}, {}, nil, false
-    end
     local ticks = time_to_ticks(sim - p.sim)
+    if (state ~= p.state) then
+        p.jd, p.jy, p.jit_sim, p.jitter, p.confidence = {}, {}, nil, false, 0
+        p.state, p.eye, p.nochoke = state, eye, 0
+    end
     if (ticks >= 1) then
+        p.samples = p.samples + 1
+        p.choke = res_clamp(ticks - 1, 0, 64)
         p.nochoke = (ticks == 1) and (p.nochoke + 1) or 0
         local min = res_custom() and res_clamp(ui.ragebot.resolver.shot_pred:get(), 15, 65) or RES_JIT_MIN
         resolver.jit_record(p, res_norm(eye - p.eye), sim, min, eye)
         p.sim, p.eye = sim, eye
+        p.updated = now
     end
     return p
 end
-
+resolver.fresh = function(p)
+    if (p == nil or p.updated == nil) then return false end
+    local now = globals.real_time()
+    return now >= p.updated and now - p.updated <= 0.12
+        and now >= (p.defensive_until or 0)
+end
 resolver.update = function(local_player, ent)
     local idx = ent:get_index()
     local st = resolver.animstate(idx)
@@ -4607,11 +4766,10 @@ resolver.update = function(local_player, ent)
     end
 
     local p = resolver.track(ent, eye)
-
-    -- the hint the side is relative to: the jitter direction, the covered side of the head, else none
+    if (p == nil) then return end
     local state = resolver.state_of(ent)
     local key, kind, hint
-    if (p.jitter) then
+    if (p.jitter and p.confidence >= 0.60 and p.choke <= 2 and resolver.fresh(p)) then
         key, kind, hint = "jitter", "jitter", -p.dir
     else
         key, hint = state, 1
@@ -4628,14 +4786,15 @@ resolver.update = function(local_player, ent)
     end
 
     local mem = resolver.memory(idx, key, kind)
-    local size = 1
-    if (mem.half and ui.ragebot.reso_cfg.yaw_calc:get() == 3) then
-        size = res_custom() and res_clamp(ui.ragebot.resolver.pred_sel:get(), 25, 70) / 100 or 0.5
-    end
-
+    local confidence = kind == "jitter" and p.confidence or kind == "fs" and 0.55 or 0.25
+    local candidate = ui.ragebot.logic_reso:get()
+        and resolver.choose(mem, confidence, ui.ragebot.reso_cfg.yaw_calc:get() == 3) or 1
+    local half = res_custom() and res_clamp(ui.ragebot.resolver.pred_sel:get(), 25, 70) / 100 or 0.5
+    local size = ({ 1, -1, half, -half, 0 })[candidate]
     local value = 0
-    if (p.nochoke < RES_NOCHOKE) then
-        value = hint * mem.rel * size * resolver.max_desync(st)
+    local applied = p.samples >= 2 and p.nochoke < RES_NOCHOKE and resolver.fresh(p)
+    if (applied) then
+        value = hint * size * resolver.max_desync(st)
         st.m_flGoalFeetYaw = res_norm(eye + value)
     end
 
@@ -4652,13 +4811,13 @@ resolver.update = function(local_player, ent)
     prev.state = state
     prev.key = key
     prev.kind = kind
-    prev.rel = value ~= 0 and mem.rel or 0
+    prev.rel = value ~= 0 and res_sign(size) or 0
+    prev.candidate, prev.confidence = applied and candidate or nil, confidence
 end
-
--- one result per shot (Logic resolver). A resolver miss takes the other side ("flip"), or keeps it against an
--- anti-aim that switches sides after our miss ("stay"); two misses in a row switch between the two, four between
--- full and reduced size
-resolver.on_result = function(target, hit_ok, resolver_miss)
+resolver.on_result = function(target, hit_ok, resolver_miss, event)
+    local snapshot = target and resolver.take_shot(event, target:get_index()) or nil
+    resolver.last_result = snapshot
+    if (snapshot == nil or snapshot.track == nil or snapshot.track ~= resolver.data[snapshot.idx]) then return end
     if (target ~= nil) then
         local idx = target:get_index()
         if (hit_ok) then
@@ -4667,42 +4826,62 @@ resolver.on_result = function(target, hit_ok, resolver_miss)
             resolver.misses[idx] = (resolver.misses[idx] or 0) + 1
         end
     end
-    if (target == nil or reso.idx ~= target:get_index() or reso.key == nil or not reso.rel or reso.rel == 0) then
+    if (snapshot.key == nil or snapshot.candidate == nil) then
         return
     end
-
-    local mem = resolver.memory(reso.idx, reso.key, reso.kind)
+    local mem = resolver.memory(snapshot.idx, snapshot.key, snapshot.kind)
+    local c = mem.candidates[snapshot.candidate]
+    if (c == nil) then return end
     if (hit_ok) then
         mem.misses = 0
+        mem.last_failed = nil
         if (ui.ragebot.logic_reso:get()) then
-            mem.rel = reso.rel
-            if (reso.kind) then
-                resolver.trust[reso.kind] = res_clamp(resolver.trust[reso.kind] + reso.rel, -8, 8)
-            end
+            c.good = c.good + 1
         end
     elseif (resolver_miss) then
         mem.misses = mem.misses + 1
         if (ui.ragebot.logic_reso:get()) then
-            if (mem.flip) then
-                mem.rel = -reso.rel
-            end
-            if (mem.misses % 2 == 0) then
-                mem.flip = not mem.flip
-            end
-            if (mem.misses % 4 == 0) then
-                mem.half = not mem.half
-            end
-            if (reso.kind) then
-                resolver.trust[reso.kind] = res_clamp(resolver.trust[reso.kind] - reso.rel * 0.5, -8, 8)
+            c.bad = c.bad + 1
+            mem.last_failed = snapshot.candidate
+        end
+    end
+    if (hit_ok or resolver_miss) then
+        for _, hypothesis in ipairs(mem.candidates) do
+            hypothesis.good = 1 + (hypothesis.good - 1) * 0.97
+            hypothesis.bad = 1 + (hypothesis.bad - 1) * 0.97
+        end
+    end
+end
+resolver.body_damage = function(ent)
+    local local_player = entity_list_get_local_player()
+    if (local_player == nil or ent == nil) then return 0 end
+    local eye = local_player:get_eye_position()
+    if (eye == nil) then return 0 end
+    local best = 0
+    for _, hitbox in ipairs({ e_hitboxes.CHEST, e_hitboxes.PELVIS }) do
+        local point = ent:get_hitbox_pos(hitbox)
+        if (point ~= nil) then
+            local bullet = trace_bullet(eye, point, local_player, ent)
+            if (bullet ~= nil and bullet.valid and (bullet.hitgroup == 2 or bullet.hitgroup == 3)) then
+                best = math.max(best, res_clamp(bullet.damage, 0, 500))
             end
         end
     end
-    reso.rel = nil
+    return best
+end
+resolver.enforce_body = function(ctx)
+    ctx:set_hitscan_group_state(e_hitscan_groups.HEAD, false, false)
+    ctx:set_hitscan_group_state(e_hitscan_groups.CHEST, true, false)
+    ctx:set_hitscan_group_state(e_hitscan_groups.STOMACH, true, false)
+    for _, name in ipairs({ "ARMS", "LEGS", "FEET" }) do
+        local group = e_hitscan_groups[name]
+        if (group ~= nil) then ctx:set_hitscan_group_state(group, false, false) end
+    end
 end
 
--- safe points / smart body aim for the aimbot's target. Always (whichever resolver is on, also none): a jittering target
--- gets safe points on the head and the chest, a target we missed for "resolver" / "jitter" one on the head until the next
--- hit. The resolver options add their safe points on top
+-- safe points / smart body aim for the aimbot's target.
+-- Health-threshold body aim is independent of resolver activation. Additional
+-- safety requires active, fresh evidence and respects the fast-peek policy.
 resolver.hitscan = function(ctx)
     local ent = ctx.player
     if (ent == nil) then
@@ -4712,43 +4891,45 @@ resolver.hitscan = function(ctx)
     local idx = ent:get_index()
     local misses = resolver.misses[idx] or 0
     local p = resolver.data[idx]
-    local jitter = p ~= nil and p.jitter == true
-    local safe = jitter or misses >= 1
-    if (resolver.active) then
-        safe = safe or resolver.safe_all
+    local jitter = resolver.active and resolver.fresh(p) and p.jitter == true
+        and (p.confidence or 0) >= 0.65
+    local fast = resolver.fast_target(ent)
+    local safe = resolver.active and resolver.safe_all == true
+    if (resolver.active and not fast) then
+        safe = safe or jitter or misses >= 2
         if (res_custom()) then
             local opt = ui.ragebot.resolver
             safe = safe
-                or (opt.duck_mode:get() and bit.band(ent:get_prop("m_fFlags"), 2) ~= 0)
-                or (opt.auto_duck:get() and table.contains(RES_SAFE_CFG, ragebot_get_active_cfg()))
+                or (opt.duck_mode:get() and bit.band(tonumber(ent:get_prop("m_fFlags")) or 0, 2) ~= 0)
+                or (opt.auto_duck:get() and bit.band(tonumber(ent:get_prop("m_fFlags")) or 0, 2) ~= 0
+                    and table.contains(RES_SAFE_CFG, ragebot_get_active_cfg()))
                 or (opt.safe_peek:get() and ragebot_get_autopeek_pos())
-                or (ent:get_prop("m_iHealth") <= opt.safe_mode:get())
+                or ((tonumber(ent:get_prop("m_iHealth")) or 100) <= opt.safe_mode:get())
         end
     end
 
-    -- Smart body aim (owners, Oct 2026: "ha nem 100% biztos a fejbe inkább safepointos vagy testre lő ... de ha 100 a kövi
-    -- hitnél akkor ne test legyen"): the head is sure when the target does not jitter and we have not missed it for
-    -- resolver / jitter since the last hit. Not sure: the body when a body hit kills (the weaker of chest / stomach is
-    -- above its HP), else the head stays, with the safe point above. Shot logs, Oct 2026: 26 of 29 jitter misses were head
-    -- shots (body 3 of 87), the next head shot after a jitter miss missed again 7 of 19 times
+    -- Below the configured HP: body only. On risky targets above the threshold,
+    -- the optional lethal fallback requires an actual valid body bullet trace.
     local body = false
-    if (ui.ragebot.smart_baim:get() and (jitter or misses >= 1)) then
-        local hp = ent:get_prop("m_iHealth") or 100
-        body = hp > 0 and hp <= math.min(damage:calculate(ent, "chest"), damage:calculate(ent, "stomach"))
+    if (ui.ragebot.smart_baim:get()) then
+        local hp = tonumber(ent:get_prop("m_iHealth")) or 100
+        local threshold = res_clamp(ui.ragebot.smart_baim_hp:get(), 0, 100)
+        body = hp > 0 and hp < threshold
+        if (not body and hp > 0 and ui.ragebot.smart_baim_lethal:get() and (jitter or misses >= 1)) then
+            body = hp <= resolver.body_damage(ent)
+        end
     end
 
     -- what the shot logs carry: 3 = body (smart body aim), 2 = a safe point for a jittering target, 1 = for another reason
     resolver.safe = resolver.safe or {}
     resolver.safe[idx] = body and 3 or safe and (jitter and 2 or 1) or nil
     if (body) then
-        ctx:set_hitscan_group_state(e_hitscan_groups.HEAD, false, false)
-        ctx:set_hitscan_group_state(e_hitscan_groups.CHEST, true, false)
-        ctx:set_hitscan_group_state(e_hitscan_groups.STOMACH, true, false)
+        resolver.enforce_body(ctx)
     end
-    if (safe) then
+    if (safe and not body) then
         ctx:set_safepoint_state(true, e_hitscan_groups.HEAD)
     end
-    if (jitter) then
+    if (body and safe or jitter and not fast) then
         ctx:set_safepoint_state(true, e_hitscan_groups.CHEST)
     end
 end
@@ -4759,18 +4940,23 @@ resolver.reset = function()
     resolver.previous = {}
     resolver.misses = {}
     resolver.safe = {}
+    resolver.shots, resolver.last_result = {}, nil
+    resolver.epoch = resolver.epoch + 1
+    resolver.trust = { fs = 0, jitter = 0 }
+    backtrack.peekers, backtrack.records, backtrack.peek_until, backtrack.predict_tick = {}, {}, 0, -1
+    backtrack.high_until = 0
 end
-
--- Primordial's own resolver is off while this one runs (unless Unsafe resolver is off) and back to its saved value after
-resolver.native = function(off)
-    if (resolver.native_off ~= off) then
-        menu_find("Aimbot", "General", "Aimbot", "Resolve Antiaim"):set((not off) and auto_cfg.resolve_antiaim == true)
+resolver.native = function(off, fallback)
+    local want = not off and (fallback == true or auto_cfg.resolve_antiaim == true)
+    if (resolver.native_on ~= want) then
+        menu_find("Aimbot", "General", "Aimbot", "Resolve Antiaim"):set(want)
         resolver.native_off = off
+        resolver.native_on = want
     end
 end
 
 update_target = function(ctx)
-    resolver.previous.target = ctx.player:get_index()
+    if (ctx.player ~= nil) then resolver.previous.target = ctx.player:get_index() end
 end
 
 lets_resolve = function()
@@ -4781,8 +4967,12 @@ lets_resolve = function()
 
     resolver.active = on and mode ~= 1
     resolver.safe_all = mode == 2
-    local override = resolver.active and res_custom() and ui.ragebot.resolver.unsafe_reso:get()
-    resolver.native(override)
+    local requested = resolver.active and res_custom() and ui.ragebot.resolver.unsafe_reso:get()
+    local target = resolver.data[resolver.previous.target]
+    local fallback = requested and (resolver.network().high
+        or (target ~= nil and not resolver.fresh(target)))
+    local override = requested and not fallback
+    resolver.native(override, fallback)
     if (local_player == nil) then
         return
     end
@@ -4797,12 +4987,16 @@ lets_resolve = function()
             if (override) then
                 resolver.update(local_player, v)
             else
-                -- the jitter detector only (the safe points), from the networked eye yaw
+                resolver.previous[v:get_index()] = nil
                 local eye = v:get_prop("m_angEyeAngles[1]")
                 if (type(eye) == "number" and eye == eye and math.abs(eye) <= 1e6) then
                     resolver.track(v, eye)
                 end
             end
+        else
+            local idx = v:get_index()
+            resolver.data[idx], resolver.previous[idx], resolver.mem[idx], resolver.misses[idx] = nil, nil, nil, nil
+            if (resolver.safe) then resolver.safe[idx] = nil end
         end
     end
 end
@@ -4991,6 +5185,9 @@ end
 --- @region: animation
 
 team_animation = function()
+    -- Legacy cosmetic routine writes random values into animation state.
+    -- Do not execute it while the resolver relies on those same records.
+    if (resolver.active) then return end
     if (ui.player.team_anim:get()) then
         local players = entity_list_get_players()
         local teams = entity_list_get_players(true)
@@ -5105,9 +5302,8 @@ run_exploit = function(ctx, cmd, unpredicted)
 end
 
 builder.lerp = function(start, end_pos, time)
-    local val = start + (end_pos - start) * time
-    time = time * (globals.frame_time() * 170)
-
+    local alpha = 1 - math.exp(-math.max(0, time) * 170 * math.max(0, globals.frame_time()))
+    local val = start + (end_pos - start) * alpha
     if (start == end_pos) then
         return end_pos
     end
@@ -5155,8 +5351,26 @@ end
 -- the yaw side (a resolver that learns "yaw left = body right" from a few shots hits every shot after that)
 builder.new_packet = function()
     local tick = globals.tick_count()
+    local state = global.current_state_number
     builder.fresh = false
-    if (engine_get_choked_commands() == 0 and builder.packet_tick ~= tick) then
+    local reset = builder.packet_tick ~= nil and tick < builder.packet_tick
+    local changed = builder.packet_state ~= state
+    if (reset or changed) then
+        builder.xw_st = {}
+        builder.ds_st = {}
+        builder.hd_st, builder.jit_st, builder.def_st = {}, {}, {}
+        builder.brain_d, builder.base_yaw, builder.jit_off = {}, nil, nil
+        builder.amount_left, builder.amount_right = nil, nil
+        builder.advanced_left, builder.advanced_right = nil, nil
+        builder.target_delay = 0
+        if (reset) then
+            builder.ab_until, builder.ab_phase_until, builder.ab_trigger_tick = 0, 0, nil
+            builder.brain, builder.incoming = {}, {}
+            builder.packet_tick = nil
+        end
+        builder.packet_state = state
+    end
+    if ((engine_get_choked_commands() == 0 and builder.packet_tick ~= tick) or changed) then
         builder.fresh = true
         builder.packet_tick = tick
         builder.yaw_flip = not builder.yaw_flip
@@ -5190,14 +5404,15 @@ end
 -- (Left / Right / Peek, Random desync side off) stay as they are
 builder.brain, builder.brain_d = {}, {}
 builder.brain_apply = function(ctx, anti_aim)
-    builder.brain_now = nil
+    builder.brain_now, builder.brain_index = nil, nil
     if (not ui.antiaim.builder.adaptive:get() or anti_aim.yaw_mode:get() == 1) then
         return
     end
     local group = builder.adv.arm_group(global.current_state_number)
-    local arm = builder.adv.ARMS[builder.adv.brain_arm(builder.brain, group, globals.real_time(), math.random)]
+    local index = builder.adv.brain_arm(builder.brain, group, globals.real_time(), math.random)
+    local arm = builder.adv.ARMS[index]
     builder.brain_now = arm.name
-
+    builder.brain_index = index
     local yaw_left
     if (arm.delay) then
         local d, tick = builder.brain_d, globals.tick_count()
@@ -5226,6 +5441,12 @@ builder.anti_brute_trigger = function()
     if (not ui.antiaim.builder.enable:get() or not ui.antiaim.builder.anti_brute:get()) then
         return
     end
+    local tick = globals.tick_count()
+    if (builder.ab_trigger_tick ~= nil and tick >= builder.ab_trigger_tick
+        and tick - builder.ab_trigger_tick < math.max(1, time_to_ticks(0.15))) then
+        return
+    end
+    builder.ab_trigger_tick = tick
     builder.target_delay = 0
     builder.yaw_flip = not builder.yaw_flip
     builder.brain_d.until_t = 0      -- Adaptive AA's delay profiles switch at the next packet too
@@ -5263,7 +5484,7 @@ builder.closest_point_on_ray = function(ray_from, ray_to, desired_point)
     local to = desired_point - ray_from
     local direction = ray_to - ray_from
     local ray_length = #direction
-    
+    if (ray_length <= 0.000001) then return ray_from end
     direction.x = direction.x / ray_length
     direction.y = direction.y / ray_length
     direction.z = direction.z / ray_length
@@ -5303,7 +5524,11 @@ end
 -- X-Way: `ways` yaw positions spread over centre +- range, taken from a shuffled bag (every position once a round, never
 -- the same one twice in a row), each held 1 .. hold packets
 builder.adv.xway = function(st, ways, range, center, hold, rnd)
-    ways = math.max(2, math.floor(ways))
+    ways = math.max(2, math.min(32, math.floor(ways)))
+    if (st.range ~= range or st.center ~= center) then
+        st.value, st.hold = nil, 0
+        st.range, st.center = range, center
+    end
     st.hold = (st.hold or 0) - 1
     if (st.hold > 0 and st.value ~= nil and st.ways == ways) then
         return st.value
@@ -5490,13 +5715,10 @@ builder.adv.brain_arm = function(st, group, now, u)
     end
     return g.cur
 end
-
--- a result while the group played its profile: a bullet past the head = it worked, a head hit = it did not (and an other
--- profile plays from now on); a body hit says nothing about the yaw / desync side
-builder.adv.brain_learn = function(st, group, kind, hitgroup, now, u)
+builder.adv.brain_learn = function(st, group, kind, hitgroup, now, u, credited_arm)
     local g = builder.adv.brain_group(st, group)
-    local cur = g.cur
-    if (cur == nil) then
+    local cur = credited_arm or g.cur
+    if (cur == nil or g.arms[cur] == nil) then
         return
     end
     local head = kind == "hit" and hitgroup == 1
@@ -5511,7 +5733,7 @@ builder.adv.brain_learn = function(st, group, kind, hitgroup, now, u)
     end
     if (head) then
         g.arms[cur].b = g.arms[cur].b + 1
-        builder.adv.brain_pick(st, group, now, u, cur)
+        if (g.cur == cur) then builder.adv.brain_pick(st, group, now, u, cur) end
     else
         g.arms[cur].a = g.arms[cur].a + 1
     end
@@ -5572,18 +5794,40 @@ builder.aa_snapshot = function()
         ab = builder.ab_active(),
         dc = builder.direct_on(),
         arm = builder.brain_now,
+        arm_index = builder.brain_index,
+        time = globals.real_time(),
     }
 end
-
--- one result: "hit" (an enemy hurt us; hitgroup / damage / attacker) or "evaded" (a bullet passed the head, no hit)
-builder.aa_record = function(kind, hitgroup, damage, attacker)
+-- Capture enemy fire before delayed bullet-impact/hurt feedback.
+builder.incoming = {}
+builder.capture_incoming = function(entity)
+    if (entity == nil or not entity:is_enemy() or not ui.antiaim.builder.enable:get()) then return end
+    local now = globals.real_time()
+    for idx, row in pairs(builder.incoming) do
+        if (now < row.time or now - row.time > 2) then builder.incoming[idx] = nil end
+    end
+    local snap = builder.aa_snapshot()
+    snap.hurt, snap.evaded = false, false
+    local previous = builder.incoming[entity:get_index()]
+    snap.ambiguous = previous ~= nil and now - previous.time < 0.15
+        and not previous.hurt and not previous.evaded
+    builder.incoming[entity:get_index()] = snap
+end
+builder.incoming_snapshot = function(entity)
+    local snap = entity and builder.incoming[entity:get_index()] or nil
+    local now = globals.real_time()
+    if (snap ~= nil and not snap.ambiguous and now >= snap.time and now - snap.time <= 2) then return snap end
+    return nil
+end
+builder.aa_record = function(kind, hitgroup, damage, attacker, snapshot)
     if (not ui.antiaim.builder.enable:get()) then
         return
     end
-    local snap = builder.aa_snapshot()
-    -- Adaptive AA: the profile that was on learns from it, and the stats are kept per profile
-    if (snap.arm ~= nil) then
-        builder.adv.brain_learn(builder.brain, builder.adv.arm_group(snap.n), kind, hitgroup, globals.real_time(), math.random)
+    local snap = snapshot or builder.aa_snapshot()
+    -- Unattributed damage still appears in stats, but cannot train an arm.
+    if (snapshot ~= nil and snap.arm_index ~= nil) then
+        builder.adv.brain_learn(builder.brain, builder.adv.arm_group(snap.n), kind, hitgroup,
+            globals.real_time(), math.random, snap.arm_index)
     end
     local key = snap.name .. " · " .. (snap.arm or snap.ym)
     local row = builder.aa_stats[key]
@@ -5908,7 +6152,9 @@ builder.direct_apply = function(ctx, local_player)
             local yaw = base + 180 + (o.yawadd or 0)
             if (o.rotate) then
                 local range = math.max(1, o.rotaterange or 360)
-                d.spin = (d.spin + math.max(1, o.rotatespeed or 50) / 10) % range
+                if (builder.fresh) then
+                    d.spin = (d.spin + math.max(1, o.rotatespeed or 50) / 10) % range
+                end
                 yaw = base + 180 + d.spin - range / 2
             elseif (o.jittermode == 2) then
                 yaw = yaw + builder.adv.native_jitter(d.jit, o.jittertype or 1, o.jitterrange or 0, builder.fresh)
@@ -6138,10 +6384,14 @@ run_antiaim = function(ctx, cmd, unpredicted)
             
             refs.pitch:set(ui.antiaim.builder.pitch:get())
             refs.yawbase:set(ui.antiaim.builder.yaw:get() + 1)
-            
-            refs.leftamount:set(anti_aim.desync_left:get() / 60 * 100 + math.random(0, anti_aim.desync_meta_left:get()))
-            refs.rightamount:set(anti_aim.desync_right:get() / 60 * 100 + math.random(0, anti_aim.desync_meta_right:get()))
-        
+            if (builder.fresh or builder.amount_left == nil) then
+                builder.amount_left = math.max(0, math.min(100, anti_aim.desync_left:get() / 60 * 100
+                    + builder.rnd(0, anti_aim.desync_meta_left:get())))
+                builder.amount_right = math.max(0, math.min(100, anti_aim.desync_right:get() / 60 * 100
+                    + builder.rnd(0, anti_aim.desync_meta_right:get())))
+            end
+            refs.leftamount:set(builder.amount_left)
+            refs.rightamount:set(builder.amount_right)
             if (anti_aim.yaw_modifier:get() >= 6) then
                 -- the lua jitter (Random / Switch random): one offset per sent packet on top of the yaw
                 refs.jittermode:set(1)
@@ -6201,9 +6451,11 @@ run_antiaim = function(ctx, cmd, unpredicted)
                         end
                     end
                 elseif (anti_aim.yaw_mode:get() == 3) then
-                    local left = anti_aim.yaw_left:get() + math.random(0, anti_aim.yaw_meta_left:get())
-                    local right = anti_aim.yaw_right:get() + math.random(0, anti_aim.yaw_meta_right:get())
-                    
+                    if (builder.fresh or builder.advanced_left == nil) then
+                        builder.advanced_left = anti_aim.yaw_left:get() + builder.rnd(0, anti_aim.yaw_meta_left:get())
+                        builder.advanced_right = anti_aim.yaw_right:get() + builder.rnd(0, anti_aim.yaw_meta_right:get())
+                    end
+                    local left, right = builder.advanced_left, builder.advanced_right
                     if (anti_aim.yaw_delay:get() == 2 and anti_aim.meta_delay:get() == 0) then
                         builder.set_yaw(builder.left_now() and left or right)
                         refs.desyncside:set(builder.desync_side(anti_aim))
@@ -6383,7 +6635,7 @@ on_miss = function(event)
             local entity = entity_list_get_player_from_userid(userid)
             if (entity ~= nil) then
                 local local_player = entity_list_get_local_player()
-                if (local_player:is_player() and local_player:is_alive()) then
+                if (local_player ~= nil and local_player:is_player() and local_player:is_alive()) then
                     if (entity:is_player() and entity:is_enemy()) then
                         local eye_pos = entity:get_eye_position()
                         if (eye_pos) then
@@ -6391,7 +6643,7 @@ on_miss = function(event)
                             
                             local localrecord = eye_pos:dist(bullet_impact)
                             local localorigin = eye_pos
-                            
+                            local snapshot = builder.incoming_snapshot(entity)
                             misstable[#misstable + 1] = eye_pos:dist(bullet_impact)
                             client_delay_call(function()
                                 if (localrecord == misstable[#misstable]) then
@@ -6400,8 +6652,10 @@ on_miss = function(event)
                                         if (builder.closest_point_on_ray(localorigin, bullet_impact, eye_pos):dist(eye_pos) < 50) then
                                             builder.misses = builder.misses < #builder.anti_bruteforce and builder.misses + 1 or 0
                                             builder.anti_brute_trigger()
-                                            if (globals.tick_count() - hurt_tick > 8) then
-                                                builder.aa_record("evaded")
+                                            if (snapshot ~= nil and not snapshot.hurt and not snapshot.evaded
+                                                and globals.tick_count() - hurt_tick > 8) then
+                                                snapshot.evaded = true
+                                                builder.aa_record("evaded", nil, nil, nil, snapshot)
                                             end
                                         end
 
@@ -6413,7 +6667,7 @@ on_miss = function(event)
                                 else
                                     return
                                 end
-                            end, 0.01)
+                            end, 0.15)
                         else
                             return
                         end
@@ -7709,8 +7963,9 @@ menu_handle = function()
         for _, nav_sub in ipairs(ui.nav.subs) do
             nav_sub.button:depend({nav_main_of[page] == nav_sub.main})
         end
-    
-        -- resolver (beta) (ragebot)
+        ui.ragebot.smart_baim_hp:depend({ui.ragebot.smart_baim, true})
+        ui.ragebot.smart_baim_lethal:depend({ui.ragebot.smart_baim, true})
+        ui.ragebot.latency_limit:depend({ui.ragebot.latency_guard, true})
         ui.ragebot.resolver.unsafe_reso:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
         ui.ragebot.resolver.duck_mode:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
         ui.ragebot.resolver.auto_duck:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
@@ -7980,8 +8235,7 @@ do_aimhit = function()
                     refs.desyncside:set(0)
                 end
             end
-
-            resolver.on_result(target, hit.hitgroup == hit.aim_hitgroup, false)
+            resolver.on_result(target, hit.hitgroup == hit.aim_hitgroup, false, hit)
             pcall(shotlog.result, hit, true)
             return
         else
@@ -7992,89 +8246,28 @@ end
 
 do_aimmiss = function()
     perf.add(e_callbacks.AIMBOT_MISS, "AIMBOT_MISS", function(miss)
-        local miss_group = hit_groups[miss.aim_hitgroup]
-        
-        local reason = miss.reason_string
+        local miss_group = hit_groups[miss.aim_hitgroup] or "?"
+        local reason = type(miss.reason_string) == "string" and miss.reason_string or "unknown"
         local target = miss.player
-
-        if (target ~= nil) then
-            cl_logs.add_log("misses")
-            resolver.on_result(target, false, reason == "resolver" or reason == "jitter")
-            pcall(shotlog.result, miss, false)
-
-            if (ui.utils.event_logs:get(5)) then
-                local actual_pos = target:get_hitbox_pos(1)
-                local distance = reso.aimpos:dist(actual_pos)
-
-                logs.add_misslog(miss)
-                if (string.find(reason, "server rejection")) then
-                    if (miss.backtrack_ticks > 5) then
-                        indicator.data["unknown"] = (indicator.data["unknown"] or 0) + 1
-                        indicator.shot_count = indicator.shot_count + 1
-
-                        print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to", get_text_color(), " unknown", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
-                        return
-                    end
-                end
-
-                if (not string.find(reason, "ping (local death)")) then
-                    if (distance > 38) then
-                        indicator.data["prediction error"] = (indicator.data["prediction error"] or 0) + 1
-                        indicator.shot_count = indicator.shot_count + 1
-
-                        print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to", get_text_color(), " prediction error", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
-                        return
-                    end
-                end
-
-                if (string.find(reason, "spread") or string.find(reason, "spread (missed safe)")) then
-                    if (globals.tick_count() - hurt_tick < 2) then
-                        indicator.data["jitter"] = (indicator.data["jitter"] or 0) + 1
-                        indicator.shot_count = indicator.shot_count + 1
-
-                        print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to", get_text_color(), " jitter", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
-                        return
-                    end
-                end
-
-                if (miss.backtrack_ticks > 15) then
-                    if (miss.backtrack_ticks > 20) then
-                        indicator.data["dormant aimbot"] = (indicator.data["dormant aimbot"] or 0) + 1
-                        indicator.shot_count = indicator.shot_count + 1
-
-                        print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to", get_text_color(), " dormant aimbot", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
-                        return
-                    end
-
-                    if (string.find(reason, "jitter")) then
-                        indicator.data["prediction error"] = (indicator.data["prediction error"] or 0) + 1
-                        indicator.shot_count = indicator.shot_count + 1
-
-                        print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to", get_text_color(), " prediction error", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
-                        return
-                    end
-
-                    indicator.data["backtrack failure"] = (indicator.data["backtrack failure"] or 0) + 1
-                    indicator.shot_count = indicator.shot_count + 1
-
-                    print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to", get_text_color(), " backtrack failure", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
-                    return
-                end
-
-                indicator.data[reason] = (indicator.data[reason] or 0) + 1
-                indicator.shot_count = indicator.shot_count + 1
-
-                if (string.find(reason, "spread") or string.find(reason, "spread (missed safe)")) then
-                    print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to ", get_text_color(), reason, get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "hc: ", specter_color_t(168, 168, 168), miss.aim_hitchance, "%%, ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
-                    return
-                end
-                print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to ", get_text_color(), reason, get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
-            else
-                return
-            end
-            return
-        else
-            return
+        if (target == nil) then return end
+        cl_logs.add_log("misses")
+        resolver.on_result(target, false, reason == "resolver" or reason == "jitter", miss)
+        pcall(shotlog.result, miss, false)
+        -- Host-reported reason is authoritative. Movement since the shot,
+        -- hurt timing and backtrack age are diagnostics, not miss causes.
+        indicator.data[reason] = (indicator.data[reason] or 0) + 1
+        indicator.shot_count = indicator.shot_count + 1
+        if (ui.utils.event_logs:get(5)) then
+            logs.add_misslog(miss)
+            local snap = resolver.last_result
+            local desync = snap and snap.desync and math.floor(snap.desync) or "?"
+            print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168),
+                "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to ",
+                get_text_color(), reason, get_accent_color(), "  ~  ", specter_color_t(108, 108, 108),
+                "hc: ", specter_color_t(168, 168, 168), tostring(miss.aim_hitchance or "?"),
+                "%%, ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168),
+                tostring(miss.backtrack_ticks or "?"), "t, ", specter_color_t(108, 108, 108),
+                "∠: ", specter_color_t(168, 168, 168), desync, "°")
         end
     end)
 end
@@ -8164,8 +8357,9 @@ end
 
 do_aimshoot = function()
     perf.add(e_callbacks.AIMBOT_SHOOT, "AIMBOT_SHOOT", function(shot)
-        if (check_conditions()) then
+        if (check_conditions() and shot.player ~= nil) then
             local idx = shot.player:get_index()
+            if (resolver.capture ~= nil) then resolver.capture(shot) end
             reso.aimpos = shot.player:get_hitbox_pos(1)
 
             reso.desync = (resolver.previous[idx] and resolver.previous[idx].m_flDesync) and (math.floor(resolver.previous[idx].m_flDesync) or resolver.previous[idx].m_dlDesync)
@@ -8262,6 +8456,10 @@ do_hitscan = function()
             dmg_prediction(ctx, cmd, unpredicted_data)
         
             accuracy_boost(ctx, cmd, unpredicted_data)
+            -- Final authority: later corrections cannot re-enable the head.
+            if (ctx.player ~= nil and resolver.safe and resolver.safe[ctx.player:get_index()] == 3) then
+                resolver.enforce_body(ctx)
+            end
             if (builder.onpeek) then
                 exploits.force_anti_exploit_shift()
             else
@@ -8431,6 +8629,10 @@ do_event = function()
             end
 
             if (event.name == "round_start") then
+                resolver.reset()
+                builder.incoming, builder.brain_d = {}, {}
+                builder.packet_tick, builder.packet_state = nil, nil
+                builder.ab_until, builder.ab_phase_until, builder.ab_trigger_tick = 0, 0, nil
                 pcall(shotlog.send)
                 builder.misses = 0
 
@@ -8456,7 +8658,9 @@ do_event = function()
             if (event.name == "bullet_impact") then
                 on_miss(event)
             end
-
+            if (event.name == "weapon_fire") then
+                builder.capture_incoming(entity_list_get_player_from_userid(event.userid))
+            end
             if (event.name == "player_hurt") then
                 on_knifebot(event)
                 if (local_player == entity) and not (local_player == entity_list_get_player_from_userid(event.attacker)) then
@@ -8464,7 +8668,9 @@ do_event = function()
                     builder.anti_brute_trigger()
                     local attacker = entity_list_get_player_from_userid(event.attacker)
                     if (attacker ~= nil and attacker:is_enemy()) then
-                        builder.aa_record("hit", event.hitgroup, event.dmg_health, attacker:get_name())
+                        local snapshot = builder.incoming_snapshot(attacker)
+                        if (snapshot ~= nil) then snapshot.hurt = true end
+                        builder.aa_record("hit", event.hitgroup, event.dmg_health, attacker:get_name(), snapshot)
                     end
                 end
             end

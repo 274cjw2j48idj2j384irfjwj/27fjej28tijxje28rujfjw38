@@ -343,24 +343,39 @@ check(r[0] == "0,30,-30,0,30,-30" and r[1] == "-20,0,20,40,-40" and r[2],
 check("render_circle_filled = function(pos, radius" in SRC, "circle radii are rounded (Primordial wants an int)")
 
 
-# jitter misses (shot logs, Oct 2026; owners: "max 1-2 jitter miss 20-30 lövésenként"): every enemy's eye yaw steps go
-# through the jitter detector whichever resolver is on (also none); a jittering target gets head + chest safe points, any
-# target after a resolver / jitter miss the head one. A mouse turn and a spin are not jitter, centre / 3-way / random are
+# Fresh jitter evidence is tracked per target. Safety is gated by resolver state
+# and fast-peek policy; health-threshold body aim works independently.
 RES = chunk("local RES_JIT_N = 12", "resolver.update = function(local_player, ent)") + \
+      chunk("resolver.body_damage = function(ent)", "-- safe points / smart body aim for the aimbot's target.") + \
       chunk("-- safe points / smart body aim for the aimbot's target.", "resolver.reset = function()")
 jr = L.LuaRuntime(unpack_returned_tuples=True)
 jr.execute("""RES_FS_TICKS = 16 SIM = 0
-resolver = { data = {}, misses = {}, active = false }
+resolver = { data = {}, misses = {}, mem = {}, previous = {}, active = false }
+resolver.state_of = function() return "stand" end
+resolver.fast_target = function() return false end
+globals = { real_time = function() return SIM end }
 local function item(v) return { get = function() return v end } end
-ui = { ragebot = { logic_reso = item(false), smart_baim = item(true), resolver = { shot_pred = item(4) } } }
+ui = { ragebot = { logic_reso = item(false), smart_baim = item(true),
+    smart_baim_hp = item(40), smart_baim_lethal = item(true), resolver = { shot_pred = item(4) } } }
 HP = 100
 damage = { calculate = function(_, _, box) return box == "chest" and 70 or 87 end }
 res_custom = function() return false end
 res_clamp = function(v, a, b) return math.max(a, math.min(b, v)) end
 res_norm = function(v) return (v + 180) % 360 - 180 end
+res_sign = function(v) return v < 0 and -1 or 1 end
 time_to_ticks = function(t) return math.floor(t * 64 + 0.5) end
 e_hitscan_groups = { HEAD = 0, CHEST = 1, STOMACH = 2 }
-ENT = { get_index = function() return 3 end, get_prop = function(_, n) if n == "m_iHealth" then return HP end return SIM end }
+e_hitboxes = { CHEST = 1, PELVIS = 2 }
+entity_list_get_local_player = function() return { get_eye_position = function() return 0 end } end
+trace_bullet = function(_, point) return { valid = true, damage = point == 1 and 70 or 87,
+    hitgroup = point == 1 and 2 or 3 } end
+ENT = { get_index = function() return 3 end, get_hitbox_pos = function(_, b) return b end,
+    get_prop = function(_, n)
+        if n == "m_iHealth" then return HP end
+        if n == "m_flSimulationTime" then return SIM end
+        if n == "m_flSpawnTime" then return 1 end
+        return 0
+    end }
 function HS()
     local c = { safe = {}, groups = {} }
     c.player = ENT
@@ -406,9 +421,10 @@ RUN(SEQ(20, function(i) return i % 2 == 0 and 30 or -30 end))
 local base = SIM
 local held = {}
 for i = 1, 60 do SIM = base + i * 2 / 64 resolver.track(ENT, 30) held[#held + 1] = resolver.data[3].jitter end
-return held[20], held[60]   -- 0.63 s / 1.9 s after it stopped (the last 12 steps leave the window first)
+return held[5], held[40]   -- initially held, then expired after the short hold plus bounded history
 """)
-check(r == (True, False), "jitter detector: a target stays a jitter target for 1 s after it stops (older records) (%s)" % (r,))
+check(r == (True, False) and "local RES_JIT_HOLD = 0.25" in SRC,
+      "jitter detector: short 250 ms hold after evidence stops, no one-second stale safety (%s)" % (r,))
 r = J("""
 RUN(SEQ(20, function() return 10 end))
 local h0, c0 = HS()
@@ -421,6 +437,7 @@ HS()
 local body_60 = LAST.groups[0] == false and LAST.groups[1] == true and LAST.groups[2] == true and resolver.safe[3] == 3
 resolver.misses[3] = 0
 HP = 100
+resolver.active = true
 RUN(SEQ(20, function(i) return i % 2 == 0 and 30 or -30 end))
 local h2, c2 = HS()
 local jit_head_100 = LAST.groups[0] == nil and resolver.safe[3] == 2
@@ -429,9 +446,8 @@ HS()
 local jit_body_50 = LAST.groups[0] == false
 return h0, c0, sure_head, h1, c1, head_100, body_60, h2, c2, jit_head_100, jit_body_50
 """)
-check(r == (False, False, True, True, False, True, True, True, True, True, True),
-      "jitter / smart body aim, every resolver off: a sure head stays, after a miss / on a jitter target the head is a safe "
-      "point, the body only when a body hit kills (%s)" % (r,))
+check(r == (False, False, True, False, False, True, True, True, True, True, True),
+      "smart body aim: independent lethal-body fallback; inactive safety stays off, fresh active jitter gets safety (%s)" % (r,))
 
 # FPS (owners, Oct 2026: "70 fpsem"): menu.find is asked once per item, the profiler only times while it runs
 MF = chunk("-- menu.find walks Primordial's whole menu by name", "-- FPS profiler (dev build")
@@ -463,7 +479,7 @@ damage = { calculate = function(_, _, box) return ({ head = 300, chest = 80, sto
 get_dmg = function() return 40 end
 trace_bullet = function(_, pos) return { valid = true, hitgroup = pos } end
 client_get_hitgroup_name = function(g) return g end
-resolver = { safe = {} }
+resolver = { safe = {}, fast_target = function() return false end }
 ENEMY = { get_index = function() return 5 end, get_hitbox_pos = function(_, b) return b end,
     get_prop = function() return 100 end }
 """ + DP + """
