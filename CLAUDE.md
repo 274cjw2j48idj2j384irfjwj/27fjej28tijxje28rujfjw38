@@ -125,7 +125,13 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   sima lua"; a server-side dev loader was made and taken out again).
 - Offline (owners, Oct 2026): the azura.uno login / HWID check, stats upload and cloud / sync sockets are gone (dummy sockets,
   the cloud buttons say "Cloud is offline"); settings.json and the logo PNGs that the old loader installed are optional; the
-  lagcomp debug boxes are gone. default.cfg = the owner's config (`configs.default_config`), applied on the first start.
+  lagcomp debug boxes are gone. default.cfg = the owner's config (`configs.default_config`), applied on the first start
+  and written to csgo/specter/default.cfg at every start (load it from the list to get it). Its anti-aim is the advanced
+  engine (owners, Oct 2026: "csináld meg a legjobb configot ezzel"), the rest stays the owner's: states 1-8 tight X-Way /
+  Distort / Random hold (+- 18-32 deg: the owner's own yaw was +- 10-25, wider shows the head to the sides), a small lua
+  jitter, Random desync 60, Smart defensive (Random up/down or Sway pitch, Random side / Distort / Jitter flick yaw),
+  Phases anti brute, Fakelag variance; Fakelag / Manual / Freestand as the owner had them. "Apply advanced preset" sets the
+  same values (the regress checks they match).
 - Resolver (owners, Oct 2026: "fixald teljesen"; their old stats: 1262 hits / 443 misses): Primordial's own "Resolve
   Antiaim" does the resolving (its records and animation fix; no workshop lua writes an enemy's feet yaw, there is no
   resolver hook). The block counts resolver misses per player (`resolver.misses`, a hit resets it) and puts a head safe

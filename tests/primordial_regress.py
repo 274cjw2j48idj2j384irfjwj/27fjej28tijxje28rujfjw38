@@ -204,5 +204,25 @@ aim = R("""return builder.adv.aims_at(0, 100, 5, 20), builder.adv.aims_at(90, 10
 check(aim[0] and not aim[1] and not aim[2] and aim[3] and aim[4] and aim[5] == -180 and aim[6] == 170,
       "threat aim / rnd with b < a / yaw normalising (%s)" % (aim,))
 
+# default.cfg (owners: "csináld meg a legjobb configot ezzel"): it decodes, every anti-aim item it sets exists, states 1-8 use
+# the advanced engine with the same values as the "Apply advanced preset" button
+import base64, json
+cfg = json.loads(base64.b64decode(re.search(r'configs\.default_config\s*=\s*"([^"]+)"', SRC).group(1)))
+labels = set(re.findall(r'shortstates\[i\] \.\. " \| ([^"]+)"', SRC))
+bad = [n[0] for g in ("Yaw", "Jitter", "Desync", "Defensive") for n in cfg[g]
+       if not n[0].startswith("Override - ") and n[0].split(" | ", 1)[1] not in labels]
+check(not bad, "default.cfg: every anti-aim item it sets exists (%s)" % bad[:5])
+get = lambda g, n: next((it[1] for it in cfg[g] if it[0] == n), None)
+pre = SRC[SRC.index("    local P = {"):SRC.index("    }\n", SRC.index("    local P = {"))]
+rows = re.findall(r"\[(\d)\] = \{ ([-\d, ]+), \{", pre)
+same = len(rows) == 8
+for i, vals in rows:
+    v = [int(x) for x in vals.split(",") if x.strip()]
+    p = ["G", "S", "M", "SW", "D", "DM", "A", "AD"][int(i) - 1]
+    same = same and [get("Yaw", p + " | Yaw mode"), get("Yaw", p + " | Range"), get("Jitter", p + " | Modifier mode"),
+                     get("Desync", p + " | Desync"), get("Defensive", p + " | Defensive")] == [v[0], v[3], v[9], 5, 6]
+check(same and get("Settings", "Anti brute mode") == 2 and get("Features", "Fakelag variance") is True,
+      "default.cfg: the advanced anti-aim, the same values as the preset button")
+
 print("\n%d failed" % len(FAILS) if FAILS else "\nall passed")
 sys.exit(1 if FAILS else 0)
