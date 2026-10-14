@@ -164,7 +164,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   one and is back within 1.5 deg of the yaw 2-4 records before (`jit_returns`; a smooth mouse sweep never does),
   held 1 s of sim time after the last such window (high real / fake ping shoots ~1 s old records). The resolver toggles
   add their safe points on top (safe_all, Custom: duck / weapons / peek / HP; "Hit sensitivity" is gone). Shot logs, Oct
-  2026: 21 of 31 misses resolver / jitter before; after the first version 6 of 35. The shot logs carry `sp` (1 safe
+  2026: 21 of 31 misses resolver / jitter before; after the first version 6 of 35. Multipoint correction
+  (`dmg_prediction`, owners: "nagyon sok a body hit") goes through head, chest, stomach IN THAT ORDER (`pairs` gave the
+  chest / stomach the 70 % hitchance push while the head was shootable) and skips the head when Smart body aim took it
+  out (`resolver.safe[idx] == 3`). The shot logs carry `sp` (1 safe
   point, 2 for jitter, 3 smart body aim), the AA lines `dc` (Direct control on).
   The lua side override (freestanding / jitter side written into the animstate, the old "Unsafe resolver" that switched
   Primordial's resolver off) is "Lua side override (experimental)", off by default (the label changed so the old configs
