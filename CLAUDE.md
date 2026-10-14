@@ -84,8 +84,7 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   Which lua a post is about (owners, Oct 2026: "rakjon elé egy Primo logót vagy egy GS logot"): `lua_badge` puts
   "Specter for Gamesense" / "Specter for Primordial" with `assets/gs_icon.png` / `assets/primordial_icon.png` in the embed's
   author line, above the title, on the #updates changelogs and the #staff dev build posts (`lua_of(path)`). The two PNGs are
-  placeholders (a GS badge with the gamesense rainbow line, a violet P) until the owners send the real logos: swap the files,
-  same names. The Primordial changelog in #updates (`sync_primordial`, the release merge's message) only with
+  the logos the owners sent (Oct 2026), 128 x 128: the GS badge, and the Primordial hourglass cut out of its black side bars. The Primordial changelog in #updates (`sync_primordial`, the release merge's message) only with
   `PRIMORDIAL_UPDATES=1` (default off: the Primordial lua is not out yet). A
   Discord upload link (cdn.discordapp.com/attachments ...?ex=) expires in a day and is ignored. The PNGs are the watermark's
   look: the crescent of `sky()` (accent circle minus a 0.844 r circle at +0.49 r / -0.36 r), accent 180 160 255, panel 12 12 16
