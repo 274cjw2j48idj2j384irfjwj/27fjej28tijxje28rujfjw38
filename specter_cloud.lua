@@ -11421,6 +11421,10 @@ LPH_NO_VIRTUALIZE(function ()
                 :record("miscellaneous", "sponsor_killsay")
                 :save()
 
+            config.miscellaneous.roast_killsay = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Roast Kill Say")
+                :record("miscellaneous", "roast_killsay")
+                :save()
+
             config.miscellaneous.custom_output = menu.new_item(ui.new_checkbox, "AA", "Other", "Custom Output")
                 :record("miscellaneous", "custom_output")
                 :save()
@@ -11920,6 +11924,39 @@ LPH_NO_VIRTUALIZE(function ()
                     '{name} uninstall maybe? / just a suggestion'
                 }
 
+                -- Roast Kill Say (owners, Oct 2026: "olyan killsayeket ami megérinti az embereket", like "your mom waited 9
+                -- months ..."): family / life roasts, no slurs and nothing about self harm (a report gets the account banned)
+                local roast_messages = {
+                    'your mom waited 9 months / and all she got was {name}',
+                    '{name}, your mom carried you for 9 months / and that\'s still the longest anyone carried you',
+                    '{name}, your dad went out for milk / right after he watched you play',
+                    '{name} is the reason your family stopped posting photos',
+                    'even your birth certificate reads like an apology {name}',
+                    '{name}, your mom still tells people you\'re adopted',
+                    'your parents had one choice {name} / they chose wrong',
+                    '{name}, the stork took one look at you / and asked for a refund',
+                    'your family group chat goes quiet the second you type {name}',
+                    'your mom brags about your cousin {name} / we all know why',
+                    '{name}, your teachers still use you as a warning to the new kids',
+                    'your dad taught you everything he knows {name} / that\'s why you know nothing',
+                    '{name}, you\'re not the black sheep of the family / you\'re the whole flock',
+                    'your mom said you\'d be somebody one day {name} / she never said who',
+                    'nobody remembers your birthday {name} / not even the bots',
+                    '{name}, your grandma prays for you every night / mostly that you\'ll stop playing',
+                    '{name}, your friends only call when they need a 5th / and they still pick a bot',
+                    'you peaked in the tutorial {name}',
+                    '{name}, mirrors crack themselves just to avoid you',
+                    '{name}, you\'re the reason the gene pool needs a lifeguard',
+                    'your parents fought over custody {name} / both of them were trying to lose',
+                    '{name}, your dad\'s biggest flex is that he doesn\'t know you',
+                    'even your imaginary friend picked the other team {name}',
+                    '{name}, your mom\'s cooking is the only thing in your house with taste',
+                    '{name}, the only thing you ever carried is the shame of your family name',
+                    'your dad still waits for you to make him proud {name} / he\'s getting old',
+                    '{name}, you were a surprise / and nobody was happy about it',
+                    'the whole lobby just learned why your dad never came back {name}',
+                }
+
                 local DISCORD = 'discord.gg/dxM89UUnVN'
                 local sponsor_messages = {
                     '{name} got tapped by Specter / sit down',
@@ -12086,7 +12123,8 @@ LPH_NO_VIRTUALIZE(function ()
                 function miscellaneous.trashtalk:on_kill(event)
                     local M = config.miscellaneous
                     local sponsor = M.sponsor_killsay:get()
-                    local killsay = sponsor or M.killsay:get()
+                    local roast = not sponsor and M.roast_killsay:get()
+                    local killsay = sponsor or roast or M.killsay:get()
                     if not M.trashtalk:get() and not killsay then
                         return
                     end
@@ -12095,7 +12133,7 @@ LPH_NO_VIRTUALIZE(function ()
                     local victim_name = victim_ent and entity.get_player_name(victim_ent) or nil
 
                     if killsay and victim_name then
-                        self.run_killsay(sponsor and sponsor_messages or killsay_messages, victim_name)
+                        self.run_killsay(sponsor and sponsor_messages or (roast and roast_messages) or killsay_messages, victim_name)
                         return
                     end
 
@@ -14530,6 +14568,7 @@ LPH_NO_VIRTUALIZE(function ()
                 M.trashtalk:display()
                 M.killsay:display()
                 M.sponsor_killsay:display()
+                M.roast_killsay:display()
                 M.hdr_utility:display()
                 M.console_filter:display()
                 M.aspect_mode:display()

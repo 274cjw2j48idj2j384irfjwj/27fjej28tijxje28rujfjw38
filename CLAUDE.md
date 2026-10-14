@@ -237,6 +237,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   olyan killsay ami hirdeti a dc-t"; the invite lines alternate with the plain ones), nothing about
   the features; it wins over Kill Say / Trash Talk on a kill.
   The victim's name is cleaned before it goes into `say "..."` (no quote / semicolon / % / control chars: a name could run a command)
+- "Roast Kill Say" (owners, Oct 2026: "olyan killsayeket ami megérinti az embereket ... sokkal mélyebb is", like "your mom
+  waited 9 months"): `roast_messages`, 28 family / life roasts with {name}, no slurs and nothing about self harm (a report gets
+  the account banned). Sponsor > Roast > Kill Say. specter_primordial.lua has the same lines as Trash talk "Roast"
+  (`phrases_roast`, the name cleaned the same way, `say "..."`).
 
 ## Resolver (computed body yaw + learned models, one module)
 - Code lives between the `-- [resolver:begin]` / `-- [resolver:end]` markers in `specter_cloud.lua`. Keep the markers (tests extract the block).
