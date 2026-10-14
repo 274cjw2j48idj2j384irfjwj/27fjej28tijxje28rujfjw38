@@ -806,7 +806,7 @@ local delay = { tick_delay = client_time_to_ticks(1), last_tick = globals.tick_c
 local animation = { alpha = 0, appearing = 0 }
 local toss = { target_angles = vec3_t(0, 0, 0) }
 local knife = { countdown = 0 }
-local notifications = { emoji_to_svg = { ["success"] = render_load_image_buffer('<svg id="emoji" viewBox="0 0 72 72" xmlns="http://www.w3.org/2000/svg"><g id="color"><path fill="#b1cc33" d="m61.5 23.3-8.013-8.013-25.71 25.71-9.26-9.26-8.013 8.013 17.42 17.44z"/></g><g id="line"><path fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" stroke-width="2" d="m10.5 39.76 17.42 17.44 33.58-33.89-8.013-8.013-25.71 25.71-9.26-9.26z"/></g></svg>'), ["warn"] = render_load_image_buffer('<svg id="emoji" viewBox="0 0 72 72" xmlns="http://www.w3.org/2000/svg"><g id="color"><path fill="#fcea2b" stroke="none" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" stroke-width="2" d="M32.5222,13.005c0.6977-1.2046,1.9862-2.0244,3.4778-2.0244c1.4916,0,2.7801,0.8198,3.4778,2.0244l20.9678,41.9351 C60.7889,55.5339,61,56.2136,61,56.9483c0,2.2272-1.8051,4.0323-4.0323,4.0323l-41.9354,0.0173 C12.8051,60.9979,11,59.192,11,56.9657c0-0.7356,0.211-1.4145,0.5544-2.0083L32.5222,13.005"/><path fill="#FFFFFF" stroke="none" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" stroke-width="2" d="M37.6129,47.2709c0,0.8907-0.7222,1.6129-1.6129,1.6129c-0.8907,0-1.6129-0.7222-1.6129-1.6129V23.8925 c0-0.8907,0.7222-1.6129,1.6129-1.6129c0.8907,0,1.6129,0.7222,1.6129,1.6129V47.2709z"/><circle cx="36" cy="54.529" r="1.6129" fill="#FFFFFF" stroke="none" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" stroke-width="2"/></g><g id="hair"/><g id="skin"/><g id="skin-shadow"/><g id="line"><path fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" stroke-width="2" d="M32.5222,13.005c0.6977-1.2046,1.9862-2.0244,3.4778-2.0244c1.4916,0,2.7801,0.8198,3.4778,2.0244l20.9678,41.9351 C60.7889,55.5339,61,56.2136,61,56.9483c0,2.2272-1.8051,4.0323-4.0323,4.0323l-41.9354,0.0173 C12.8051,60.9979,11,59.192,11,56.9657c0-0.7356,0.211-1.4145,0.5544-2.0083L32.5222,13.005"/><path fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" stroke-width="2" d="M37.6129,47.2709c0,0.8907-0.7222,1.6129-1.6129,1.6129c-0.8907,0-1.6129-0.7222-1.6129-1.6129V23.8925 c0-0.8907,0.7222-1.6129,1.6129-1.6129c0.8907,0,1.6129,0.7222,1.6129,1.6129V47.2709z"/><circle cx="36" cy="54.529" r="1.6129" fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" stroke-width="2"/></g></svg>'), ["fail"] = render_load_image_buffer('<svg id="emoji" viewBox="0 0 72 72" xmlns="http://www.w3.org/2000/svg"><g id="color"><path fill="#ea5a47" d="m58.14 21.78-7.76-8.013-14.29 14.22-14.22-14.22-8.013 8.013 14.36 14.22-14.36 14.22 8.014 8.013 14.22-14.22 14.29 14.22 7.76-8.013-14.22-14.22z"/></g><g id="hair"/><g id="skin"/><g id="skin-shadow"/><g id="line"><path fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" stroke-width="2" d="m58.14 21.78-7.76-8.013-14.29 14.22-14.22-14.22-8.013 8.013 14.35 14.22-14.35 14.22 8.014 8.013 14.22-14.22 14.29 14.22 7.76-8.013-14.22-14.22z"/></g></svg>'), ["info"] = render_load_image_buffer('<svg id="emoji" viewBox="0 0 72 72" xmlns="http://www.w3.org/2000/svg"><g id="color"><circle cx="36" cy="36" r="23" fill="#4FC3F7"/><rect x="34" y="32" width="4" height="16" rx="2" ry="2" fill="#FFFFFF"/><circle cx="36" cy="26" r="2.5" fill="#FFFFFF"/></g><g id="line"><circle cx="36" cy="36" r="23" fill="none" stroke="#000000" stroke-miterlimit="10" stroke-width="2"/><rect x="34" y="32" width="4" height="16" rx="2" ry="2" fill="none" stroke="#000000" stroke-miterlimit="10" stroke-width="2"/><circle cx="36" cy="26" r="2.5" fill="none" stroke="#000000" stroke-miterlimit="10" stroke-width="2"/></g></svg>') }, types = { success = "success", warning = "warn", failure = "fail", information = "info" }, font = arial_font, font2 = render_get_default_font(), logs = {}, neutral_color = color_t(230, 230, 230, 255), background_color = color_t(0, 0, 0, 200), delay = 3, width = 250, padding = 5 }
+local notifications = { types = { success = "success", warning = "warn", failure = "fail", information = "info" }, logs = {}, delay = 3.5 }
 local logs = { logs = {}, font = arial_font, neutral_color = color_t(230, 230, 230, 255), background_color = color_t(0, 0, 0, 100) }
 local edgeyaw = { pos = vec3_t(0, 0, 0), angle = angle_t(0, 0, 0), vec_trace_start = vec3_t(0, 0, 0), enabled = false }
 local hit_groups = { [0] = "generic", [1] = "head", [2] = "pelvis", [3] = "stomach", [4] = "lower chest", [5] = "chest", [6] = "upper chest", [7] = "right thigh", [8] = "left thigh", [9] = "right calf", [10] = "left calf", [11] = "right foot", [12] = "left foot", [13] = "right hand", [14] = "left hand", [15] = "right upper arm", [16] = "right forearm", [17] = "left upper arm", [18] = "left forear" }
@@ -2071,106 +2071,8 @@ end
 
 -- notifications funcs
 
-notifications.lerp = function(a, b, t)
-    return a + (b - a) * t
-end
-
-notifications.create = function(header, body, type)
-    table.insert(notifications.logs, {head = header, body = body, emoji = notifications.emoji_to_svg[type], time = globals.real_time(), pos = vec2_t(0, 0), init = false, height = 0, strings = {}})
-end
-
-notifications.render = function()
-    local global_text_height = 60
-    for i, log in pairs(notifications.logs) do
-        if (globals.real_time() - log.time <= 0.1) then
-            log.pos.y = global_text_height
-        end
-
-        if (not log.init) then
-            log.init = true
-
-            local top_height = 20
-            local text_height = 4
-
-            local cur_str = ""
-
-            local word = {
-                str = "",
-                length = 0
-            }
-
-            for str_index = 1, #log.body do
-                local letter = log.body:sub(str_index, str_index)
-
-                word.length = word.length + 1
-                word.str = word.str .. letter
-
-                if (letter == " ") then
-                    word.str = ""
-                    word.length = 0
-                end
-
-                if (not (cur_str == "" and letter == " ")) then
-                    cur_str = cur_str .. letter
-                end
-
-                local text_width = render_get_text_size(notifications.font, cur_str).x
-                if (text_width > notifications.width - notifications.padding * 2) then
-                    if (word.str == "") then
-                        text_height = text_height + render_get_text_size(notifications.font, cur_str).y
-                        table.insert(log.strings, cur_str)
-                        
-                        cur_str = ""
-                    else
-                        local cur_str_substring = cur_str:sub(1, #cur_str - word.length)
-                        text_height = text_height + render_get_text_size(notifications.font, cur_str_substring).y
-
-                        table.insert(log.strings, cur_str_substring)
-                        cur_str = word.str
-                    end
-                end
-            end
-
-            if (log.strings[#log.strings] ~= cur_str) then
-                table.insert(log.strings, cur_str)
-                text_height = text_height + render_get_text_size(notifications.font, cur_str).y
-            end
-
-            log.height = text_height + top_height
-        end
-
-        if (log.pos.x < 300 and log.time + notifications.delay > globals.real_time()) then
-            log.pos.x = notifications.lerp(log.pos.x, 270, 0.07)
-        end
-        log.pos.y = notifications.lerp(log.pos.y, global_text_height, 0.05)
-
-        local margin = (i - 1) * 10
-        local opacity = math.clamp2((log.time + notifications.delay - globals.real_time()) * 2.8, 0, 1)
-
-        render_push_alpha_modifier(opacity)
-        render_rect(vec2_t(screen_size.x - log.pos.x, log.pos.y + margin), vec2_t(notifications.width, log.height), ui.accent_color:get(), 5)
-
-        local color = ui.accent_color:get()
-        for i_ = 3, 0, -1 do
-            render_rect(vec2_t(screen_size.x - log.pos.x - (4 - i_), log.pos.y + margin - (4 - i_)), vec2_t(notifications.width + (4 - i_) * 2, log.height + (4 - i_) * 2), color_t(color.r, color.g, color.b, i_ * 10), 10)
-        end
-
-        render_rect_filled(vec2_t(screen_size.x - log.pos.x, log.pos.y + margin), vec2_t(notifications.width, log.height), notifications.background_color, 5)
-        render_text(notifications.font2, log.head, vec2_t(screen_size.x - log.pos.x + notifications.padding + 15, log.pos.y + margin + notifications.padding - 1), ui.accent_color:get())
-
-        render_texture(log.emoji.id, vec2_t(screen_size.x - log.pos.x + notifications.padding - 5, log.pos.y + margin + notifications.padding - 3), vec2_t(72 / 4, 72 / 4))
-        render_line(vec2_t(screen_size.x - log.pos.x + 2, log.pos.y + margin + 20), vec2_t(screen_size.x - log.pos.x + (notifications.width - 4) * ((math.clamp2(globals.real_time() - log.time, 0, notifications.delay - 0.5)) / (notifications.delay - 0.5)), log.pos.y + margin + 20), ui.text_color:get())
-
-        for index, str in pairs(log.strings) do
-            render_text(notifications.font, str, vec2_t(screen_size.x - log.pos.x + notifications.padding, log.pos.y + margin + notifications.padding + index * 12 + 5), notifications.neutral_color)
-        end
-
-        render_pop_alpha_modifier()
-        if (opacity <= 0) then
-            table.remove(notifications.logs, i)
-        end
-        global_text_height = global_text_height + log.height
-    end
+notifications.create = function(header, body, kind)
+    table.insert(notifications.logs, { head = tostring(header), body = tostring(body or ""), kind = kind, time = globals.real_time() })
 end
 
 -- logs funcs
@@ -6381,6 +6283,87 @@ draw_spectators = function()
 
     if (#list == 0 and menu_open) then
         render_text(hud.font, "no spectators", vec2_t(x + math.floor(w / 2), y + HEAD + 14), hud.col(130, 130, 140, 200 * a), true)
+    end
+end
+
+-- notifications (config loaded / saved, users found ...): the look of the watermark and the hotkeys. A dark rounded card
+-- under the watermark, a coloured round icon per kind, the title, the text wrapped, a thin bar that runs out; it slides in
+-- from the right and fades out
+notifications.COLORS = { success = { 120, 220, 140 }, warn = { 255, 200, 100 }, fail = { 255, 110, 110 } }
+
+notifications.icon = function(kind, cx, cy, r, g, b, a)
+    hud.box(cx - 10, cy - 10, 20, 20, 10, r, g, b, 45 * a)
+    local c = hud.col(r, g, b, 255 * a)
+    if (kind == "success") then
+        render_line(vec2_t(cx - 4, cy), vec2_t(cx - 1, cy + 3), c)
+        render_line(vec2_t(cx - 1, cy + 3), vec2_t(cx + 5, cy - 3), c)
+    elseif (kind == "fail") then
+        render_line(vec2_t(cx - 4, cy - 4), vec2_t(cx + 4, cy + 4), c)
+        render_line(vec2_t(cx + 4, cy - 4), vec2_t(cx - 4, cy + 4), c)
+    elseif (kind == "warn") then
+        render_rect_filled(vec2_t(cx - 1, cy - 5), vec2_t(2, 7), c)
+        render_rect_filled(vec2_t(cx - 1, cy + 4), vec2_t(2, 2), c)
+    else
+        render_rect_filled(vec2_t(cx - 1, cy - 5), vec2_t(2, 2), c)
+        render_rect_filled(vec2_t(cx - 1, cy - 1), vec2_t(2, 7), c)
+    end
+end
+
+-- the text in lines that fit `width`
+notifications.wrap = function(text, width)
+    local out, line = {}, ""
+    for word in text:gmatch("%S+") do
+        local try = line == "" and word or (line .. " " .. word)
+        if (line ~= "" and render_get_text_size(hud.font, try).x > width) then
+            out[#out + 1] = line
+            line = word
+        else
+            line = try
+        end
+    end
+    if (line ~= "") then
+        out[#out + 1] = line
+    end
+    return out
+end
+
+notifications.render = function()
+    local now, ft = globals.real_time(), globals.frame_time()
+    local W, PAD = 270, 12
+    local y = 16 + math.floor(render_get_text_size(hud.bold, "specter").y + 12) + 10
+    local accent = ui.accent_color:get()
+
+    for i = #notifications.logs, 1, -1 do
+        if (now - notifications.logs[i].time > notifications.delay + 0.6) then
+            table.remove(notifications.logs, i)
+        end
+    end
+
+    for _, n in ipairs(notifications.logs) do
+        if (n.lines == nil) then
+            n.lines = notifications.wrap(n.body, W - 46 - PAD)
+            n.h = math.max(44, 30 + #n.lines * 14 + 8)
+        end
+        local left = notifications.delay - (now - n.time)
+        local a = math.max(0, math.min(1, (now - n.time) * 6, (left + 0.6) / 0.6))
+        n.y = n.y and hud.lerp(n.y, y, ft * 14) or y
+        local x = math.floor(screen_size.x - W - 16 + (1 - math.min(1, (now - n.time) * 6)) * 40 + 0.5)
+        local ny = math.floor(n.y + 0.5)
+        local c = notifications.COLORS[n.kind] or { accent.r, accent.g, accent.b }
+
+        hud.outline(x - 1, ny - 1, W + 2, n.h + 2, 9, 255, 255, 255, 16 * a)
+        hud.box(x, ny, W, n.h, 8, hud.BG[1], hud.BG[2], hud.BG[3], 238 * a)
+        notifications.icon(n.kind, x + PAD + 10, ny + 22, c[1], c[2], c[3], a)
+        render_text(hud.bold, n.head, vec2_t(x + 46, ny + 10), hud.col(hud.W[1], hud.W[2], hud.W[3], 255 * a))
+        for k, line in ipairs(n.lines) do
+            render_text(hud.font, line, vec2_t(x + 46, ny + 14 + k * 14), hud.col(hud.DIM[1], hud.DIM[2], hud.DIM[3], 255 * a))
+        end
+
+        local part = math.max(0, math.min(1, left / notifications.delay))
+        hud.box(x + 8, ny + n.h - 3, W - 16, 2, 1, 255, 255, 255, 12 * a)
+        hud.box(x + 8, ny + n.h - 3, math.floor((W - 16) * part), 2, 1, c[1], c[2], c[3], 200 * a)
+
+        y = y + (n.h + 8) * a
     end
 end
 
