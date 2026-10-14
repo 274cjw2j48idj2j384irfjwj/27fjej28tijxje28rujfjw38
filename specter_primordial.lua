@@ -703,7 +703,7 @@ end
 
 
 get_user_ping = function()
-    return math.floor(1000 * engine_get_latency(e_latency_flows.OUTGOING) + engine_get_latency(e_latency_flows.INCOMING))
+    return math.floor(1000 * (engine_get_latency(e_latency_flows.OUTGOING) + engine_get_latency(e_latency_flows.INCOMING)))
 end
 
 --- @info: default values, settings etc
@@ -747,7 +747,6 @@ local drag_keybinds = libs.etr.new('keybinds', vec2_t(50, y), vec2_t(0, 0))
 local drag_spectators = libs.etr.new('spectators', vec2_t(230, y), vec2_t(0, 0))
 
 local end_time = 0
-local largest_name_size = 0
 local afk_direction = 1
 local hurt_tick = 0
 local ground_tick = 1
@@ -1302,7 +1301,11 @@ local ui = {
         keybinds = groups.utils:checkbox("Keybinds"),
         spectators = groups.utils:checkbox("Spectators"),
         watermark = groups.utils:checkbox("Watermark", true),
-        menu_glow = groups.utils:checkbox("Glow effects", true),
+        watermark_style = groups.utils:selection("Watermark style", {"Specter", "Split", "Glass", "Neon"}),
+        watermark_fields = groups.utils:multi_selection("Watermark info", {"Username", "FPS", "Ping", "Tickrate", "Time", "Icons"}),
+        keybinds_style = groups.utils:selection("Keybinds style", {"Pills icons", "Pills classic"}),
+        keybinds_mode = groups.utils:checkbox("Show bind mode", true),
+        menu_glow = groups.utils:checkbox("Glow effects", false),
 
         clantag = groups.sync:checkbox("Clan tag", true),
         shared_esp = groups.sync:checkbox("Shared ESP", true),
@@ -1454,6 +1457,9 @@ ui.edge_yaw = groups.antiaim:keybind(ui.antiaim.builder.edge_yaw, "EdgeYaw keybi
 
 ui.accent_color = groups.nav:color_picker(ui.nav.text, "Accent color", accent_color)
 ui.text_color = groups.nav:color_picker(ui.nav.text, "Text color", text_color)
+for _, field in ipairs({"Username", "FPS", "Ping", "Time", "Icons"}) do
+    ui.utils.watermark_fields.ref:set(field, true)
+end
 
 ui.console_color = groups.utils:color_picker(ui.visuals.console, "Console color", color_t(55, 55, 55, 154))
 ui.tesla_color = groups.utils:color_picker(ui.visuals.tesla.enable_tesla, "Tesla color", color_t(255, 255, 255, 255))
@@ -5947,197 +5953,475 @@ draw_menu = function()
     render_text(pixel_font, "uid: " .. info.uid, vec2_t(x_offset, base_y), color_t(255, 255, 255, math.floor(animation.alpha)))
 end
 
-draw_watermark = function()
-    local things_tbl = { 'Specter' .. info.beta_text }
-    local h, m, s = client_get_local_time()
+-- watermark, hotkeys and spectators: the look of Specter's gamesense lua (dark rounded panels, the moon / sun, a
+-- shimmering "specter", coloured fps / ping, one pill per bind), drawn with Primordial's render calls
+local hud = { fps = 0, wm_w = 0, day = nil, placed = false, kb_rows = {}, kb_seq = 0, kb_h = 0, kb_w = 0, kb_a = 0,
+              sp_h = 0, sp_w = 0, sp_a = 0,
+              bold = render_create_font("Verdana", math.ceil(12 * dpi_scale), 700, e_font_flags.ANTIALIAS),
+              font = render_create_font("Verdana", math.ceil(12 * dpi_scale), 400, e_font_flags.ANTIALIAS),
+              BG = { 12, 12, 16 }, PILL = { 16, 16, 22 }, W = { 230, 230, 236 }, DIM = { 150, 150, 160 } }
 
-    if (m < 10) then
-        m = '0' .. m
-    end
-
-    if (h < 10) then
-        h = '0' .. h
-    end
-
-    local period = "AM"
-    if (tonumber(h) >= 12) then
-        period = "PM"
-        if (tonumber(h) > 12) then
-            h = tonumber(h) - 12
-        end
-    end
-
-    if (tonumber(h) == 0) then
-        h = 12
-    end
-    
-    table.insert(things_tbl, (' / %s'):format(info.user))
-    --table.insert(things_tbl, (' / %s'):format(info.uid))
-    table.insert(things_tbl, (' / %i ms'):format(get_user_ping()))
-    table.insert(things_tbl, (' / %i fps'):format(client_get_fps()))
-    table.insert(things_tbl, (' / %s'):format(('%02d:%02d %s'):format(h, m, period)))
-    
-    local text = table.concat(things_tbl)
-    local text_size = render_get_text_size(verdana2, text)
-    
-    drag_watermark:update()
-    drag_watermark:lerp("size", vec2_t(text_size.x + 15, 20), 5)
-    
-    local color = ui.accent_color:get()
-    
-    local pos = drag_watermark.pos
-    local size = drag_watermark.size
-
-    render_rect_filled(pos, size, color_t(15, 15, 15, 255), 5)
-
-    render_rect_filled(vec2_t(pos.x, pos.y + (size.y/2) - 5), vec2_t(2, 10), color_t(color.r,color.g,color.b))
-    if (ui.utils.menu_glow:get()) then
-        libs.etr.glow(vec2_t(pos.x, pos.y + (size.y/2) - 5), vec2_t(2, 10), 5, color_t(color.r,color.g,color.b, 50), 10)
-    end
-
-    render_rect_filled(vec2_t(pos.x + size.x - 2, pos.y + (size.y/2) - 5), vec2_t(2, 10), color_t(color.r,color.g,color.b))
-    if (ui.utils.menu_glow:get()) then
-        libs.etr.glow(vec2_t(pos.x + size.x - 2, pos.y + (size.y/2) - 5), vec2_t(2, 10), 5, color_t(color.r,color.g,color.b, 50), 10)
-    end
-    render_text(verdana2, text, vec2_t(pos.x + (size.x/2), pos.y + (size.y/2)), color_t(255, 255, 255, 255), true)
+hud.lerp = function(a, b, t)
+    return a + (b - a) * math.min(1, t)
 end
 
-draw_keybinds = function()
-    drag_keybinds:update()
+hud.col = function(r, g, b, a)
+    return color_t(math.floor(r), math.floor(g), math.floor(b), math.floor(math.max(0, math.min(255, a))))
+end
 
-    local active_binds = {}
-    local active_mode = {}
+hud.box = function(x, y, w, h, rad, r, g, b, a)
+    render_rect_filled(vec2_t(x, y), vec2_t(w, h), hud.col(r, g, b, a), rad)
+end
 
-    local pos = drag_keybinds.pos
-    local size = drag_keybinds.size
+hud.outline = function(x, y, w, h, rad, r, g, b, a)
+    render_rect(vec2_t(x, y), vec2_t(w, h), hud.col(r, g, b, a), rad)
+end
 
-    local offset = 22
-
-    for name, keys in pairs(keybinds.unsorted) do
-        local mode = keys:get_mode()
-        if (mode ~= 3 and mode ~= 4) then
-            if (keys:get() and not keybinds.sorted[name] and not menu_is_open()) then
-                table.insert(keybinds.sorted, 1, {name = name, mode = keybinds.mode[mode], alpha = 0})
-                keybinds.sorted[name] = true
-            end
+-- the dark panel with a faint border, the glow of "Glow effects" and the style's own touches
+hud.panel = function(x, y, w, h, a, style, accent)
+    local rad = math.floor(h / 2)
+    if (ui.utils.menu_glow:get()) then
+        local pulse = 0.7 + 0.3 * math.sin(globals.real_time() * 2)
+        for i = 1, 3 do
+            hud.box(x - i * 2, y - i * 2, w + i * 4, h + i * 4, rad + i * 2, accent.r, accent.g, accent.b, (4 - i) * 5 * pulse * a)
         end
     end
-
-    for i = #keybinds.sorted, 1, -1 do
-        local name = keybinds.sorted[i].name
-        local target_alpha = keybinds.unsorted[name]:get() and 1 or 0
-
-        keybinds.sorted[i].alpha = libs.etr.lerp(keybinds.sorted[i].alpha, target_alpha, 8)
-        if (not keybinds.unsorted[name]:get() and keybinds.sorted[i].alpha <= 0.15) or menu_is_open() then
-            table.remove(keybinds.sorted, i)
-            keybinds.sorted[name] = false
-        end
-    end
-
-    if (#keybinds.sorted > 0 or menu_is_open()) then
-        for _, tbl in ipairs(keybinds.sorted) do
-            local bind_name = tbl.name
-            local bind_size = render_get_text_size(verdana2, bind_name)
-    
-            local bind_mode = "[" .. tbl.mode .. "]"
-            local mode_size = render_get_text_size(verdana2, bind_mode)
-    
-            local alpha = tbl.alpha
-    
-            table.insert(active_binds, bind_name)
-            table.insert(active_mode, bind_mode)
-    
-            render_push_alpha_modifier(alpha)
-            render_text(verdana2, bind_name, vec2_t(pos.x, pos.y + offset), color_t(255, 255, 255, 255))
-            render_text(verdana2, bind_mode, vec2_t(pos.x + size.x - mode_size.x, pos.y + offset), color_t(255, 255, 255, 255))
-            render_pop_alpha_modifier()
-    
-            offset = offset + 15 * alpha
-        end
-    
-        local bind_concated = table.concat(active_binds, "\n")
-        local mode_concated = table.concat(active_mode, "\n")
-    
-        local concated_bind = render_get_text_size(verdana2, bind_concated)
-        local concated_mode = render_get_text_size(verdana2, mode_concated)
-    
-        local color = ui.accent_color:get()
-    
-        render_rect_filled(pos, size, color_t(15, 15, 15, 255), 5)
-        render_text(verdana2, 'keybinds', vec2_t(pos.x + (size.x / 2), pos.y + (size.y / 2)), color_t(255, 255, 255, 255), true)
-    
-        render_rect_filled(vec2_t(pos.x, pos.y + (size.y / 2) - 5), vec2_t(2, 10), color_t(color.r, color.g, color.b))
-        if (ui.utils.menu_glow:get()) then
-            libs.etr.glow(vec2_t(pos.x, pos.y + (size.y / 2) - 5), vec2_t(2, 10), 5, color_t(color.r, color.g, color.b, 50), 10)
-        end
-    
-        render_rect_filled(vec2_t(pos.x + size.x - 2, pos.y + (size.y / 2) - 5), vec2_t(2, 10), color_t(color.r, color.g, color.b))
-        if (ui.utils.menu_glow:get()) then
-            libs.etr.glow(vec2_t(pos.x + size.x - 2, pos.y + (size.y / 2) - 5), vec2_t(2, 10), 5, color_t(color.r, color.g, color.b, 50), 10)
-        end
-        drag_keybinds:lerp("size", vec2_t((#active_binds > 0 and (concated_bind.x + concated_mode.x + 35) or 100), 20), 5)
-    else
+    if (style == 3) then -- glass
+        hud.box(x, y, w, h, 5, 18, 18, 26, 160 * a)
+        render_rect_fade(vec2_t(x, y), vec2_t(math.floor(w * 0.45), h), hud.col(accent.r, accent.g, accent.b, 45 * a),
+            hud.col(accent.r, accent.g, accent.b, 0), true)
+        hud.box(x, y + 5, 2, h - 10, 0, accent.r, accent.g, accent.b, 255 * a)
+        return
+    elseif (style == 4) then -- neon
+        hud.box(x - 1, y - 1, w + 2, h + 2, rad + 1, accent.r, accent.g, accent.b, 210 * a)
+        hud.box(x, y, w, h, rad, 8, 8, 12, 245 * a)
         return
     end
+    hud.outline(x - 1, y - 1, w + 2, h + 2, rad + 1, 255, 255, 255, 16 * a)
+    hud.box(x, y, w, h, rad, hud.BG[1], hud.BG[2], hud.BG[3], 238 * a)
 end
 
-draw_spectators = function()
-    drag_spectators:update()
-
-    local spectators = libs.etr.get_spectators()
-    local offset = 20
-    
-    local pos = drag_spectators.pos
-    local size = drag_spectators.size
-
-    if (spectators ~= nil and #spectators > 0 or spectators ~= nil and menu_is_open()) then
-        if (#spectators <= 0 or menu_is_open()) then
-            largest_name_size = 100
-        else
-            for index, value in pairs(spectators) do
-                if (value ~= nil and value.name ~= nil and value.active ~= false and not menu_is_open()) then
-                    local name = value.name
-                    local avatars = libs.etr.get_avatar(name, value.id)
-                    
-                    local name_y = render_get_text_size(verdana2, name).y
-                    local name_size = render_get_text_size(verdana2, name).x
-
-                    if (name_size > largest_name_size) then
-                        largest_name_size = name_size + name_y + 10
-                    end
-
-                    render_push_alpha_modifier(value.alpha)
-                    if (avatars ~= nil) then
-                        render_texture(avatars.id, vec2_t(pos.x, pos.y + offset), vec2_t(name_y, name_y))
-                    end
-
-                    render_text(verdana2, name, vec2_t(pos.x + name_y + 5, pos.y + offset), color_t(255, 255, 255, 255))
-                    render_pop_alpha_modifier()
-                    
-                    offset = offset + 15 * value.alpha
-                end
-            end
-        end
-
-        local color = ui.accent_color:get()
-
-        render_rect_filled(pos, size, color_t(15, 15, 15, 255), 5)
-        render_text(verdana2, 'spectators', vec2_t(pos.x + (size.x / 2), pos.y + (size.y / 2)), color_t(255, 255, 255, 255), true)
-
-        render_rect_filled(vec2_t(pos.x, pos.y + (size.y / 2) - 5), vec2_t(2, 10), color_t(color.r, color.g, color.b))
-        if (ui.utils.menu_glow:get()) then
-            libs.etr.glow(vec2_t(pos.x, pos.y + (size.y / 2) - 5), vec2_t(2, 10), 5, color_t(color.r, color.g, color.b, 50), 10)
-        end
-        
-        render_rect_filled(vec2_t(pos.x + size.x - 2, pos.y + (size.y / 2) - 5), vec2_t(2, 10), color_t(color.r, color.g, color.b))
-        if (ui.utils.menu_glow:get()) then
-            libs.etr.glow(vec2_t(pos.x + size.x - 2, pos.y + (size.y / 2) - 5), vec2_t(2, 10), 5, color_t(color.r, color.g, color.b, 50), 10)
-        end
-        drag_spectators:lerp('size', vec2_t(largest_name_size, 20), 5)
-    else
-        largest_name_size = 100
+-- an accent line fading out to both ends
+hud.underline = function(x, y, w, accent, a)
+    local half = math.floor(w / 2)
+    if (half <= 0) then
+        return
     end
-    return
+    local k = 0.55 + 0.45 * math.sin(globals.real_time() * 1.8)
+    render_rect_fade(vec2_t(x, y), vec2_t(half, 1), hud.col(accent.r, accent.g, accent.b, 0),
+        hud.col(accent.r, accent.g, accent.b, 230 * k * a), true)
+    render_rect_fade(vec2_t(x + half, y), vec2_t(w - half, 1), hud.col(accent.r, accent.g, accent.b, 230 * k * a),
+        hud.col(accent.r, accent.g, accent.b, 0), true)
+end
+
+-- the moon at night, a turning sun by day (local time 7:00 - 19:00)
+hud.sky = function(cx, cy, accent, a)
+    local night = 1 - hud.day
+    if (night > 0.02) then
+        render_circle_filled(vec2_t(cx, cy), 4.5 * night, hud.col(accent.r, accent.g, accent.b, a))
+        render_circle_filled(vec2_t(cx + 2.2 * night, cy - 1.6 * night), 3.8 * night, hud.col(hud.BG[1], hud.BG[2], hud.BG[3], a))
+    end
+    if (hud.day > 0.02) then
+        render_circle_filled(vec2_t(cx, cy), 3.2 * hud.day, hud.col(255, 222, 140, a))
+        local spin = globals.real_time() * 0.5
+        for k = 0, 7 do
+            local ang = spin + k * math.pi / 4
+            local ca, sa = math.cos(ang), math.sin(ang)
+            render_line(vec2_t(cx + ca * 4.8 * hud.day, cy + sa * 4.8 * hud.day), vec2_t(cx + ca * 6.6 * hud.day, cy + sa * 6.6 * hud.day),
+                hud.col(255, 222, 140, a))
+        end
+    end
+end
+
+-- "specter" with a wave of the accent colour running through its letters
+hud.brand = function(x, y, accent, a)
+    local now = globals.real_time()
+    local text = "specter"
+    for i = 1, #text do
+        local ch = text:sub(i, i)
+        local t = 0.5 + 0.5 * math.sin(now * 1.6 - i * 0.55)
+        render_text(hud.bold, ch, vec2_t(x, y), hud.col(245 + (accent.r - 245) * t, 245 + (accent.g - 245) * t, 250 + (accent.b - 250) * t, a))
+        x = x + render_get_text_size(hud.bold, ch).x
+    end
+end
+
+-- the small grey glyph in front of a watermark segment
+hud.seg_icon = function(kind, cx, cy, a)
+    local c = hud.col(150, 150, 160, a)
+    if (kind == "user") then
+        render_circle_filled(vec2_t(cx, cy - 2.5), 2.6, c)
+        render_rect_filled(vec2_t(cx - 4, cy + 1), vec2_t(8, 4), c, 2)
+    elseif (kind == "fps") then
+        render_rect_filled(vec2_t(cx - 4, cy + 1), vec2_t(2, 3), c)
+        render_rect_filled(vec2_t(cx - 1, cy - 1), vec2_t(2, 5), c)
+        render_rect_filled(vec2_t(cx + 2, cy - 3), vec2_t(2, 7), c)
+    elseif (kind == "ping") then
+        render_circle(vec2_t(cx, cy), 4.5, c)
+        render_circle_filled(vec2_t(cx, cy), 1.5, c)
+    elseif (kind == "tick") then
+        render_rect_filled(vec2_t(cx - 4, cy), vec2_t(8, 1), c)
+        render_rect_filled(vec2_t(cx, cy - 4), vec2_t(1, 8), c)
+    else
+        render_circle(vec2_t(cx, cy), 4.5, c)
+        render_rect_filled(vec2_t(cx, cy - 3), vec2_t(1, 3), c)
+        render_rect_filled(vec2_t(cx, cy), vec2_t(2, 1), c)
+    end
+end
+
+draw_watermark = function()
+    local ft = globals.frame_time()
+    if (ft > 0) then
+        hud.fps = hud.fps == 0 and 1 / ft or hud.lerp(hud.fps, 1 / ft, ft * 2)
+    end
+    local h, m = client_get_local_time()
+    local day = (h >= 7 and h < 19) and 1 or 0
+    hud.day = hud.day and hud.lerp(hud.day, day, ft * 3) or day
+
+    local accent = ui.accent_color:get()
+    local style = ui.utils.watermark_style:get()
+    local icons = ui.utils.watermark_fields:get(6)
+    local W = hud.W
+
+    local segs = {}
+    if (ui.utils.watermark_fields:get(1)) then
+        segs[#segs + 1] = { "user", info.user, "", W[1], W[2], W[3] }
+    end
+    if (ui.utils.watermark_fields:get(2)) then
+        local fps = math.floor(hud.fps + 0.5)
+        local r, g, b = W[1], W[2], W[3]
+        if (fps < 60) then r, g, b = 255, 118, 118 elseif (fps < 120) then r, g, b = 255, 210, 125 end
+        segs[#segs + 1] = { "fps", tostring(fps), " fps", r, g, b }
+    end
+    if (ui.utils.watermark_fields:get(3)) then
+        local ping = math.floor(get_user_ping() + 0.5)
+        local r, g, b = W[1], W[2], W[3]
+        if (ping > 110) then r, g, b = 255, 118, 118 elseif (ping > 60) then r, g, b = 255, 210, 125 end
+        segs[#segs + 1] = { "ping", tostring(ping), " ms", r, g, b }
+    end
+    if (ui.utils.watermark_fields:get(4)) then
+        segs[#segs + 1] = { "tick", tostring(math.floor(client_get_tickrate() + 0.5)), " tick", W[1], W[2], W[3] }
+    end
+    if (ui.utils.watermark_fields:get(5)) then
+        segs[#segs + 1] = { "time", string.format("%02d:%02d", h, m), "", W[1], W[2], W[3] }
+    end
+
+    local brand_size = render_get_text_size(hud.bold, "specter")
+    local th = brand_size.y
+    local H = th + 12
+    local PADX, GAP = 12, 11
+    local brand_w = PADX + 20 + brand_size.x + PADX
+
+    local info_w = 0
+    for _, sg in ipairs(segs) do
+        sg.vw = render_get_text_size(hud.font, sg[2]).x
+        sg.uw = sg[3] ~= "" and render_get_text_size(hud.font, sg[3]).x or 0
+        sg.w = (icons and 14 or 0) + sg.vw + sg.uw
+        info_w = info_w + sg.w
+    end
+    if (#segs > 0) then
+        info_w = info_w + GAP * 2 * (#segs - 1) + PADX * 2
+    end
+
+    local split = style == 2 and #segs > 0
+    local width = split and (brand_w + 6 + info_w) or (brand_w + (#segs > 0 and (info_w - PADX) or 0))
+    hud.wm_w = hud.wm_w == 0 and width or hud.lerp(hud.wm_w, width, ft * 12)
+    local w = math.floor(hud.wm_w + 0.5)
+
+    -- top right until it is dragged (M2 centers it, like the other panels)
+    if (not hud.placed) then
+        drag_watermark.pos = vec2_t(screen_size.x - w - 16, 16)
+        hud.placed = true
+    end
+    drag_watermark.size = vec2_t(w, H)
+    drag_watermark:update()
+    local x, y = math.floor(drag_watermark.pos.x + 0.5), math.floor(drag_watermark.pos.y + 0.5)
+    local cy = y + math.floor(H / 2)
+    local ty = y + math.floor((H - th) / 2)
+
+    if (split) then
+        hud.panel(x, y, brand_w, H, 1, style, accent)
+        hud.underline(x + 8, y + H - 1, brand_w - 16, accent, 1)
+        hud.panel(x + brand_w + 6, y, math.max(0, w - brand_w - 6), H, 1, style, accent)
+    else
+        hud.panel(x, y, w, H, 1, style, accent)
+        if (style ~= 4) then
+            hud.underline(x + 10, y + H - 1, w - 20, accent, 1)
+        end
+    end
+
+    hud.sky(x + PADX + 6, cy, accent, 255)
+    hud.brand(x + PADX + 20, ty, accent, 255)
+
+    local tx = split and (x + brand_w + 6 + PADX) or (x + brand_w)
+    for i, sg in ipairs(segs) do
+        if (tx + sg.w > x + w - 6) then
+            break
+        end
+        local sep
+        if (split) then
+            sep = i > 1 and (tx - GAP) or nil
+        else
+            sep = i == 1 and (tx - PADX + 1) or (tx - GAP)
+        end
+        if (sep) then
+            render_rect_filled(vec2_t(sep, y + 6), vec2_t(1, H - 12), hud.col(255, 255, 255, 20))
+        end
+        local vx = tx
+        if (icons) then
+            hud.seg_icon(sg[1], tx + 5, cy, 255)
+            vx = tx + 14
+        end
+        render_text(hud.font, sg[2], vec2_t(vx, ty), hud.col(sg[4], sg[5], sg[6], 255))
+        if (sg.uw > 0) then
+            render_text(hud.font, sg[3], vec2_t(vx + sg.vw, ty), hud.col(hud.DIM[1], hud.DIM[2], hud.DIM[3], 255))
+        end
+        tx = tx + sg.w + GAP * 2
+    end
+end
+
+-- a small glyph per bind (Keybinds style "Pills icons"), lines / circles / rectangles only
+hud.bind_icon = function(name, cx, cy, c)
+    if (name == "double tap") then -- bolt
+        render_line(vec2_t(cx + 2, cy - 6), vec2_t(cx - 3, cy + 1), c)
+        render_line(vec2_t(cx - 3, cy + 1), vec2_t(cx + 3, cy - 1), c)
+        render_line(vec2_t(cx + 3, cy - 1), vec2_t(cx - 2, cy + 6), c)
+    elseif (name == "hide shots") then -- slashed eye
+        render_circle(vec2_t(cx, cy), 5, c)
+        render_circle_filled(vec2_t(cx, cy), 1.8, c)
+        render_line(vec2_t(cx - 5, cy + 5), vec2_t(cx + 5, cy - 5), c)
+    elseif (name == "min. damage" or name == "dormant aimbot" or name == "hitchance override") then -- crosshair
+        render_circle(vec2_t(cx, cy), 5, c)
+        render_rect_filled(vec2_t(cx - 8, cy), vec2_t(3, 1), c)
+        render_rect_filled(vec2_t(cx + 6, cy), vec2_t(3, 1), c)
+        render_rect_filled(vec2_t(cx, cy - 8), vec2_t(1, 3), c)
+        render_rect_filled(vec2_t(cx, cy + 6), vec2_t(1, 3), c)
+    elseif (name == "auto direction" or name == "lock angle") then -- shield
+        render_line(vec2_t(cx - 5, cy - 6), vec2_t(cx + 5, cy - 6), c)
+        render_line(vec2_t(cx + 5, cy - 6), vec2_t(cx + 5, cy + 1), c)
+        render_line(vec2_t(cx + 5, cy + 1), vec2_t(cx, cy + 7), c)
+        render_line(vec2_t(cx, cy + 7), vec2_t(cx - 5, cy + 1), c)
+        render_line(vec2_t(cx - 5, cy + 1), vec2_t(cx - 5, cy - 6), c)
+    elseif (name == "quick peek") then -- arrow back
+        render_rect_filled(vec2_t(cx - 6, cy), vec2_t(12, 1), c)
+        render_line(vec2_t(cx - 2, cy - 4), vec2_t(cx - 6, cy), c)
+        render_line(vec2_t(cx - 6, cy), vec2_t(cx - 2, cy + 4), c)
+    elseif (name == "fake duck" or name == "sneak") then -- arrow down to a line
+        render_rect_filled(vec2_t(cx, cy - 6), vec2_t(1, 9), c)
+        render_line(vec2_t(cx - 4, cy - 1), vec2_t(cx, cy + 3), c)
+        render_line(vec2_t(cx, cy + 3), vec2_t(cx + 4, cy - 1), c)
+        render_rect_filled(vec2_t(cx - 5, cy + 6), vec2_t(11, 1), c)
+    elseif (name == "safepoint" or name == "lean safepoint" or name == "lethal shot") then -- ring + dot
+        render_circle(vec2_t(cx, cy), 6, c)
+        render_circle_filled(vec2_t(cx, cy), 3, c)
+    elseif (name == "ping spike") then -- signal bars
+        for k = 0, 3 do
+            render_rect_filled(vec2_t(cx - 6 + k * 3, cy + 5 - (k + 1) * 3), vec2_t(2, (k + 1) * 3), c)
+        end
+    elseif (name == "slow walk") then -- double chevron
+        render_line(vec2_t(cx - 5, cy - 4), vec2_t(cx - 1, cy), c)
+        render_line(vec2_t(cx - 1, cy), vec2_t(cx - 5, cy + 4), c)
+        render_line(vec2_t(cx, cy - 4), vec2_t(cx + 4, cy), c)
+        render_line(vec2_t(cx + 4, cy), vec2_t(cx, cy + 4), c)
+    elseif (name == "inverter" or name == "lean inverter") then -- two arrows
+        render_line(vec2_t(cx - 6, cy - 2), vec2_t(cx + 6, cy - 2), c)
+        render_line(vec2_t(cx + 6, cy - 2), vec2_t(cx + 3, cy - 5), c)
+        render_line(vec2_t(cx + 6, cy + 2), vec2_t(cx - 6, cy + 2), c)
+        render_line(vec2_t(cx - 6, cy + 2), vec2_t(cx - 3, cy + 5), c)
+    else
+        render_circle_filled(vec2_t(cx, cy), 2.5, c)
+    end
+end
+
+-- a pill switch, filled = on
+hud.switch = function(x, y, filled, accent, a)
+    if (filled) then
+        hud.box(x, y, 18, 10, 5, accent.r, accent.g, accent.b, 230 * a)
+        render_circle_filled(vec2_t(x + 13, y + 5), 3.2, hud.col(255, 255, 255, 255 * a))
+    else
+        hud.outline(x, y, 18, 10, 5, 255, 255, 255, 230 * a)
+        render_circle_filled(vec2_t(x + 13, y + 5), 3, hud.col(255, 255, 255, 230 * a))
+    end
+end
+
+-- a little keyboard for the header
+hud.keyboard = function(cx, cy, c)
+    render_rect(vec2_t(cx - 8, cy - 5), vec2_t(16, 10), c, 2)
+    for k = 0, 3 do
+        render_rect_filled(vec2_t(cx - 6 + k * 3, cy - 3), vec2_t(2, 2), c)
+    end
+    render_rect_filled(vec2_t(cx - 4, cy + 1), vec2_t(8, 2), c)
+end
+
+-- the header pill of a list (also what is dragged)
+hud.header = function(x, y, w, a, title, accent, accent_box, draw_icon)
+    hud.box(x, y, w, 28, 7, hud.PILL[1], hud.PILL[2], hud.PILL[3], 215 * a)
+    hud.outline(x, y, w, 28, 7, 255, 255, 255, 22 * a)
+    if (accent_box) then
+        hud.box(x + 3, y + 3, 30, 22, 5, accent.r, accent.g, accent.b, 55 * a)
+        draw_icon(x + 18, y + 14, hud.col(accent.r, accent.g, accent.b, 255 * a))
+    else
+        hud.box(x + 3, y + 3, 30, 22, 5, 255, 255, 255, 14 * a)
+        draw_icon(x + 18, y + 14, hud.col(200, 200, 210, 255 * a))
+    end
+    render_text(hud.bold, title, vec2_t(x + math.floor(w / 2) + 14, y + 14), hud.col(hud.W[1], hud.W[2], hud.W[3], 255 * a), true)
+end
+
+-- every active bind as a pill: icon / dot, the name, the mode or a switch on the right; rows slide in and fade out
+draw_keybinds = function()
+    local ft = globals.frame_time()
+    local menu_open = menu_is_open()
+    local accent = ui.accent_color:get()
+    local icons = ui.utils.keybinds_style:get() == 1
+    local show_mode = ui.utils.keybinds_mode:get()
+
+    local seen = {}
+    for name, item in pairs(keybinds.unsorted) do
+        local mode = item:get_mode()
+        if (mode ~= 3 and mode ~= 4 and item:get()) then
+            seen[name] = true
+            local row = hud.kb_rows[name]
+            if (row == nil) then
+                hud.kb_seq = hud.kb_seq + 1
+                row = { a = 0, order = hud.kb_seq }
+                hud.kb_rows[name] = row
+            end
+            row.mode = keybinds.mode[mode]
+        end
+    end
+
+    local list = {}
+    for name, row in pairs(hud.kb_rows) do
+        row.live = seen[name] == true
+        row.a = hud.lerp(row.a, row.live and 1 or 0, ft * (row.live and 12 or 9))
+        if (not row.live and row.a < 0.02) then
+            hud.kb_rows[name] = nil
+        else
+            row.name = name
+            list[#list + 1] = row
+        end
+    end
+    table.sort(list, function(p, q) return p.order < q.order end)
+
+    hud.kb_a = hud.lerp(hud.kb_a, (#list > 0 or menu_open) and 1 or 0, ft * 8)
+    if (hud.kb_a < 0.01) then
+        hud.kb_a = 0
+        return
+    end
+    local a = hud.kb_a
+
+    local HEAD, RH, GAP = 28, 26, 5
+    local name_x = icons and 28 or 22
+    local need = 180
+    for _, row in ipairs(list) do
+        row.label = row.name:gsub("^%l", string.upper)
+        row.show_mode = show_mode and row.mode ~= "toggle" and row.mode or nil
+        local right = row.show_mode and render_get_text_size(hud.font, row.show_mode).x or 18
+        need = math.max(need, name_x + render_get_text_size(hud.bold, row.label).x + 18 + right + 12)
+    end
+    hud.kb_w = hud.kb_w == 0 and need or hud.lerp(hud.kb_w, need, ft * 12)
+    local body = 0
+    for _, row in ipairs(list) do
+        body = body + (RH + GAP) * row.a
+    end
+    local total = HEAD + ((#list == 0 and menu_open) and 26 or body)
+    hud.kb_h = hud.kb_h == 0 and total or hud.lerp(hud.kb_h, total, ft * 14)
+    local w = math.floor(hud.kb_w + 0.5)
+
+    drag_keybinds.size = vec2_t(w, math.floor(hud.kb_h + 0.5))
+    drag_keybinds:update()
+    local x, y = math.floor(drag_keybinds.pos.x + 0.5), math.floor(drag_keybinds.pos.y + 0.5)
+
+    hud.header(x, y, w, a, "Hotkeys", accent, icons, hud.keyboard)
+
+    local ry = y + HEAD + GAP
+    for _, row in ipairs(list) do
+        local ra = row.a * a
+        local px = x + math.floor((1 - row.a) * 26)
+        local cyr = ry + math.floor(RH / 2)
+        hud.box(px, ry, w, RH, 7, hud.PILL[1], hud.PILL[2], hud.PILL[3], 200 * ra)
+        hud.outline(px, ry, w, RH, 7, 255, 255, 255, 20 * ra)
+        if (icons) then
+            hud.bind_icon(row.name, px + 15, cyr, hud.col(accent.r, accent.g, accent.b, 255 * ra))
+        else
+            render_circle_filled(vec2_t(px + 12, cyr), 2.2, hud.col(255, 255, 255, 255 * ra))
+        end
+        local nth = render_get_text_size(hud.bold, row.label).y
+        render_text(hud.bold, row.label, vec2_t(px + name_x, cyr - math.floor(nth / 2)), hud.col(hud.W[1], hud.W[2], hud.W[3], 255 * ra))
+        if (row.show_mode) then
+            local ms = render_get_text_size(hud.font, row.show_mode)
+            render_text(hud.font, row.show_mode, vec2_t(px + w - 12 - ms.x, cyr - math.floor(ms.y / 2)),
+                hud.col(hud.DIM[1], hud.DIM[2], hud.DIM[3], 255 * ra))
+        else
+            hud.switch(px + w - 28, cyr - 5, icons, accent, ra)
+        end
+        ry = ry + (RH + GAP) * row.a
+    end
+
+    if (#list == 0 and menu_open) then
+        render_text(hud.font, "no active binds", vec2_t(x + math.floor(w / 2), y + HEAD + 14), hud.col(130, 130, 140, 200 * a), true)
+    end
+end
+
+-- an eye for the spectators header
+hud.eye = function(cx, cy, c)
+    render_circle(vec2_t(cx, cy), 5, c)
+    render_circle_filled(vec2_t(cx, cy), 2, c)
+end
+
+-- the spectators in the same pills, with their steam avatar
+draw_spectators = function()
+    local ft = globals.frame_time()
+    local menu_open = menu_is_open()
+    local accent = ui.accent_color:get()
+    local list = libs.etr.get_spectators() or {}
+
+    hud.sp_a = hud.lerp(hud.sp_a, (#list > 0 or menu_open) and 1 or 0, ft * 8)
+    if (hud.sp_a < 0.01) then
+        hud.sp_a = 0
+        return
+    end
+    local a = hud.sp_a
+
+    local HEAD, RH, GAP = 28, 26, 5
+    local need, body = 180, 0
+    for _, spec in ipairs(list) do
+        spec.label = tostring(spec.name or "?")
+        need = math.max(need, 30 + render_get_text_size(hud.bold, spec.label).x + 14)
+        body = body + (RH + GAP) * (spec.alpha or 1)
+    end
+    hud.sp_w = hud.sp_w == 0 and need or hud.lerp(hud.sp_w, need, ft * 12)
+    local total = HEAD + ((#list == 0 and menu_open) and 26 or body)
+    hud.sp_h = hud.sp_h == 0 and total or hud.lerp(hud.sp_h, total, ft * 14)
+    local w = math.floor(hud.sp_w + 0.5)
+
+    drag_spectators.size = vec2_t(w, math.floor(hud.sp_h + 0.5))
+    drag_spectators:update()
+    local x, y = math.floor(drag_spectators.pos.x + 0.5), math.floor(drag_spectators.pos.y + 0.5)
+
+    hud.header(x, y, w, a, "Spectators", accent, true, hud.eye)
+
+    local ry = y + HEAD + GAP
+    for _, spec in ipairs(list) do
+        local ra = (spec.alpha or 1) * a
+        local cyr = ry + math.floor(RH / 2)
+        hud.box(x, ry, w, RH, 7, hud.PILL[1], hud.PILL[2], hud.PILL[3], 200 * ra)
+        hud.outline(x, ry, w, RH, 7, 255, 255, 255, 20 * ra)
+        local avatar = libs.etr.get_avatar(spec.label, spec.id)
+        if (avatar ~= nil) then
+            render_push_alpha_modifier(ra)
+            render_texture(avatar.id, vec2_t(x + 6, cyr - 8), vec2_t(16, 16))
+            render_pop_alpha_modifier()
+        else
+            render_circle_filled(vec2_t(x + 14, cyr), 2.2, hud.col(accent.r, accent.g, accent.b, 255 * ra))
+        end
+        local nth = render_get_text_size(hud.bold, spec.label).y
+        render_text(hud.bold, spec.label, vec2_t(x + 30, cyr - math.floor(nth / 2)), hud.col(hud.W[1], hud.W[2], hud.W[3], 255 * ra))
+        ry = ry + (RH + GAP) * (spec.alpha or 1)
+    end
+
+    if (#list == 0 and menu_open) then
+        render_text(hud.font, "no spectators", vec2_t(x + math.floor(w / 2), y + HEAD + 14), hud.col(130, 130, 140, 200 * a), true)
+    end
 end
 
 draw_indicator = function()
@@ -6445,6 +6729,10 @@ menu_handle = function()
 
         -- logs selection (utils)
         ui.utils.reset_stats:depend({ui.utils.event_logs:get(1)})
+        ui.utils.watermark_style:depend({ui.utils.watermark, true})
+        ui.utils.watermark_fields:depend({ui.utils.watermark, true})
+        ui.utils.keybinds_style:depend({ui.utils.keybinds, true})
+        ui.utils.keybinds_mode:depend({ui.utils.keybinds, true})
     
         -- builder (antiaim)
         ui.antiaim.builder.enable:depend({aa_page})
