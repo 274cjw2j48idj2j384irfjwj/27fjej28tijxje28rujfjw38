@@ -778,7 +778,6 @@ local auto_cfg = {}
 local should_change_side = {}
 local keybinds = { sorted = { }, mode = {[0] = 'toggle', 'hold on', 'hold off', 'always', 'off'}, unsorted = {["double tap"]=menu_find("aimbot","general","exploits","doubletap","enable")[2],["hide shots"]=menu_find("aimbot","general","exploits","hideshots","enable")[2],["quick peek"]=menu_find("aimbot","general","misc","autopeek")[2],["fake duck"]=menu_find("antiaim","main","general","fakeduck")[2],["lock angle"]=menu_find("antiaim","main","general","lock angle")[2],["inverter"]=menu_find("antiaim","main","manual","invert desync")[2],["lean inverter"]=menu_find("antiaim","main","manual","invert body lean")[2],["slow walk"]=menu_find("misc","main","movement","slow walk")[2],["ping spike"]=menu_find("aimbot","general","fake ping","enable")[2],["auto direction"]=menu_find("antiaim","main","auto direction","enable")[2],["edge jump"]=menu_find("misc","main","movement","edge jump")[2],["sneak"]=menu_find("misc","main","movement","sneak")[2],["edge bug"]=menu_find("misc","main","movement","edge bug helper")[2],["jump bug"]=menu_find("misc","main","movement","jump bug")[2],["fire extinguisher"]=menu_find("misc","utility","general","fire extinguisher")[2],["free cam"]=menu_find("misc","utility","general","freecam")[2],["nade helper"]=menu_find("misc","nade helper","general","enable")[2],["auto throw"]=menu_find("misc","nade helper","general","autothrow")[2],["extended angles"]=menu_find("antiaim","main","extended angles","enable")[2],["lean resolver"]=menu_find("aimbot","general","aimbot","body lean resolver")[2],["resolver override"]=menu_find("aimbot","general","aimbot","override resolver")[2],["dormant aimbot"]=menu_find("aimbot","general","dormant aimbot","enable")[2],["min. damage"]=menu_find("aimbot",get_active_weapon(),"target overrides","min. damage")[2],["hitbox override"]=menu_find("aimbot",get_active_weapon(),"target overrides","hitbox")[2],["lethal shot"]=menu_find("aimbot",get_active_weapon(),"target overrides","lethal shot")[2],["hitchance override"]=menu_find("aimbot",get_active_weapon(),"target overrides","hitchance")[2],["safepoint"]=menu_find("aimbot",get_active_weapon(),"target overrides","safepoint")[2],["lean safepoint"]=menu_find("aimbot",get_active_weapon(),"target overrides","body lean safepoint")[2]}}
 local misstable = {}
-local player_records = {}
 local on_predict = {}
 local player_pose = {}
 local shared_data = {}
@@ -797,7 +796,7 @@ local builder = { misses = 0, invert_defensive = false, old_defensive = false, i
 local indicator = { font = render_get_default_font(), shot_count = 0, data = {}, pos = vec2_t(100, 100), size = vec2_t(200, 100), difference = vec2_t(0, 0), dragging = false }
 local console_material = { "vgui_white", "vgui/hud/800corner1", "vgui/hud/800corner2", "vgui/hud/800corner3", "vgui/hud/800corner4" }
 local esp = { sync_user = {}, unsync_user = {}, sync_update = 0 }
-local resolver = { data = {}, mem = {}, previous = {}, trust = { fs = 0, jitter = 0 } }
+local resolver = { data = {}, mem = {}, previous = {}, misses = {}, trust = { fs = 0, jitter = 0 } }
 local delay = { tick_delay = client_time_to_ticks(1), last_tick = globals.tick_count() }
 local animation = { alpha = 0, appearing = 0 }
 local toss = { target_angles = vec3_t(0, 0, 0) }
@@ -1002,7 +1001,7 @@ local ui = {
         pose_reso = groups.resolver_beta:checkbox("Pose resolver"),
         resolver = {
             enable_resolver = groups.resolver_beta:checkbox("Custom resolver"),
-            unsafe_reso = groups.resolver_beta:checkbox("Unsafe resolver", true),
+            unsafe_reso = groups.resolver_beta:checkbox("Lua side override (experimental)"),
             
             duck_mode = groups.resolver_beta:checkbox("Duck mode"),
             auto_duck = groups.resolver_beta:checkbox("Auto duck", true),
@@ -1055,30 +1054,8 @@ local ui = {
 
         backtrack = {
             enable_backtrack = groups.tickbase:checkbox("Improve backtrack"),
-            performance_mode = groups.tickbase:checkbox("Low performance mode"),
-
-            smooth_transition = groups.tickbase:checkbox("Smooth transition"),
-
-            enable_interpolation = groups.tickbase:checkbox("Enable interpolation"),
-            enable_extrapolation = groups.tickbase:checkbox("Enable extrapolation"),
-
             extended_backtrack = groups.tickbase:checkbox("Extended backtrack"),
-            prioritize_older_records = groups.tickbase:checkbox("Prioritize older records"),
-
-            aggressive_backtrack = groups.tickbase:checkbox("Aggressive backtrack"),
-            prediction_factor = groups.tickbase:slider("Prediction factor", 1, 15, 1, 0, "%"),
-
-            max_targets = groups.tickbase:slider("Max targets", 1, 10),
-
-            transition_speed = groups.tickbase:slider("Transition speed", 0, 100, 5, 0, "%"),
-            aggressive_factor = groups.tickbase:slider("Aggressive factor", 0, 100, 15, 0, "%"),
-
-            bt_smoothing = groups.tickbase:slider("Backtrack smoothing", 0, 10, 1, 0, "%"),
-            bt_expiration = groups.tickbase:slider("Backtrack expiration", 0, 5, 1, 0, "s"),
-
-            transition_priority = groups.tickbase:selection("Transition priority", {"Accuracy", "Smoothness"}),
-            record_weighting_type = groups.tickbase:selection("Record weighting type", {"By Time", "By Distance"}),
-            dynamic_tick_adjustment = groups.tickbase:selection("Adjust ticks dynamically", {"Off", "By FOV", "By Distance"}),
+            prediction = groups.tickbase:checkbox("Advanced prediction", true),
         },
 
         safe_defensive = groups.ragebot:checkbox("Defensive safepoint"),
@@ -4359,281 +4336,106 @@ end
 --- @info: optimized backtrack
 --- @region: backtrack system
 
-clamp = function(value, min, max)
-    return math.max(min, math.min(max, value))
+-- Backtracking itself is Primordial's: its records, and the tick count it sends with the shot (the server rewinds the
+-- players to that tick). The old code here wrote cmd.tick_count on every command from a record of the enemy nearest the
+-- crosshair minus extra "dynamic ticks", so a shot the aimbot left the tick count of went to a time it did not aim at.
+-- What a lua can add: more fake latency (the server takes records within 0.2 s of our real + fake latency, so older
+-- records become hittable) and the order the aimbot picks targets in.
+local backtrack = { amount = nil, saved = nil, peekers = {}, predict_tick = 0,
+    no_ping = { knife = true, bayonet = true, hegrenade = true, flashbang = true, smokegrenade = true, molotov = true,
+                incgrenade = true, decoy = true, c4 = true } }
+do
+    local ok, item = pcall(menu_find, "aimbot", "general", "fake ping", "ping amount")
+    backtrack.ping = ok and item or nil
 end
 
-simulation_time_to_ticks = function(simulation_time)
-    return math.floor(simulation_time / globals.interval_per_tick() + 0.5)
-end
-
-normalize_angle = function(angle)
-    angle.x = (angle.x + 180) % 360 - 180
-    angle.y = (angle.y + 180) % 360 - 180
-    
-    return angle
-end
-
-predict_position = function(record, factor)
-    if (ui.ragebot.backtrack.enable_extrapolation:get()) then
-        local time_factor = factor * globals.interval_per_tick()
-        return vec3_t(
-            record.eye_position.x + (record.velocity.x * time_factor),
-            record.eye_position.y + (record.velocity.y * time_factor),
-            record.eye_position.z + (record.velocity.z * time_factor)
-        )
-    else
-        return record.eye_position
-    end
-end
-
-calculate_fov = function(view_angle, target_angle)
-    local delta = normalize_angle(target_angle - view_angle)
-    return math.sqrt(delta.x * delta.x + delta.y * delta.y)
-end
-
-calculate_distance = function(pos1, pos2)
-    local delta = pos1 - pos2
-    return math.sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z)
-end
-
-calculate_angle = function(from, to)
-    local delta = to - from
-    return angle_t(math.deg(math.atan2(delta.z, math.sqrt(delta.x * delta.x + delta.y * delta.y))), math.deg(math.atan2(delta.y, delta.x)), 0)
-end
-
-is_record_valid = function(record)
-    return math.abs(clamp(engine_get_latency(e_latency_flows.INCOMING) + engine_get_latency(e_latency_flows.OUTGOING), 0.01, cvars.sv_maxunlag:get_float()) - (globals.cur_time() - record.simulation_time)) <= 0.2
-end
-
-adjust_dynamic_ticks_based_on_latency = function(dynamic_ticks)
-    local latency = engine_get_latency(e_latency_flows.INCOMING) + engine_get_latency(e_latency_flows.OUTGOING)
-    local latency_factor = clamp(latency / cvars.sv_maxunlag:get_float(), 0.5, 1.5)
-    
-    return dynamic_ticks * latency_factor
-end
-
-interpolate_records = function(record1, record2, factor)
-    if (ui.ragebot.backtrack.enable_interpolation:get()) then
-        factor = clamp(factor, 0, 1)
-        local quadratic_factor = factor * factor
-
-        return vec3_t(
-            record1.eye_position.x * (1 - quadratic_factor) + record2.eye_position.x * quadratic_factor,
-            record1.eye_position.y * (1 - quadratic_factor) + record2.eye_position.y * quadratic_factor,
-            record1.eye_position.z * (1 - quadratic_factor) + record2.eye_position.z * quadratic_factor
-        )
-    else
-        return record1.eye_position
-    end
-end
-
-get_dynamic_weighted_record = function(records, eye_position)
-    local best_record = nil
-    local best_weight = math.huge
-
-    for _, record in ipairs(records) do
-        local distance = calculate_distance(eye_position, record.eye_position)
-        local time_weight = globals.cur_time() - record.simulation_time
-        local weight = distance * time_weight
-        
-        if (weight < best_weight) then
-            best_weight = weight
-            best_record = record
-        end
-    end
-    return best_record
-end
-
-clear_old_records = function()
-    local current_time = globals.cur_time()
-    local expiration_time = ui.ragebot.backtrack.bt_expiration:get()
-
-    for index, records in pairs(player_records) do
-        for i = #records, 1, -1 do
-            if (current_time - records[i].timestamp > expiration_time) then
-                table.remove(records, i)
-            end
-        end
-
-        if (#player_records[index] == 0) then
-            player_records[index] = nil
-        end
-    end
-end
-
-store_player_record = function(player)
-    local index = player:get_index()
-    local current_time = globals.cur_time()
-
-    local record = {
-        eye_position = player:get_eye_position(),
-        simulation_time = tonumber(player:get_prop("m_flSimulationTime")) or 0.0,
-        velocity = vec3_t(
-            tonumber(player:get_prop("m_vecVelocity[0]")) or 0.0,
-            tonumber(player:get_prop("m_vecVelocity[1]")) or 0.0,
-            tonumber(player:get_prop("m_vecVelocity[2]")) or 0.0
-        ),
-        timestamp = current_time
-    }
-
-    player_records[index] = player_records[index] or {}
-    table.insert(player_records[index], 1, record)
-
-    if (ui.ragebot.backtrack.extended_backtrack:get()) then
-        if (ui.ragebot.backtrack.prioritize_older_records:get()) then
-            table.sort(player_records[index], function(a, b)
-                return a.simulation_time < b.simulation_time
-            end)
-
-            while (#player_records[index] > 11) do
-                table.remove(player_records[index], 1)
-            end
-        else
-            while (#player_records[index] > 11) do
-                table.remove(player_records[index])
-            end
-        end
-    else
-        if (#player_records[index] > 11) then
-            table.remove(player_records[index])
-        end
-    end
-end
-
-get_limited_targets_by_fov = function(local_player, enemies, view_angle)
-    if (ui.ragebot.backtrack.performance_mode:get()) then
-        local max_targets = ui.ragebot.backtrack.max_targets:get()
-        local eye_position = local_player:get_eye_position()
-
-        local limited_targets = {}
-        local fov_sorted_enemies = {}
-
-        for _, enemy in pairs(enemies) do
-            if (enemy:is_alive()) then
-                local enemy_position = enemy:get_eye_position()
-                local angle_to_enemy = calculate_angle(eye_position, enemy_position)
-                local fov = calculate_fov(view_angle, angle_to_enemy)
-
-                table.insert(fov_sorted_enemies, {enemy = enemy, fov = fov})
-            end
-        end
-
-        table.sort(fov_sorted_enemies, function(a, b) return a.fov < b.fov end)
-        for i = 1, math.min(max_targets, #fov_sorted_enemies) do
-            table.insert(limited_targets, fov_sorted_enemies[i].enemy)
-        end
-        return limited_targets
-    else
-        return enemies
-    end
-end
-
-backtrack_sys = function(cmd)
-    if (ui.ragebot.backtrack.enable_backtrack:get()) then
-        local local_player = entity_list_get_local_player()
-
-        local view_angle = engine_get_view_angles()
-        local eye_position = local_player:get_eye_position()
-        local best_record, best_fov = nil, 180
-
-        local enemies = entity_list_get_players(true)
-        local limited_targets = get_limited_targets_by_fov(local_player, enemies, view_angle)
-
-        for _, enemy in pairs(limited_targets) do
-            if (enemy:is_alive()) then
-                local records = player_records[enemy:get_index()]
-                if (records) then
-                    if (ui.ragebot.backtrack.record_weighting_type:get() == 1) then
-                        table.sort(records, function(a, b)
-                        return a.simulation_time < b.simulation_time end)
-                    elseif (ui.ragebot.backtrack.record_weighting_type:get() == 2) then
-                        table.sort(records, function(a, b) 
-                            return calculate_distance(eye_position, a.eye_position) < calculate_distance(eye_position, b.eye_position) 
-                        end)
-                    end
-
-                    for i = 1, #records - 1 do
-                        local record = records[i]
-                        local next_record = records[i + 1]
-
-                        if (is_record_valid(record)) then
-                            local predicted_position = predict_position(record, ui.ragebot.backtrack.prediction_factor:get())
-                            local fov = calculate_fov(view_angle, calculate_angle(eye_position, predicted_position))
-
-                            local smoothing_factor = ui.ragebot.backtrack.bt_smoothing:get() / 10
-                            fov = fov * (1 - smoothing_factor)
-
-                            if (fov < best_fov) then
-                                best_fov = fov
-                                if (ui.ragebot.backtrack.smooth_transition:get() and next_record) then
-                                    local time_difference = (globals.cur_time() - record.simulation_time) / (next_record.simulation_time - record.simulation_time)
-                                    local interpolation_factor = clamp(time_difference, 0, 1)
-
-                                    if (ui.ragebot.backtrack.transition_priority:get() == 1) then
-                                        interpolation_factor = interpolation_factor * (ui.ragebot.backtrack.transition_speed:get() / 100)
-                                    else
-                                        interpolation_factor = interpolation_factor * ((100 - ui.ragebot.backtrack.transition_speed:get()) / 100)
-                                    end
-
-                                    best_record = {
-                                        eye_position = interpolate_records(record, next_record, interpolation_factor),
-                                        simulation_time = record.simulation_time,
-                                        velocity = record.velocity
-                                    }
-                                else
-                                    best_record = record
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-
-        if (best_record) then
-            local simulation_time = best_record.simulation_time
-            local interval_per_tick = globals.interval_per_tick()
-
-            local dynamic_ticks = 0
-            local max_ticks
-
-            if (interval_per_tick > 0) then
-                max_ticks = math.floor(1 / interval_per_tick + 0.5)
-            else
-                max_ticks = 64
-            end
-
-            if (ui.ragebot.backtrack.dynamic_tick_adjustment:get() ~= 1) then
-                if (ui.ragebot.backtrack.dynamic_tick_adjustment:get() == 2) then
-                    dynamic_ticks = math.min(max_ticks, best_fov)
-                elseif (ui.ragebot.backtrack.dynamic_tick_adjustment:get() == 3) then
-                    local distance = calculate_distance(eye_position, best_record.eye_position)
-                    if (distance > 0) then
-                        dynamic_ticks = math.min(max_ticks, distance / 10)
-                    end
-                end
-                dynamic_ticks = adjust_dynamic_ticks_based_on_latency(dynamic_ticks)
-            else
-                dynamic_ticks = max_ticks
-            end
-
-            if (ui.ragebot.backtrack.aggressive_backtrack:get()) then
-                dynamic_ticks = dynamic_ticks * (ui.ragebot.backtrack.aggressive_factor:get() / 100)
-            end
-
-            local tick_count = simulation_time_to_ticks(simulation_time - dynamic_ticks * interval_per_tick)
-            if (type(tick_count) == "number") then
-                cmd.tick_count = tick_count
-            else
-                print('error on thread! abandoning thread..')
-            end
-            return
-        else
-            return
-        end
-    else
+-- the fake ping amount: 100 ms (Extended backtrack: 200 ms) while an enemy is alive, 0 with a knife / grenade / bomb out
+-- or nobody to shoot; written on change only, the own value back when Improve backtrack goes off
+backtrack.update = function(local_player)
+    if (backtrack.ping == nil) then
         return
+    end
+
+    if (not ui.ragebot.backtrack.enable_backtrack:get()) then
+        if (backtrack.saved ~= nil) then
+            backtrack.ping:set(backtrack.saved)
+            backtrack.saved, backtrack.amount = nil, nil
+        end
+        return
+    end
+
+    local want = 0
+    local weapon = local_player:get_active_weapon()
+    if (weapon ~= nil and not backtrack.no_ping[weapon:get_name()]) then
+        for _, enemy in pairs(entity_list_get_players(true) or {}) do
+            if (enemy:is_alive()) then
+                want = ui.ragebot.backtrack.extended_backtrack:get() and 200 or 100
+                break
+            end
+        end
+    end
+
+    if (want ~= backtrack.amount) then
+        if (backtrack.saved == nil) then
+            backtrack.saved = backtrack.ping:get()
+        end
+        backtrack.ping:set(want)
+        backtrack.amount = want
+    end
+end
+
+-- advanced prediction: where every moving enemy's head will be after our latency + 4 ticks (its velocity, stopped by
+-- walls); one that can be shot there but not now is about to peek: it goes first in the target selection
+backtrack.predict = function(local_player)
+    local tick = globals.tick_count()
+    if (not ui.ragebot.backtrack.prediction:get()) then
+        backtrack.peekers = {}
+        return
+    end
+    if (tick - backtrack.predict_tick < 2 and tick >= backtrack.predict_tick) then
+        return
+    end
+    backtrack.predict_tick = tick
+
+    local eye = local_player:get_eye_position()
+    local ahead = engine_get_latency(e_latency_flows.OUTGOING) + engine_get_latency(e_latency_flows.INCOMING)
+        + 4 * globals.interval_per_tick()
+    local peekers, checked = {}, 0
+    for _, enemy in pairs(entity_list_get_players(true) or {}) do
+        if (checked >= 5) then
+            break
+        end
+        if (enemy:is_alive() and not enemy:is_dormant()) then
+            local head = enemy:get_hitbox_pos(e_hitboxes.HEAD)
+            local velocity = enemy:get_prop("m_vecVelocity")
+            if (head ~= nil and velocity ~= nil and math.vec_length2d(velocity) > 40) then
+                checked = checked + 1
+                local to = vec3_t(head.x + velocity.x * ahead, head.y + velocity.y * ahead, head.z)
+                local wall = trace_line(head, to, enemy, 0x400B).fraction
+                to = vec3_t(head.x + (to.x - head.x) * wall, head.y + (to.y - head.y) * wall, head.z)
+
+                local later = trace_bullet(eye, to, local_player, enemy)
+                if (later.valid and later.damage > 0) then
+                    local now = trace_bullet(eye, head, local_player, enemy)
+                    if (not (now.valid and now.damage > 0)) then
+                        peekers[#peekers + 1] = enemy:get_index()
+                    end
+                end
+            end
+        end
+    end
+    backtrack.peekers = peekers
+end
+
+backtrack.target_selection = function(ctx)
+    for _, idx in ipairs(backtrack.peekers) do
+        ctx:prioritize_target(idx)
+    end
+end
+
+backtrack.restore = function()
+    if (backtrack.ping ~= nil and backtrack.saved ~= nil) then
+        backtrack.ping:set(backtrack.saved)
     end
 end
 
@@ -4642,11 +4444,14 @@ end
 --- @info: resolver: side from freestanding / jitter, learned per player and state from hits and misses
 --- @region: resolver
 
--- what the menu does here:
---   Improve resolver / Logic resolver / Pose resolver / Custom resolver: any of them turns the resolver on
---   Improve resolver: max desync, players without desync, jitter          Logic resolver: learns from hits / misses
---   Pose resolver: the covered side of the head (freestanding)           Custom resolver: the options below it
---   Unsafe resolver: Primordial's own resolver off while this one runs (off: both run)
+-- Primordial's own resolver does the resolving (its animation fix and records; no workshop lua writes an enemy's feet
+-- yaw, and the lua has no hook into it). This block adds what the API allows: resolver misses per player -> head safe
+-- point in HITSCAN. What the menu does here:
+--   Improve resolver / Logic resolver / Pose resolver / Custom resolver: any of them turns the resolver layer on
+--   Logic resolver: head safe point after 2 resolver misses in a row on that player (Custom resolver: Hit sensitivity)
+--   Custom resolver: the options below it
+--   Lua side override (experimental): Primordial's own resolver off and the side below forced into the animstate
+--   (side from freestanding / jitter, max desync, learned from hits / misses); off by default, unproven in game
 --   Duck mode / Auto duck / Safe peek / Safe mode: head safe point on crouching targets / with Auto, AWP, Deagle, other /
 --   while we quick peek / on targets at or below that HP. Hit sensitivity: head safe point after that many misses in a row
 --   Prediction sel: the reduced desync size (% of max). Calculate box: freestanding trace width. Shot prediction: jitter step
@@ -4889,6 +4694,14 @@ end
 -- anti-aim that switches sides after our miss ("stay"); two misses in a row switch between the two, four between
 -- full and reduced size
 resolver.on_result = function(target, hit_ok, resolver_miss)
+    if (target ~= nil) then
+        local idx = target:get_index()
+        if (hit_ok) then
+            resolver.misses[idx] = 0
+        elseif (resolver_miss) then
+            resolver.misses[idx] = (resolver.misses[idx] or 0) + 1
+        end
+    end
     if (target == nil or reso.idx ~= target:get_index() or reso.key == nil or not reso.rel or reso.rel == 0) then
         return
     end
@@ -4929,16 +4742,15 @@ resolver.hitscan = function(ctx)
         return
     end
 
-    local safe = resolver.safe_all
+    local idx = ent:get_index()
+    local misses = resolver.misses[idx] or 0
+    local safe = resolver.safe_all or (ui.ragebot.logic_reso:get() and not res_custom() and misses >= 2)
     if (res_custom()) then
-        local idx = ent:get_index()
-        local prev = resolver.previous[idx]
-        local mem = prev and prev.key and resolver.mem[idx] and resolver.mem[idx][prev.key]
         local opt = ui.ragebot.resolver
 
         safe = safe
-            or (mem ~= nil and mem.misses >= res_clamp(opt.hit_sens:get(), 1, 47))
-            or (opt.duck_mode:get() and prev ~= nil and prev.state == "duck")
+            or misses >= res_clamp(opt.hit_sens:get(), 1, 47)
+            or (opt.duck_mode:get() and bit.band(ent:get_prop("m_fFlags"), 2) ~= 0)
             or (opt.auto_duck:get() and table.contains(RES_SAFE_CFG, ragebot_get_active_cfg()))
             or (opt.safe_peek:get() and ragebot_get_autopeek_pos())
             or (ent:get_prop("m_iHealth") <= opt.safe_mode:get())
@@ -4953,6 +4765,7 @@ resolver.reset = function()
     resolver.data = {}
     resolver.mem = {}
     resolver.previous = {}
+    resolver.misses = {}
 end
 
 -- Primordial's own resolver is off while this one runs (unless Unsafe resolver is off) and back to its saved value after
@@ -4975,8 +4788,9 @@ lets_resolve = function()
 
     resolver.active = on and mode ~= 1
     resolver.safe_all = mode == 2
-    resolver.native(resolver.active and (not res_custom() or ui.ragebot.resolver.unsafe_reso:get()))
-    if (not resolver.active) then
+    local override = resolver.active and res_custom() and ui.ragebot.resolver.unsafe_reso:get()
+    resolver.native(override)
+    if (not override) then
         return
     end
 
@@ -6497,22 +6311,7 @@ menu_handle = function()
         ui.ragebot.reso_cfg.yaw_calc:depend({info.beta_build == true})
     
         -- backtrack (ragebot)
-        ui.ragebot.backtrack.prediction_factor:depend({ui.ragebot.backtrack.enable_backtrack, true})
-        ui.ragebot.backtrack.smooth_transition:depend({ui.ragebot.backtrack.enable_backtrack, true})
-        ui.ragebot.backtrack.bt_smoothing:depend({ui.ragebot.backtrack.enable_backtrack, true}, {ui.ragebot.backtrack.smooth_transition, true})
-        ui.ragebot.backtrack.transition_priority:depend({ui.ragebot.backtrack.enable_backtrack, true}, {ui.ragebot.backtrack.smooth_transition, true})
-        ui.ragebot.backtrack.transition_speed:depend({ui.ragebot.backtrack.enable_backtrack, true}, {ui.ragebot.backtrack.smooth_transition, true})
         ui.ragebot.backtrack.extended_backtrack:depend({ui.ragebot.backtrack.enable_backtrack, true})
-        ui.ragebot.backtrack.enable_extrapolation:depend({ui.ragebot.backtrack.enable_backtrack, true})
-        ui.ragebot.backtrack.enable_interpolation:depend({ui.ragebot.backtrack.enable_backtrack, true}, {ui.ragebot.backtrack.smooth_transition, true})
-        ui.ragebot.backtrack.prioritize_older_records:depend({ui.ragebot.backtrack.enable_backtrack, true}, {ui.ragebot.backtrack.extended_backtrack, true})
-        ui.ragebot.backtrack.performance_mode:depend({ui.ragebot.backtrack.enable_backtrack, true})
-        ui.ragebot.backtrack.record_weighting_type:depend({ui.ragebot.backtrack.enable_backtrack, true})
-        ui.ragebot.backtrack.dynamic_tick_adjustment:depend({ui.ragebot.backtrack.enable_backtrack, true})
-        ui.ragebot.backtrack.aggressive_backtrack:depend({ui.ragebot.backtrack.enable_backtrack, true})
-        ui.ragebot.backtrack.aggressive_factor:depend({ui.ragebot.backtrack.enable_backtrack, true}, {ui.ragebot.backtrack.aggressive_backtrack, true})
-        ui.ragebot.backtrack.max_targets:depend({ui.ragebot.backtrack.enable_backtrack, true}, {ui.ragebot.backtrack.performance_mode, true})
-        ui.ragebot.backtrack.bt_expiration:depend({ui.ragebot.backtrack.enable_backtrack, true}, {ui.ragebot.backtrack.extended_backtrack, true})
     
         -- accuracy boost (ragebot)
     
@@ -6961,7 +6760,11 @@ do_setupcmd = function()
             update_bt(cmd)
         
             knifebot_helper(cmd)
-            backtrack_sys(cmd)
+            local bt_player = entity_list_get_local_player()
+            if (bt_player ~= nil and bt_player:is_alive()) then
+                backtrack.update(bt_player)
+                backtrack.predict(bt_player)
+            end
             better_hs(cmd)
             defuse_bot(cmd)
         
@@ -6981,6 +6784,14 @@ do_setupcmd = function()
             knife.countdown = 0
         end
         return
+    end)
+end
+
+do_target = function()
+    callbacks.add(e_callbacks.TARGET_SELECTION, function(ctx)
+        if (check_conditions()) then
+            backtrack.target_selection(ctx)
+        end
     end)
 end
 
@@ -7252,18 +7063,6 @@ end
 do_net = function()
     callbacks.add(e_callbacks.NET_UPDATE, function(ctx)
         if (check_conditions()) then
-            if (ui.ragebot.backtrack.enable_backtrack:get()) then
-                local enemies = entity_list_get_players(true)
-                if (enemies ~= nil) then
-                    for _, enemy in pairs(enemies) do
-                        if (enemy:is_alive()) then
-                            store_player_record(enemy)
-                        end
-                    end
-                end
-                clear_old_records()
-            end
-
             lets_resolve()
         
             team_animation()
@@ -7428,6 +7227,7 @@ callbacks.add(e_callbacks.SHUTDOWN, function()
     menu_find("antiaim", "main", "general", "fast ladder move"):set(auto_cfg.fast_ladder_move)
 
     menu_find("Aimbot", "General", "Aimbot", "Resolve Antiaim"):set(auto_cfg.resolve_antiaim)
+    backtrack.restore()
     menu_find("aimbot",get_active_weapon(),"accuracy","auostop options","In-Air")[3]:set(7, auto_cfg.air_autostop)
 
     menu_find("antiaim", "main", "angles", "pitch"):set(auto_cfg.pitch)
@@ -7716,6 +7516,7 @@ setup = function()
         print("preparing lua..", get_text_color(), " (stage 60%%)")
 
         do_hitscan()
+        do_target()
         print("preparing lua..", get_text_color(), " (stage 65%%)")
 
         do_setupcmd()

@@ -102,10 +102,20 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - Offline (owners, Oct 2026): the azura.uno login / HWID check, stats upload and cloud / sync sockets are gone (dummy sockets,
   the cloud buttons say "Cloud is offline"); settings.json and the logo PNGs that the old loader installed are optional; the
   lagcomp debug boxes are gone. default.cfg = the owner's config (`configs.default_config`), applied on the first start.
-- Resolver (one block, `--- @info: resolver: side from ...`): every old menu item stays and drives a part of it (the old four
-  wrote random numbers into the enemy animstate and turned Primordial's own resolver off even when unused). Side from
-  freestanding / jitter direction, max desync, no forcing on players that do not choke, learning per player and state
-  (flip / stay against anti-brute, reduced size), head safe point options through the HITSCAN callback.
+- Resolver (owners, Oct 2026: "fixald teljesen"; their old stats: 1262 hits / 443 misses): Primordial's own "Resolve
+  Antiaim" does the resolving (its records and animation fix; no workshop lua writes an enemy's feet yaw, there is no
+  resolver hook). The block counts resolver misses per player (`resolver.misses`, a hit resets it) and puts a head safe
+  point through HITSCAN: Logic resolver = after 2 in a row, Custom resolver = Hit sensitivity / duck / weapons / peek / HP.
+  The lua side override (freestanding / jitter side written into the animstate, the old "Unsafe resolver" that switched
+  Primordial's resolver off) is "Lua side override (experimental)", off by default (the label changed so the old configs
+  do not switch it on).
+- Backtrack: Primordial's (its records, the tick count of its shot). The old "Improve backtrack" wrote cmd.tick_count on
+  every command from the enemy nearest the crosshair minus "dynamic ticks": the server rewound to a time the aimbot did
+  not aim at. Now Improve backtrack sets Primordial's fake ping amount (100 ms, Extended backtrack 200 ms; the server takes
+  records within 0.2 s of real + fake latency) while an enemy is alive, 0 with a knife / grenade / bomb, the own value back
+  when it goes off or on unload; the fake ping key itself stays the user's. Advanced prediction: each moving enemy's head
+  after our latency + 4 ticks (stopped by walls); shootable there but not now = about to peek -> `ctx:prioritize_target`
+  in TARGET_SELECTION (every 2 ticks, at most 5 enemies, trace_bullet).
 - Anti-aim (owners: "nagyon nehéz legyen ellőni"): the desync side is a fresh coin flip per sent packet through
   `ctx:set_invert_desync`, not tied to the yaw side (it followed it 100%: the azura resolver hit 0.81, now 0.50); the
   switch-every-packet modes use their own switch; anti bruteforce (enemy bullet within 50 units of the head or a hit: yaw
@@ -119,8 +129,8 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   (github.com/DuckOpenSourceFoundation/femordial-workshop-luas) show the calls. ANTIAIM ctx: set_yaw, set_pitch,
   set_desync (-1..1), set_invert_desync, set_fakelag, set_body_lean; desync side items: none, left, right, jitter, peek
   fake, peek real.
-- Tests: `python3 tests/azura_regress.py` (compiles, survives the bot's comment stripping, resolver sim, the real
-  run_antiaim with the default config vs the azura resolver; mocks in tests/azura/).
+- Tests: `python3 tests/azura_regress.py` (compiles, survives the bot's comment stripping, removed parts stay out, the menu
+  shows the right groups on every page). No simulations (the owners' rule above).
 
 ## Tamper reports
 - The Discord webhook URL lives ONLY on the server (`TAMPER_WEBHOOK` on the license server service). It is never put in
