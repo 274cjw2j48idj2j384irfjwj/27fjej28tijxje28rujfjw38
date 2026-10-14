@@ -6123,7 +6123,7 @@ draw_watermark = function()
     end
 
     local split = style == 2 and #segs > 0
-    local width = split and (brand_w + 6 + info_w) or (brand_w + (#segs > 0 and (info_w - PADX) or 0))
+    local width = split and (brand_w + 6 + info_w) or (brand_w + (#segs > 0 and (info_w - PADX * 2 + GAP * 2) or 0))
     hud.wm_w = hud.wm_w == 0 and width or hud.lerp(hud.wm_w, width, ft * 12)
     local w = math.floor(hud.wm_w + 0.5)
 
@@ -6152,17 +6152,12 @@ draw_watermark = function()
     hud.sky(x + PADX + 6, cy, accent, 255)
     hud.brand(x + PADX + 20, ty, accent, 255)
 
-    local tx = split and (x + brand_w + 6 + PADX) or (x + brand_w)
+    local tx = split and (x + brand_w + 6 + PADX) or (x + brand_w - PADX + GAP * 2)
     for i, sg in ipairs(segs) do
         if (tx + sg.w > x + w - 6) then
             break
         end
-        local sep
-        if (split) then
-            sep = i > 1 and (tx - GAP) or nil
-        else
-            sep = i == 1 and (tx - PADX + 1) or (tx - GAP)
-        end
+        local sep = (i > 1 or not split) and (tx - GAP) or nil
         if (sep) then
             render_rect_filled(vec2_t(sep, y + 6), vec2_t(1, H - 12), hud.col(255, 255, 255, 20))
         end
