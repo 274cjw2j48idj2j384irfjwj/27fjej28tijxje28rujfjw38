@@ -1,0 +1,7824 @@
+--[[
+
+    -- * script name: script
+    -- * script version: v5.5
+    -- * script author: e0n3x
+
+]]
+
+local client_version = "5.5"
+
+local config_version = "1.0"
+local config_build = "beta"
+
+local beta_event = true
+
+--- @info: lua requirements and(or) helpers
+--- @region: include(s)
+
+local libs = {
+    tools = { }
+}
+
+antiaim_is_fakeducking, antiaim_get_max_desync_range, antiaim_get_real_angle, antiaim_get_body_lean, antiaim_is_inverting_body_lean, antiaim_is_inverting_desync, antiaim_get_desync_side, antiaim_get_manual_override, antiaim_get_fake_angle = antiaim.is_fakeducking, antiaim.get_max_desync_range, antiaim.get_real_angle, antiaim.get_body_lean, antiaim.is_inverting_body_lean, antiaim.is_inverting_desync, antiaim.get_desync_side, antiaim.get_manual_override, antiaim.get_fake_angle
+client_precache_model, client_get_hitgroup_name, client_get_unix_time, client_log_screen, client_log, client_get_hitbox_name, client_delay_call, client_random_float, client_get_fps, client_get_tickrate, client_set_clantag, client_can_fire, client_random_int, client_is_in_thirdperson, client_get_local_time, client_ticks_to_time, client_time_to_ticks = client.precache_model, client.get_hitgroup_name, client.get_unix_time, client.log_screen, client.log, client.get_hitbox_name, client.delay_call, client.random_float, client.get_fps, client.get_tickrate, client.set_clantag, client.can_fire, client.random_int, client.is_in_thirdperson, client.get_local_time, client.ticks_to_time, client.time_to_ticks
+debug_overlay_add_line, debug_overlay_add_capsule, debug_overlay_add_box, debug_overlay_add_sphere = debug_overlay.add_line, debug_overlay.add_capsule, debug_overlay.add_box, debug_overlay.add_sphere
+engine_set_view_angles, engine_get_latency, engine_get_last_outgoing_command, engine_is_in_game, engine_get_level_name, engine_get_bsp_entities, engine_get_bsp_entity, engine_get_player_index_from_user_id, engine_get_bomb_radius, engine_get_level_name_short, engine_play_sound, engine_execute_cmd, engine_get_choked_commands, engine_is_connected, engine_is_app_active, engine_get_view_angles, engine_get_local_player_index, engine_get_last_acknowledged_command = engine.set_view_angles, engine.get_latency, engine.get_last_outgoing_command, engine.is_in_game, engine.get_level_name, engine.get_bsp_entities, engine.get_bsp_entity, engine.get_player_index_from_user_id, engine.get_bomb_radius, engine.get_level_name_short, engine.play_sound, engine.execute_cmd, engine.get_choked_commands, engine.is_connected, engine.is_app_active, engine.get_view_angles, engine.get_local_player_index, engine.get_last_acknowledged_command
+entity_list_get_player_from_userid, entity_list_get_local_player, entity_list_get_local_player_or_spectating, entity_list_get_entities_by_classid, entity_list_get_highest_entity_index, entity_list_get_entities_by_name, entity_list_get_players, entity_list_get_entity = entity_list.get_player_from_userid, entity_list.get_local_player, entity_list.get_local_player_or_spectating, entity_list.get_entities_by_classid, entity_list.get_highest_entity_index, entity_list.get_entities_by_name, entity_list.get_players, entity_list.get_entity
+exploits_get_charge, exploits_force_uncharge, exploits_force_recharge, exploits_get_max_charge, exploits_block_recharge, exploits_allow_recharge = exploits.get_charge, exploits.force_uncharge, exploits.force_recharge, exploits.get_max_charge, exploits.block_recharge, exploits.allow_recharge
+game_rules_get_prop, game_rules_set_prop = game_rules.get_prop, game_rules.set_prop
+global_vars_frame_count, global_vars_cur_time, global_vars_simticks_this_frame, global_vars_real_time, global_vars_tick_count, global_vars_frame_time, global_vars_absolute_frame_time, global_vars_interval_per_tick, global_vars_max_clients, global_vars_interpolation_amount, global_vars_server_tick = global_vars.frame_count, global_vars.cur_time, global_vars.simticks_this_frame, global_vars.real_time, global_vars.tick_count, global_vars.frame_time, global_vars.absolute_frame_time, global_vars.interval_per_tick, global_vars.max_clients, global_vars.interpolation_amount, global_vars.server_tick
+input_is_key_released, input_find_key_bound_to_binding, input_get_mouse_pos, input_is_mouse_in_bounds, input_is_key_toggled, input_block, input_is_key_pressed, input_get_key_name, input_is_key_held, input_get_time_held, input_get_scroll_delta = input.is_key_released, input.find_key_bound_to_binding, input.get_mouse_pos, input.is_mouse_in_bounds, input.is_key_toggled, input.block, input.is_key_pressed, input.get_key_name, input.is_key_held, input.get_time_held, input.get_scroll_delta
+materials_for_each, materials_find, materials_create = materials.for_each, materials.find, materials.create
+memory_create_interface, memory_find_text, memory_find_pattern, memory_get_vfunc = memory.create_interface, memory.find_text, memory.find_pattern, memory.get_vfunc
+menu_get_size, menu_find, menu_list, menu_add_slider, menu_add_checkbox, menu_text_input, menu_text, menu_multi_keybind, menu_add_list, menu_multi_selection, menu_add_text, menu_set_group_visibility, menu_add_text_input, menu_add_separator, menu_separator, menu_is_open, menu_slider, menu_selection, menu_color_picker, menu_button, menu_keybind, menu_e_keybind_modes, menu_add_button, menu_get_pos, menu_checkbox, menu_add_multi_selection, menu_reload_scripts, menu_add_selection, menu_set_group_column, menu_get_alpha_modifier = menu.get_size, menu.find, menu.list, menu.add_slider, menu.add_checkbox, menu.text_input, menu.text, menu.multi_keybind, menu.add_list, menu.multi_selection, menu.add_text, menu.set_group_visibility, menu.add_text_input, menu.add_separator, menu.separator, menu.is_open, menu.slider, menu.selection, menu.color_picker, menu.button, menu.keybind, menu.e_keybind_modes, menu.add_button, menu.get_pos, menu.checkbox, menu.add_multi_selection, menu.reload_scripts, menu.add_selection, menu.set_group_column, menu.get_alpha_modifier
+player_resource_get_prop, player_resource_set_prop = player_resource.get_prop, player_resource.set_prop
+ragebot_get_active_cfg, ragebot_get_autopeek_pos = ragebot.get_active_cfg, ragebot.get_autopeek_pos
+render_get_text_size, render_push_clip, render_load_image, render_rect_filled, render_line, render_pop_clip, render_rect_fade, render_circle_filled, render_weapon_icon, render_rect, render_texture, render_get_screen_size, render_load_image_buffer, render_create_font, render_weapon_icon_size, render_pop_alpha_modifier, render_circle, render_text, render_get_default_font, render_polygon, render_polyline, render_triangle, render_push_alpha_modifier, render_triangle_filled, render_progress_circle, render_world_to_screen = render.get_text_size, render.push_clip, render.load_image, render.rect_filled, render.line, render.pop_clip, render.rect_fade, render.circle_filled, render.weapon_icon, render.rect, render.texture, render.get_screen_size, render.load_image_buffer, render.create_font, render.weapon_icon_size, render.pop_alpha_modifier, render.circle, render.text, render.get_default_font, render.polygon, render.polyline, render.triangle, render.push_alpha_modifier, render.triangle_filled, render.progress_circle, render.world_to_screen
+trace_line, trace_bullet, trace_hull = trace.line, trace.bullet, trace.hull
+ipairs, assert, pairs, next, tostring, tonumber, setmetatable, unpack, type, getmetatable, pcall, error = ipairs, assert, pairs, next, tostring, tonumber, setmetatable, unpack, type, getmetatable, pcall, error
+
+libs.etr = (function()
+    local b={}function b.round(c)return math.floor(c+.5)end;function b.clamp(d,e,f)if d<e then return e elseif d>f then return f else return d end end;function b.lerp(g,h,i)if type(h)=="number"and math.floor(h)~=h then goto j end::j::local k,l=b.clamp(globals.frame_time()*i,0,1),0.3;if k>=1-l then return h else return g+(h-g)*k end end;function b.glow(m,n,o,p,q)local r,s=m.x,m.y;local t,u=n.x,n.y;local v,w,x,y=p.r,p.g,p.b,p.a;for z=2,math.floor(q)do local A=z/2;local B=math.floor(y/q*(q-z))render_rect(vec2_t(r-A,s-A),vec2_t(t+A*2,u+A*2),color_t(v,w,x,B),o)end end;function b.color_anim(v,w,x,y)return color_t(math.floor(v+0.5),math.floor(w+0.5),math.floor(x+0.5),y==nil and 255 or(math.floor(y+0.5)or 255))end;c_render={}c_render.frame=function(C,D,E,F,o,G)if F==nil then F=1 end;if o==nil then o=5 end;if G==nil then G=1 end;if F==1 then render_rect(C,D-C,color_t(255,255,255,math.floor(150*G)),o)end end;c_render.drag_frame=function(C,D,E)if not menu_is_open()then return end;c_render.frame(C,D,E,1,2,1)end;local H={}H.data={}H.new=function(I,d,i)if H.data[I]==nil then H.data[I]=d end;H.data[I]=b.lerp(H.data[I],d,i)return H.data[I]end;H.fn_smooth_lerp=function(g,h,i)if math.abs(g-h)<1 or g==h then return h end;local d=b.lerp(g,h,i)return d end;local J={}J.data={}J.target=""b.new=function(I,K,n)local L={name=I,pos=K,d_pos=vec2_t(0,0),size=n,anim=0,drag=false}J.__index=J;table.insert(J.data,L)return setmetatable(L,J)end;function J:lerp(M,N,i)local O=self[M]local P=b.clamp(globals.frame_time()*i,0,0.5)self[M]=vec2_t((N.x-O.x)*P+O.x,(N.y-O.y)*P+O.y)end;function J:limit_pos(Q)if self.pos.x<=0 then self.pos.x=0 end;if self.pos.x+self.size.x>=Q.x-1 then self.pos.x=Q.x-self.size.x-1 end;if self.pos.y<=0 then self.pos.y=0 end;if self.pos.y+self.size.y>=Q.y-1 then self.pos.y=Q.y-self.size.y-1 end end;function J:is_in_area(R)return R.x>=self.pos.x-10 and R.x<=self.pos.x+self.size.x+10 and R.y>=self.pos.y-10 and R.y<=self.pos.y+self.size.y+10 end;function J:update()local S=render_get_screen_size()local R=input_get_mouse_pos()local T=input_is_key_held(e_keys.MOUSE_LEFT)local U=input_is_key_pressed(e_keys.MOUSE_RIGHT)local V=self:is_in_area(R)local W=self.drag;local X=J.target;local Y=X==""or X==self.name;local E=(X==self.name or V and menu_is_open())and color_t(255,255,255,255)or color_t(100,100,100,100)c_render.drag_frame(self.pos-vec2_t(10,10),self.pos+self.size+vec2_t(10,10),E)local Z=0;if V and menu_is_open()and Y then Z=H.new("Drag alpha"..self.name,255,4)render_text(render_get_default_font(),"Press M2 to center",self.pos+vec2_t(-5,self.size.y+10),color_t(255,255,255,255))else Z=H.new("Drag alpha"..self.name,0,4)end;if menu_is_open()and V and T and not W and Y then self.drag=true;self.d_pos=self.pos-R elseif menu_is_open()and V and U and not W and Y then self.pos.x=S.x/2-self.size.x/2 end;if not T then J.target=""self.drag=false end;if W and menu_is_open()then J.target=self.name;new=R+self.d_pos;self.pos=new;self:limit_pos(S)end end;local _=ffi.typeof("unsigned char[?]")local a0=ffi.typeof("unsigned int[?]")local a1=65535;local function a2(a3,b,a4)for a5=0,3 do b[a4+a5]=bit.band(bit.rshift(a3,(3-a5)*8),0xFF)end end;local a6={}a6.__index=a6;function a6:writeBytes(a7,a4,a8)a4=a4 or 1;a8=a8 or#a7;for a5=a4,a4+a8-1 do table.insert(self.output,string.char(a7[a5]))end end;function a6:write(a9)local aa=#a9;local ab=1;while aa>0 do if self.positionY>=self.height then error("Pixels already written")end;if self.deflateFilled==0 then local n=a1;if self.uncompRemain<n then n=self.uncompRemain end;local ac={bit.band(self.uncompRemain<=a1 and 1 or 0,0xFF),bit.band(bit.rshift(n,0),0xFF),bit.band(bit.rshift(n,8),0xFF),bit.band(bit.bxor(bit.rshift(n,0),0xFF),0xFF),bit.band(bit.bxor(bit.rshift(n,8),0xFF),0xFF)}self:writeBytes(ac)self:crc32(ac,1,#ac)end;assert(self.positionX<self.lineSize and self.deflateFilled<a1)if self.positionX==0 then local x={0}self:writeBytes(x)self:crc32(x,1,1)self:adler32(x,1,1)self.positionX=self.positionX+1;self.uncompRemain=self.uncompRemain-1;self.deflateFilled=self.deflateFilled+1 else local ad=a1-self.deflateFilled;if self.lineSize-self.positionX<ad then ad=self.lineSize-self.positionX end;if aa<ad then ad=aa end;assert(ad>0)self:writeBytes(a9,ab,ad)self:crc32(a9,ab,ad)self:adler32(a9,ab,ad)aa=aa-ad;ab=ab+ad;self.positionX=self.positionX+ad;self.uncompRemain=self.uncompRemain-ad;self.deflateFilled=self.deflateFilled+ad end;if self.deflateFilled>=a1 then self.deflateFilled=0 end;if self.positionX==self.lineSize then self.positionX=0;self.positionY=self.positionY+1;if self.positionY==self.height then local ae={0,0,0,0,0,0,0,0,0x00,0x00,0x00,0x00,0x49,0x45,0x4E,0x44,0xAE,0x42,0x60,0x82}a2(self.adler,ae,1)self:crc32(ae,1,4)a2(self.crc,ae,5)self:writeBytes(ae)self.done=true end end end end;function a6:crc32(a7,a4,a8)self.crc=bit.bnot(self.crc)for a5=a4,a4+a8-1 do local af=a7[a5]for ag=0,7 do local ah=bit.band(bit.bxor(self.crc,bit.rshift(af,ag)),1)self.crc=bit.bxor(bit.rshift(self.crc,1),bit.band(-ah,0xEDB88320))end end;self.crc=bit.bnot(self.crc)end;function a6:adler32(a7,a4,a8)local ai=bit.band(self.adler,0xFFFF)local aj=bit.rshift(self.adler,16)for a5=a4,a4+a8-1 do ai=(ai+a7[a5])%65521;aj=(aj+ai)%65521 end;self.adler=bit.bor(bit.lshift(aj,16),ai)end;local function ak(al,am,an)an=an or"rgb"local ao,ap;if an=="rgb"then ao,ap=3,2 elseif an=="rgba"then ao,ap=4,6 else error("Invalid color mode")end;local aq=setmetatable({width=al,height=am,done=false,output={}},a6)aq.lineSize=al*ao+1;aq.uncompRemain=aq.lineSize*am;local ar=math.ceil(aq.uncompRemain/a1)local as=ar*5+6;as=as+aq.uncompRemain;local ac={0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A,0x00,0x00,0x00,0x0D,0x49,0x48,0x44,0x52,0,0,0,0,0,0,0,0,0x08,ap,0x00,0x00,0x00,0,0,0,0,0,0,0,0,0x49,0x44,0x41,0x54,0x08,0x1D}a2(al,ac,17)a2(am,ac,21)a2(as,ac,34)aq.crc=0;aq:crc32(ac,13,17)a2(aq.crc,ac,30)aq:writeBytes(ac)aq.crc=0;aq:crc32(ac,38,6)aq.adler=1;aq.positionX=0;aq.positionY=0;aq.deflateFilled=0;return aq end;ffi.cdef([[ typedef struct { void* steam_client; void* steam_user; void* steam_friends; void* steam_utils; void* steam_matchmaking; void* steam_user_stats; void* steam_apps; void* steam_matchmakingservers; void* steam_networking; void* steam_remotestorage; void* steam_screenshots; void* steam_http; void* steam_unidentifiedmessages; void* steam_controller; void* steam_ugc; void* steam_applist; void* steam_music; void* steam_musicremote; void* steam_htmlsurface; void* steam_inventory; void* steam_video; } S_steamApiCtx_t; ]])local at=ffi.cast("S_steamApiCtx_t**",ffi.cast("char*",memory_find_pattern("client.dll","FF 15 ?? ?? ?? ?? B9 ?? ?? ?? ?? E8 ?? ?? ?? ?? 6A"))+7)[0]or error("invalid interface",2)local au=ffi.cast("void***",at.steam_friends)local av=ffi.cast("void***",at.steam_utils)local aw=ffi.cast("int(__thiscall*)(void*, uint64_t)",au[0][34])local ax=ffi.cast("int(__thiscall*)(void*, uint64_t)",au[0][35])local ay=ffi.cast("int(__thiscall*)(void*, uint64_t)",au[0][36])local az=ffi.cast("bool(__thiscall*)(void*, int, uint32_t*, uint32_t*)",av[0][5])local aA=ffi.cast("bool(__thiscall*)(void*, int, unsigned char*, int)",av[0][6])local aB={}get_steam_avatar=function(aC,n)local aD=string.format("%s_%s",aC,n)local aE;local aF=""if aB[aD]==nil then local aG;if n==nil then aG=aw elseif n>64 then aG=ay elseif n>32 then aG=ax else aG=aw end;local aH=aG(au,tonumber(aC:sub(4,-1))+76500000000000000ULL)if aH>0 then local al=a0(1)local am=a0(1)if az(av,aH,al,am)then if al[0]>0 and am[0]>0 then local aI=al[0]*am[0]*4;local aJ=_(aI)if aA(av,aH,aJ,aI)then local aK=ak(al[0],am[0],"rgba")for r=0,al[0]-1 do for s=0,am[0]-1 do local aL=r*am[0]*4+s*4;aK:write{aJ[aL],aJ[aL+1],aJ[aL+2],aJ[aL+3]}end end;for a5=1,#aK.output do aF=aF..aK.output[a5]end;aB[aD]=render_load_image_buffer(aF)end end end elseif aH~=-1 then aB[aD]=nil end end;if aB[aD]then return aB[aD]end end;b.data={}b.default_image=render_load_image_buffer("\xFF\xD8\xFF\xE0\x00\x10\x4A\x46\x49\x46\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xFF\xFE\x00\x3B\x43\x52\x45\x41\x54\x4F\x52\x3A\x20\x67\x64\x2D\x6A\x70\x65\x67\x20\x76\x31\x2E\x30\x20\x28\x75\x73\x69\x6E\x67\x20\x49\x4A\x47\x20\x4A\x50\x45\x47\x20\x76\x36\x32\x29\x2C\x20\x71\x75\x61\x6C\x69\x74\x79\x20\x3D\x20\x38\x30\x0A\xFF\xDB\x00\x43\x00\x06\x04\x05\x06\x05\x04\x06\x06\x05\x06\x07\x07\x06\x08\x0A\x10\x0A\x0A\x09\x09\x0A\x14\x0E\x0F\x0C\x10\x17\x14\x18\x18\x17\x14\x16\x16\x1A\x1D\x25\x1F\x1A\x1B\x23\x1C\x16\x16\x20\x2C\x20\x23\x26\x27\x29\x2A\x29\x19\x1F\x2D\x30\x2D\x28\x30\x25\x28\x29\x28\xFF\xDB\x00\x43\x01\x07\x07\x07\x0A\x08\x0A\x13\x0A\x0A\x13\x28\x1A\x16\x1A\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\x28\xFF\xC0\x00\x11\x08\x00\x40\x00\x40\x03\x01\x22\x00\x02\x11\x01\x03\x11\x01\xFF\xC4\x00\x1F\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\xFF\xC4\x00\xB5\x10\x00\x02\x01\x03\x03\x02\x04\x03\x05\x05\x04\x04\x00\x00\x01\x7D\x01\x02\x03\x00\x04\x11\x05\x12\x21\x31\x41\x06\x13\x51\x61\x07\x22\x71\x14\x32\x81\x91\xA1\x08\x23\x42\xB1\xC1\x15\x52\xD1\xF0\x24\x33\x62\x72\x82\x09\x0A\x16\x17\x18\x19\x1A\x25\x26\x27\x28\x29\x2A\x34\x35\x36\x37\x38\x39\x3A\x43\x44\x45\x46\x47\x48\x49\x4A\x53\x54\x55\x56\x57\x58\x59\x5A\x63\x64\x65\x66\x67\x68\x69\x6A\x73\x74\x75\x76\x77\x78\x79\x7A\x83\x84\x85\x86\x87\x88\x89\x8A\x92\x93\x94\x95\x96\x97\x98\x99\x9A\xA2\xA3\xA4\xA5\xA6\xA7\xA8\xA9\xAA\xB2\xB3\xB4\xB5\xB6\xB7\xB8\xB9\xBA\xC2\xC3\xC4\xC5\xC6\xC7\xC8\xC9\xCA\xD2\xD3\xD4\xD5\xD6\xD7\xD8\xD9\xDA\xE1\xE2\xE3\xE4\xE5\xE6\xE7\xE8\xE9\xEA\xF1\xF2\xF3\xF4\xF5\xF6\xF7\xF8\xF9\xFA\xFF\xC4\x00\x1F\x01\x00\x03\x01\x01\x01\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\xFF\xC4\x00\xB5\x11\x00\x02\x01\x02\x04\x04\x03\x04\x07\x05\x04\x04\x00\x01\x02\x77\x00\x01\x02\x03\x11\x04\x05\x21\x31\x06\x12\x41\x51\x07\x61\x71\x13\x22\x32\x81\x08\x14\x42\x91\xA1\xB1\xC1\x09\x23\x33\x52\xF0\x15\x62\x72\xD1\x0A\x16\x24\x34\xE1\x25\xF1\x17\x18\x19\x1A\x26\x27\x28\x29\x2A\x35\x36\x37\x38\x39\x3A\x43\x44\x45\x46\x47\x48\x49\x4A\x53\x54\x55\x56\x57\x58\x59\x5A\x63\x64\x65\x66\x67\x68\x69\x6A\x73\x74\x75\x76\x77\x78\x79\x7A\x82\x83\x84\x85\x86\x87\x88\x89\x8A\x92\x93\x94\x95\x96\x97\x98\x99\x9A\xA2\xA3\xA4\xA5\xA6\xA7\xA8\xA9\xAA\xB2\xB3\xB4\xB5\xB6\xB7\xB8\xB9\xBA\xC2\xC3\xC4\xC5\xC6\xC7\xC8\xC9\xCA\xD2\xD3\xD4\xD5\xD6\xD7\xD8\xD9\xDA\xE2\xE3\xE4\xE5\xE6\xE7\xE8\xE9\xEA\xF2\xF3\xF4\xF5\xF6\xF7\xF8\xF9\xFA\xFF\xDA\x00\x0C\x03\x01\x00\x02\x11\x03\x11\x00\x3F\x00\xF0\x89\xE6\x93\xCF\x93\xF7\x8F\xF7\x8F\xF1\x1F\x5A\x67\x9D\x27\xFC\xF4\x7F\xFB\xE8\xD1\x3F\xFA\xF9\x3F\xDE\x3F\xCE\x99\x40\x0F\xF3\xA4\xFF\x00\x9E\x8F\xFF\x00\x7D\x1A\x3C\xE9\x3F\xE7\xA3\xFF\x00\xDF\x46\x99\x5A\x3A\x2E\x87\xAA\xEB\x93\x34\x5A\x3E\x9D\x75\x7A\xEB\xF7\x84\x11\x17\xDB\xF5\x23\xA7\xE3\x40\x14\x7C\xE9\x3F\xE7\xA3\xFF\x00\xDF\x46\x8F\x3A\x4F\xF9\xE8\xFF\x00\xF7\xD1\xAD\x1D\x6F\xC3\xBA\xCE\x86\x57\xFB\x63\x4B\xBC\xB2\x0F\xC2\xB4\xD1\x15\x56\xFA\x1E\x86\xB2\xE8\x01\xFE\x74\x9F\xF3\xD1\xFF\x00\xEF\xA3\x4F\x82\x69\x3C\xF8\xFF\x00\x78\xFF\x00\x78\x7F\x11\xF5\xA8\x69\xF0\x7F\xAF\x8F\xFD\xE1\xFC\xE8\x00\x9F\xFD\x7C\x9F\xEF\x1F\xE7\x4C\xA7\xCF\xFE\xBE\x4F\xF7\x8F\xF3\xA6\x50\x05\xDD\x13\x4F\x7D\x5B\x59\xB0\xD3\xA2\x60\xB2\x5D\xCF\x1C\x0A\x4F\x62\xCC\x14\x1F\xD6\xBE\xA8\xF1\x77\x88\x74\x8F\x84\x5E\x12\xD3\xED\x34\xDD\x3C\x4A\xD2\x13\x1C\x10\x06\xD9\xBC\x80\x37\x48\xED\x8E\xBC\x8C\xFA\x93\x5F\x27\x5B\xCF\x2D\xB5\xC4\x73\xDB\xC8\xF1\x4D\x13\x07\x49\x11\x8A\xB2\xB0\x39\x04\x11\xD0\x83\x56\xF5\x4D\x67\x53\xD5\xFC\xBF\xED\x5D\x46\xF2\xF7\xCB\xCE\xCF\xB4\x4C\xD2\x6D\xCF\x5C\x64\x9C\x74\x14\x01\xF5\x17\xC3\xEF\x1C\xE9\x9F\x14\x74\xDD\x47\x4B\xD5\x74\xC4\x8A\x54\x4C\xCD\x6C\xED\xE6\x24\x88\x4E\x37\x29\xC0\x20\x83\xF9\x71\x83\x5F\x34\xF8\xDB\x44\x1E\x1C\xF1\x66\xA9\xA4\xAB\x17\x4B\x59\xCA\x23\x1E\xA5\x0F\x2B\x9F\x7C\x11\x5F\x42\x7C\x16\xF0\xA4\x5E\x06\xF0\x9D\xDF\x88\xBC\x40\xE2\xDA\xE6\xE6\x11\x2C\x9E\x67\x1E\x44\x23\x90\x0F\xFB\x47\xA9\x1F\x41\xD6\xBE\x7A\xF1\xAE\xB7\xFF\x00\x09\x1F\x8A\xF5\x4D\x58\x21\x44\xBA\x98\xBA\x29\xEA\x13\xA2\x83\xEF\x80\x28\x03\x16\x9F\x07\xFA\xF8\xFF\x00\xDE\x1F\xCE\x99\x4F\x83\xFD\x7C\x7F\xEF\x0F\xE7\x40\x04\xFF\x00\xEB\xE4\xFF\x00\x78\xFF\x00\x3A\x65\x3E\x7F\xF5\xF2\x7F\xBC\x7F\x9D\x32\x80\x0A\xED\xFE\x0B\x69\x96\xDA\xBF\xC4\xAD\x1E\xDA\xF6\x31\x24\x0A\xCF\x31\x46\x19\x0C\x51\x19\x86\x7D\xB2\x05\x71\x15\xD3\xFC\x36\xD3\x75\x4D\x5F\xC6\x16\x76\x5A\x0E\xA0\x74\xED\x42\x45\x90\xC7\x72\x19\x97\x68\x08\x49\xE5\x79\xE4\x02\x3F\x1A\x00\xF5\x1F\xDA\x6F\xC4\xF7\x62\xFE\xCF\xC3\x70\x31\x8E\xCF\xCA\x5B\xA9\xF1\xD6\x46\x2C\xC1\x41\xF6\x1B\x73\xF5\x3E\xD5\xE0\xF5\xD8\xFC\x56\xD1\xF5\xAD\x13\xC4\xE9\x6B\xE2\x3D\x50\xEA\x97\xA6\xDD\x1C\x4E\x5D\x9B\x08\x4B\x61\x72\xDC\xF5\x07\xF3\xAE\x3A\x80\x0A\x7C\x1F\xEB\xE3\xFF\x00\x78\x7F\x3A\x65\x3E\x0F\xF5\xF1\xFF\x00\xBC\x3F\x9D\x00\x13\xFF\x00\xAF\x93\xFD\xE3\xFC\xE9\x95\x34\xF0\xC9\xE7\xC9\xFB\xB7\xFB\xC7\xF8\x4F\xAD\x33\xC9\x93\xFE\x79\xBF\xFD\xF2\x68\x01\x95\x7B\x43\xD5\xEF\xF4\x2D\x4A\x2D\x43\x49\xB8\x6B\x6B\xC8\xC1\x09\x22\x80\x48\xC8\x20\xF5\x04\x74\x26\xAA\x79\x32\x7F\xCF\x37\xFF\x00\xBE\x4D\x1E\x4C\x9F\xF3\xCD\xFF\x00\xEF\x93\x40\x1A\x1E\x21\xD7\xB5\x3F\x11\x5F\x8B\xDD\x6A\xED\xAE\xEE\x82\x08\xC4\x8C\xA0\x1D\xA0\x92\x07\x00\x7A\x9A\xCC\xA7\xF9\x32\x7F\xCF\x37\xFF\x00\xBE\x4D\x1E\x4C\x9F\xF3\xCD\xFF\x00\xEF\x93\x40\x0C\xA7\xC1\xFE\xBE\x3F\xF7\x87\xF3\xA3\xC9\x93\xFE\x79\xBF\xFD\xF2\x69\xF0\x43\x27\x9F\x1F\xEE\xDF\xEF\x0F\xE1\x3E\xB4\x01\xFF\xD9")b.fn_create_item=function(I)b.data[I]={}b.data[I].url=nil;b.data[I].image=nil;b.data[I].loaded=false;b.data[I].loading=false end;b.get_avatar=function(I,aM)if b.data[I]and b.data[I].loaded then return b.data[I].image end;if b.data[I]==nil then b.fn_create_item(I)local aN,aO=entity_list_get_entity(aM):get_steamids()if#aO<5 then return end;if aO==nil or b.default_image==nil then return nil end;b.data[I].image=get_steam_avatar(aO,64)b.data[I].loaded=true end;return b.default_image end;local aP={}local aQ=function(aR)local buffer={}local aS=8*global_vars_frame_time()local aT=entity_list_get_entities_by_name("CCSPlayer")for aU,aV in pairs(aT)do if aV:get_index()~=aR:get_index()then if aV==nil then return end;if not aV:get_prop("m_iHealth")~=0 and not aV:is_dormant()then local aW=aV:get_prop("m_iObserverMode")local aX=aV:get_prop("m_hObserverTarget")if aX then if aW>=4 or aW<=5 then local aY=entity_list_get_entity(aX)if aY~=nil and aY:get_index()==aR:get_index()then if aP[aV:get_index()]==nil then aP[aV:get_index()]={alpha=0,offset=0,active=true}end;aP[aV:get_index()].active=true;aP[aV:get_index()].alpha=aP[aV:get_index()].alpha+aS;if aP[aV:get_index()].alpha>1 then aP[aV:get_index()].alpha=1 end;table.insert(buffer,1,{["alpha"]=aP[aV:get_index()].alpha,["id"]=aV:get_index(),["name"]=aV:get_name()})elseif aP[aV:get_index()]~=nil then aP[aV:get_index()].active=false;aP[aV:get_index()].alpha=aP[aV:get_index()].alpha-aS;if aP[aV:get_index()].alpha<=0 then aP[aV:get_index()]=nil end end end else aP[aV:get_index()]=nil end else aP[aV:get_index()]=nil end end end;return buffer end;callbacks.add(e_callbacks.EVENT,function()if buffer==nil then return end;for a4,d in pairs(buffer)do if aQ(d)==nil then print()end end end,"round_start")b.get_spectators=function()if not engine_is_connected()or entity_list_get_local_player()==nil then return end;local aZ=entity_list_get_local_player()if aZ:get_prop("m_iHealth")>0 then return aQ(aZ)else local a_=aZ:get_prop("m_hObserverTarget")if a_ then local b0=entity_list_get_entity(a_)if b0~=nil then if b0:is_player()and b0:is_alive()then return aQ(b0)end end end end end;return b
+end)()
+
+libs.json = (function()
+    local a={_version="0.1.2"}local b;local c={["\\"]="\\",["\""]="\"",["\b"]="b",["\f"]="f",["\n"]="n",["\r"]="r",["\t"]="t"}local d={["/"]="/"}for e,f in pairs(c)do d[f]=e end;local function g(h)return"\\"..(c[h]or string.format("u%04x",h:byte()))end;local function i(j)return"null"end;local function k(j,l)local m={}l=l or{}if l[j]then error("circular reference")end;l[j]=true;if rawget(j,1)~=nil or next(j)==nil then local n=0;for e in pairs(j)do if type(e)~="number"then error("invalid table: mixed or invalid key types")end;n=n+1 end;if n~=#j then error("invalid table: sparse array")end;for o,f in ipairs(j)do table.insert(m,b(f,l))end;l[j]=nil;return"["..table.concat(m,",").."]"else for e,f in pairs(j)do if type(e)~="string"then error("invalid table: mixed or invalid key types")end;table.insert(m,b(e,l)..":"..b(f,l))end;l[j]=nil;return"{"..table.concat(m,",").."}"end end;local function p(j)return'"'..j:gsub('[%z\1-\31\\"]',g)..'"'end;local function q(j)if j~=j or j<=-math.huge or j>=math.huge then error("unexpected number value '"..tostring(j).."'")end;return string.format("%.14g",j)end;local r={["nil"]=i,["table"]=k,["string"]=p,["number"]=q,["boolean"]=tostring}b=function(j,l)local s=type(j)local t=r[s]if t then return t(j,l)end;error("unexpected type '"..s.."'")end;function a.encode(j)return b(j)end;local u;local function v(...)local m={}for o=1,select("#",...)do m[select(o,...)]=true end;return m end;local w=v(" ","\t","\r","\n")local x=v(" ","\t","\r","\n","]","}",",")local y=v("\\","/",'"',"b","f","n","r","t","u")local z=v("true","false","null")local A={["true"]=true,["false"]=false,["null"]=nil}local function B(C,D,E,F)for o=D,#C do if E[C:sub(o,o)]~=F then return o end end;return#C+1 end;local function G(C,D,H)local I=1;local J=1;for o=1,D-1 do J=J+1;if C:sub(o,o)=="\n"then I=I+1;J=1 end end;error(string.format("%s at line %d col %d",H,I,J))end;local function K(n)local t=math.floor;if n<=0x7f then return string.char(n)elseif n<=0x7ff then return string.char(t(n/64)+192,n%64+128)elseif n<=0xffff then return string.char(t(n/4096)+224,t(n%4096/64)+128,n%64+128)elseif n<=0x10ffff then return string.char(t(n/262144)+240,t(n%262144/4096)+128,t(n%4096/64)+128,n%64+128)end;error(string.format("invalid unicode codepoint '%x'",n))end;local function L(M)local N=tonumber(M:sub(1,4),16)local O=tonumber(M:sub(7,10),16)if O then return K((N-0xd800)*0x400+O-0xdc00+0x10000)else return K(N)end end;local function P(C,o)local m=""local Q=o+1;local e=Q;while Q<=#C do local R=C:byte(Q)if R<32 then G(C,Q,"control character in string")elseif R==92 then m=m..C:sub(e,Q-1)Q=Q+1;local h=C:sub(Q,Q)if h=="u"then local S=C:match("^[dD][89aAbB]%x%x\\u%x%x%x%x",Q+1)or C:match("^%x%x%x%x",Q+1)or G(C,Q-1,"invalid unicode escape in string")m=m..L(S)Q=Q+#S else if not y[h]then G(C,Q-1,"invalid escape char '"..h.."' in string")end;m=m..d[h]end;e=Q+1 elseif R==34 then m=m..C:sub(e,Q-1)return m,Q+1 end;Q=Q+1 end;G(C,o,"expected closing quote for string")end;local function T(C,o)local R=B(C,o,x)local M=C:sub(o,R-1)local n=tonumber(M)if not n then G(C,o,"invalid number '"..M.."'")end;return n,R end;local function U(C,o)local R=B(C,o,x)local V=C:sub(o,R-1)if not z[V]then G(C,o,"invalid literal '"..V.."'")end;return A[V],R end;local function W(C,o)local m={}local n=1;o=o+1;while 1 do local R;o=B(C,o,w,true)if C:sub(o,o)=="]"then o=o+1;break end;R,o=u(C,o)m[n]=R;n=n+1;o=B(C,o,w,true)local X=C:sub(o,o)o=o+1;if X=="]"then break end;if X~=","then G(C,o,"expected ']' or ','")end end;return m,o end;local function Y(C,o)local m={}o=o+1;while 1 do local Z,j;o=B(C,o,w,true)if C:sub(o,o)=="}"then o=o+1;break end;if C:sub(o,o)~='"'then G(C,o,"expected string for key")end;Z,o=u(C,o)o=B(C,o,w,true)if C:sub(o,o)~=":"then G(C,o,"expected ':' after key")end;o=B(C,o+1,w,true)j,o=u(C,o)m[Z]=j;o=B(C,o,w,true)local X=C:sub(o,o)o=o+1;if X=="}"then break end;if X~=","then G(C,o,"expected '}' or ','")end end;return m,o end;local _={['"']=P,["0"]=T,["1"]=T,["2"]=T,["3"]=T,["4"]=T,["5"]=T,["6"]=T,["7"]=T,["8"]=T,["9"]=T,["-"]=T,["t"]=U,["f"]=U,["n"]=U,["["]=W,["{"]=Y}u=function(C,D)local X=C:sub(D,D)local t=_[X]if t then return t(C,D)end;G(C,D,"unexpected character '"..X.."'")end;function a.parse(C)if type(C)~="string"then error("expected argument of type string, got "..type(C))end;local m,D=u(C,B(C,1,w,true))D=B(C,D,w,true)if D<=#C then G(C,D,"trailing garbage")end;return m end;return a
+end)()
+
+libs.base64 = (function()
+    local a={}local b,c,d=bit.lshift,bit.rshift,bit.band;local e,f,g,h,i,j,tostring,error,pairs=string.char,string.byte,string.gsub,string.sub,string.format,table.concat,tostring,error,pairs;local k=function(l,m,n)return d(c(l,m),b(1,n)-1)end;local function o(p)local q,r={},{}for s=1,65 do local t=f(h(p,s,s))or 32;if r[t]~=nil then error("invalid alphabet: duplicate character "..tostring(t),3)end;q[s-1]=t;r[t]=s-1 end;return q,r end;local u,v={},{}u["base64"],v["base64"]=o("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=")u["base64url"],v["base64url"]=o("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")local w={__index=function(x,y)if type(y)=="string"and y:len()==64 or y:len()==65 then u[y],v[y]=o(y)return x[y]end end}setmetatable(u,w)setmetatable(v,w)function a.encode(z,q)q=u[q or"base64"]or error("invalid alphabet specified",2)z=tostring(z)local A,B,C={},1,#z;local D=C%3;local E={}for s=1,C-D,3 do local F,G,H=f(z,s,s+2)local l=F*0x10000+G*0x100+H;local I=E[l]if not I then I=e(q[k(l,18,6)],q[k(l,12,6)],q[k(l,6,6)],q[k(l,0,6)])E[l]=I end;A[B]=I;B=B+1 end;if D==2 then local F,G=f(z,C-1,C)local l=F*0x10000+G*0x100;A[B]=e(q[k(l,18,6)],q[k(l,12,6)],q[k(l,6,6)],q[64])elseif D==1 then local l=f(z,C)*0x10000;A[B]=e(q[k(l,18,6)],q[k(l,12,6)],q[64],q[64])end;return j(A)end;function a.decode(J,r)r=v[r or"base64"]or error("invalid alphabet specified",2)local K="[^%w%+%/%=]"if r then local L,M;for N,O in pairs(r)do if O==62 then L=N elseif O==63 then M=N end end;K=i("[^%%w%%%s%%%s%%=]",e(L),e(M))end;J=g(tostring(J),K,'')local E={}local A,B={},1;local C=#J;local P=h(J,-2)=="=="and 2 or h(J,-1)=="="and 1 or 0;for s=1,P>0 and C-4 or C,4 do local F,G,H,Q=f(J,s,s+3)local R=F*0x1000000+G*0x10000+H*0x100+Q;local I=E[R]if not I then local l=r[F]*0x40000+r[G]*0x1000+r[H]*0x40+r[Q]I=e(k(l,16,8),k(l,8,8),k(l,0,8))E[R]=I end;A[B]=I;B=B+1 end;if P==1 then local F,G,H=f(J,C-3,C-1)local l=r[F]*0x40000+r[G]*0x1000+r[H]*0x40;A[B]=e(k(l,16,8),k(l,8,8))elseif P==2 then local F,G=f(J,C-3,C-2)local l=r[F]*0x40000+r[G]*0x1000;A[B]=e(k(l,16,8))end;return j(A)end;return a
+end)()
+
+libs.filesystem = (function()
+    local a={}a.__index={}a.class=ffi.cast(ffi.typeof("void***"),memory_create_interface("filesystem_stdio.dll","VBaseFileSystem011"))a.v_table=a.class[0]a.full_class=ffi.cast("void***",memory_create_interface("filesystem_stdio.dll","VFileSystem017"))a.v_fltable=a.full_class[0]a.casts={read_file=ffi.cast("int (__thiscall*)(void*, void*, int, void*)",a.v_table[0]),write_file=ffi.cast("int (__thiscall*)(void*, void const*, int, void*)",a.v_table[1]),open_file=ffi.cast("void* (__thiscall*)(void*, const char*, const char*, const char*)",a.v_table[2]),close_file=ffi.cast("void (__thiscall*)(void*, void*)",a.v_table[3]),file_size=ffi.cast("unsigned int (__thiscall*)(void*, void*)",a.v_table[7]),file_exists=ffi.cast("bool (__thiscall*)(void*, const char*, const char*)",a.v_table[10]),delete_file=ffi.cast("void (__thiscall*)(void*, const char*, const char*)",a.v_fltable[20]),rename_file=ffi.cast("bool (__thiscall*)(void*, const char*, const char*, const char*)",a.v_fltable[21]),create_dir=ffi.cast("void (__thiscall*)(void*, const char*, const char*)",a.v_fltable[22]),is_dir=ffi.cast("bool (__thiscall*)(void*, const char*, const char*)",a.v_fltable[23])}local b=memory_create_interface("filesystem_stdio.dll","VFileSystem017")local c=ffi.cast(ffi.typeof("void***"),b)ffi.cdef([[ typedef void (__thiscall* AddSearchPath)(void*, const char*, const char*); typedef void (__thiscall* RemoveSearchPaths)(void*, const char*); typedef const char* (__thiscall* FindNext)(void*, int); typedef bool (__thiscall* FindIsDirectory)(void*, int); typedef void (__thiscall* FindClose)(void*, int); typedef const char* (__thiscall* FindFirstEx)(void*, const char*, const char*, int*); typedef long (__thiscall* GetFileTime)(void*, const char*, const char*); ]])local d=ffi.cast("AddSearchPath",c[0][11])local e=ffi.cast("RemoveSearchPaths",c[0][14])local f=ffi.cast("FindNext",c[0][33])local g=ffi.cast("FindIsDirectory",c[0][34])local h=ffi.cast("FindClose",c[0][35])local i=ffi.cast("FindFirstEx",c[0][36])a.modes={["r"]="r",["w"]="w",["a"]="a",["r+"]="r+",["w+"]="w+",["a+"]="a+",["rb"]="rb",["wb"]="wb",["ab"]="ab",["rb+"]="rb+",["wb+"]="wb+",["ab+"]="ab+"}a.open=function(j,k,l)if not a.modes[k]then error("File mode error!")end;local self=setmetatable({file=j,mode=k,path_id=l,handle=a.casts.open_file(a.class,j,k,l)},a)return self end;a.close=function(m)a.casts.close_file(a.class,m.handle)end;a.exists=function(j,l)return a.casts.file_exists(a.class,j,l)end;a.get_size=function(m)return a.casts.file_size(a.class,m.handle)end;a.write_binary=function(n,o)local m=a.open(n,"wb","MOD")a.casts.write_file(a.class,o,#o,m.handle)a.close(m)end;a.read_binary=function(n)local m=a.open(n,"rb","MOD")local p=a.get_size(m)local q=ffi.new("char[?]",p)a.casts.read_file(a.class,q,p,m.handle)a.close(m)return ffi.string(q,p)end;a.write=function(n,o)local m=a.open(n,"w","MOD")a.casts.write_file(a.class,o,#o,m.handle)a.close(m)end;a.append=function(n,o)local m=a.open(n,"a","MOD")a.casts.write_file(a.class,o,#o,m.handle)a.close(m)end;a.read=function(n)local m=a.open(n,"r","MOD")local p=a.get_size(m)local q=ffi.new("char[?]",p+1)a.casts.read_file(a.class,q,p,m.handle)a.close(m)return ffi.string(q)end;a.rename=function(r,s,l)return a.casts.rename_file(a.full_class,r,s,l)end;a.delete=function(j,l)a.casts.delete_file(a.full_class,j,l)end;a.create_directory=function(n,l)a.casts.create_dir(a.full_class,n,l)end;a.is_directory=function(n,l)return a.casts.is_dir(a.full_class,n,l)end;a.find_next=function(t)local j=a.casts.find_next(a.full_class,t)if j==0 then return nil end;return ffi.string(j)end;a.find_is_directory=function(t)return a.casts.find_is_dir(a.full_class,t)end;a.get_sec_files=function()local u=ffi.new("int[1]")e(c,"primordial")d(c,"././primordial/scripts","primordial")local v={}local j=i(c,"*","primordial",u)while j~=nil do local w=ffi.string(j)if g(c,u[0])==false and w:find("[.]lua")then table.insert(v,w)end;j=f(c,u[0])end;h(c,u[0])return v end;a.read_first_line=function(x)local y=x:match("^[^\r\n]+")return y end;a.get_files=function()local u=ffi.new("int[1]")e(c,"azura_configs")d(c,"./csgo/azura/","azura_configs")local v={}local j=i(c,"*","azura_configs",u)while j~=nil do local w=ffi.string(j)if g(c,u[0])==false and w:find("[.]cfg")then table.insert(v,w)end;j=f(c,u[0])end;h(c,u[0])return v end;return a
+end)()
+
+libs.eui = (function()
+    local a={}a.__type={group=-1,button=0,keybind=1,text_input=2,text=3,separator=4,list=5,checkbox=6,color_picker=7,multi_selection=8,selection=9,slider=10}a.__azurasave=true;a.__data={}a.create=function(b,c)local d={group=b,column=c,id=a.__type.group}menu_set_group_column(b,c)a.__index=a;return setmetatable(d,a)end;function a:create_element(e,f,g)local h=nil;if e==a.__type.button then h=menu_add_button(self.group,f,g.fn)elseif e==a.__type.checkbox then h=menu_add_checkbox(self.group,f,g.default_value)elseif e==a.__type.color_picker then h=g.parent.ref:add_color_picker(f,g.default_value,g.alpha)elseif e==a.__type.keybind then h=g.parent.ref:add_keybind(f,g.default_value)elseif e==a.__type.list then h=menu_add_list(self.group,f,g.items,g.visible_count)elseif e==a.__type.multi_selection then h=menu_add_multi_selection(self.group,f,g.items,g.visible_count)elseif e==a.__type.selection then h=menu_add_selection(self.group,f,g.items,g.visible_count)elseif e==a.__type.slider then h=menu_add_slider(self.group,f,g.min,g.max,g.step,g.precision,g.suffix)elseif e==a.__type.text_input then h=menu_add_text_input(self.group,f)elseif e==a.__type.text then h=menu_add_text(self.group,f)elseif e==a.__type.separator then h=menu_add_separator(self.group)end;local d={name=f,id=e,ref=h,group=self.group,get=function(self,i)if self.id==a.__type.multi_selection then return self.ref:get(i)else return self.ref:get()end end}if not a.__data[self.group]then a.__data[self.group]={}end;a.__data[self.group][f]=d;if a.__azurasave then if not a[self.group]then a[self.group]={}end;a[self.group][f]=d;self[f]=d end;return setmetatable(d,a)end;function a:button(f,j)j=j or function()end;return self:create_element(a.__type.button,f,{fn=j})end;function a:checkbox(f,k)return self:create_element(a.__type.checkbox,f,{default_value=k})end;function a:color_picker(l,f,k,m)return self:create_element(a.__type.color_picker,f,{parent=l,default_value=k,alpha=m})end;function a:keybind(l,f,k)return self:create_element(a.__type.keybind,f,{parent=l,default_value=k})end;function a:list(f,n,o)return self:create_element(a.__type.list,f,{items=n,visible_count=o})end;function a:multi_selection(f,n,o)return self:create_element(a.__type.multi_selection,f,{items=n,visible_count=o})end;function a:selection(f,n,o)return self:create_element(a.__type.selection,f,{items=n,visible_count=o})end;function a:slider(f,p,q,r,s,t)return self:create_element(a.__type.slider,f,{min=p,max=q,step=r,precision=s,suffix=t})end;function a:text_input(f)return self:create_element(a.__type.text_input,f)end;function a:text(f,g)return self:create_element(a.__type.text,f,g)end;function a:separator()return self:create_element(a.__type.separator,"separator")end;a.export=function()local u={}for v,w in pairs(a.__data)do u[v]={}for x,y in pairs(w)do if not(y.id<a.__type.checkbox)then if y.id==a.__type.multi_selection then local z={}for A,B in pairs(y.ref:get_items())do table.insert(z,{B,y.ref:get(B)})end;table.insert(u[v],{y.name,z})elseif y.id==a.__type.color_picker then local C=y.ref:get()table.insert(u[v],{y.name,C.r,C.g,C.b,C.a})else table.insert(u[v],{y.name,y.ref:get()})end end end end;return libs.json.encode(u)end;a.import=function(d)local D=libs.json.parse(d)for v,w in pairs(D)do for x,y in pairs(w)do if not(a.__data[v]==nil or a.__data[v][y[1]]==nil)then if a.__data[v][y[1]].id==a.__type.multi_selection then for A,B in pairs(y[2])do a.__data[v][y[1]].ref:set(B[1],B[2])end elseif a.__data[v][y[1]].id==a.__type.color_picker then a.__data[v][y[1]].ref:set(color_t(y[2],y[3],y[4],y[5]))else a.__data[v][y[1]].ref:set(y[2])end end end end end;function a:depend(...)local E={...}local F=nil;for v,w in pairs(E)do local G=nil;if type(w[1])=="boolean"then G=w[1]else G=w[1].ref:get()==w[2]end;if F~=nil then F=F and G else F=G end end;if self.id==-1 then menu_set_group_visibility(self.group,F)else self.ref:set_visible(F)end end;return a
+end)()
+
+libs.httpcreator = (function()
+    local a=ffi.cast("uint32_t**",ffi.cast("char**",ffi.cast("char*",memory_find_pattern("client.dll","B9 ? ? ? ? E8 ? ? ? ? 83 3D ? ? ? ? ? 0F 84"))+1)[0]+48)[0]or error("steam_http error")local b=ffi.cast("void***",a)or error("steam_http_ptr error")local c=b[0]or error("steam_http_ptr was null")local function d(e,f)return function(...)return e(f,...)end end;local g=d(ffi.cast(ffi.typeof("uint32_t(__thiscall*)(void*, uint32_t, const char*)"),c[0]),a)local h=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, uint64_t)"),c[5]),a)local i=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*, uint32_t*)"),c[9]),a)local j=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*, char*, uint32_t)"),c[10]),a)local k=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, uint32_t*)"),c[11]),a)local l=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, char*, uint32_t)"),c[12]),a)local m=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*, const char*)"),c[3]),a)local n=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*, const char*)"),c[4]),a)local o=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*)"),c[21]),a)local p=d(ffi.cast("bool(__thiscall*)(void*, uint32_t, const char*, const char*, uint32_t)",c[16]),a)local q=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t)"),c[14]),a)local r={}callbacks.add(e_callbacks.PAINT,function()for s,t in ipairs(r)do if global_vars_cur_time()-t.ls>t.task_interval then t:_process_tasks()t.ls=global_vars_cur_time()end end end)local u={}local v={__index=u}function u.new(w,x,y)return setmetatable({handle=w,url=x,callback=y,ticks=0},v)end;local z={}local A={__index=z}function z.new(B,C,D)return setmetatable({status=B,body=C,headers=D},A)end;function z:success()return self.status==200 end;local E={state={ok=200,no_response=204,timed_out=408,unknown=0}}local F={__index=E}function E.new(G)G=G or{}local t=setmetatable({requests={},task_interval=G.task_interval or 0.3,enable_debug=G.debug or false,timeout=G.timeout or 10,ls=global_vars_cur_time()},F)table.insert(r,t)return t end;local H={["get"]=1,["head"]=2,["post"]=3,["put"]=4,["delete"]=5,["options"]=6,["patch"]=7}function E:request(I,J,K,L)if type(K)=="function"and L==nil then L=K;K={}end;K=K or{}local M=H[tostring(I):lower()]local N=g(M,J)local O="application/text"if type(K.headers)=="table"then for P,Q in pairs(K.headers)do P=tostring(P)Q=tostring(Q)if P:lower()=="content-type"then O=Q end;m(N,P,Q)end end;if type(K.body)=="string"then local R=K.body:len()p(N,O,ffi.cast("unsigned char*",K.body),R)end;if type(K.params)=="table"then for S,T in pairs(K.params)do n(N,S,T)end end;if type(K.user_agent_info)=="string"then o(N,K.user_agent_info)end;if not h(N,0)then return end;local U=u.new(N,J,L)self:_debug("[HTTP] New %s request to: %s",I:upper(),J)table.insert(self.requests,U)end;function E:get(J,L)local N=g(1,J)if not h(N,0)then return end;local U=u.new(N,J,L)self:_debug("[HTTP] New GET request to: %s",J)table.insert(self.requests,U)end;function E:post(J,V,L)local N=g(3,J)for S,T in pairs(V)do n(N,S,T)end;if not h(N,0)then return end;local U=u.new(N,J,L)self:_debug("[HTTP] New POST request to: %s",J)table.insert(self.requests,U)end;function E:download_image(J,W,L)local N=g(1,J)if not h(N,0)then return end;local function X(z)if z:success()then libs.filesystem.write_binary(W,z.body)if L then L(true,"Image downloaded successfully")end else if L then L(false,"Failed to download image")end end end;local U=u.new(N,J,X)table.insert(self.requests,U)end;function E:_process_tasks()for S,T in ipairs(self.requests)do local Y=ffi.new("uint32_t[1]")self:_debug("[HTTP] Processing request #%s",S)if k(T.handle,Y)then local Z=Y[0]if Z>0 then local _=ffi.new("char[?]",Z)if l(T.handle,_,Z)then self:_debug("[HTTP] Request #%s finished. Invoking callback.",S)T.callback(z.new(E.state.ok,ffi.string(_,Z),setmetatable({},{__index=function(a0,a1)return E._get_header(T,a1)end})))table.remove(self.requests,S)q(T.handle)end else T.callback(z.new(E.state.no_response,nil,{}))table.remove(self.requests,S)q(T.handle)end end;local a2=T.ticks+1;if a2>=self.timeout then T.callback(z.new(E.state.timed_out,nil,{}))table.remove(self.requests,S)q(T.handle)else T.ticks=a2 end end end;function E:_debug(...)if self.enable_debug then client_log(string.format(...))end end;function E._get_header(U,a3)local Y=ffi.new("uint32_t[1]")if i(U.handle,a3,Y)then local Z=Y[0]local _=ffi.new("char[?]",Z)if j(U.handle,a3,_,Z)then return ffi.string(_,Z)end end;return nil end;function E._bind(a4,a5)return function(...)return a4[a5](a4,...)end end;return E
+end)()
+
+libs.panorama = (function()
+    local a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z,A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z,_,a0,a1,a2,a3,a4,a5,a6,a7,a8,a9,aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar;a={_VERSION=1.7}setmetatable(a,{__call=function(self)return self._VERSION end,__tostring=function(self)return self._VERSION end})b=require('ffi')do local as=b;c,d,e,f,g=as.cast,as.typeof,as.new,as.string,as.metatype end;h=function()return error('Unsupported provider')end;i=function()return error('Unsupported provider')end;j=function()return print('WARNING: Cleanup before shutdown disabled')end;local at;while true do if _G==nil then if quick_maths==nil then if info.fatality==nil then at='ev0lve'break end;at='fa7ality'break end;at='rifk7'break end;if MatSystem~=nil then at='spirthack'break end;if file~=nil then at='legendware'break end;if GameEventManager~=nil then at='memesense'break end;if penetration~=nil then at='pandora'break end;if math_utils~=nil then at='legion'break end;if plist~=nil then at='gamesense'break end;if network~=nil then at='neverlose'break end;if renderer~=nil and renderer.setup_texture~=nil then at='nixware'break end;at='primordial'break end;local au=at;if'ev0lve'==au then h=utils.find_pattern;i=utils.find_interface;j=function()end elseif'fa7ality'==au then h=utils.find_pattern;i=utils.find_interface;j=function()end elseif'primordial'==au then h=memory_find_pattern;i=memory_create_interface;j=function(av)return callbacks.add(e_callbacks.SHUTDOWN,av)end elseif'memesense'==au then h=Utils.PatternScan;i=Utils.CreateInterface;j=function(av)return Cheat.RegisterCallback('destroy',av)end elseif'legendware'==au then h=utils.find_signature;i=utils.create_interface;j=function(av)return client.add_callback('unload',av)end elseif'pandora'==au then h=client.find_sig;i=client.create_interface elseif'legion'==au then h=memory_find_pattern;i=memory_create_interface;j=function(av)return client.add_callback('on_unload',av)end elseif'gamesense'==au then h=function(aw,ax)local ay=''for az in ax:gmatch('%S+')do ay=ay..(az=='?'and'\xCC'or _G.string.char(tonumber(az,16)))end;return client.find_signature(aw,ay)end;i=client.create_interface;j=function(av)return client.set_event_callback('shutdown',av)end elseif'nixware'==au then h=client.find_pattern;i=se.create_interface;j=function(av)return client.register_callback("unload",av)end elseif'neverlose'==au then h=utils.opcode_scan;i=utils.create_interface;j=function()end elseif'rifk7'==au then h=function(aA,ax)local aB=c("uint32_t*",engine.signature(aA,ax))assert(tonumber(aB)~=0)return aB[0]end;i=function(aA,aC)aC=f.gsub(aC,"%d+","")return general.create_interface(aA,aC)end;print=function(aD)return general.log_to_console_colored("[lua] "..tostring(aD),255,141,161,255)end elseif'spirthack'==au then h=Utils.PatternScan;i=Utils.CreateInterface end;k=xpcall and pcall and true or false;l=b.C and at~='gamesense'm=function()for aE,aF in pairs(Z)do a3(aF):disposeGlobal()end end;n=error;if error then error=function(aG)m()return n(aG)end end;o=function(aG)return print('Caught lua exception in V8 HandleScope: ',tostring(aG))end;p=function(aG)return print('Caught lua exception in V8 Function Callback: ',tostring(aG))end;q=function(aH,aI)local aJ=getmetatable(aH)setmetatable(aH,nil)local aK=aH[aI]setmetatable(aH,aJ)return aK end;r=function(aH,aI,aL)local aJ=getmetatable(aH)setmetatable(aH,nil)aH[aI]=aL;return setmetatable(aH,aJ)end;if not rawget then rawget=q end;if not rawset then rawset=r end;s=function(aM,aN)return function(...)return aM(aN,...)end end;t=function(aO)local aP={}for aQ,aF in pairs(aO)do aP[aQ]=aF end;return aP end;u=function(aR,aS,aT,aU)local aV=c('void***',i(aR,aS))or error(aS..' is nil.')return s(c(aU,aV[0][aT]),aV)end;v=d('void***')w=function(aW,aX,aY)return c(aY,c(v,aW)[0][aX])end;x=function(aX,aY)local aO=d(aY)return function(aW,...)return w(aW,aX,aO)(aW,...)end end;y=(function()local aZ;aZ=function()return error('Failed to load GetProcAddress')end;local a_;a_=function()return error('Failed to load GetModuleHandleA')end;if l then b.cdef([[ uint32_t GetProcAddress(uint32_t, const char*); uint32_t GetModuleHandleA(const char*); ]])aZ=b.C.GetProcAddress;a_=b.C.GetModuleHandleA else aZ=c('uint32_t(__stdcall*)(uint32_t, const char*)',c('uint32_t**',c('uint32_t',h('engine.dll','FF 15 ? ? ? ? A3 ? ? ? ? EB 05'))+2)[0][0])a_=c('uint32_t(__stdcall*)(const char*)',c('uint32_t**',c('uint32_t',h('engine.dll','FF 15 ? ? ? ? 85 C0 74 0B'))+2)[0][0])end;if at=='gamesense'then local b0=h('engine.dll','51 C3')local b1=c('void*',aZ)aZ=function(b2,b3)local b4=c('uint32_t(__thiscall*)(void*, uint32_t, const char*)',b0)return b4(b1,b2,b3)end;local b5=c('void*',a_)a_=function(aw)local b6=c('uint32_t(__thiscall*)(void*, const char*)',b0)return b6(b5,aw)end end;return function(aA,b7,aU)return c(d(aU),aZ(a_(aA),b7))end end)()z=function(b8)local b9=c('uint8_t*',b8)local ba=b9[0]if(0xE8 or 0xE9)==ba then return c('uint32_t',b9+c('int32_t*',b9+1)[0]+5)elseif 0xFF==ba then if b9[1]==0x15 then return c('uint32_t**',c('const char*',b8)+2)[0][0]end else return b8 end end;A=function(...)local bb={...}local bc=#bb;local bd=e(('void*[%.f]'):format(bc))for aX=1,bc do bd[aX-1]=a4:fromLua(bb[aX]):getInternal()end;return bc,bd end;B=function(be)return function(bf)bf=aa(bf)local bb={}local bg=bf:length()if bg>0 then for aX=0,bg-1 do table.insert(bb,bf:get(aX))end end;local bh=nil;if k then local bi,bj=xpcall(function()return be(unpack(bb))end,p)if bi then bh=bj end else bh=be(unpack(bb))end;return bf:setReturnValue(a4:fromLua(bh):getInternal())end end;C=function(bh)local aX=1;for aE in pairs(bh)do if bh[aX]~=nil then aX=aX+1 else return false end end;return aX~=1 end;D=e('void*')E=e('int[1]')F={panelIDs={}}do local bk;local bl={get=function(self,aT,aO)return s(c(aO,self.this[0][aT]),self.this)end,getInstance=function(self)return self.this end}bl.__index=bl;bk=setmetatable({__init=function(self,b8)self.this=c('void***',b8)end,__base=bl,__name="vtable"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;G=bk end;do local bk;local bl={cache={},get=function(self,bo,aU)if not self.cache[bo]then self.cache[bo]=y(self.file,bo,aU)end;return self.cache[bo]end}bl.__index=bl;bk=setmetatable({__init=function(self,bp)self.file=bp end,__base=bl,__name="DllImport"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;H=bk end;I=G(u('panorama.dll','PanoramaUIEngine001',11,'void*(__thiscall*)(void*)')())J=I:get(36,'bool(__thiscall*)(void*,void const*)')K=I:get(56,'void*(__thiscall*)(void*)')L=I:get(113,'void****(__thiscall*)(void*,void*,char const*,char const*,int,int,bool)')M=s(c(d('void*(__thiscall*)(void*,void*,void*,void*,int,bool)'),z(h('panorama.dll','E8 ? ? ? ? 8B 4C 24 10 FF 15'))),I:getInstance())N=I:get(123,'void*(__thiscall*)(void*)')O=I:get(129,'void*(__thiscall*)(void*)')P=I:get(121,'void(__thiscall*)(void*, void*, void*)')Q=x(25,'void*(__thiscall*)(void*)')R=x(9,'const char*(__thiscall*)(void*)')S=x(40,'void*(__thiscall*)(void*,const char*)')T=x(218,'void*(__thiscall*)(void*)')U=s(c('void***(__thiscall*)(void*,void*)',z(h('panorama.dll','E8 ? ? ? ? 8B 00 85 C0 75 1B'))),I:getInstance())V={}W=function(bq)if V[bq]~=nil then return V[bq]end;V[bq]=T(bq)return V[bq]end;X=H('v8.dll')Y=O()Z={}do local bk;local bl={}bl.__index=bl;bk=setmetatable({__init=function(self,bh)self.this=c('void*',bh)end,__base=bl,__name="Message"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;_=bk end;do local bk;local bl={getInternal=function(self)return self.this end,isValid=function(self)return self.this[0]~=D end,getMessage=function(self)return _(self.this[0])end,globalize=function(self)local br=X:get('?GlobalizeReference@V8@v8@@CAPAPAVObject@internal@2@PAVIsolate@42@PAPAV342@@Z','void*(__cdecl*)(void*,void*)')(Y,self.this[0])local bs=a3(br)Z[bs:getIdentityHash()]=br;return bs end,__call=function(self)return a4(self.this[0])end}bl.__index=bl;bk=setmetatable({__init=function(self,bh)self.this=c('void**',bh)end,__base=bl,__name="Local"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;a0=bk end;do local bk;local bl={getInternal=function(self)return self.this end,toLocalChecked=function(self)if not(self.this[0]==D)then return a0(self.this)end end,toValueChecked=function(self)if not(self.this[0]==D)then return a4(self.this[0])end end}bl.__index=bl;bk=setmetatable({__init=function(self,bh)self.this=c('void**',bh)end,__base=bl,__name="MaybeLocal"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;a1=bk end;a2={__index=function(self,aI)local aN=rawget(self,'this')local bj=ak()(function()return aN:getAsValue():toObject():get(a4:fromLua(aI):getInternal()):toValueChecked():toLua()end)if type(bj)=='table'then rawset(bj,'parent',aN)end;return bj end,__newindex=function(self,aI,aL)local aN=rawget(self,'this')return ak()(function()return aN:getAsValue():toObject():set(a4:fromLua(aI):getInternal(),a4:fromLua(aL):getInternal()):toValueChecked():toLua()end)end,__len=function(self)local aN=rawget(self,'this')local bj=0;if aN.baseType=='Array'then bj=ak()(function()return aN:getAsValue():toArray():length()end)elseif aN.baseType=='Object'then bj=ak()(function()return aN:getAsValue():toObject():getPropertyNames():toValueChecked():toArray():length()end)end;return bj end,__pairs=function(self)local aN=rawget(self,'this')local bj;bj=function()return nil end;if aN.baseType=='Object'then ak()(function()local bt=a6(aN:getAsValue():toObject():getPropertyNames():toValueChecked())local bu,bv=0,bt:length()bj=function()bu=bu+1;local aI=bt[bu-1]if bu<=bv then return aI,self[aI]end end end)end;return bj end,__ipairs=function(self)local aN=rawget(self,'this')local bj;bj=function()return nil end;if aN.baseType=='Array'then ak()(function()local bu,bv=0,aN:getAsValue():toArray():length()bj=function()bu=bu+1;if bu<=bv then return bu,self[bu-1]end end end)end;return bj end,__call=function(self,...)local aN=rawget(self,'this')local bw={...}if aN.baseType~='Function'then error('Attempted to call a non-function value: '..aN.baseType)end;local bx=false;local bj=ak()(function()local by=al()by:enter()local bz=aN:getAsValue():toFunction():setParent(rawget(self,'parent'))(unpack(bw)):toLocalChecked()if by:hasCaught()then P(by:getInternal(),F.getPanel("CSGOJsRegistration"))if k then bx=true end end;by:exit()if bz==nil then return nil else return bz():toLua()end end)if bx then error("\n\nFailed to call the given javascript function, please check the error message above ^ \n\n(definitely not because I was too lazy to implement my own exception handler)\n")end;return bj end,__tostring=function(self)local aN=rawget(self,'this')return ak()(function()return aN:getAsValue():stringValue()end)end,__gc=function(self)local aN=rawget(self,'this')return aN:disposeGlobal()end}do local bk;local bl={setType=function(self,bh)self.baseType=bh;return self end,getInternal=function(self)return self.this end,disposeGlobal=function(self)return X:get('?DisposeGlobal@V8@v8@@CAXPAPAVObject@internal@2@@Z','void(__cdecl*)(void*)')(self.this)end,get=function(self)return a1(ak:createHandle(self.this))end,getAsValue=function(self)return a4(ak:createHandle(self.this)[0])end,toLua=function(self)return self:get():toValueChecked():toLua()end,getIdentityHash=function(self)return X:get('?GetIdentityHash@Object@v8@@QAEHXZ','int(__thiscall*)(void*)')(self.this)end,__call=function(self)return setmetatable({this=self,parent=nil},a2)end}bl.__index=bl;bk=setmetatable({__init=function(self,bh,bA)if bA==nil then bA='Value'end;self.this=bh;self.baseType=bA end,__base=bl,__name="Persistent"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;a3=bk end;do local bk;local bl={fromLua=function(self,bh)if bh==nil then return ac(Y):getValue()end;local bB=type(bh)local ba=bB;if'boolean'==ba then return ae(Y,bh):getValue()elseif'number'==ba then return af(Y,bh):getInstance()elseif'string'==ba then return ah(Y,bh):getInstance()elseif'table'==ba then if C(bh)then return a6:fromLua(Y,bh)else return a5:fromLua(Y,bh)end elseif'function'==ba then return a9(B(bh)):getFunction()()else return error('Failed to convert from lua to v8js: Unknown type')end end,isUndefined=function(self)return X:get('?IsUndefined@Value@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,isNull=function(self)return X:get('?IsNull@Value@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,isBoolean=function(self)return X:get('?IsBoolean@Value@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,isBooleanObject=function(self)return X:get('?IsBooleanObject@Value@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,isNumber=function(self)return X:get('?IsNumber@Value@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,isNumberObject=function(self)return X:get('?IsNumberObject@Value@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,isString=function(self)return X:get('?IsString@Value@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,isStringObject=function(self)return X:get('?IsStringObject@Value@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,isObject=function(self)return X:get('?IsObject@Value@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,isArray=function(self)return X:get('?IsArray@Value@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,isFunction=function(self)return X:get('?IsFunction@Value@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,booleanValue=function(self)return X:get('?BooleanValue@Value@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,numberValue=function(self)return X:get('?NumberValue@Value@v8@@QBENXZ','double(__thiscall*)(void*)')(self.this)end,stringValue=function(self)local bC=e('char*[2]')local bh=X:get('??0Utf8Value@String@v8@@QAE@V?$Local@VValue@v8@@@2@@Z','struct{char* str; int length;}*(__thiscall*)(void*,void*)')(bC,self.this)local bD=f(bh.str,bh.length)X:get('??1Utf8Value@String@v8@@QAE@XZ','void(__thiscall*)(void*)')(bC)return bD end,toObject=function(self)return a5(a1(X:get('?ToObject@Value@v8@@QBE?AV?$Local@VObject@v8@@@2@XZ','void*(__thiscall*)(void*,void*)')(self.this,E)):toValueChecked():getInternal())end,toArray=function(self)return a6(a1(X:get('?ToObject@Value@v8@@QBE?AV?$Local@VObject@v8@@@2@XZ','void*(__thiscall*)(void*,void*)')(self.this,E)):toValueChecked():getInternal())end,toFunction=function(self)return a7(a1(X:get('?ToObject@Value@v8@@QBE?AV?$Local@VObject@v8@@@2@XZ','void*(__thiscall*)(void*,void*)')(self.this,E)):toValueChecked():getInternal())end,toLocal=function(self)return a0(e('void*[1]',self.this))end,toLua=function(self)if self:isUndefined()or self:isNull()then return nil end;if self:isBoolean()or self:isBooleanObject()then return self:booleanValue()end;if self:isNumber()or self:isNumberObject()then return self:numberValue()end;if self:isString()or self:isStringObject()then return self:stringValue()end;if self:isObject()then if self:isArray()then return self:toArray():toLocal():globalize():setType('Array')()end;if self:isFunction()then return self:toFunction():toLocal():globalize():setType('Function')()end;return self:toObject():toLocal():globalize():setType('Object')()end;return error('Failed to convert from v8js to lua: Unknown type')end,getInternal=function(self)return self.this end}bl.__index=bl;bk=setmetatable({__init=function(self,bh)self.this=c('void*',bh)end,__base=bl,__name="Value"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;a4=bk end;do local bk;local bE=a4;local bl={fromLua=function(self,bF,bh)local bG=a5(a1(X:get('?New@Object@v8@@SA?AV?$Local@VObject@v8@@@2@PAVIsolate@2@@Z','void*(__cdecl*)(void*,void*)')(E,bF)):toValueChecked():getInternal())for aX,aF in pairs(bh)do bG:set(a4:fromLua(aX):getInternal(),a4:fromLua(aF):getInternal())end;return bG end,get=function(self,aI)return a1(X:get('?Get@Object@v8@@QAE?AV?$Local@VValue@v8@@@2@V32@@Z','void*(__thiscall*)(void*,void*,void*)')(self.this,E,aI))end,set=function(self,aI,aL)return X:get('?Set@Object@v8@@QAE_NV?$Local@VValue@v8@@@2@0@Z','bool(__thiscall*)(void*,void*,void*)')(self.this,aI,aL)end,getPropertyNames=function(self)return a1(X:get('?GetPropertyNames@Object@v8@@QAE?AV?$Local@VArray@v8@@@2@XZ','void*(__thiscall*)(void*,void*)')(self.this,E))end,callAsFunction=function(self,bH,bI,bJ)return a1(X:get('?CallAsFunction@Object@v8@@QAE?AV?$Local@VValue@v8@@@2@V32@HQAV32@@Z','void*(__thiscall*)(void*,void*,void*,int,void*)')(self.this,E,bH,bI,bJ))end,getIdentityHash=function(self)return X:get('?GetIdentityHash@Object@v8@@QAEHXZ','int(__thiscall*)(void*)')(self.this)end}bl.__index=bl;setmetatable(bl,bE.__base)bk=setmetatable({__init=function(self,bh)self.this=bh end,__base=bl,__name="Object",__parent=bE},{__index=function(bm,bK)local bh=rawget(bl,bK)if bh==nil then local bL=rawget(bm,"__parent")if bL then return bL[bK]end else return bh end end,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;if bE.__inherited then bE.__inherited(bE,bk)end;a5=bk end;do local bk;local bE=a5;local bl={fromLua=function(self,bF,bh)local bM=a6(a1(X:get('?New@Array@v8@@SA?AV?$Local@VArray@v8@@@2@PAVIsolate@2@H@Z','void*(__cdecl*)(void*,void*,int)')(E,bF,#bh)):toValueChecked():getInternal())for aX=1,#bh do bM:set(aX-1,a4:fromLua(bh[aX]):getInternal())end;return bM end,get=function(self,aI)return a1(X:get('?Get@Object@v8@@QAE?AV?$Local@VValue@v8@@@2@I@Z','void*(__thiscall*)(void*,void*,unsigned int)')(self.this,E,aI))end,set=function(self,aI,aL)return X:get('?Set@Object@v8@@QAE_NIV?$Local@VValue@v8@@@2@@Z','bool(__thiscall*)(void*,unsigned int,void*)')(self.this,aI,aL)end,length=function(self)return X:get('?Length@Array@v8@@QBEIXZ','uint32_t(__thiscall*)(void*)')(self.this)end}bl.__index=bl;setmetatable(bl,bE.__base)bk=setmetatable({__init=function(self,bh)self.this=bh end,__base=bl,__name="Array",__parent=bE},{__index=function(bm,bK)local bh=rawget(bl,bK)if bh==nil then local bL=rawget(bm,"__parent")if bL then return bL[bK]end else return bh end end,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;if bE.__inherited then bE.__inherited(bE,bk)end;a6=bk end;do local bk;local bE=a5;local bl={setParent=function(self,bh)self.parent=bh;return self end,__call=function(self,...)if self.parent==nil then return self:callAsFunction(aj(ai():getCurrentContext()):global():toValueChecked():getInternal(),A(...))else return self:callAsFunction(self.parent:getAsValue():getInternal(),A(...))end end}bl.__index=bl;setmetatable(bl,bE.__base)bk=setmetatable({__init=function(self,bh,bL)self.this=bh;self.parent=bL end,__base=bl,__name="Function",__parent=bE},{__index=function(bm,bK)local bh=rawget(bl,bK)if bh==nil then local bL=rawget(bm,"__parent")if bL then return bL[bK]end else return bh end end,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;if bE.__inherited then bE.__inherited(bE,bk)end;a7=bk end;do local bk;local bl={}bl.__index=bl;bk=setmetatable({__init=function(self)self.this=a1(X:get('?New@ObjectTemplate@v8@@SA?AV?$Local@VObjectTemplate@v8@@@2@XZ','void*(__cdecl*)(void*)')(E)):toLocalChecked()end,__base=bl,__name="ObjectTemplate"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;a8=bk end;do local bk;local bl={getFunction=function(self)return a1(X:get('?GetFunction@FunctionTemplate@v8@@QAE?AV?$Local@VFunction@v8@@@2@XZ','void*(__thiscall*)(void*, void*)')(self:this():getInternal(),E)):toLocalChecked()end,getInstance=function(self)return self:this()end}bl.__index=bl;bk=setmetatable({__init=function(self,bN)self.this=a1(X:get('?New@FunctionTemplate@v8@@SA?AV?$Local@VFunctionTemplate@v8@@@2@PAVIsolate@2@P6AXABV?$FunctionCallbackInfo@VValue@v8@@@2@@ZV?$Local@VValue@v8@@@2@V?$Local@VSignature@v8@@@2@HW4ConstructorBehavior@2@@Z','void*(__cdecl*)(void*,void*,void*,void*,void*,int,int)')(E,Y,c('void(__cdecl*)(void******)',bN),e('int[1]'),e('int[1]'),0,0)):toLocalChecked()end,__base=bl,__name="FunctionTemplate"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;a9=bk end;do local bk;local bl={kHolderIndex=0,kIsolateIndex=1,kReturnValueDefaultValueIndex=2,kReturnValueIndex=3,kDataIndex=4,kCalleeIndex=5,kContextSaveIndex=6,kNewTargetIndex=7,getHolder=function(self)return a1(self:getImplicitArgs_()[self.kHolderIndex]):toLocalChecked()end,getIsolate=function(self)return ai(self:getImplicitArgs_()[self.kIsolateIndex][0])end,getReturnValueDefaultValue=function(self)return a4(e('void*[1]',self:getImplicitArgs_()[self.kReturnValueDefaultValueIndex]))end,getReturnValue=function(self)return a4(e('void*[1]',self:getImplicitArgs_()[self.kReturnValueIndex]))end,setReturnValue=function(self,aL)self:getImplicitArgs_()[self.kReturnValueIndex]=c('void**',aL)[0]end,getData=function(self)return a1(self:getImplicitArgs_()[self.kDataIndex]):toLocalChecked()end,getCallee=function(self)return a1(self:getImplicitArgs_()[self.kCalleeIndex]):toLocalChecked()end,getContextSave=function(self)return a1(self:getImplicitArgs_()[self.kContextSaveIndex]):toLocalChecked()end,getNewTarget=function(self)return a1(self:getImplicitArgs_()[self.kNewTargetIndex]):toLocalChecked()end,getImplicitArgs_=function(self)return self.this[0]end,getValues_=function(self)return self.this[1]end,getLength_=function(self)return self.this[2]end,length=function(self)return tonumber(c('int',self:getLength_()))end,get=function(self,aX)if self:length()>aX then return a4(self:getValues_()-aX):toLua()else return end end}bl.__index=bl;bk=setmetatable({__init=function(self,bh)self.this=c('void****',bh)end,__base=bl,__name="FunctionCallbackInfo"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;aa=bk end;do local bk;local bE=a4;local bl={getValue=function(self)return self.this end,toString=function(self)return self.this:getValue():stringValue()end}bl.__index=bl;setmetatable(bl,bE.__base)bk=setmetatable({__init=function(self,bh)self.this=bh end,__base=bl,__name="Primitive",__parent=bE},{__index=function(bm,bK)local bh=rawget(bl,bK)if bh==nil then local bL=rawget(bm,"__parent")if bL then return bL[bK]end else return bh end end,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;if bE.__inherited then bE.__inherited(bE,bk)end;ab=bk end;do local bk;local bE=ab;local bl={}bl.__index=bl;setmetatable(bl,bE.__base)bk=setmetatable({__init=function(self,bF)self.this=a4(c('uintptr_t',bF)+0x48)end,__base=bl,__name="Null",__parent=bE},{__index=function(bm,bK)local bh=rawget(bl,bK)if bh==nil then local bL=rawget(bm,"__parent")if bL then return bL[bK]end else return bh end end,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;if bE.__inherited then bE.__inherited(bE,bk)end;ac=bk end;do local bk;local bE=ab;local bl={}bl.__index=bl;setmetatable(bl,bE.__base)bk=setmetatable({__init=function(self,bF)self.this=a4(c('uintptr_t',bF)+0x56)end,__base=bl,__name="Undefined",__parent=bE},{__index=function(bm,bK)local bh=rawget(bl,bK)if bh==nil then local bL=rawget(bm,"__parent")if bL then return bL[bK]end else return bh end end,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;if bE.__inherited then bE.__inherited(bE,bk)end;ad=bk end;do local bk;local bE=ab;local bl={}bl.__index=bl;setmetatable(bl,bE.__base)bk=setmetatable({__init=function(self,bF,bO)self.this=a4(c('uintptr_t',bF)+(function()if bO then return 0x4C else return 0x50 end end)())end,__base=bl,__name="Boolean",__parent=bE},{__index=function(bm,bK)local bh=rawget(bl,bK)if bh==nil then local bL=rawget(bm,"__parent")if bL then return bL[bK]end else return bh end end,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;if bE.__inherited then bE.__inherited(bE,bk)end;ae=bk end;do local bk;local bE=a4;local bl={getLocal=function(self)return self.this end,getValue=function(self)return self:getInstance():numberValue()end,getInstance=function(self)return self:this()end}bl.__index=bl;setmetatable(bl,bE.__base)bk=setmetatable({__init=function(self,bF,bh)self.this=a1(X:get('?New@Number@v8@@SA?AV?$Local@VNumber@v8@@@2@PAVIsolate@2@N@Z','void*(__cdecl*)(void*,void*,double)')(E,bF,tonumber(bh))):toLocalChecked()end,__base=bl,__name="Number",__parent=bE},{__index=function(bm,bK)local bh=rawget(bl,bK)if bh==nil then local bL=rawget(bm,"__parent")if bL then return bL[bK]end else return bh end end,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;if bE.__inherited then bE.__inherited(bE,bk)end;af=bk end;do local bk;local bE=af;local bl={}bl.__index=bl;setmetatable(bl,bE.__base)bk=setmetatable({__init=function(self,bF,bh)self.this=a1(X:get('?NewFromUnsigned@Integer@v8@@SA?AV?$Local@VInteger@v8@@@2@PAVIsolate@2@I@Z','void*(__cdecl*)(void*,void*,uint32_t)')(E,bF,tonumber(bh))):toLocalChecked()end,__base=bl,__name="Integer",__parent=bE},{__index=function(bm,bK)local bh=rawget(bl,bK)if bh==nil then local bL=rawget(bm,"__parent")if bL then return bL[bK]end else return bh end end,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;if bE.__inherited then bE.__inherited(bE,bk)end;ag=bk end;do local bk;local bE=a4;local bl={getLocal=function(self)return self.this end,getValue=function(self)return self:getInstance():stringValue()end,getInstance=function(self)return self:this()end}bl.__index=bl;setmetatable(bl,bE.__base)bk=setmetatable({__init=function(self,bF,bh)self.this=a1(X:get('?NewFromUtf8@String@v8@@SA?AV?$MaybeLocal@VString@v8@@@2@PAVIsolate@2@PBDW4NewStringType@2@H@Z','void*(__cdecl*)(void*,void*,const char*,int,int)')(E,bF,bh,0,#bh)):toLocalChecked()end,__base=bl,__name="String",__parent=bE},{__index=function(bm,bK)local bh=rawget(bl,bK)if bh==nil then local bL=rawget(bm,"__parent")if bL then return bL[bK]end else return bh end end,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;if bE.__inherited then bE.__inherited(bE,bk)end;ah=bk end;do local bk;local bl={enter=function(self)return X:get('?Enter@Isolate@v8@@QAEXXZ','void(__thiscall*)(void*)')(self.this)end,exit=function(self)return X:get('?Exit@Isolate@v8@@QAEXXZ','void(__thiscall*)(void*)')(self.this)end,getCurrentContext=function(self)return a1(X:get('?GetCurrentContext@Isolate@v8@@QAE?AV?$Local@VContext@v8@@@2@XZ','void**(__thiscall*)(void*,void*)')(self.this,E)):toValueChecked():getInternal()end,getInternal=function(self)return self.this end}bl.__index=bl;bk=setmetatable({__init=function(self,bh)if bh==nil then bh=Y end;self.this=bh end,__base=bl,__name="Isolate"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;ai=bk end;do local bk;local bl={enter=function(self)return X:get('?Enter@Context@v8@@QAEXXZ','void(__thiscall*)(void*)')(self.this)end,exit=function(self)return X:get('?Exit@Context@v8@@QAEXXZ','void(__thiscall*)(void*)')(self.this)end,global=function(self)return a1(X:get('?Global@Context@v8@@QAE?AV?$Local@VObject@v8@@@2@XZ','void*(__thiscall*)(void*,void*)')(self.this,E))end}bl.__index=bl;bk=setmetatable({__init=function(self,bh)self.this=bh end,__base=bl,__name="Context"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;aj=bk end;do local bk;local bl={enter=function(self)return X:get('??0HandleScope@v8@@QAE@PAVIsolate@1@@Z','void(__thiscall*)(void*,void*)')(self.this,Y)end,exit=function(self)return X:get('??1HandleScope@v8@@QAE@XZ','void(__thiscall*)(void*)')(self.this)end,createHandle=function(self,bh)return X:get('?CreateHandle@HandleScope@v8@@KAPAPAVObject@internal@2@PAVIsolate@42@PAV342@@Z','void**(__cdecl*)(void*,void*)')(Y,bh)end,__call=function(self,aM,bq)if bq==nil then bq=F.GetPanel('CSGOJsRegistration')end;local bF=ai()bF:enter()self:enter()local bP;if bq then bP=U(W(bq))[0]else bP=aj(bF:getCurrentContext()):global():getInternal()end;bP=aj((function()if bP~=D then return self:createHandle(bP[0])else return 0 end end)())bP:enter()local bh=nil;if k then local bi,bj=xpcall(aM,o)if bi then bh=bj end else bh=aM()end;bP:exit()self:exit()bF:exit()return bh end}bl.__index=bl;bk=setmetatable({__init=function(self)self.this=e('char[0xC]')end,__base=bl,__name="HandleScope"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;ak=bk end;do local bk;local bl={enter=function(self)return X:get('??0TryCatch@v8@@QAE@PAVIsolate@1@@Z','void(__thiscall*)(void*, void*)')(self.this,Y)end,exit=function(self)return X:get('??1TryCatch@v8@@QAE@XZ','void(__thiscall*)(void*)')(self.this)end,canContinue=function(self)return X:get('?CanContinue@TryCatch@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,hasTerminated=function(self)return X:get('?HasTerminated@TryCatch@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,hasCaught=function(self)return X:get('?HasCaught@TryCatch@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,message=function(self)return a0(X:get('?Message@TryCatch@v8@@QBE?AV?$Local@VMessage@v8@@@2@XZ','void*(__thiscall*)(void*, void*)')(self.this,E))end,getInternal=function(self)return self.this end}bl.__index=bl;bk=setmetatable({__init=function(self)self.this=e('char[0x19]')end,__base=bl,__name="TryCatch"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;al=bk end;do local bk;local bl={compile=function(self,bq,bQ,bR)if bR==nil then bR=''end;return s(c('void**(__thiscall*)(void*,void*,const char*,const char*)',at=='memesense'and h('panorama.dll','E8 ? ? ? ? 8B 4C 24 10 FF 15')-2816 or h('panorama.dll','55 8B EC 83 E4 F8 83 EC 64 53 8B D9')),I:getInstance())(bq,bQ,bR)end,loadstring=function(self,bS,bq)local bT=a1(self:compile(bq,bS)):toLocalChecked()if bT==D then if k then error("\nFailed to compile the given javascript string, please check the error message above ^\n")else print("\nFailed to compile the given javascript string, please check the error message above ^\n")return function()return print('WARNING: Attempted to call nullptr (script compilation failed)')end end end;local bF=ai()local bU=ak()bF:enter()bU:enter()local bP;if bq then bP=U(W(bq))[0]else bP=aj(bF:getCurrentContext()):global():getInternal()end;bP=aj((function()if bP~=D then return bU:createHandle(bP[0])else return 0 end end)())bP:enter()local bj=a1(M(E,bq,bT():getInternal(),0,false)):toValueChecked()if bj==D then if k then error("\nFailed to evaluate the given javascript string, please check the error message above ^\n")else print("\nFailed to evaluate the given javascript string, please check the error message above ^\n")bj=function()return print('WARNING: Attempted to call nullptr (script execution failed)')end end else bj=bj:toLua()end;bP:exit()bU:exit()bF:exit()return bj end}bl.__index=bl;bk=setmetatable({__init=function()end,__base=bl,__name="Script"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;am=bk end;an=d([[ struct { char* pad1[0x4]; void* m_pPanel; void* unk1; } ]])ao=d([[ struct { struct { $ *m_pMemory; int m_nAllocationCount; int m_nGrowSize; } m_Memory; int m_Size; $ *m_pElements; } ]],an,an)g(ao,{__index={Count=function(self)return self.m_Memory.m_nAllocationCount end,Element=function(self,aX)return c(d('$&',an),self.m_Memory.m_pMemory[aX])end,RemoveAll=function(self)self=nil;self=d('$[?]',ao)(1)[0]self.m_Size=0 end},__ipairs=function(self)local bu,bv=0,self:Count()return function()bu=bu+1;local bV=self:Element(bu-1).m_pPanel;if bu<=bv and J(bV)then return bu,bV end end end})ap=d('$[?]',ao)(1)[0]aq=c('unsigned int*',c('uintptr_t**',I:getInstance())[0][36]+21)[0]ar=c(ap,c('uintptr_t',I:getInstance())+aq)F.hasPanel=function(bW)for aX,aF in ipairs(ar)do local bX=f(R(aF))if bX==bW then return true end end;return false end;F.getPanel=function(bW,bY)local bZ=F.panelIDs[bW]if bZ~=nil and J(bZ)and f(R(bZ))==bW then return bZ end;F.panelIDs={}local bV=D;for aX,aF in ipairs(ar)do local bX=f(R(aF))if bX~=''then F.panelIDs[bX]=aF;if bX==bW then bV=aF;break end end end;if bV==D then if bY~=nil then bV=F.getPanel(bY)else error(('Failed to get target panel %s (EAX == 0)'):format(tostring(bW)))end end;return bV end;F.getIsolate=function()return ai(O())end;F.runScript=function(b_,bq,c0)if bq==nil then bq=F.getPanel('CSGOJsRegistration')end;if c0==nil then c0='panorama/layout/base.xml'end;if not J(bq)then error('Invalid panel pointer (EAX == 0)')end;return L(bq,b_,c0,8,10,false)end;F.loadstring=function(b_,bq)if bq==nil then bq='CSGOJsRegistration'end;local bY='CSGOJsRegistration'if bq=='CSGOMainMenu'then bY='CSGOHud'end;if bq=='CSGOHud'then bY='CSGOMainMenu'end;return am:loadstring(('(()=>{%s})'):format(b_),F.getPanel(bq,bY))end;F.open=function(bq)if bq==nil then bq='CSGOJsRegistration'end;local bY='CSGOJsRegistration'if bq=='CSGOMainMenu'then bY='CSGOHud'end;if bq=='CSGOHud'then bY='CSGOMainMenu'end;return ak()(function()return aj(ai():getCurrentContext()):global():toValueChecked():toLua()end,F.GetPanel(bq,bY))end;F.GetPanel=F.getPanel;F.GetIsolate=F.getIsolate;F.RunScript=F.runScript;F.panelArray=ar;F.info=a;F.flush=m;setmetatable(F,{__tostring=function(self)return('luv8 panorama library v%.1f'):format(a._VERSION)end,__index=function(self,aI)if F.hasPanel(aI)then return F.open(aI)end;return F.open()[aI]end})return F
+end)()
+
+libs.tools.http = libs.httpcreator.new(
+    {
+        task_interval = 2.0,
+        enable_debug = false,
+        timeout = 10
+    }
+)
+
+libs.tools.js2 = libs.panorama.open()
+libs.tools.js = libs.panorama.loadstring([[
+let entity_panels = {}
+let entity_data = {}
+let event_callbacks = {}
+	let SLOT_LAYOUT = `
+		<root>
+			<Panel style="min-width: 3px; padding-top: 2px; padding-left: 0px;" scaling='stretch-to-fit-y-preserve-aspect'>
+				<Image id="smaller" textureheight="15" style="horizontal-align: center; opacity: 0.01; transition: opacity 0.1s ease-in-out 0.0s, img-shadow 0.12s ease-in-out 0.0s; overflow: noclip; padding: 3px 5px; margin: -3px -5px;"	/>
+				<Image id="small" textureheight="17" style="horizontal-align: center; opacity: 0.01; transition: opacity 0.1s ease-in-out 0.0s, img-shadow 0.12s ease-in-out 0.0s; overflow: noclip; padding: 3px 5px; margin: -3px -5px;" />
+				<Image id="image" textureheight="21" style="opacity: 0.01; transition: opacity 0.1s ease-in-out 0.0s, img-shadow 0.12s ease-in-out 0.0s; padding: 3px 5px; margin: -3px -5px; margin-top: -5px;" />
+			</Panel>
+		</root>
+	`
+	let _DestroyEntityPanel = function (key) {
+		let panel = entity_panels[key]
+		if(panel != null && panel.IsValid()) {
+			var parent = panel.GetParent()
+			let musor = parent.GetChild(0)
+			musor.visible = true
+			if(parent.FindChildTraverse("id-sb-skillgroup-image") != null) {
+				parent.FindChildTraverse("id-sb-skillgroup-image").style.margin = "0px 0px 0px 0px"
+			}
+			panel.DeleteAsync(0.0)
+		}
+		delete entity_panels[key]
+	}
+	let _DestroyEntityPanels = function() {
+		for(key in entity_panels){
+			_DestroyEntityPanel(key)
+		}
+	}
+	let _GetOrCreateCustomPanel = function(xuid) {
+		if(entity_panels[xuid] == null || !entity_panels[xuid].IsValid()){
+			entity_panels[xuid] = null
+			let scoreboard_context_panel = $.GetContextPanel().FindChildTraverse("ScoreboardContainer").FindChildTraverse("Scoreboard") || $.GetContextPanel().FindChildTraverse("id-eom-scoreboard-container").FindChildTraverse("Scoreboard")
+			if(scoreboard_context_panel == null){
+				_Clear()
+				_DestroyEntityPanels()
+				return
+			}
+			scoreboard_context_panel.FindChildrenWithClassTraverse("sb-row").forEach(function(el){
+				let scoreboard_el
+				if(el.m_xuid == xuid) {
+					el.Children().forEach(function(child_frame){
+						let stat = child_frame.GetAttributeString("data-stat", "")
+						if(stat == "rank")
+							scoreboard_el = child_frame.GetChild(0)
+					})
+					if(scoreboard_el) {
+						let scoreboard_el_parent = scoreboard_el.GetParent()
+						let custom_icons = $.CreatePanel("Panel", scoreboard_el_parent, "revealer-icon", {
+						})
+						if(scoreboard_el_parent.FindChildTraverse("id-sb-skillgroup-image") != null) {
+							scoreboard_el_parent.FindChildTraverse("id-sb-skillgroup-image").style.margin = "0px 0px 0px 0px"
+						}
+						scoreboard_el_parent.MoveChildAfter(custom_icons, scoreboard_el_parent.GetChild(1))
+						let prev_panel = scoreboard_el_parent.GetChild(0)
+						prev_panel.visible = false
+						let panel_slot_parent = $.CreatePanel("Panel", custom_icons, `icon`)
+						panel_slot_parent.visible = false
+						panel_slot_parent.BLoadLayoutFromString(SLOT_LAYOUT, false, false)
+						entity_panels[xuid] = custom_icons
+						return custom_icons
+					}
+				}
+			})
+		}
+		return entity_panels[xuid]
+	}
+	let _UpdatePlayer = function(entindex, path_to_image) {
+		if(entindex == null || entindex == 0)
+			return
+		entity_data[entindex] = {
+			applied: false,
+			image_path: path_to_image
+		}
+	}
+	let _ApplyPlayer = function(entindex) {
+		let xuid = GameStateAPI.GetPlayerXuidStringFromEntIndex(entindex)
+		let panel = _GetOrCreateCustomPanel(xuid)
+		if(panel == null)
+			return
+		let panel_slot_parent = panel.FindChild(`icon`)
+		panel_slot_parent.visible = true
+		let panel_slot = panel_slot_parent.FindChild("image")
+		panel_slot.visible = true
+		panel_slot.style.opacity = "1"
+		panel_slot.SetImage(entity_data[entindex].image_path)
+		return true
+	}
+	let _ApplyData = function() {
+		for(entindex in entity_data) {
+			entindex = parseInt(entindex)
+			let xuid = GameStateAPI.GetPlayerXuidStringFromEntIndex(entindex)
+			if(!entity_data[entindex].applied || entity_panels[xuid] == null || !entity_panels[xuid].IsValid()) {
+				if(_ApplyPlayer(entindex)) {
+					entity_data[entindex].applied = true
+				}
+			}
+		}
+	}
+	let _Create = function() {
+		event_callbacks["OnOpenScoreboard"] = $.RegisterForUnhandledEvent("OnOpenScoreboard", _ApplyData)
+		event_callbacks["Scoreboard_UpdateEverything"] = $.RegisterForUnhandledEvent("Scoreboard_UpdateEverything", function(){
+			_ApplyData()
+		})
+		event_callbacks["Scoreboard_UpdateJob"] = $.RegisterForUnhandledEvent("Scoreboard_UpdateJob", _ApplyData)
+	}
+	let _Clear = function() { entity_data = {} }
+	let _Destroy = function() {
+		_Clear()
+		_DestroyEntityPanels()
+		for(event in event_callbacks){
+			$.UnregisterForUnhandledEvent(event, event_callbacks[event])
+			delete event_callbacks[event]
+		}
+	}
+	return {
+		create: _Create,
+		destroy: _Destroy,
+		clear: _Clear,
+		update: _UpdatePlayer,
+		destroy_panel: _DestroyEntityPanels
+	}
+]], "CSGOHud")()
+
+xor_encrypt = function(data, key)
+    local result = {}
+    
+    local key_length = #key
+    local data_length = #data
+
+    for i = 1, data_length do
+        local data_byte = string.byte(data, i)
+        local xor_result = data_byte
+
+        for round = 1, 3 do
+            local key_byte = string.byte(key, (i + round - 1) % key_length + 1)
+            xor_result = bit.bxor(xor_result, key_byte)
+        end
+        table.insert(result, string.char(xor_result))
+    end
+    return table.concat(result)
+end
+
+generate_key = function(length)
+    local key = {}
+
+    math.randomseed(globals.tick_count())
+    for i = 1, length do
+        key[i] = string.char(math.random(0, 255))
+    end
+
+    local stretched_key = table.concat(key)
+    for i = 1, 1000 do
+        stretched_key = xor_encrypt(stretched_key, stretched_key)
+    end
+    return stretched_key
+end
+
+encode = function(text)
+    local key = generate_key(16)
+    local salt = generate_key(8)
+    local iv = generate_key(8)
+
+    local base64_text = libs.base64.encode(text)
+    local xor_result = xor_encrypt(base64_text, salt)
+
+    local final_data = iv .. salt .. xor_result
+    return libs.base64.encode(final_data)
+end
+
+decode = function(text)
+    local decoded_text = libs.base64.decode(text)
+
+    local iv = decoded_text:sub(1, 8)
+    local salt = decoded_text:sub(9, 16)
+    local xor_encrypted = decoded_text:sub(17)
+
+    local decoded_base64 = xor_encrypt(xor_encrypted, salt)
+    return libs.base64.decode(decoded_base64)
+end
+
+--- @endregion
+
+--- @info: shit codes
+--- @region: useful codes
+
+ffi.cdef [[
+    typedef struct {float x, y, z;}vec3_t;
+
+    typedef bool(__thiscall* console_is_visible)(void*);
+
+    typedef struct { uint8_t r; uint8_t g; uint8_t b; uint8_t a; } color_struct_t;
+    typedef void (__cdecl* console_color_print)(void*, const color_struct_t&, const char*, ...);
+
+    typedef void*(__thiscall* shell_execute_t)(void*, const char*, const char*);
+    struct animation_layer_t
+    {
+        char pad20[24];
+        uint32_t m_nSequence;
+        float m_flPrevCycle;
+        float m_flWeight;
+        float m_flWeightDeltaRate;
+        float m_flPlaybackRate;
+        float m_flCycle;
+        uintptr_t m_pOwner;
+        char pad_0038[4];
+    };
+
+    typedef struct {
+        int m_nType;
+        void* m_pStartEnt;
+        int m_nStartAttachment;
+        void* m_pEndEnt;
+        int m_nEndAttachment;
+        vec3_t m_vecStart;
+        vec3_t m_vecEnd;
+        int m_nModelIndex;
+        const char* m_pszModelName;
+        int m_nHaloIndex;
+        const char* m_pszHaloName;
+        float m_flHaloScale;
+        float m_flLife;
+        float m_flWidth;
+        float m_flEndWidth;
+        float m_flFadeLength;
+        float m_flAmplitude;
+        float m_flBrightness;
+        float m_flSpeed;
+        int m_nStartFrame;
+        float m_flFrameRate;
+        float m_flRed;
+        float m_flGreen;
+        float m_flBlue;
+        bool m_bRenderable;
+        int m_nSegments;
+        int m_nFlags;
+        vec3_t m_vecCenter;
+        float m_flStartRadius;
+        float m_flEndRadius;
+    } beam_info_t;
+
+    typedef struct
+    {
+        char pad[3];
+        char m_bForceWeaponUpdate;
+        char pad1[91];
+        void* m_pBaseEntity;
+        void* m_pActiveWeapon;
+        void* m_pLastActiveWeapon;
+        float m_flLastClientsideanimationUpdateTime;
+        int m_iLastClientsideanimationUpdateFramecount;
+        float m_flanimUpdateDelta;
+        float m_flEyeYaw;
+        float m_flPitch;
+        float m_flGoalFeetYaw;
+        float m_flCurrentFeetYaw;
+        float m_flCurrentTorsoYaw;
+        float m_flUnknownVelocityLean;
+        float m_flLeanAmount;
+        float m_FakeDuck; 
+        char pad2[4];
+        float m_flFeetCycle;
+        float m_flFeetYawRate;
+        char pad3[4];
+        float m_fDuckAmount;
+        float m_fLandingDuckAdditiveSomething;
+        char pad4[4];
+        float m_vOriginX;
+        float m_vOriginY;
+        float m_vOriginZ;
+        float m_vLastOriginX;
+        float m_vLastOriginY;
+        float m_vLastOriginZ;
+        float m_vvelocity_x;
+        float m_vvelocity_y;
+        char pad5[4];
+        float m_flUnknownFloat1;
+        char pad6[8];
+        float m_flUnknownFloat2;
+        float m_flUnknownFloat3;
+        float m_flUnknown;
+        float m_flSpeed2D;
+        float m_flUpVelocity;
+        float m_flSpeedNormalized;
+        float m_flFeetSpeedForwardsOrsideWays;
+        float m_flFeetSpeedUnknownForwardOrsideways;
+        float m_flTimeSinceStartedMoving;
+        float m_flTimeSinceStoppedMoving;
+        bool m_bOnGround;
+        bool m_bInHitGroundanimation;
+        float m_flTimeSinceInAir;
+        float m_flLastOriginZ;
+        float m_flHeadHeightOrOffsetFromHittingGroundanimation;
+        float m_flStopToFullRunningFraction;
+        char pad7[4];
+        float m_flMagicFraction;
+        char pad8[60];
+        float m_flWorldForce;
+        char pad9[458];
+        float m_flMinYaw;
+        float m_flMaxYaw;
+    } CPlayer_animation_State;
+
+    typedef struct
+    {
+        int m_nSequence;
+        float m_flPlaybackRate;
+    } C_AnimationLayer;
+
+    typedef void*(__thiscall* get_client_entity_t)(void*, int);
+    typedef uintptr_t (__thiscall* get_client_entity)(void*, uintptr_t);
+
+    typedef struct { 
+        float x,y,z; 
+    } vec3_t; 
+    
+    struct tesla_info_t { 
+        vec3_t m_pos; 
+        vec3_t m_ang;
+        int m_entindex;
+        const char *m_spritename;
+        float m_flbeamwidth;
+        int m_nbeams;
+        vec3_t m_color;
+        float m_fltimevis;
+        float m_flradius;
+    }; 
+    
+    typedef void(__thiscall* FX_TeslaFn)(struct tesla_info_t&);
+
+    struct sockaddr {
+        uint16_t sa_family;
+        char sa_data[14];
+    };
+    
+    struct addrinfo {
+        int ai_flags;
+        int ai_family;
+        int ai_socktype;
+        int ai_protocol;
+        size_t ai_addrlen;
+        char* ai_canonname;
+        struct sockaddr* ai_addr;
+        struct addrinfo* ai_next;
+    };
+    
+    int getaddrinfo(const char* node, const char* service, const struct addrinfo* hints, struct addrinfo** res);
+    int sendto(size_t s, const char* buf, int len, int flags, const struct sockaddr* to, int tolen);
+    int recvfrom(size_t s, char* buf, int len, int flags, struct sockaddr* from, int* fromlen);
+    size_t socket(int af, int type, int protocol);
+    int bind(size_t s, const struct sockaddr* name, int namelen);
+]]
+
+local AF_INET, IPPROTO_UDP, SOCK_DGRAM = 2, 17, 2
+local function find_sig(mod, pat, type, offset, deref_count)
+    local raw_match = memory_find_pattern(mod, pat) or error("azura · an internal error has occurred ~ 0xA4B3C2", 2)
+    local match = ffi.cast("uintptr_t", raw_match)
+
+    if (offset ~= nil and offset ~= 0) then
+        match = match + offset
+    end
+
+    if (deref_count ~= nil) then
+        for i = 1, deref_count do
+            match = ffi.cast("uintptr_t*", match)[0]
+            if (match == nil) then
+                error("azura · an internal error has occurred ~ 0x9F8271", 2)
+            end
+        end
+    end
+    return ffi.cast(type, match)
+end
+
+local function v_table_bind(mod, face, n, type)
+    local i_face = memory_create_interface(mod, face) or error("azura · an internal error has occurred ~ 0xE8D4A6")
+    local instance = memory_get_vfunc(i_face, n) or error("azura · an internal error has occurred ~ 0x1C73F5")
+    local success, typeof = pcall(ffi.typeof, type)
+
+    if (success) then
+        local fnptr = ffi.cast(typeof, instance) or error("azura · an internal error has occurred ~ 0xB92F6E")
+        return function(...)
+            return fnptr(tonumber(ffi.cast("void***", i_face)), ...)
+        end
+    else
+        error("azura · an internal error has occurred ~ 0x3AB596")
+    end
+end
+
+local function tbl_concat_string(tbl, sep)
+    local result = ""
+    for i = 1, #tbl do
+        result = result .. tostring(tbl[i]) .. (i == #tbl and "" or sep)
+    end
+    return result
+end
+
+
+local function get_extension()
+    local get_module_handle_sig = memory_find_pattern("engine.dll", " FF 15 ? ? ? ? 85 C0 74 0B") or error("azura · an internal error has occurred ~ 0x740B")
+    local get_proc_address_sig = memory_find_pattern("engine.dll", " FF 15 ? ? ? ? A3 ? ? ? ? EB 05") or error("azura · an internal error has occurred ~ 0xEB05")
+
+    local get_proc_address_addr = ffi.cast("uint32_t**", ffi.cast("uint32_t", get_proc_address_sig) + 2)[0][0]
+    local get_proc_address = ffi.cast("void*(__stdcall*)(void*, const char*)", get_proc_address_addr)
+
+    local get_module_handle_addr = ffi.cast("uint32_t**", ffi.cast("uint32_t", get_module_handle_sig) + 2)[0][0]
+    local get_module_handle = ffi.cast("void*(__stdcall*)(const char*)", get_module_handle_addr)
+
+    return {
+        GetProcAddress = get_proc_address,
+        GetModuleHandleA = get_module_handle,
+    }
+end
+
+
+local ffi_extension = get_extension()
+local ws2_32_dll = ffi_extension.GetModuleHandleA("ws2_32.dll")
+
+local ws2_32 = {
+    socket = ffi.cast("size_t(__stdcall*)(int, int, int)", ffi_extension.GetProcAddress(ws2_32_dll, "socket")),
+    sendto = ffi.cast("int(__stdcall*)(size_t, const char*, int, int, const struct sockaddr*, int)", ffi_extension.GetProcAddress(ws2_32_dll, "sendto")),
+    getaddrinfo = ffi.cast("int(__stdcall*)(const char*, const char*, const struct addrinfo*, struct addrinfo**)", ffi_extension.GetProcAddress(ws2_32_dll, "getaddrinfo")),
+    recvfrom = ffi.cast("int(__stdcall*)(size_t, char*, int, int, struct sockaddr*, int*)", ffi_extension.GetProcAddress(ws2_32_dll, "recvfrom")),
+}
+
+
+local utilitize = {
+    this_call = function(call_function, parameters)
+        return function(...)
+            return call_function(parameters, ...)
+        end
+    end,
+    entity_list_003 = ffi.cast(ffi.typeof("uintptr_t**"), memory_create_interface("client.dll", "VClientEntityList003"))
+}
+
+
+local get_entity_address = utilitize.this_call(ffi.cast("get_client_entity_t", utilitize.entity_list_003[0][3]), utilitize.entity_list_003)
+
+
+local hud = find_sig("client.dll", "B9 ?? ?? ?? ?? 88 46 09", "void*", 1, 1)
+local hud_chat = find_sig("client.dll", "55 8B EC 53 8B 5D 08 56 57 8B F9 33 F6 39 77 28", "void***(__thiscall*)(void*, const char*)")(hud, "CHudChat")
+
+
+local class_ptr = ffi.cast("void***", hud_chat)
+local chat_print = ffi.cast("void(__cdecl*)(void*, int, int, const char*, ...)", memory_get_vfunc(tonumber(ffi.cast("unsigned long", class_ptr)), 27))
+
+
+local engine_client = ffi.cast(ffi.typeof("void***"), memory_create_interface("engine.dll", "VEngineClient014"))
+local console_is_visible = ffi.cast("console_is_visible", engine_client[0][11])
+
+
+local fs_tesla = ffi.cast("FX_TeslaFn", memory_find_pattern("client.dll", "55 8B EC 81 EC ? ? ? ? 56 57 8B F9 8B 47 18"))
+
+
+local get_text_count = v_table_bind("vgui2.dll", "VGUI_System010", 7, "int(__thiscall*)(void*)")
+local set_clipboard = v_table_bind("vgui2.dll", "VGUI_System010", 9, "void(__thiscall*)(void*, const char*, int)")
+local get_clipboard = v_table_bind("vgui2.dll", "VGUI_System010", 11, "int(__thiscall*)(void*, int, const char*, int)")
+
+local clipboard = {
+    get = function()
+        local len = get_text_count()
+        if (len > 0) then
+            local charArr = ffi.typeof("char[?]")(len)
+
+            get_clipboard(0, charArr, len)
+            return ffi.string(charArr, len - 1)
+        end
+    end,
+
+    set = function(text)
+        set_clipboard(tostring(text), string.len(tostring(text)))
+    end
+}
+
+--- @endregion
+
+local replacements = {
+    ["{white}"] = "\x01",
+    ["{darkred}"] = "\x02",
+    ["{team}"] = "\x03",
+    ["{green}"] = "\x04",
+    ["{lightgreen}"] = "\x05",
+    ["{lime}"] = "\x06",
+    ["{red}"] = "\x07",
+    ["{grey}"] = "\x08",
+    ["{yellow}"] = "\x09",
+    ["{bluegrey}"] = "\x0A",
+    ["{blue}"] = "\x0B",
+    ["{darkblue}"] = "\x0C",
+    ["{purple}"] = "\x0D",
+    ["{violet}"] = "\x0E",
+    ["{lightred}"] = "\x0F",
+    ["{orange}"] = "\x10"
+}
+
+
+
+
+local function color_print(color, text)
+    local vstdlib = ffi.cast("void***", memory_create_interface("vstdlib.dll", "VEngineCvar007"))
+    local col = ffi.new("color_struct_t")
+
+    if (color or text) then
+        col.r = color.r
+        col.g = color.g
+        col.b = color.b
+        col.a = color.a
+
+        if (vstdlib ~= nil) then
+            local print_ptr = vstdlib[0][25]
+            if (print_ptr ~= nil) then
+                ffi.cast("console_color_print", print_ptr)(vstdlib, col, text)
+            end
+        else
+            return
+        end
+    else
+        return
+    end
+end
+
+
+local function print_plyr(entindex, ...)
+    local text = tbl_concat_string(entindex == 0 and {" ", ...} or {...}, "")
+    for res, rep in pairs(replacements) do
+        text = string.gsub(text, res, rep)
+    end
+    chat_print(class_ptr, entindex, 0, text)
+end
+
+local function chat_print(...)
+    return print_plyr(0, ...)
+end
+
+--- @endregion
+
+-- offline: no azura server, the cloud / sync sockets send nothing and receive nothing
+local offline_client = {
+    send = function(data) end,
+    receive = function(buffer_size) return nil end
+}
+local sync_client = offline_client
+local app_client = offline_client
+
+--- @info: authentication
+--- @region: main cloud
+
+local loader = loader or {}
+
+if (not beta_event) then
+    beta_event = is_beta_product
+end
+
+
+local info = {
+    user = loader.username and ("" .. loader.username) or "matehun111",
+    pass = loader.password and ("" .. loader.password) or "0",
+
+    uid = loader.id and ("" .. loader.id) or "1",
+
+    hwid = loader.hwid and ("" .. loader.hwid) or "0",
+    banned = loader.banned and ("" .. loader.banned) or "0",
+
+    beta_text = beta_event and " (ac130)" or "",
+    beta_text2 = beta_event and " (beta)" or " (stable)",
+
+    beta_build = beta_event
+}
+
+
+local cl_logs = { }
+cl_logs.c_logs = {
+    kills = 0,
+    hits = 0,
+    misses = 0,
+    deaths = 0,
+    headshots = 0,
+    baims = 0,
+    mismatches = 0,
+    evades = 0
+}
+
+cl_logs.s_logs = {
+    kills = 0,
+    hits = 0,
+    misses = 0,
+    deaths = 0,
+    headshots = 0,
+    baims = 0,
+    mismatches = 0,
+    evades = 0,
+
+    send_timeout = false,
+    get_timeout = false,
+
+    round_counter = 0
+}
+
+
+cl_logs.add_log = function(log_type)
+    cl_logs.s_logs[log_type] = cl_logs.s_logs[log_type] + 1
+    cl_logs.c_logs[log_type] = cl_logs.c_logs[log_type] + 1
+end
+
+
+--- @endregion
+
+get_active_weapon = function()
+    if (ragebot_get_active_cfg() == 0) then
+        return 'auto'
+    elseif (ragebot_get_active_cfg() == 1) then
+        return 'scout'
+    elseif (ragebot_get_active_cfg() == 2) then
+        return 'awp'
+    elseif (ragebot_get_active_cfg() == 3) then
+        return 'deagle'
+    elseif (ragebot_get_active_cfg() == 4) then
+        return 'revolver'
+    elseif (ragebot_get_active_cfg() == 5) then
+        return 'pistols'
+    else
+        return 'other'
+    end
+end
+
+
+get_user_ping = function()
+    return math.floor(1000 * engine_get_latency(e_latency_flows.OUTGOING) + engine_get_latency(e_latency_flows.INCOMING))
+end
+
+--- @info: default values, settings etc
+--- @region: variables
+
+local settings_file = "settings.json"
+local function read_settings()
+    local ok, settings = pcall(function() return libs.json.parse(libs.filesystem.read(settings_file) or "") end)
+    return (ok and type(settings) == "table") and settings or {}
+end
+local screen_size = render_get_screen_size()
+
+local x = screen_size.x / 2
+local y = screen_size.y / 2
+
+local dpi_scale = screen_size.y / 1440
+if (dpi_scale < 1) then
+    dpi_scale = 1
+end
+
+local verdana = render_create_font('Verdana', math.ceil(12 * dpi_scale), 400, e_font_flags.ANTIALIAS, e_font_flags.DROPSHADOW)
+local verdana2 = render_create_font("Verdana", math.ceil(12 * dpi_scale), 400, e_font_flags.DROPSHADOW, e_font_flags.ANTIALIAS, e_font_flags.GAUSSIANBLUR)
+local pixel_font = render_create_font('Small Fonts', math.ceil(10 * dpi_scale), 600, e_font_flags.ANTIALIAS, e_font_flags.OUTLINE)
+local arial_font = render_create_font('Arial', math.ceil(10 * dpi_scale), 600, e_font_flags.ANTIALIAS, e_font_flags.OUTLINE)
+local pixel = render_create_font('Smallest Pixel-7', math.ceil(10 * dpi_scale), 300, e_font_flags.OUTLINE)
+local fontpixel = render_create_font('Smallest Pixel-7', math.ceil(9 * dpi_scale), 100, e_font_flags.OUTLINE)
+local font = render_create_font('Calibri Bold', math.ceil(24 * dpi_scale), 670, e_font_flags.ANTIALIAS,e_font_flags.DROPSHADOW)
+
+local fonts = {
+    default = render_get_default_font(),
+    pixel = render_create_font('Smallest Pixel-7', 10, 300, e_font_flags.OUTLINE),
+    tahomabold = render_create_font("Tahoma Bold", 12, 500, e_font_flags.ANTIALIAS, e_font_flags.DROPSHADOW),
+    tahoma = render_create_font("Tahoma", 11, 500, e_font_flags.ANTIALIAS, e_font_flags.DROPSHADOW),
+    verdana_b = render_create_font("Verdana", 11, 600, e_font_flags.ANTIALIAS, e_font_flags.DROPSHADOW),
+}
+
+local espfonts = {"Default", "Pixel", "Verdana", "Tahoma", "Tahoma bold"}
+
+local drag_watermark = libs.etr.new('watermark', vec2_t(10, 10), vec2_t(0, 0))
+local drag_keybinds = libs.etr.new('keybinds', vec2_t(50, y), vec2_t(0, 0))
+local drag_spectators = libs.etr.new('spectators', vec2_t(230, y), vec2_t(0, 0))
+
+local end_time = 0
+local largest_name_size = 0
+local afk_direction = 1
+local hurt_tick = 0
+local ground_tick = 1
+local clantag_reset = 0
+local alpha = 0
+local is_fading_in = true
+local is_fading_out = false
+local fade_out_time = 0
+local is_visible = true
+
+local send_lag_packet = false
+local on_shoot = false
+
+local anim = {}
+local side = {}
+local reso = {}
+local array = {}
+local binds = {}
+local desync = {}
+local entity = {}
+local screen = { positions = { [2] = { [1] = 10, [2] = 18, [3] = 24, [4] = 35 }, [3] = { [1] = 10, [2] = 20, [3] = 28, [4] = 45 }, [4] = { [1] = 10, [2] = 22, [3] = 24, [4] = 35 } }}
+local vector = {}
+local anim_database = {}
+local evades = { player_list = { }, vars = { }, backtrack_poses = { } }
+local backup = {}
+local config = {}
+local auto_cfg = {}
+local should_change_side = {}
+local keybinds = { sorted = { }, mode = {[0] = 'toggle', 'hold on', 'hold off', 'always', 'off'}, unsorted = {["double tap"]=menu_find("aimbot","general","exploits","doubletap","enable")[2],["hide shots"]=menu_find("aimbot","general","exploits","hideshots","enable")[2],["quick peek"]=menu_find("aimbot","general","misc","autopeek")[2],["fake duck"]=menu_find("antiaim","main","general","fakeduck")[2],["lock angle"]=menu_find("antiaim","main","general","lock angle")[2],["inverter"]=menu_find("antiaim","main","manual","invert desync")[2],["lean inverter"]=menu_find("antiaim","main","manual","invert body lean")[2],["slow walk"]=menu_find("misc","main","movement","slow walk")[2],["ping spike"]=menu_find("aimbot","general","fake ping","enable")[2],["auto direction"]=menu_find("antiaim","main","auto direction","enable")[2],["edge jump"]=menu_find("misc","main","movement","edge jump")[2],["sneak"]=menu_find("misc","main","movement","sneak")[2],["edge bug"]=menu_find("misc","main","movement","edge bug helper")[2],["jump bug"]=menu_find("misc","main","movement","jump bug")[2],["fire extinguisher"]=menu_find("misc","utility","general","fire extinguisher")[2],["free cam"]=menu_find("misc","utility","general","freecam")[2],["nade helper"]=menu_find("misc","nade helper","general","enable")[2],["auto throw"]=menu_find("misc","nade helper","general","autothrow")[2],["extended angles"]=menu_find("antiaim","main","extended angles","enable")[2],["lean resolver"]=menu_find("aimbot","general","aimbot","body lean resolver")[2],["resolver override"]=menu_find("aimbot","general","aimbot","override resolver")[2],["dormant aimbot"]=menu_find("aimbot","general","dormant aimbot","enable")[2],["min. damage"]=menu_find("aimbot",get_active_weapon(),"target overrides","min. damage")[2],["hitbox override"]=menu_find("aimbot",get_active_weapon(),"target overrides","hitbox")[2],["lethal shot"]=menu_find("aimbot",get_active_weapon(),"target overrides","lethal shot")[2],["hitchance override"]=menu_find("aimbot",get_active_weapon(),"target overrides","hitchance")[2],["safepoint"]=menu_find("aimbot",get_active_weapon(),"target overrides","safepoint")[2],["lean safepoint"]=menu_find("aimbot",get_active_weapon(),"target overrides","body lean safepoint")[2]}}
+local misstable = {}
+local player_records = {}
+local on_predict = {}
+local player_pose = {}
+local shared_data = {}
+local animlayer_average_t = {}
+local cnl_material = {}
+local animlayer_rec_t = {}
+
+local configs = { dir = "azura/", default_dir = "azura/default.cfg", default_config = "" }
+local clantag = { " ", " ", " ", "a ", "a3 ", "az ", "az\\ ", "az\\/ ", "azu ", "azu3 ", "azur ", "azur| ", "azur|2 ", "azura| ", "azura|_ ", "3zu@a. ", "@zu3a.< ", "azura.u< ", "azura.u_ ", "azura.un<_ ", "azura.un<| ", "azura.uno ", "azura.uno ", "onu.aruza ", "azura.uno ", "azura.uno ", "onu.aruza ", "azura.uno ", "azura.un<| ", "azura.un<_ ", "azura.u_ ", "azura.u< ", "azura.< ", "3zu@r. ", "azura|_ ", "azura| ", "azur|2 ", "azur| ", "azu ", "az\\/ ", "az\\ ", "az ", "a3 ", "a ", "|\\| " }
+
+local phrases_new = { "Out of your league, out of your life. Stay down. Courtesy of azura.uno — where losers get left behind.", "Another bot bites the dust. Get a grip, get a brain, or get azura.uno. Your choice.", "That was your best? Pathetic. I’m powered by azura.uno — you’re powered by tears.", "Skill issue detected. Patch it with azura.uno or uninstall, clown.", "Was that supposed to be a challenge? Script runs clean, you run scared. Powered by azura.uno, humbled by me.", "You blinked, you died. Maybe azura.uno can teach you how not to suck.", "Same result, different round. You die, I win. azura.uno stays undefeated.", "Oh, you're trying? Cute. Next time, try azura.uno — it might save you a little embarrassment.", "Out-aimed, out-brained, and out of excuses. azura.uno stays winning, you stay losing.", "Clapped, collapsed, and deleted. If you’re gonna keep showing up, bring azura.uno — or bring a therapist.", "Got folded like a lawn chair. azura.uno stays active while you stay irrelevant.", "Run it back if you want, but I’ll still be here — azura.uno loaded, and your dignity unloaded.", "Another round, another L for you. azura.uno does the work, I just collect your tears.", "Pack it up, kid. azura.uno on, you off.", "You thought you had a chance? Nah. Powered by azura.uno, fueled by your misery.", "You’re a spectator now. Get used to it. azura.uno stays running while you stay dead.", "Don’t be mad at me — be mad at your skills. azura.uno stays sharp, you stay dull.", "Zero kills, zero chance, zero hope. azura.uno gives me everything you don’t have.", "Outclassed, outmatched, and outdated. Upgrade your life or just get azura.uno.", "Tried to be a hero, ended up a statistic. azura.uno runs clean, your gameplay runs tragic.", "Put down the controller and pick up azura.uno — maybe then you’ll last more than 5 seconds.", "I’m built different, and so is azura.uno. Meanwhile, you’re built like an NPC.", "Oh, you’re mad? Blame azura.uno — they made it too easy for me.", "Stay mad, stay bad, stay last. azura.uno keeps me first every time.", "You’re just another body for the highlight reel. Thanks to azura.uno, I never miss a shot.", "Lag? Excuses? Cope harder. azura.uno doesn't lag — it just wins.", "Your respawn timer is longer than your highlight reel. azura.uno moves fast — you don’t.", "Back to the lobby where you belong. Brought to you by azura.uno — the only name that matters.", "They said 'get good,' so I got azura.uno. What’s your excuse?", "Don’t hate the player, hate azura.uno for making me unstoppable.", "Back to the lobby, bot. azura.uno doesn’t babysit losers.", "You’re not even worth the bullet. azura.uno runs the show, you’re just background noise.", "How's the view from rock bottom? azura.uno stays at the top.", "You could have 1000 hours in this game and still be free kills. azura.uno makes sure of it.", "I’m not even sweating, and you’re already drowning. azura.uno keeps me dry, unlike you.", "You’re a walking XP drop. azura.uno cashes in while you cash out.", "Don’t blame lag — blame your lack of talent. azura.uno stays smooth, you stay choppy.", "Skill issue? Nah, this is a LIFE issue. azura.uno can’t fix that.", "You’re a human highlight reel — and I’m the star. azura.uno stays recording your failures.", "Imagine trying your hardest just to get styled on by azura.uno.", "Another death, another disappointment. azura.uno keeps the streak alive, you don’t.", "How’s it feel to be THIS bad? azura.uno doesn’t know, we don’t lose.", "This isn’t a match, it’s a massacre. azura.uno stays sharp, you stay clueless.", "You were a warm-up. azura.uno stays ready, you stay irrelevant.", "Next time, bring a friend — or a guide. azura.uno won’t hold your hand.", "You’re the kind of player people hope to get on the other team. azura.uno stays on the winning side.", "Your whole squad is getting farmed like NPCs. azura.uno stays the main character.", "The kill cam is the only screen time you’ll ever get. azura.uno stays in control of the show.", "At this point, I’m farming you for sport. azura.uno stays on point, you stay on respawn.", "If I wanted easy mode, I’d play PvE — but you’re just as brainless. azura.uno on top, you on the ground.", "Congratulations, you’re now part of my montage. azura.uno records every L you take.", "I bet you practice, huh? Yikes. azura.uno doesn’t need practice — just results.", "You’re not a player, you’re an extra. azura.uno makes me the main event.", "Uninstall. It’s not a suggestion, it’s a demand. azura.uno stays installed, you don’t.", "The only thing you’re carrying is regret. azura.uno carries me to every W.", "No skill, no aim, no hope. azura.uno gives me all three — you get none.", "That scoreboard doesn’t lie. azura.uno never loses, you never win.", "Don’t act surprised. You knew you’d lose the moment azura.uno loaded up.", "You’re so bad, I’m surprised you haven’t rage-quit yet. azura.uno never quits.", "Keep coping. I’ll keep collecting wins. azura.uno makes sure of that.", "You’ve got two options: Get better or get azura.uno. Spoiler alert — you’ll still lose.", "Dead again? Must be muscle memory by now. azura.uno stays fresh, you stay frozen.", "Your mom called. She said to stop embarrassing the family. azura.uno doesn’t disappoint.", "That was cute. Want a participation trophy? azura.uno only hands out gold medals.", "Your whole squad’s K/D is negative, and it’s MY fault. azura.uno stays positive.", "I hope you weren’t recording that. azura.uno doesn’t support clown content.", "This isn’t personal — it’s just business. azura.uno makes it look easy.", "Was that your final form? Pathetic. azura.uno is always evolving.", "Out of lives, out of excuses, out of time. azura.uno stays ahead of the clock.", "Why even queue if you’re just gonna be free kills? azura.uno stays charging rent in your head.", "New round, same result: YOU LOSE. azura.uno never reruns an L.", "If you’re looking for a tutorial, you’re in one. azura.uno teaches by example.", "You’re down bad, and I’m just getting started. azura.uno is never down, only up.", "Another day, another dollar. Thanks for being part of the grind. azura.uno gets paid in wins.", "Next time, buy a better connection AND some skill. azura.uno never lags, unlike you.", "I’ve seen bots with better reflexes. azura.uno stays human, you stay helpless.", "You can only run for so long. azura.uno sees everything — and so do I.", "You brought a knife to a gunfight. azura.uno brought a tank.", "Back to the lobby with you. azura.uno stays on the battlefield.", "Keep talking, I’ll keep stacking wins. azura.uno doesn’t talk — it performs.", "Watch the replay. Maybe you’ll learn something — like how not to be trash. azura.uno stays clean.", "This death cam is sponsored by azura.uno — the only thing sharper than my aim.", "You died so fast, I barely noticed. azura.uno noticed, though.", "Another highlight clip. Thanks for being part of the content. azura.uno stays viral.", "You’re not the main event — you’re the warm-up act. azura.uno stays headliner.", "Oh, you thought you had me? That’s hilarious. azura.uno makes sure I stay untouchable.", "That wasn’t close. It wasn’t even fair. azura.uno doesn’t do 'fair' — just wins.", "Look at you, blaming lag. Meanwhile, azura.uno stays on a 0ms mindset.", "You could watch the killcam 100 times, and it still wouldn’t make sense to you. azura.uno doesn’t make sense to losers.", "You’re not unlucky, you’re just bad. azura.uno doesn’t believe in luck — only skill.", "I don’t need luck, I have azura.uno. You need a miracle.", "It's not my fault you loaded in with negative IQ. azura.uno didn’t write you a tutorial.", "Uninstall, kid. Save us all some time. azura.uno doesn’t waste time.", "I’m not even trying, and you’re still crying. azura.uno stays on full power.", "That scoreboard ain’t broken, it’s just allergic to your name. azura.uno stays at the top.", "You’re a stat, not a threat. azura.uno keeps my stats clean, yours are dirty.", "They told me to 'touch grass' — I told them to touch azura.uno. We both won.", "Get a better script, bot. azura.uno is miles ahead of whatever you’re running.", "This isn’t practice mode, but I’m treating it like one. azura.uno stays on ranked time.", "You’re not competition. You’re content. azura.uno makes sure of that.", "Game over? Nah, it never started for you. azura.uno stays live, you stay dead.", "Did you even load in, or was that just a decoy? azura.uno stays loaded.", "Your gameplay should be studied as a 'what not to do' guide. azura.uno stays exemplary.", "You vs. me is like a pencil vs. a shredder. azura.uno stays sharp, you stay broken.", "If this was a horror movie, you’d be the first to die. azura.uno stays the final boss.", "I’d be mad too if azura.uno did me like that.", "You’re like a broken clock — wrong every second of the day. azura.uno stays on time.", "I should be charging rent for how much space I’m taking up in your head. azura.uno stays rent-free.", "The only thing lower than your KD is your self-esteem. azura.uno stays boosting both.", "The definition of insanity is doing the same thing and expecting different results. azura.uno stays consistent.", "They gave you every chance, and you still folded. azura.uno stays standing tall.", "You're a walking 'before' photo. azura.uno stays the 'after.'", "That aim? Certified pre-owned. azura.uno stays factory new.", "They told me to 'touch grass,' but I’m too busy touching greatness. azura.uno stays legendary.", "I don’t need to see you to beat you. azura.uno sees all.", "Your stats read like a comedy special. azura.uno stays serious.", "The only streak you’ve got is your respawn timer. azura.uno stays streaking wins.", "Don’t worry, you’ll get a win someday — just not here. azura.uno stays undefeated.", "You’re the reason they invented bot lobbies. azura.uno stays in the winner’s circle.", "The only thing scarier than me? Me with azura.uno.",  "You’re not bad at the game, you’re bad at life. azura.uno can’t save you from that.", "New match, same result — you lose, I win. azura.uno stays undefeated.", "You're like DLC nobody asked for. azura.uno stays in the main story.", "I’d say ‘GG,’ but nothing was good about it. azura.uno stays good — you stay garbage.", "Keep respawning, I’m farming kills. azura.uno stays farming W’s.", "Don’t just uninstall the game, uninstall your pride. azura.uno stays active, you stay AFK.", "It’s not a skill gap — it’s a life gap. azura.uno bridges it, but you’re too far gone.", "They should name a lobby after you — you spend so much time in it. azura.uno stays in the game.", "I’m the protagonist. You’re just background noise. azura.uno stays center stage.", "Delete your clips. azura.uno stays immortalized, while your highlights stay nonexistent.", "You died so fast, I thought you were a speedrun category. azura.uno stays world record.", "That was so easy I’m filing it as 'community service.' azura.uno stays charitable.", "I’d roast you, but azura.uno already did the cooking.", "They called it 'Easy Mode,' but that’s just you. azura.uno stays on Hard Mode.", "This isn’t a duel — it’s a public execution. azura.uno as the judge, jury, and executioner.", "They said to 'adapt or die.' You chose the latter. azura.uno stays alive.", "I’ve seen better aim from stormtroopers. azura.uno never misses.", "They should add a 'skip tutorial' button for you. azura.uno skips tutorials — you’re still stuck in one.", "I hope you’re screenshotting these deaths — it’s the most action you’ll ever get. azura.uno stays photogenic.", "Welcome to the lobby. Population: You. azura.uno stays in the game.", "If embarrassment was a currency, you’d be rich. azura.uno stays wealthy in wins.", "They said 'get good,' and I did. azura.uno stays great — you stay mid.", "Your skills are like a 404 error — not found. azura.uno stays online.", "You must love the loading screen — you’re always in it. azura.uno stays in the action.", "You thought you ate? Nah, you’re starving. azura.uno stays fed.", "I could 360 no-scope with my monitor off and still win. azura.uno stays locked in.", "At this point, I’m legally obligated to call this a 'public service.' azura.uno stays charitable.", "I’m not even trying. azura.uno tries harder than you ever could.", "The scoreboard doesn’t lie — but you might want to. azura.uno stays honest.", "You could have aimbot and still miss. azura.uno stays on target.", "I’m not playing against you — I’m playing *with* you. azura.uno stays serious, you stay silly.", "Thanks for playing. I needed some target practice. azura.uno stays precise.", "I hope you’re taking notes. azura.uno just wrote the lesson for you.", "Who’s the real winner here? Me. Powered by azura.uno.", "You're like a Wi-Fi signal — weak and easy to disconnect. azura.uno stays full bars.", "You died so fast, I thought it was a cutscene. azura.uno stays interactive.", "Don't blame the lag — blame your life choices. azura.uno stays smooth.", "Your aim is like a broken compass — lost. azura.uno stays on point.", "You're not a player, you're an NPC. azura.uno stays main character.", "My aim's so clean, you might as well be wearing a bullseye. azura.uno stays sharp.", "Every round is a new chance to disappoint yourself. azura.uno stays consistent.", "They should add you as a difficulty mode — 'Too Easy.' azura.uno stays on Expert.", "Your reaction time is slower than patch notes. azura.uno stays ahead of the meta.", "You must be sponsored by L, because that’s all you collect. azura.uno stays collecting wins.", "Don’t hate the player, hate the skill gap. azura.uno stays on top of the leaderboard.", "You vs. me is like practice mode vs. final boss. azura.uno stays unbeatable.", "RIP to your dignity. azura.uno stays alive and well.", "Don't worry, I'm sure the next round will be *different*... just kidding. azura.uno stays consistent.", "I’ve seen bots with more personality than you. azura.uno stays human, you stay robotic.", "Every respawn is just another L. azura.uno stays undefeated.", "They said, 'Don’t play with your food.' I didn’t listen. azura.uno stays feasting.", "You're like free DLC — nobody asked for you. azura.uno stays premium content.", "It’s not personal, I just don’t respect you. azura.uno stays respected.", "You should main spectator mode — it’s the only role you’re good at. azura.uno stays active.", "You don’t lose because of bad luck, you lose because of bad skill. azura.uno stays skillful.", "Even your shadows are afraid of me. azura.uno stays fearless.", "Stop blaming your team. You’re the problem. azura.uno stays problem-free.", "You could have Wi-Fi from NASA and still lag behind. azura.uno stays fast.", "This isn’t a fight — it’s a lesson. azura.uno stays the teacher.", "You're a limited-time event — here for a second, gone in an instant. azura.uno stays timeless.", "I could go AFK and still win. azura.uno stays present.", "Don’t feel bad — some people are born losers. azura.uno stays winning.", "I hope you saved that death replay — it’s the highlight of your career. azura.uno stays legendary.", "You’re about as useful as a controller with no buttons. azura.uno stays in control.", "I’ve met speed bumps with more resistance than you. azura.uno stays unstoppable.", "They should pay me for babysitting you. azura.uno stays grown.", "You're like a tutorial enemy — scripted and predictable. azura.uno stays unpredictable.", "If gaming had a report card, you'd have straight F's. azura.uno stays on Honor Roll.", "You’ve unlocked a new achievement: 'Biggest Disappointment.' azura.uno stays overachieving.", "No need to 'Get Good' — you need to 'Get Gone.' azura.uno stays put.", "I hope you like the loading screen — you’ll be seeing it a lot. azura.uno stays in the match.", "I thought this was PvP, but it feels more like PvE. azura.uno stays a raid boss.", "Your only strategy is to exist, and you’re failing that too. azura.uno stays thriving.", "I’m not sweating, you’re just drowning. azura.uno stays dry.", "They said, 'Put up a fight,' but you just put up excuses. azura.uno stays fighting.", "I should start charging for these lessons. azura.uno stays a free education.", "They’ll write stories about this defeat. azura.uno stays the author.", "I would say you’re learning, but that would be a lie. azura.uno stays on top of the class.", "You’re playing checkers in a chess game. azura.uno stays checkmate.", "Your only W is in 'Why am I so bad?' azura.uno stays questioning nothing.", "The only thing carrying you is gravity. azura.uno stays airborne.", "Don't cry, it's just a game — a game you’re terrible at. azura.uno stays top-tier.", "Your KD is a horror story. azura.uno stays a thriller.", "At this rate, you’ll be in next season’s blooper reel. azura.uno stays on highlight reels.", "They called me 'Overpowered' — I call it 'Overprepared.' azura.uno stays ready.", "I’m not in your lobby — you’re in my world. azura.uno stays in control.",  "Another death on your resume. azura.uno keeps me employed.", "Was that your best? azura.uno wouldn't even sweat that.", "You’re like a tutorial mission — easy and forgettable. azura.uno makes sure I shine.", "Try hard, cry harder. azura.uno doesn’t make excuses, only results.", "I didn’t even break a sweat. azura.uno stays flawless, you stay lost.", "One shot, one kill. azura.uno never misses, unlike you.", "You think you’re the main character? azura.uno makes me the hero.", "Get clapped, get clowned. azura.uno keeps me undefeated.", "I play like a god. azura.uno powers me to perfection. You? You're still learning.", "You’ve got the right idea — it’s just the wrong game. azura.uno plays to win, you play to lose.", "You thought you could beat me? azura.uno runs circles around you.", "Next time, maybe take a break. azura.uno stays active, you stay dead.", "Get a better connection — and a better chance. azura.uno doesn’t lag, it leads.", "The kill cam doesn’t lie. azura.uno made sure of that.", "You weren’t even a challenge, you were just a free kill. azura.uno stays on top.", "That was cute. But azura.uno makes me untouchable.", "You’re just another bot in my highlight reel. azura.uno makes me famous.", "Next time, bring some skill. azura.uno only works with winners.", "You got deleted faster than your excuses. azura.uno keeps me winning.", "Every shot I take is a free ticket to the lobby. azura.uno writes my victories.", "Call it a massacre, not a match. azura.uno makes me a monster.", "You got wiped faster than your self-esteem. azura.uno stays undefeated.", "That was cute, but azura.uno makes me a nightmare.", "Your aim is as bad as your excuses. azura.uno doesn't miss.", "You thought you had a shot? azura.uno proves you didn’t.", "Keep crying, I’ll keep winning. azura.uno has me locked in.", "Outplayed, outclassed, out of your league. azura.uno keeps me at the top.", "I’m over here collecting dubs, while you're still stuck in respawn. azura.uno shows you how it's done.", "My aim's sharper, my moves smoother, and azura.uno makes me unstoppable.", "You got carried — straight to the lobby. azura.uno does the work for me.", "That was a freebie. azura.uno makes sure I never miss.", "You were too busy complaining to play. azura.uno never complains — it just wins.", "Imagine playing for fun and still losing. azura.uno makes sure I win every time.", "Another round, another L for you. azura.uno does the hard part, I just collect the kills.", "You really thought you were a challenge? azura.uno just made it easy.", "No skill, no hope, no chance. azura.uno guarantees the win.", "You're like a speed bump. azura.uno just rolls over you.", "I’m just here for the free kills. azura.uno makes them come easy.", "Every time you respawn, I’m already winning. azura.uno has me ahead of you.", "You were trying to win? azura.uno already wrote the script, you’re just a background character.", "You’re a walking target, and azura.uno is my sniper.", "I’m on fire, and you’re still trying to find the match. azura.uno keeps me burning.",  "Another kill, another tear. azura.uno makes me a monster, you just make excuses.", "You thought you had a chance? azura.uno makes sure I never miss.", "You’re a bot in my highlight reel. azura.uno keeps me on top.", "I’m just built different, and azura.uno helps me stay that way.", "Did you even see me coming? azura.uno saw everything and still made it look easy.", "Your K/D is falling faster than your hopes. azura.uno keeps mine rising.", "Outclassed, outgunned, and out of time. azura.uno makes sure I win every time.", "You’re too slow, too weak, too bad. azura.uno keeps me in the fast lane.", "Tried to be a hero, but you’re just a footnote. azura.uno makes me legendary.", "Back to the lobby with you, bot. azura.uno makes me a god, you’re just a mortal.", "You should’ve quit after the first round. azura.uno makes me untouchable.", "You’re not even worth the kill. azura.uno makes me precise, you’re just cannon fodder.", "If you want to win, get azura.uno. Otherwise, enjoy your L.", "How’s the respawn timer treating you? azura.uno doesn’t need a second chance.", "Every time I kill you, it’s like a public service. azura.uno keeps me efficient.", "Stop crying and start aiming. azura.uno already gave me the power to win.", "Your whole team is a joke. azura.uno is the punchline.", "You can’t run, you can’t hide. azura.uno sees everything, including your inevitable loss.", "I don’t need luck, I have azura.uno. You just have excuses.", "That wasn’t a fight, it was a massacre. azura.uno makes sure of it.", "You’ve been dead longer than you’ve been alive in this game. azura.uno never dies.",  "Outplayed, outsmarted, and outclassed. azura.uno keeps me on top.", "Your skills are as weak as your excuses. azura.uno gives me the power to dominate.", "Another death, another reminder that azura.uno doesn't lose.", "You tried, but azura.uno made sure I didn’t break a sweat.", "Clueless, hopeless, and helpless. azura.uno keeps me sharp while you stay stuck.", "Another easy kill for azura.uno. You should’ve stayed in spawn.", "You just got outplayed by someone who’s powered by azura.uno. Better luck next time.", "Keep trying, keep failing. azura.uno is too fast for you.", "You’re just a pawn in my game. azura.uno makes me the king.", "I don’t lose, I just let you respawn. azura.uno ensures I stay undefeated.", "That wasn’t close. azura.uno makes every shot count, unlike you.", "Your skill gap is bigger than the map. azura.uno bridges the gap.", "If you're trying, I'm sorry, you’re too slow. azura.uno keeps me ahead.", "Another round, another L. azura.uno is the reason you keep losing.", "Keep blaming the game, I’ll keep winning. azura.uno doesn’t make excuses.", "That was almost cute. Almost. azura.uno makes sure I never miss.", "Nice try, but azura.uno already gave me the edge.", "Is this your best? azura.uno makes sure mine is unbeatable.", "I’m not just good, I’m powered by azura.uno. You’re just a free kill.", "Your attempts at a comeback are laughable. azura.uno doesn’t let me lose.", "You’re too slow to even react. azura.uno keeps me ahead of your every move.", }
+local phrases_old = { "l2p botik", "smellin your mommas perfume", "refund spirtware", "1", "kys poor freak", "ez nigga", "u sell that hs?", "renew poor cantina subscription", "ur mom adored my black cum", "the only thing lower than your k/d ratio is your i.q.", "your aim is so poor that people held a fundraiser for it", "better buy pc, stop playing at school library", "the only thing more unreliable than you is the condom your dad used.", "calling you a retard is a compliment in comparison to how stupid you actually are.", "i didnt know dying was a special ability.", "if i jumped from your ego to your intelligence, id die of starvation half-way down.", "studies show that aiming gives you better chances of hitting your target.", "you should let your chair play, at least it knows how to support.", "there are about 37 trillion cells working together in your body right now, and you are disappointing every single one of them.", "i'd call you a tool, but that would imply you were useful in at least one way.", "youre the human equivalent of a participation award.", "i'd love to see things from your perspective, but i dont think i could shove my head that far up my ass.", "i'm not trash talking, im talking to trash", "legend has it that the number 0 was first invented after scientists calculated your chance of doing something useful.", "you're the type of player to get 3rd place in a 1v1 match", "i'm not saying i hate you, but i would unplug your life support to charge my phone.", "you're an inspiration for birth control.", "does your ass ever get jealous of the amount of shit that comes out of your mouth", "you should turn the game off. just walk outside and find the nearest tree, then apologise to it for wasting so much oxygen.", "i'd tell you to shoot yourself, but i bet youd miss", "did you know sharks only kill 5 people each year? looks like you got some competition", "some babies were dropped on their heads but you were clearly thrown at a wall", "to which foundation do i need to donate to help you?", "i'm sure your bodypillow is very proud of you.", "two wrongs dont make a right, take your parents as an example.", "i bet the last time u felt a breast was in a kfc bucket", "maybe god made you a bit too special.", "i bet your brain feels as good as new, seeing that you never use it.", "it must be difficult for you, exhausting your entire vocabulary in one sentence.", "you have some big balls on you. too bad they belong to the guy fucking you from behind.", "if only you could hit an enemy as much as your dad hits you.", "i'm surprised that you were able hit the install button", "some people get paid to suck, you do it for free.", "i would ask you how old you are but i know you can't count that high.", "i'm okay with this team. i work in the city as a garbage collector. i'm used to carrying trash.", "you're as dense as a brick, but honestly a less useful one.", "i'd call you cancer, but at least cancer gets kills", "who set the bots to passive?", "you're the reason abortion was legalized", "i'd tell you to shoot yourself, but i bet your miss", "my knife is well-worn, just like your mother.", "get the bomb, at least you will carry something this game.", "options -&gt; how to play", "my dead dad has better aim than you, it only took him one bullet", "internet explorer is faster than your reactions.", "i'm surprised you've got the brain power to keep your heart beating", "you're about as useful as pedals on a wheelchair.", "you define autism", "the only thing you carry is an extra chromosome.", "you don't deserve to play this game. go back to playing with crayons and shitting yourself", "yo mama so fat when she plays overpass, you can shoot her on mirage.", "the only thing you can throw are rounds.", "i'm not trash talking, i'm talking to trash.", "if you were a csgo match, your mother would have a 7day cooldown all the time, because she kept abandoning you.", "choose your excuse: 1.lags | 2.new mouse | 3.low fps | 4.low team | 5.hacker | 6.lucker | 7.smurf | 8.hitbox | 9.tickrate", "your family tree must be a circle.", "everyone who loves you is wrong.", "listen here you little fucker, when i was your age, pluto was a planet!", "if cs:go is too hard for you maybe consider a game that requires less skill, like idk.... solitaire?", "oops, i must have chosen easy bots by accident...", "i thought i put bots on hard, why are they on easy?", "is your monitor on?", "don't be a loser, buy a rope and hang yourself.", "if i were to commit suicide, i would jump from your ego to your elo.", "do you feel special? please try suicide again... hopefully you will be successful this time.", "sell your computer and buy a wii.", "idk if u know but it's mouse1 to shoot.", "how did you change your difficulty settings? my cs:go is stuck on easy", "you are the reason why people say the csgo community sucks.", "neverlose.cc - just the best", "neverlose.cc - better than luck", "neverlose.cc - dont be owned anymore", "neverlose.cc - die or buy", "js by rezolver", "how much did you tag that wall for??", "this server is vac secured, no aimware users here. buy skeet.cc", "your brett got delivered by skeet.cc", "i don't cheat, i am just smurfing with skeet.cc", "i can hear you chrouching, you think i hack? you are good damn right son i use skeet.cc", "server cvar 'sv_rekt' changed to 1.", "you think you can kill me? you are funny. not without skeet.cc dude", "skeet &gt; all refund your copy paste trash.", "skeet.cc owns me and all", "you guys buy accounts on ebay?? go buy them on skeet.cc it's much cheaper", "you have the reaction time of a dead puppy. buy skeet.cc to improve.", "without skeet.cc the only thing you carry is an extra chromosome.", "if i wanted to suicide, i'd jump from your ego to your elo, just get good and buy skeet.cc", "is that a decoy, or are you trying to shoot somebody?", "don't cry and say i'll get banned, it's just annoying. i wont get banned anyways with skeet.cc.", "nice $4750 decoy you just bought. buy skeet.cc to finally hit your shots.", "even noah can't carry these animals without skeet.cc.", "skeet.cc - best features without lack of security.", "1 dog", "1 nn", "1.", "ez?", "ez", "is it a joke?", "the only thing lower than your k/d ratio is your penis size.", "why you miss? im not your girlfriend.", "your mother would have done better to swallow you.", "you are so ugly that they put a dark glass on the incubator when you were born.", "when god gave out intelligence, were you in the toilet?", "if your iq was two iq's higher, you could be a french fry.", "as soon as possible, ask for a refund for your hack.", "why are you here? the gay bar is two blocks away.", "who put bots in this match?", "many people suck for money, why do you do it for free?", "you're the type of player to get 3rd place in a 1v1 match.", "my k/d ratio higher than your iq.", "you're like the staircase: dark and confined.", "why did you accept the match, you knew you sucked.", "stop using ezfrags, buy normal cheat.", "buy a better hack with your mother's onlyfans money.", "i don't understand why you're crying, it's only 24cm.", "you're like a condom, you're fucked.", "did you really sold your anal virginity for that cheat?", "you're the reason abortion was legalized.", "better buy pc, stop playing at school library.", "some babies were dropped on their heads but you were clearly thrown at a wall.", "i'll be honest, you're retarded!", "i'm not lying, it was too easy to kill you.", "you're like a ball, i could kick you.", "+1", "your cheat is not the problem, but that you were born.", "when i fucked your sister, i heard your father masturbating in the closet.", "boooooooooom, u died.", "my k/d ratio higher your kills.", "who asked what u wannt? you died.", "did you pay for this cheat? it was a pity...", "i see you use aa. how about using your brain?", "sheeeeesh, i am better than you.", "if you had as much iq as you've died, maybe you wouldn't drool.", "i see you like watching killcam because you always die.", "you're dead, time to get up from the computer and get a girlfriend.", "when i fucked your mother i didn't know what i did. after 9 month..... u born.", "unplug the power cable from your computer. pee in it, the same thing will happen as now. you will die.", "have you ever tried being normal?", "are you that stupid, or is someone helping you?", }
+local phrases_fem = { "D-Do you like my stripped panties getting soaked by you and your hard cock? ehhh master you're so lewd ^0^~", "D-Don't t-touch me there Senpai", "M-Master d-dont spank my petite butt so hard ahhhH~~~ you're getting me so w-wet~", "I-I know I said you could be as rough as you want... But surprise fisting wasn't what I had in mind!!", "Senpai your cock is already throbbing from my huge ass~", "That's a penis UwU you towd me you wewe a giww!!", "O-Oniichan my t-toes are so warm with your cum all over them (^///^)~", "Hey kun, Can I have some semen?", "M-Master, if you keep thrusting that hard, i am going to pass out!", "S-Stop Senpai if we keep making these lewd sounds im going to cum~~", "P-Please l-love me harder oniichan ohh grrh aahhhh~!", "I'll take your cock for a ride!~", "Do they bounce? If so, may i see em:3", "F-Fuck me harder chan! (⊙_⊙;)", "S-Sorry onii-chan p-please d-do me harder ;w;", "All I did was crossplay 'cause I felt like it might be fun... But now I am just a little boy that cums from big dicks!", "A-ah shit... Y-your cock is big and in my ass -- already~?!", "D-Don't get the wrong idea!!! I don't w-want you to fuck my b-bussy because I l-love you or anything! d-definitely not!", "E-eham! W-Why is it so small~", "Give me all your cum Senpai ahhhhh~", "It-It's not gay if you're wearing thigh highs M-Master", "Oh my god I hate you so much Senpai but please k-keep fucking me harder! ahhh~", "Ahhhh... It's like a dream come true... I get to stick my dick inside your ass...!", "I'll swallow your sticky essence along with you~!", "B-Baka please let me be your femboy cum slut!", "Kun your cute little dick between my bussy looks really cute, I am blushing (*/ω＼*)", "Ehem! I love the furry po-! I mean.. the uh community!", "You're such a pervert for filling me up with your seman Senpai~~", "But i'm just an another furry to the community :(", "M-Master does it feel good when I slide my smoll hand up and down on your cute manly part?", "I-I need somewhere to blow my load. Can i borrow your bussy?", "Please! s-stop it.. I'm feeling sooo good..~ hmpf! Fuck me harder Daddyh~", "W-Why is it that lately... Y-You haven't been playing with my ass!!?", "Fill my throat bwussy with your semen kun", "Is there reason to be mad? Of course when u die to an femboy!", "Hey, who wants a piece of this plump 19-year-old boy-bussy? Single file, boys, come get it while it's hot!", "U-uwu! I can also whimp for you..", "M-My bussy is overflowing with your semen M-Master", "When do you wanna meet up again? I've really taken a liking to your dick! (,,◠∇◠) I want you and only you to slam it into my buwssy every day! (≧∇≦)", "Y-You got me all wet now Senpai!", "Lets take this swimsuit off already <3 i'll drink your unknown melty juice", "Boykisser is such a cute femboy ahh~~ f-fuck... ⊙.☉", "Fill up my bussy with your semen kun ^-^" }
+
+local builder = { misses = 0, invert_defensive = false, old_defensive = false, invert_delay = true, target_delay = 0, legbreak = 0, current_pitch = -89, current_yaw = -60, goal_pitch = 0, goal_yaw = 0, speed = 0, save_yaw = 0, misses = 0, warmup = game_rules_get_prop("m_bWarmupPeriod"), onpeek = false, afk_valid = false, afk = 0 }
+local indicator = { font = render_get_default_font(), shot_count = 0, data = {}, pos = vec2_t(100, 100), size = vec2_t(200, 100), difference = vec2_t(0, 0), dragging = false }
+local console_material = { "vgui_white", "vgui/hud/800corner1", "vgui/hud/800corner2", "vgui/hud/800corner3", "vgui/hud/800corner4" }
+local esp = { sync_user = {}, unsync_user = {}, sync_update = 0 }
+local resolver = { data = {}, mem = {}, previous = {}, trust = { fs = 0, jitter = 0 } }
+local delay = { tick_delay = client_time_to_ticks(1), last_tick = globals.tick_count() }
+local animation = { alpha = 0, appearing = 0 }
+local toss = { target_angles = vec3_t(0, 0, 0) }
+local knife = { countdown = 0 }
+local notifications = { emoji_to_svg = { ["success"] = render_load_image_buffer('<svg id="emoji" viewBox="0 0 72 72" xmlns="http://www.w3.org/2000/svg"><g id="color"><path fill="#b1cc33" d="m61.5 23.3-8.013-8.013-25.71 25.71-9.26-9.26-8.013 8.013 17.42 17.44z"/></g><g id="line"><path fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" stroke-width="2" d="m10.5 39.76 17.42 17.44 33.58-33.89-8.013-8.013-25.71 25.71-9.26-9.26z"/></g></svg>'), ["warn"] = render_load_image_buffer('<svg id="emoji" viewBox="0 0 72 72" xmlns="http://www.w3.org/2000/svg"><g id="color"><path fill="#fcea2b" stroke="none" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" stroke-width="2" d="M32.5222,13.005c0.6977-1.2046,1.9862-2.0244,3.4778-2.0244c1.4916,0,2.7801,0.8198,3.4778,2.0244l20.9678,41.9351 C60.7889,55.5339,61,56.2136,61,56.9483c0,2.2272-1.8051,4.0323-4.0323,4.0323l-41.9354,0.0173 C12.8051,60.9979,11,59.192,11,56.9657c0-0.7356,0.211-1.4145,0.5544-2.0083L32.5222,13.005"/><path fill="#FFFFFF" stroke="none" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" stroke-width="2" d="M37.6129,47.2709c0,0.8907-0.7222,1.6129-1.6129,1.6129c-0.8907,0-1.6129-0.7222-1.6129-1.6129V23.8925 c0-0.8907,0.7222-1.6129,1.6129-1.6129c0.8907,0,1.6129,0.7222,1.6129,1.6129V47.2709z"/><circle cx="36" cy="54.529" r="1.6129" fill="#FFFFFF" stroke="none" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" stroke-width="2"/></g><g id="hair"/><g id="skin"/><g id="skin-shadow"/><g id="line"><path fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" stroke-width="2" d="M32.5222,13.005c0.6977-1.2046,1.9862-2.0244,3.4778-2.0244c1.4916,0,2.7801,0.8198,3.4778,2.0244l20.9678,41.9351 C60.7889,55.5339,61,56.2136,61,56.9483c0,2.2272-1.8051,4.0323-4.0323,4.0323l-41.9354,0.0173 C12.8051,60.9979,11,59.192,11,56.9657c0-0.7356,0.211-1.4145,0.5544-2.0083L32.5222,13.005"/><path fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" stroke-width="2" d="M37.6129,47.2709c0,0.8907-0.7222,1.6129-1.6129,1.6129c-0.8907,0-1.6129-0.7222-1.6129-1.6129V23.8925 c0-0.8907,0.7222-1.6129,1.6129-1.6129c0.8907,0,1.6129,0.7222,1.6129,1.6129V47.2709z"/><circle cx="36" cy="54.529" r="1.6129" fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" stroke-width="2"/></g></svg>'), ["fail"] = render_load_image_buffer('<svg id="emoji" viewBox="0 0 72 72" xmlns="http://www.w3.org/2000/svg"><g id="color"><path fill="#ea5a47" d="m58.14 21.78-7.76-8.013-14.29 14.22-14.22-14.22-8.013 8.013 14.36 14.22-14.36 14.22 8.014 8.013 14.22-14.22 14.29 14.22 7.76-8.013-14.22-14.22z"/></g><g id="hair"/><g id="skin"/><g id="skin-shadow"/><g id="line"><path fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" stroke-width="2" d="m58.14 21.78-7.76-8.013-14.29 14.22-14.22-14.22-8.013 8.013 14.35 14.22-14.35 14.22 8.014 8.013 14.22-14.22 14.29 14.22 7.76-8.013-14.22-14.22z"/></g></svg>'), ["info"] = render_load_image_buffer('<svg id="emoji" viewBox="0 0 72 72" xmlns="http://www.w3.org/2000/svg"><g id="color"><circle cx="36" cy="36" r="23" fill="#4FC3F7"/><rect x="34" y="32" width="4" height="16" rx="2" ry="2" fill="#FFFFFF"/><circle cx="36" cy="26" r="2.5" fill="#FFFFFF"/></g><g id="line"><circle cx="36" cy="36" r="23" fill="none" stroke="#000000" stroke-miterlimit="10" stroke-width="2"/><rect x="34" y="32" width="4" height="16" rx="2" ry="2" fill="none" stroke="#000000" stroke-miterlimit="10" stroke-width="2"/><circle cx="36" cy="26" r="2.5" fill="none" stroke="#000000" stroke-miterlimit="10" stroke-width="2"/></g></svg>') }, types = { success = "success", warning = "warn", failure = "fail", information = "info" }, font = arial_font, font2 = render_get_default_font(), logs = {}, neutral_color = color_t(230, 230, 230, 255), background_color = color_t(0, 0, 0, 200), delay = 3, width = 250, padding = 5 }
+local logs = { logs = {}, font = arial_font, neutral_color = color_t(230, 230, 230, 255), background_color = color_t(0, 0, 0, 100) }
+local edgeyaw = { pos = vec3_t(0, 0, 0), angle = angle_t(0, 0, 0), vec_trace_start = vec3_t(0, 0, 0), enabled = false }
+local hit_groups = { [0] = "generic", [1] = "head", [2] = "pelvis", [3] = "stomach", [4] = "lower chest", [5] = "chest", [6] = "upper chest", [7] = "right thigh", [8] = "left thigh", [9] = "right calf", [10] = "left calf", [11] = "right foot", [12] = "left foot", [13] = "right hand", [14] = "left hand", [15] = "right upper arm", [16] = "right forearm", [17] = "left upper arm", [18] = "left forear" }
+local colors = { ["hit"] = color_t(0, 255, 0), ["occlusion"] = color_t(146, 0, 255), ["extrapolation"] = color_t(221, 95, 151), ["resolver"] = color_t(250, 111, 166), ["spread"] = color_t(131, 111, 255), ["spread (missed safe)"] = color_t(64, 155, 246), ["prediction error"] = color_t(209, 121, 121), ["jitter"] = color_t(128, 132, 231), ["server rejection"] = color_t(122, 93, 194), ["ping (local death)"] = color_t(161, 111, 255), ["ping (target death)"] = color_t(237, 125, 149), ["dormant aimbot"] = color_t(222, 153, 163), ["backtrack failure"] = color_t(48, 123, 171), ["out of reach"] = color_t(51, 255, 165), ["unknown"] = color_t(244, 155, 131) }
+
+local groups = {
+    nav = libs.eui.create("Home | azura v" .. client_version .. "" .. info.beta_text2 , 1),
+    
+    
+    configs = libs.eui.create("Configs", 2),
+    cloud_configs = libs.eui.create("Cloud configs", 3),
+
+
+    statistics = libs.eui.create("Statistics", 2),
+    
+
+    ragebot = libs.eui.create("Ragebot", 3),
+    tickbase = libs.eui.create("Tickbase", 3),
+    
+    resolver = libs.eui.create("Resolver", 3),
+    resolver_beta = libs.eui.create("Resolver (beta)", 2),
+
+    reso_cfg = libs.eui.create("Configuration (beta)", 2),
+
+
+    settings = libs.eui.create("Settings", 1),
+
+    yaw = libs.eui.create("Yaw", 2),
+    jitter = libs.eui.create("Jitter", 2),
+    desync = libs.eui.create("Desync", 2),
+
+    antiaim = libs.eui.create("Global", 3),
+
+    features = libs.eui.create("Features", 3),
+    defensive = libs.eui.create("Defensive", 1),
+
+    
+    exploits = libs.eui.create("Exploits", 2),
+    helpers = libs.eui.create("Helpers", 3),
+    
+    visuals = libs.eui.create("Visuals", 2),
+    customization = libs.eui.create("Customization", 3),
+    
+    player = libs.eui.create("Player", 2),
+    communication = libs.eui.create("Communication", 3),
+    
+
+    misc = libs.eui.create("Misc", 2),
+    movement = libs.eui.create("Movement", 3),
+
+
+    utils = libs.eui.create("Utils", 2),
+    sync = libs.eui.create("Synchronization", 3)
+}
+
+for i = 1, 64, 1 do
+    side[i] = 1
+    desync[i] = 0
+    anim[i] = 0
+    should_change_side[i] = 0
+    player_pose[i] = 0
+end
+
+--- @endregion
+
+--- @info: ui management
+--- @region: menu style(s)
+
+local states = {"Global", "Stand", "Move", "Slow walk", "Duck", "Duck move", "Air", "Air duck", "Fakelag", "Manual", "Freestand"}
+local shortstates = {"G", "S", "M", "SW", "D", "DM", "A", "AD", "F", "MN", "FR"}
+
+local refs = {
+    hide_shots = menu_find("aimbot", "general", "exploits", "hideshots", "enable")[2],
+    double_tap = menu_find("aimbot", "general", "exploits", "doubletap", "enable")[2],
+
+    quick_peek = menu_find("aimbot", "general", "misc", "autopeek")[2],
+    slow_motion = menu_find("misc","main","movement", "slow walk", "enable")[2],
+
+    force_damage = menu_find("aimbot", get_active_weapon(), "target overrides", "min. damage")[2],
+    force_safe = menu_find("aimbot", get_active_weapon(), "target overrides", "safepoint")[2],
+
+    force_hb = menu_find("aimbot", get_active_weapon(), "target overrides", "hitbox")[2],
+    force_hc = menu_find("aimbot", get_active_weapon(), "target overrides", "hitchance")[2],
+    force_baim = menu_find("aimbot", get_active_weapon(), "target overrides", "body lean safepoint")[2],
+
+    pitch = menu_find("antiaim","main", "angles","pitch"),
+    yawbase = menu_find("antiaim","main", "angles","yaw base"),
+    yawadd = menu_find("antiaim","main", "angles","yaw add"),
+    rotate = menu_find("antiaim","main", "angles", "rotate"),
+    rotaterange = menu_find("antiaim","main", "angles", "rotate range"),
+    rotatespeed = menu_find("antiaim","main", "angles", "rotate speed"),
+    jittermode = menu_find("antiaim","main", "angles","jitter mode"),
+    jittertype = menu_find("antiaim","main", "angles","jitter type"),
+    jitterrange = menu_find("antiaim","main", "angles","jitter add"),
+
+    ping = menu_find("aimbot", "general", "fake ping", "enable")[2],
+    antibackstab = menu_find("antiaim","main", "general","anti knife"),
+
+    fake_lag_value = menu_find("antiaim", "main", "fakelag", "amount"),
+    fake_duck = menu_find("antiaim", "main", "general", "fakeduck")[2],
+    
+    overridemove = menu_find("antiaim","main", "desync", "override stand#move"),
+    overridemovesw = menu_find("antiaim","main", "desync", "override stand#slow walk"),
+    desyncside = menu_find("antiaim","main", "desync", "stand", "side"),
+    leftamount = menu_find("antiaim","main", "desync", "left amount"),
+    rightamount = menu_find("antiaim","main", "desync", "right amount"),
+
+    left = menu_find("antiaim", "main", "manual", "left")[2],
+    right = menu_find("antiaim", "main", "manual", "right")[2],
+    back = menu_find("antiaim", "main", "manual", "back")[2],
+    freestand = menu_find("antiaim", "main", "auto direction", "enable")[2],
+    fsstate = menu_find("antiaim","main", "auto direction", "states"),
+}
+
+local defensive = {
+    db = {},
+    is_active = function(self, player, safe, mode)
+        local idx = player:get_index()
+        
+        local tickcount = globals.tick_count()
+        local sim_time = client_time_to_ticks(player:get_prop("m_flSimulationTime"))
+
+        if (not mode) then
+            mode = false
+        end
+
+        self.db[idx] = self.db[idx] and self.db[idx] or {
+            last_sim_time = 0,
+            defensive_until = 0
+        }
+
+        if (self.db[idx].last_sim_time == 0) then
+            self.db[idx].last_sim_time = sim_time
+            return false
+        end
+
+        local sim_diff = sim_time - self.db[idx].last_sim_time
+        if (sim_diff < 0) then
+            self.db[idx].defensive_until = tickcount + math.abs(sim_diff)
+            if (safe) then
+                self.db[idx].defensive_until = self.db[idx].defensive_until - client_time_to_ticks(engine_get_latency())
+            end
+        end
+
+        self.db[idx].last_sim_time = sim_time
+        local ret = {
+            tick = self.db[idx].defensive_until,
+            active = self.db[idx].defensive_until > tickcount
+        }
+        return mode and ret or self.db[idx].defensive_until > tickcount
+    end,
+
+    trigger = function()
+        if (refs.double_tap:get() and (exploits_get_charge() == exploits_get_max_charge())) then
+            exploits.force_anti_exploit_shift()
+        end
+    end
+}
+
+local ui = {
+    nav = {
+        slider = groups.nav:slider("azura.uno | tee hee!<3", 0, 9),
+
+        text = groups.nav:text("Welcome, " .. info.user .. "!"),
+        sep0 = menu_add_separator("Home | azura v" .. client_version .. "" .. info.beta_text2),
+        
+        shared_esp = groups.nav:list("azura Revealer", {}),
+        restart_esp = groups.nav:button("Restart esp",
+            function()
+                on_shared_esp()
+            end
+        ),
+
+        refresh_players = groups.nav:button("Refresh players",
+            function()
+                on_shared_players()
+            end
+        ),
+        sep1 = menu_add_separator("Home | azura v" .. client_version .. "" .. info.beta_text2),
+    },
+
+    configs = {
+        cloud_list = groups.cloud_configs:list("Configs list", {}, 7),
+        list = groups.configs:list("Configs list", {}, 7),
+
+        config_name = groups.configs:text_input("Name to create")
+    },
+
+    statistics = {
+        list = groups.statistics:list("Your personal statistics", {})
+    },
+
+    ragebot = {
+        logic_reso = groups.resolver:checkbox("Logic resolver"),
+        nexzu_reso = groups.resolver:checkbox("Improve resolver"),
+        
+        pose_reso = groups.resolver_beta:checkbox("Pose resolver"),
+        resolver = {
+            enable_resolver = groups.resolver_beta:checkbox("Custom resolver"),
+            unsafe_reso = groups.resolver_beta:checkbox("Unsafe resolver", true),
+            
+            duck_mode = groups.resolver_beta:checkbox("Duck mode"),
+            auto_duck = groups.resolver_beta:checkbox("Auto duck", true),
+            
+            safe_peek = groups.resolver_beta:checkbox("Safe peek", true),
+            
+            pred_sel = groups.resolver_beta:slider("Prediction sel", 2, 70, 1, 0, "%"),
+            calc_box = groups.resolver_beta:slider("Calculate box", 2, 35, 1, 0, "u"),
+            shot_pred = groups.resolver_beta:slider("Shot prediction", 2, 65, 1, 0, "°"),
+            hit_sens = groups.resolver_beta:slider("Hit sensitivity", 2, 47, 1, 0, " miss"),
+
+            safe_mode = groups.resolver_beta:slider("Safe mode", 1, 20, 1, 0, "hp")
+        },
+
+        reso_cfg = {
+            yaw_calc = groups.reso_cfg:selection(
+                "Yaw calculation",
+                {
+                    "Simple",
+                    "Advanced",
+                    "Experimental"
+                }
+            ),
+
+            disablers = groups.reso_cfg:multi_selection(
+                "Disablers",
+                {
+                    "In air",
+                    "In airduck",
+                    "At duck",
+                    "At peek",
+                    "At scope",
+                    "At noscope",
+                    "With doubletap",
+                    "With hideshots",
+                    "Low fps (<75fps)",
+                    "High ping (>80ms)"
+                }
+            ),
+
+            at_disabler = groups.reso_cfg:selection(
+                "At disabler",
+                {
+                    "Disable",
+                    "Safe point",
+                    "Keep resolving"
+                }
+            ),
+        },
+
+        backtrack = {
+            enable_backtrack = groups.tickbase:checkbox("Improve backtrack"),
+            performance_mode = groups.tickbase:checkbox("Low performance mode"),
+
+            smooth_transition = groups.tickbase:checkbox("Smooth transition"),
+
+            enable_interpolation = groups.tickbase:checkbox("Enable interpolation"),
+            enable_extrapolation = groups.tickbase:checkbox("Enable extrapolation"),
+
+            extended_backtrack = groups.tickbase:checkbox("Extended backtrack"),
+            prioritize_older_records = groups.tickbase:checkbox("Prioritize older records"),
+
+            aggressive_backtrack = groups.tickbase:checkbox("Aggressive backtrack"),
+            prediction_factor = groups.tickbase:slider("Prediction factor", 1, 15, 1, 0, "%"),
+
+            max_targets = groups.tickbase:slider("Max targets", 1, 10),
+
+            transition_speed = groups.tickbase:slider("Transition speed", 0, 100, 5, 0, "%"),
+            aggressive_factor = groups.tickbase:slider("Aggressive factor", 0, 100, 15, 0, "%"),
+
+            bt_smoothing = groups.tickbase:slider("Backtrack smoothing", 0, 10, 1, 0, "%"),
+            bt_expiration = groups.tickbase:slider("Backtrack expiration", 0, 5, 1, 0, "s"),
+
+            transition_priority = groups.tickbase:selection("Transition priority", {"Accuracy", "Smoothness"}),
+            record_weighting_type = groups.tickbase:selection("Record weighting type", {"By Time", "By Distance"}),
+            dynamic_tick_adjustment = groups.tickbase:selection("Adjust ticks dynamically", {"Off", "By FOV", "By Distance"}),
+        },
+
+        safe_defensive = groups.ragebot:checkbox("Defensive safepoint"),
+        multipoint_pred = groups.ragebot:checkbox("Multipoint correction"),
+
+        accuracy_boost = {
+            enable_booster = groups.ragebot:checkbox("Accuracy booster"),
+            booster_mode = groups.ragebot:selection("Booster mode", {"Minimum", "Maximum"}),
+        }
+    },
+
+    antiaim = {
+        builder = {
+            enable = groups.settings:checkbox("Custom antiaim"),
+            edge_yaw = groups.settings:checkbox("Edge yaw"),
+            random_side = groups.settings:checkbox("Random desync side", true),
+            anti_brute = groups.settings:checkbox("Anti bruteforce", true),
+
+            pitch = groups.antiaim:selection(
+                "Pitch",
+                {
+                    "Off",
+                    "Down",
+                    "Up",
+                    "Zero",
+                    "Jitter"
+                }
+            ),
+
+            yaw = groups.antiaim:selection(
+                "Base",
+                {
+                    "Local view",
+                    "At targets",
+                    "Distance"
+                }
+            ),
+
+            condition = groups.settings:selection("Condition", states, #states),
+            defensive_ping = groups.antiaim:selection(
+                "Defensive mode",
+                {
+                    "Ping safe",
+                    "Unsafe"
+                }
+            )
+        },
+
+        features = {
+            antibackstab = groups.features:checkbox("Anti backstab"),
+            fakelag = groups.features:checkbox("Avoid onshot"),
+            safehead = groups.features:multi_selection(
+                "Safe head",
+                {
+                    "Air knife",
+                    "Allow defensive"
+                }
+            ),
+
+            warmup = groups.features:multi_selection(
+                "Randomization",
+                {
+                    "No enemies alive",
+                    "Warmup"
+                }
+            ),
+
+            correction = groups.features:multi_selection(
+                "Crouch correction",
+                {
+                    "Yaw"
+                }
+            )
+        }
+    },
+
+    exploits = {
+        quick_fall = groups.helpers:checkbox("Rubberbang"),
+        lag_on_shoot = groups.helpers:checkbox("Lag on shoot"),
+        fix_corr = groups.helpers:checkbox("Fix correction"),
+
+        safe_recharge = groups.exploits:checkbox("Safe recharge"),
+        better_hs = groups.exploits:checkbox("Better hideshots"),
+        fix_dt = groups.exploits:checkbox("Optimize doubletap"),
+        
+        better_dt = {
+            better_dt = groups.exploits:checkbox("Improve doubletap"),
+            dt_mode = groups.exploits:selection(
+                "Mode",
+                {
+                    "Dynamic",
+                    "Custom"
+                }
+            ),
+            
+            speed_calc = groups.exploits:selection(
+                "Speed calculation",
+                {
+                    "Static",
+                    "Switch",
+                    "Automatic"
+                }
+            ),
+            dt_speed = groups.exploits:slider("DT Speed", 5, 17)
+        }
+    },
+
+    visuals = {
+        china_hat = {
+            enable_hat = groups.visuals:checkbox("China hat"),
+            hat_mode = groups.customization:selection(
+                "Hat mode",
+                {
+                    "Regular",
+                    "Rainbow"
+                }
+            ),
+        },
+
+        console = groups.visuals:checkbox("Console color", true),
+
+        tesla = {
+            enable_tesla = groups.visuals:checkbox("Tesla on shoot"),
+
+            width = groups.customization:slider("Tesla · width", 0, 30),
+            radius = groups.customization:slider("Tesla · radius", 0, 1000),
+            beams = groups.customization:slider("Tesla · beams", 0, 100),
+            delay = groups.customization:slider("Tesla · delay", 0, 5),
+        },
+
+        gs_indc = {
+            indicators = groups.visuals:multi_selection(
+                "Right indicators",
+                {
+                    "Double tap",
+                    "Hide shots",
+                    "Minimum dmg",
+                    "Quick peek",
+                    "Freestand",
+                    "Ping spike",
+                    "Force bodyaim",
+                    "Force safepoint",
+                    "Override hitbox",
+                    "Override hitchance"
+                },
+            10)
+        },
+
+        crosshair_indc = {
+            binds = groups.visuals:multi_selection(
+                "Crosshair indicators",
+                {
+                    "Double tap",
+                    "Hide shots",
+                    "Minimum dmg",
+                    "Quick peek",
+                    "Freestand",
+                    "Ping spike",
+                    "Force bodyaim",
+                    "Force safepoint",
+                    "Override hitbox",
+                    "Override hitchance"
+                },
+            10)
+        },
+        esp_fonts = groups.visuals:selection("ESP Font", espfonts, #espfonts),
+    },
+
+    player = {
+        talk_back = groups.communication:checkbox("Talk back"),
+        trash_talk = groups.communication:selection(
+            "Trash talk",
+            {
+                "Off",
+                
+                "Skeet",
+                "Femboy",
+                "Original"
+            }
+        ),
+
+        voice_state = groups.communication:selection(
+            "Voice state",
+            {
+                "Disable",
+                
+                "Mute players",
+                "Unmute players"
+            }
+        ),
+
+        visual_rec = groups.player:checkbox("Visual recoil"),
+
+        anim_breaker = groups.player:checkbox("Animation breaker"),
+        team_anim = groups.player:checkbox("Cool team animation"),
+
+        super_toss = groups.player:selection(
+            "Super toss",
+            {
+                "Off",
+                
+                "Legit",
+                "Smart"
+            }
+        ),
+
+        fast_ladder = groups.player:multi_selection(
+            "Fast ladder",
+            {
+                "Up",
+                "Down"
+            }
+        ),
+    },
+
+    misc = {
+        fast_switch = groups.misc:checkbox("Fast weapon switch"),
+        unlock_pingspike = groups.misc:checkbox("Unlock latency"),
+        knifebot_helper = groups.misc:checkbox("Knifebot helper"),
+        defuse_bot = groups.misc:checkbox("Auto defuse"),
+        
+        fake_media = {
+            enable_fakemedia = groups.misc:checkbox("Fake media"),
+            type = groups.misc:multi_selection(
+                "Fake type",
+                {
+                    "Headshot",
+                    "Wallbang",
+                    "No Scope",
+                    "Flashed",
+                    "Thru smoke",
+                    "Dominated",
+                    "Revenge",
+                },
+            7),
+        },
+        
+        jumpshot = groups.movement:checkbox("Jumpshot helper"),
+        nofall_dmg = groups.movement:checkbox("No fall damage"),
+        antiafk = groups.movement:checkbox("Anti afk")
+    },
+
+    utils = {
+        keybinds = groups.utils:checkbox("Keybinds"),
+        spectators = groups.utils:checkbox("Spectators"),
+        watermark = groups.utils:checkbox("Watermark", true),
+        menu_glow = groups.utils:checkbox("Glow effects", true),
+
+        clantag = groups.sync:checkbox("Clan tag", true),
+        shared_esp = groups.sync:checkbox("Shared ESP", true),
+
+        synced_players = groups.sync:multi_selection(
+            "Synced players",
+            {
+                "Disable trash-talk",
+                "Ignore talk-back",
+                "Chat mentions",
+            },
+        3),
+
+        event_logs = groups.utils:multi_selection(
+            "Logs selection",
+            {
+                "Show stats",
+                "Hits",
+                "Purchases",
+                "Hurts",
+                "Misses",
+                "Evades"
+            }
+        ),
+
+        reset_stats = groups.utils:button("Reset stats",
+            function()
+                notifications.create("azura.uno", "Statistics have been reset!", notifications.types.success)
+                print("statistics have been reset.")
+
+                indicator.shot_count = 0
+                indicator.data = {}
+            end
+        )
+    }
+}
+
+for i = 1, #states do
+    ui.antiaim.builder[i] = {
+        override = groups.yaw:checkbox("Override - " .. states[i]),
+        yaw_mode = groups.yaw:selection(shortstates[i] .. " | Yaw mode", {"Static", "Classic", "Advanced"}),
+        yaw_val = groups.yaw:slider(shortstates[i] .. " | Yaw", -90, 90, 1, 0, "°"),
+        
+        yaw_left = groups.yaw:slider(shortstates[i] .. " | Left", -90, 90, 1, 0, "°"),
+        yaw_right = groups.yaw:slider(shortstates[i] .. " | Right", -90, 90, 1, 0, "°"),
+        
+        yaw_meta_left = groups.yaw:slider(shortstates[i] .. " | Left randomization", -90, 90, 1, 0, "°"),
+        yaw_meta_right = groups.yaw:slider(shortstates[i] .. " | Right randomization", -90, 90, 1, 0, "°"),
+        
+        yaw_delay = groups.yaw:slider(shortstates[i] .. " | Delay", 2, 32, 1, 0, "t"),
+        meta_delay = groups.yaw:slider(shortstates[i] .. " | Delay fluctuation", 0, 16, 1, 0, "t"),
+
+        yaw_modifier = groups.jitter:selection(shortstates[i] .. " | Modifier mode", {"None", "Offset", "Center", "3Way", "5Way"}),
+        
+        modifier_degree = groups.jitter:slider(shortstates[i] .. " | Modifier degree", -180, 180, 1, 0, "°"),
+        modifier_random = groups.jitter:slider(shortstates[i] .. " | Modifier randomization", -180, 180, 1, 0, "°"),
+        
+        desync = groups.desync:selection(shortstates[i] .. " | Desync", {"Left", "Right", "Jitter", "Peek fake"}),
+        
+        desync_left = groups.desync:slider(shortstates[i] .. " | Fake left", 0, 60, 1, 0, "°"),
+        desync_right = groups.desync:slider(shortstates[i] .. " | Fake right", 0, 60, 1, 0, "°"),
+        
+        desync_meta_left = groups.desync:slider(shortstates[i] .. " | Left randomization", -60, 60, 1, 0, "°"),
+        desync_meta_right = groups.desync:slider(shortstates[i] .. " | Right randomization", -60, 60, 1, 0, "°"),
+        
+        trigger_defensive = groups.defensive:selection(shortstates[i] .. " | Defensive", {"Off", "On peek", "Force", "Antiaim", "Dynamic"}),
+        defensive_pitch = groups.defensive:selection(shortstates[i] .. " | Defensive pitch", {"Inherit", "Off", "Down", "Up", "Zero", "Jitter", "Random", "Custom", "Switch", "Clock"}),
+        
+        defensive_pitch_val = groups.defensive:slider(shortstates[i] .. " | Pitch value (1)", -90, 90, 1, 0, "°"),
+        defensive_pitch_val2 = groups.defensive:slider(shortstates[i] .. " | Pitch value (2)", -90, 90, 1, 0, "°"),
+        
+        defensive_yaw = groups.defensive:selection(shortstates[i] .. " | Defensive yaw", {"Inherit", "Static", "Sideways", "Switch", "Spin", "Random", "5Way", "Clock"}),
+        defensive_yaw_val = groups.defensive:slider(shortstates[i] .. " | Yaw value", -180, 180, 1, 0, "°"),
+        
+        defensive_speed = groups.defensive:slider(shortstates[i] .. " | Spin speed", 0, 100, 1, 0, "%"),
+        defensive_range = groups.defensive:slider(shortstates[i] .. " | Spin range", 0, 360, 1, 0, "°")
+    }
+end
+
+local global = {
+    velocity = 0,
+    
+    current_state = "",
+    current_state_number = 0,
+    
+    update = function(self, cmd)
+        local local_player = entity_list_get_local_player()
+        if (local_player) then
+            local velocity = math.vec_length2d(local_player:get_prop('m_vecVelocity'))
+            local flags = local_player:get_prop('m_fFlags')
+            
+            local ducking = bit.lshift(1, 1)
+            local ground = bit.lshift(1, 0)
+
+            self.velocity = velocity
+            local state = function()
+                if (bit.band(flags, ground) == 1 and velocity > 3 and bit.band(flags, ducking) == 0 and not refs.slow_motion:get() and not cmd:has_button(e_cmd_buttons.JUMP)) then
+                    self.current_state = "move"
+                    self.current_state_number = 3
+                elseif (bit.band(flags, ground) == 0 and bit.band(flags, ducking) == 0) then
+                    self.current_state = "air"
+                    self.current_state_number = 7
+                elseif (bit.band(flags, ground) == 0 and bit.band(flags, ducking) > 0.9) then
+                    self.current_state = "air duck"
+                    self.current_state_number = 8
+                elseif (bit.band(flags, ground) == 1 and velocity < 3 and bit.band(flags, ducking) == 0) then
+                    self.current_state = "stand"
+                    self.current_state_number = 2
+                else
+                    if (bit.band(flags, ground) == 1 and velocity > 3 and bit.band(flags, ducking) == 0 and refs.slow_motion:get()) then
+                        self.current_state = "slow motion"
+                        self.current_state_number = 4
+                    end
+                end
+
+                if (bit.band(flags, ground) == 1 and bit.band(flags, ducking) > 0.9 and ui.antiaim.builder[6].override:get() and velocity > 10 and not cmd:has_button(e_cmd_buttons.JUMP)) then
+                    self.current_state = "duck move"
+                    self.current_state_number = 6
+                elseif (bit.band(flags, ground) == 1 and bit.band(flags, ducking) > 0.9 and not cmd:has_button(e_cmd_buttons.JUMP)) then
+                    self.current_state = "duck"
+                    self.current_state_number = 5
+                end
+
+                if (not (refs.double_tap:get() or refs.hide_shots:get()) and ui.antiaim.builder[9].override:get()) then
+                    self.current_state = "fakelag"
+                    self.current_state_number = 9
+                end
+
+                if (refs.freestand:get() and ui.antiaim.builder[11].override:get()) then 
+                    self.current_state = "freestand"
+                    self.current_state_number = 11
+                end
+
+                if (manual) then 
+                    self.current_state = "manual"
+                    self.current_state_number = 10
+                end
+            end
+            state()
+        end
+    end
+}
+
+local accent_color = color_t(222, 153, 185, 255)
+local text_color = color_t(140, 71, 247, 255)
+
+ui.quick_fall = groups.exploits:keybind(ui.exploits.quick_fall, "Rubberbang keybind")
+ui.edge_yaw = groups.antiaim:keybind(ui.antiaim.builder.edge_yaw, "EdgeYaw keybind")
+
+ui.accent_color = groups.nav:color_picker(ui.nav.text, "Accent color", accent_color)
+ui.text_color = groups.nav:color_picker(ui.nav.text, "Text color", text_color)
+
+ui.console_color = groups.utils:color_picker(ui.visuals.console, "Console color", color_t(55, 55, 55, 154))
+ui.tesla_color = groups.utils:color_picker(ui.visuals.tesla.enable_tesla, "Tesla color", color_t(255, 255, 255, 255))
+
+ui.gs_color1 = groups.utils:color_picker(ui.visuals.gs_indc.indicators, "Main color", color_t(177, 255, 87, 255))
+ui.gs_color2 = groups.utils:color_picker(ui.visuals.gs_indc.indicators, "Alt color", color_t(200, 199, 197, 255))
+
+ui.hat_color = groups.visuals:color_picker(ui.visuals.china_hat.enable_hat, "Hat color", color_t(89, 237, 255, 255))
+
+get_indc_color = function()
+    local r, g, b = ui.gs_color1:get().r, ui.gs_color1:get().g, ui.gs_color1:get().b
+    return color_t(r, g, b)
+end
+
+get_hat_color = function()
+    local r, g, b = ui.hat_color:get().r, ui.hat_color:get().g, ui.hat_color:get().b
+    return color_t(r, g, b)
+end
+
+get_accent_color = function()
+    local r, g, b = ui.accent_color:get().r, ui.accent_color:get().g, ui.accent_color:get().b
+    return azura_color_t(r, g, b)
+end
+
+get_text_color = function()
+    local r, g, b = ui.text_color:get().r, ui.text_color:get().g, ui.text_color:get().b
+    return azura_color_t(r, g, b)
+end
+
+ui.nav.back_button = groups.nav:button("Back",
+    function()
+        ui.nav.slider.ref:set(0)
+    end
+)
+
+ui.nav.config_button = groups.nav:button("Configs menu",
+    function()
+        ui.nav.slider.ref:set(1)
+    end
+)
+
+ui.nav.stats_button = groups.nav:button("Statistics",
+    function()
+        ui.nav.slider.ref:set(2)
+    end
+)
+
+ui.nav.ragebot_button = groups.nav:button("Ragebot",
+    function()
+        ui.nav.slider.ref:set(3)
+    end
+)
+
+ui.nav.antiaim_button = groups.nav:button("Anti Aim",
+    function()
+        ui.nav.slider.ref:set(4)
+    end
+)
+
+ui.nav.exploits_button = groups.nav:button("Exploits",
+    function()
+        ui.nav.slider.ref:set(5)
+    end
+)
+
+ui.nav.visuals_button = groups.nav:button("Visuals",
+    function()
+        ui.nav.slider.ref:set(6)
+    end
+)
+
+ui.nav.player_button = groups.nav:button("Player",
+    function()
+        ui.nav.slider.ref:set(7)
+    end
+)
+
+ui.nav.misc_button = groups.nav:button("Misc",
+    function()
+        ui.nav.slider.ref:set(8)
+    end
+)
+
+ui.nav.utils_button = groups.nav:button("Utils",
+    function()
+        ui.nav.slider.ref:set(9)
+    end
+)
+
+--- @endregion
+
+--- @info: advanced print
+--- @region: print
+
+print = function(...)
+    local args = {...}
+    local output = {}
+
+    local header_color = ui.accent_color:get()
+    local text_color = color_t(168, 168, 168, 255)
+    local reset_color = color_t(255, 255, 255, 255)
+
+    local rainbow_colors = {
+        color_t(255, 113, 237, 255),
+        color_t(247, 120, 243, 255),
+        color_t(239, 126, 249, 255),
+        color_t(230, 132, 254, 255),
+        color_t(222, 138, 255, 255),
+        color_t(213, 143, 255, 255),
+        color_t(204, 148, 255, 255),
+        color_t(196, 153, 255, 255),
+        color_t(187, 157, 255, 255),
+        color_t(179, 162, 255, 255),
+        color_t(171, 165, 255, 255),
+        color_t(163, 169, 255, 255),
+        color_t(156, 172, 255, 255),
+        color_t(150, 176, 255, 255),
+        color_t(144, 178, 255, 255),
+        color_t(138, 181, 255, 255),
+        color_t(134, 184, 255, 255),
+        color_t(131, 186, 255, 255),
+        color_t(128, 188, 255, 255),
+        color_t(127, 190, 255, 255),
+
+        color_t(255, 0, 0, 255),
+        color_t(255, 0, 12, 255),
+        color_t(255, 0, 21, 255),
+        color_t(255, 0, 29, 255),
+        color_t(255, 0, 36, 255),
+        color_t(255, 0, 42, 255),
+        color_t(255, 0, 48, 255),
+        color_t(255, 0, 54, 255),
+        color_t(255, 0, 60, 255),
+        color_t(255, 0, 66, 255),
+        color_t(255, 0, 71, 255),
+        color_t(255, 0, 77, 255),
+        color_t(255, 0, 83, 255),
+        color_t(255, 0, 89, 255),
+        color_t(255, 0, 95, 255),
+        color_t(255, 0, 101, 255),
+        color_t(255, 0, 107, 255),
+        color_t(255, 0, 113, 255),
+        color_t(255, 0, 119, 255),
+        color_t(255, 0, 125, 255),
+
+        color_t(255, 0, 0, 255),
+        color_t(255, 64, 0, 255),
+        color_t(255, 128, 0, 255),
+        color_t(255, 191, 0, 255),
+        color_t(255, 255, 0, 255),
+        color_t(191, 255, 0, 255),
+        color_t(128, 255, 0, 255),
+        color_t(64, 255, 0, 255),
+        color_t(0, 255, 0, 255),
+        color_t(0, 255, 64, 255),
+        color_t(0, 255, 128, 255),
+        color_t(0, 255, 191, 255),
+        color_t(0, 255, 255, 255),
+        color_t(0, 191, 255, 255),
+        color_t(0, 128, 255, 255),
+        color_t(0, 64, 255, 255),
+        color_t(0, 0, 255, 255),
+        color_t(64, 0, 255, 255),
+        color_t(128, 0, 255, 255),
+        color_t(191, 0, 255, 255),
+
+        color_t(168, 0, 255, 255),
+        color_t(164, 6, 255, 255),
+        color_t(159, 13, 255, 255),
+        color_t(155, 19, 255, 255),
+        color_t(151, 25, 255, 255),
+        color_t(146, 32, 255, 255),
+        color_t(142, 38, 255, 255),
+        color_t(138, 44, 255, 255),
+        color_t(134, 50, 255, 255),
+        color_t(129, 57, 255, 255),
+        color_t(125, 63, 255, 255),
+        color_t(121, 69, 255, 255),
+        color_t(116, 76, 255, 255),
+        color_t(112, 82, 255, 255),
+        color_t(108, 88, 255, 255),
+        color_t(103, 95, 255, 255),
+        color_t(99, 101, 255, 255),
+        color_t(95, 107, 255, 255),
+        color_t(90, 114, 255, 255)
+    }
+
+    table.insert(output, {header_color, "azura"})
+    table.insert(output, {rainbow_colors[math.random(#rainbow_colors)], " · "})
+
+    local current_color = text_color
+    for _, value in ipairs(args) do
+        if (type(value) == "table" and value.r and value.g and value.b and value.a) then
+            current_color = value
+        else
+            table.insert(output, {current_color, tostring(value)})
+        end
+    end
+
+    table.insert(output, {reset_color, "\n"})
+    for _, pair in ipairs(output) do
+        local color = pair[1]
+        local text = pair[2] or ""
+
+        color_print(color, text)
+    end
+end
+
+azura_color_t = function(r, g, b, a)
+    if (a == nil) then
+        return {r = r, g = g, b = b, a = 255}
+    else
+        return {r = r, g = g, b = b, a = a}
+    end
+end
+
+--- @endregion
+
+--- @info: lua helpers
+--- @region: useful thing(s)
+
+-- configs funcs
+
+configs.ffi = {}
+configs.ffi.class_ptr = ffi.typeof("void***")
+configs.ffi.rawvguisystem = memory_create_interface("vgui2.dll", "VGUI_System010") or error("azura · an internal error has occurred ~ 0xBE87F1")
+configs.ffi.ivguisystem = ffi.cast(configs.ffi.class_ptr, configs.ffi.rawvguisystem) or error("azura · an internal error has occurred ~ 0x51D2A4")
+configs.ffi.shell_execute = ffi.cast("shell_execute_t", configs.ffi.ivguisystem[0][3]) or error("azura · an internal error has occurred ~ 0x89E67C")
+
+configs.ffi.__thiscall = function(func, this)
+    return function(...)
+        return func(this, ...)
+    end
+end
+
+configs.ffi.vmt_bind = function(module, interface, index, typedef)
+    local addr = ffi.cast("void***", memory_create_interface(module, interface)) or error("azura · an internal error has occurred ~ 0xFC4A7D")
+    return configs.ffi.__thiscall(ffi.cast(typedef, addr[0][index]), addr)
+end
+
+configs.ffi.native_GetCurrentDirectory = configs.ffi.vmt_bind("filesystem_stdio.dll", "VFileSystem017", 40, "bool(__thiscall*)(void*, char*, int)")
+
+configs.ffi.char = ffi.new("char[256]")
+configs.ffi.native_GetCurrentDirectory(configs.ffi.char, ffi.sizeof(configs.ffi.char))
+
+configs.path = string.format("%s/csgo/azura/", ffi.string(configs.ffi.char))
+
+-- animstate funcs
+
+local raw_entity_list = ffi.cast("void***", memory_create_interface("client.dll", "VClientEntityList003"))
+local i_entity_list = ffi.cast("get_client_entity", raw_entity_list[0][3])
+
+local entity_list_ptr = ffi.cast("void***", memory_create_interface("client.dll", "VClientEntityList003"))
+local get_client_entity_fn = ffi.cast("get_client_entity", entity_list_ptr[0][3])
+
+entity.get_vector_prop = function(idx, prop, array)
+    local v1, v2, v3 = entity.get_prop(idx, prop, array)
+    return {
+        x = v1,
+        y = v2,
+        z = v3
+    }
+end
+
+get_entity_pattern = function(Index)
+    return i_entity_list(raw_entity_list, Index)
+end
+
+get_anim_layer = function(b, c)
+    return ffi.cast("struct animation_layer_t**", ffi.cast("char*", ffi.cast(ffi.typeof('void***'), b)) + 0x2990)[0][c or 1]
+end
+
+entity.get_address = function(idx)
+    return get_client_entity_fn(entity_list_ptr, idx)
+end
+
+entity.get_animlayer = function(idx)
+    local addr = entity.get_address(idx)
+    if (addr) then
+        return ffi.cast("C_AnimationLayer**", ffi.cast("uintptr_t", addr) + 0x9960)[0]
+    end
+end
+
+-- resolver funcs
+
+get_side = function(playback_rate, ent)
+    if (playback_rate ~= nil) then
+        if (playback_rate > anim[ent]) then
+            anim[ent] = playback_rate
+            side[ent] = 2
+        elseif (playback_rate < anim[ent]) then
+            anim[ent] = playback_rate
+            side[ent] = 1
+        end
+    end
+end
+
+normalize_yaw = function(yaw)
+    if (yaw > 360) then
+        return yaw - 360;
+    elseif (yaw < 0) then
+        return 360 + yaw
+    end
+    return yaw;
+end
+
+average = function(t)
+    t = t or { }
+
+    local sum = 0
+    for _,v in pairs(t) do
+        sum = sum + v
+    end
+    return sum / #t
+end
+
+normalize = function(value, min, max)
+    return (value - min) / (max - min)
+end
+
+insert_first_index = function(tbl, value, maxSize)
+    if (#tbl >= maxSize) then
+        table.remove(tbl)
+    end
+    table.insert(tbl, 1, value)
+end
+    
+rounded = function(number, decimal_places)
+    local multiplier = 10 ^ (decimal_places or 0)
+    return math.floor(number * multiplier + 0.5) / multiplier
+end
+
+-- utility funcs
+
+vector_distance = function(src, dst)
+    return math.sqrt((dst.x - src.x) ^ 2 + (dst.y - src.y) ^ 2 + (dst.z - src.z) ^ 2)
+end
+
+time_to_ticks = function(time)
+    return math.floor(0.5 + (time / global_vars_interval_per_tick()))
+end
+
+get_state2 = function(player, speed)
+    local flags = player:get_prop("m_fFlags")
+    if (flags == 263) then
+        return 6
+    end
+
+    if (flags == 256 or flags == 262) then
+        return 4
+    end
+
+    if (flags ~= 263 and flags ~= 256 and flags ~= 262) then
+        if (speed <= 3)  then
+            return 2
+        else
+            if (speed > 3 and speed < 101) then
+                return 7
+            else
+                return 3
+            end
+        end
+    end
+end
+
+get_state = function(speed)
+    local flags = entity_list_get_local_player():get_prop("m_fFlags")
+    if (bit.band(flags, 1) == 1) then
+        if (bit.band(flags, 4) == 4 or antiaim_is_fakeducking()) then
+            return 4
+        else
+            if (speed <= 3) then
+                return 1
+            else
+                if (menu_find("misc", "main", "movement", "slow walk")[2]) then
+                    return 3
+                else
+                    return 2
+                end
+            end
+        end
+    elseif (bit.band(flags, 1) == 0) then
+        if (bit.band(flags, 4) == 4) then
+            return 6
+        else
+            return 5
+        end
+    end
+end
+
+check_conditions = function()
+    if (engine_is_in_game() and entity_list_get_local_player() and entity_list_get_local_player():is_player() and entity_list_get_local_player() ~= nil) then
+        return true
+    else
+        return false
+    end
+end
+
+get_velocity = function()
+    local local_player = entity_list_get_local_player()
+
+    local velocity_x = local_player:get_prop("m_vecVelocity[0]")
+    local velocity_y = local_player:get_prop("m_vecVelocity[1]")
+
+    return math.floor(math.sqrt((velocity_x * velocity_x) + (velocity_y * velocity_y)))
+end
+
+get_dmg = function()
+    local dmg_ovr = menu_find("aimbot", get_active_weapon(), "target overrides", "min. damage")[1]
+    local dmg_ovr_key = menu_find("aimbot", get_active_weapon(), "target overrides", "min. damage")[2]
+    local norm_dmg = menu_find("aimbot", get_active_weapon(), "targeting", "min. damage")
+
+    return dmg_ovr_key:get() and dmg_ovr:get() or norm_dmg:get()
+end
+
+gradient = function(x, y, w, h, col1, col2)
+    render_rect_fade(vec2_t(x, y - 4), vec2_t(w / 4, h), col2, col1, true)
+    render_rect_fade(vec2_t(x + (w / 4), y - 4), vec2_t(w / 4, h), col1, col2, true)
+end
+
+is_point_visible = function(ent)
+    if (entity_list_get_local_player():is_point_visible(ent:get_hitbox_pos(e_hitgroups.GENERIC))) then
+        return true
+    else
+        return false
+    end
+end
+
+distance = function(point1, point2)
+    return math.sqrt((point2[1] - point1[1]) ^ 2 + (point2[2] - point1[2]) ^ 2)
+end
+
+ent_speed_2d = function(entity)
+    local velocity_x = entity:get_prop("m_vecVelocity[0]")
+    local velocity_y = entity:get_prop("m_vecVelocity[1]")
+    
+    return math.sqrt((velocity_x * velocity_x) + (velocity_y * velocity_y))
+end
+
+-- math funcs
+
+math.clamp2 = function(value, min, max)
+    return math.min(math.max(value, min), max)
+end
+
+math.clamp = function(v, min, max)
+    if (min > max) then
+        min, max = max, min
+    end
+
+    if (v > max) then
+        return max
+    end
+
+    if (v < min) then
+        return v
+    end
+    return v
+end
+
+math.vec_length2d = function(vec)
+    root = 0.0
+    sqst = vec.x * vec.x + vec.y * vec.y
+    
+    root = math.sqrt(sqst)
+    return root
+end
+
+math.angle_diff = function(dest, src)
+    local delta = 0.0
+    
+    delta = math.fmod(dest - src, 360.0)
+    if (dest > src) then
+        if (delta >= 180) then
+            delta = delta - 360
+        end
+    else
+        if (delta <= -180) then
+            delta = delta + 360
+        end
+    end
+    return delta
+end
+
+math.angle_normalize = function(angle)
+    local ang = 0.0
+    
+    ang = math.fmod(angle, 360.0)
+    if (ang < 0.0) then
+        ang = ang + 360
+    end
+    return ang
+end
+
+math.anglemod = function(a)
+    return (360 / 65536) * bit.band(math.floor(a * (65536 / 360.0), 65535))
+end
+
+math.approach_angle = function(target, value, speed)
+    target = math.anglemod(target)
+    value = math.anglemod(value)
+
+    local delta = target - value
+    if (speed < 0) then
+        speed = -speed
+    end
+
+    if (delta < -180) then
+        delta = delta + 360
+    elseif (delta > 180) then
+        delta = delta - 360
+    end
+
+    if (delta > speed) then
+        value = value + speed
+    elseif (delta < -speed) then
+        value = value - speed
+    else
+        value = target
+    end
+    return value
+end
+
+math.yaw_to_player = function(player, forward)
+    if (player) then
+        local lp_origin = entity_list_get_local_player():get_render_origin()
+        local pl_origin = player:get_render_origin()
+    
+        local yaw = (-math.atan2(pl_origin.x - lp_origin.x, pl_origin.y - lp_origin.y) / 3.14 * 180 + 180) - (forward and 90 or -90)
+        if (yaw >= 180) then
+            yaw = 360 - yaw
+            yaw = -yaw
+        end
+        return yaw
+    else
+        return 0
+    end
+end
+
+-- vector funcs
+
+vector.to_angle = function(vec_1)
+    local temp, pitch, yaw = 0, 0, 0
+    if (vec_1.y == 0 and vec_1.x == 0) then
+        yaw = 0
+        if (vec_1.z > 0) then
+            pitch = 270
+        else
+            pitch = 90
+        end
+    else
+        yaw = math.atan2(vec_1.y, vec_1.x) * 180 / math.pi
+        if (yaw < 0) then
+            yaw = yaw + 360
+        end
+
+        temp = math.sqrt(vec_1.x * vec_1.x + vec_1.y * vec_1.y)
+        pitch = math.atan2(-vec_1.z, temp) * 180 / math.pi
+
+        if (pitch < 0) then
+            pitch = pitch + 360
+        end
+    end
+    return vec3_t(pitch, yaw, 0)
+end
+
+-- array funcs
+
+array.put = function(array, val)
+    array[#array + 1] = val
+end
+
+array.has = function(array, val)
+    is_exist = false
+    for i = 1, #array do
+        if (array[i] == val) then
+            is_exist = true
+        end
+    end
+    return is_exist
+end
+
+-- visual funcs
+
+anim_lerp = function(start, end_pos, time)
+    return start + (end_pos - start) * (globals.frame_time() * time)
+end
+
+animated_sc = function(name, new_value, speed, init)
+    speed = speed or 0.07
+    if (anim_database[name] == nil) then
+        anim_database[name] = (init and init) or 0
+    end
+
+    anim_database[name] = anim_lerp(anim_database[name], new_value, speed)
+    return anim_database[name]
+end
+
+animated_text = function(font, text, accent_color, position, speed)
+    local data, total_width = {}, 0
+    local len, two_pi = #text, math.pi * 1.5
+    local clr1 = speed == 0 and color_t(255, 255, 255, 255) or color_t(0, 0, 0, 155)
+
+    for idx = 1, len do
+        local modifier = two_pi / len * idx
+        
+        local char = text:sub(idx, idx)
+        local char_width = render_get_text_size(font, char).x
+
+        data[idx] = {total_width, char, modifier}
+        total_width = total_width + char_width
+    end
+
+    total_width = total_width * 0.5
+    return function()
+        local time = -globals.cur_time() * math.pi * speed
+        local header_offset = position - vec2_t(total_width, 0)
+
+        for _, char in pairs(data) do
+            local char_pos = header_offset + vec2_t(char[1], 0)
+            local fade_value = math.sin(time + char[3]) * 0.5 + 0.5
+            local color = clr1:fade(accent_color, fade_value)
+
+            render_text(font, char[2], char_pos, color)
+        end
+    end
+end
+
+-- notifications funcs
+
+notifications.lerp = function(a, b, t)
+    return a + (b - a) * t
+end
+
+notifications.create = function(header, body, type)
+    table.insert(notifications.logs, {head = header, body = body, emoji = notifications.emoji_to_svg[type], time = globals.real_time(), pos = vec2_t(0, 0), init = false, height = 0, strings = {}})
+end
+
+notifications.render = function()
+    local global_text_height = 60
+    for i, log in pairs(notifications.logs) do
+        if (globals.real_time() - log.time <= 0.1) then
+            log.pos.y = global_text_height
+        end
+
+        if (not log.init) then
+            log.init = true
+
+            local top_height = 20
+            local text_height = 4
+
+            local cur_str = ""
+
+            local word = {
+                str = "",
+                length = 0
+            }
+
+            for str_index = 1, #log.body do
+                local letter = log.body:sub(str_index, str_index)
+
+                word.length = word.length + 1
+                word.str = word.str .. letter
+
+                if (letter == " ") then
+                    word.str = ""
+                    word.length = 0
+                end
+
+                if (not (cur_str == "" and letter == " ")) then
+                    cur_str = cur_str .. letter
+                end
+
+                local text_width = render_get_text_size(notifications.font, cur_str).x
+                if (text_width > notifications.width - notifications.padding * 2) then
+                    if (word.str == "") then
+                        text_height = text_height + render_get_text_size(notifications.font, cur_str).y
+                        table.insert(log.strings, cur_str)
+                        
+                        cur_str = ""
+                    else
+                        local cur_str_substring = cur_str:sub(1, #cur_str - word.length)
+                        text_height = text_height + render_get_text_size(notifications.font, cur_str_substring).y
+
+                        table.insert(log.strings, cur_str_substring)
+                        cur_str = word.str
+                    end
+                end
+            end
+
+            if (log.strings[#log.strings] ~= cur_str) then
+                table.insert(log.strings, cur_str)
+                text_height = text_height + render_get_text_size(notifications.font, cur_str).y
+            end
+
+            log.height = text_height + top_height
+        end
+
+        if (log.pos.x < 300 and log.time + notifications.delay > globals.real_time()) then
+            log.pos.x = notifications.lerp(log.pos.x, 270, 0.07)
+        end
+        log.pos.y = notifications.lerp(log.pos.y, global_text_height, 0.05)
+
+        local margin = (i - 1) * 10
+        local opacity = math.clamp2((log.time + notifications.delay - globals.real_time()) * 2.8, 0, 1)
+
+        render_push_alpha_modifier(opacity)
+        render_rect(vec2_t(screen_size.x - log.pos.x, log.pos.y + margin), vec2_t(notifications.width, log.height), ui.accent_color:get(), 5)
+
+        local color = ui.accent_color:get()
+        for i_ = 3, 0, -1 do
+            render_rect(vec2_t(screen_size.x - log.pos.x - (4 - i_), log.pos.y + margin - (4 - i_)), vec2_t(notifications.width + (4 - i_) * 2, log.height + (4 - i_) * 2), color_t(color.r, color.g, color.b, i_ * 10), 10)
+        end
+
+        render_rect_filled(vec2_t(screen_size.x - log.pos.x, log.pos.y + margin), vec2_t(notifications.width, log.height), notifications.background_color, 5)
+        render_text(notifications.font2, log.head, vec2_t(screen_size.x - log.pos.x + notifications.padding + 15, log.pos.y + margin + notifications.padding - 1), ui.accent_color:get())
+
+        render_texture(log.emoji.id, vec2_t(screen_size.x - log.pos.x + notifications.padding - 5, log.pos.y + margin + notifications.padding - 3), vec2_t(72 / 4, 72 / 4))
+        render_line(vec2_t(screen_size.x - log.pos.x + 2, log.pos.y + margin + 20), vec2_t(screen_size.x - log.pos.x + (notifications.width - 4) * ((math.clamp2(globals.real_time() - log.time, 0, notifications.delay - 0.5)) / (notifications.delay - 0.5)), log.pos.y + margin + 20), ui.text_color:get())
+
+        for index, str in pairs(log.strings) do
+            render_text(notifications.font, str, vec2_t(screen_size.x - log.pos.x + notifications.padding, log.pos.y + margin + notifications.padding + index * 12 + 5), notifications.neutral_color)
+        end
+
+        render_pop_alpha_modifier()
+        if (opacity <= 0) then
+            table.remove(notifications.logs, i)
+        end
+        global_text_height = global_text_height + log.height
+    end
+end
+
+-- logs funcs
+
+logs.lerp = function(a, b, t)
+    return a * (1 - t) + b * t
+end
+
+logs.add_hitlog = function(ctx)
+    table.insert(logs.logs, { type = "hit", pos = vec2_t(0, 0), cached_pos = vec2_t(0, 0), opacity = 0, time = globals.real_time(), player = ctx.player:get_name(), damage_dealt = ctx.damage, damage_predicted = ctx.aim_damage, hitbox = hit_groups[ctx.hitgroup], hitbox_predicted = hit_groups[ctx.aim_hitgroup]})
+end
+
+logs.add_misslog = function(ctx)
+    table.insert(logs.logs, { type = "miss", pos = vec2_t(0, 0), cached_pos = vec2_t(0, 0), opacity = 0, time = globals.real_time(), reason = ctx.reason_string, player = ctx.player ~= nil and ctx.player:get_name() or "unknown", safepoint = ctx.aim_safepoint, damage_predicted = ctx.aim_damage, hitbox = client_get_hitgroup_name(ctx.aim_hitgroup) })
+end
+
+handle_logs = function()
+    local rainbow_colors = {
+        color_t(255, 113, 237, 255),
+        color_t(247, 120, 243, 255),
+        color_t(239, 126, 249, 255),
+        color_t(230, 132, 254, 255),
+        color_t(222, 138, 255, 255),
+        color_t(213, 143, 255, 255),
+        color_t(204, 148, 255, 255),
+        color_t(196, 153, 255, 255),
+        color_t(187, 157, 255, 255),
+        color_t(179, 162, 255, 255),
+        color_t(171, 165, 255, 255),
+        color_t(163, 169, 255, 255),
+        color_t(156, 172, 255, 255),
+        color_t(150, 176, 255, 255),
+        color_t(144, 178, 255, 255),
+        color_t(138, 181, 255, 255),
+        color_t(134, 184, 255, 255),
+        color_t(131, 186, 255, 255),
+        color_t(128, 188, 255, 255),
+        color_t(127, 190, 255, 255),
+
+        color_t(255, 0, 0, 255),
+        color_t(255, 0, 12, 255),
+        color_t(255, 0, 21, 255),
+        color_t(255, 0, 29, 255),
+        color_t(255, 0, 36, 255),
+        color_t(255, 0, 42, 255),
+        color_t(255, 0, 48, 255),
+        color_t(255, 0, 54, 255),
+        color_t(255, 0, 60, 255),
+        color_t(255, 0, 66, 255),
+        color_t(255, 0, 71, 255),
+        color_t(255, 0, 77, 255),
+        color_t(255, 0, 83, 255),
+        color_t(255, 0, 89, 255),
+        color_t(255, 0, 95, 255),
+        color_t(255, 0, 101, 255),
+        color_t(255, 0, 107, 255),
+        color_t(255, 0, 113, 255),
+        color_t(255, 0, 119, 255),
+        color_t(255, 0, 125, 255),
+
+        color_t(255, 0, 0, 255),
+        color_t(255, 64, 0, 255),
+        color_t(255, 128, 0, 255),
+        color_t(255, 191, 0, 255),
+        color_t(255, 255, 0, 255),
+        color_t(191, 255, 0, 255),
+        color_t(128, 255, 0, 255),
+        color_t(64, 255, 0, 255),
+        color_t(0, 255, 0, 255),
+        color_t(0, 255, 64, 255),
+        color_t(0, 255, 128, 255),
+        color_t(0, 255, 191, 255),
+        color_t(0, 255, 255, 255),
+        color_t(0, 191, 255, 255),
+        color_t(0, 128, 255, 255),
+        color_t(0, 64, 255, 255),
+        color_t(0, 0, 255, 255),
+        color_t(64, 0, 255, 255),
+        color_t(128, 0, 255, 255),
+        color_t(191, 0, 255, 255),
+
+        color_t(168, 0, 255, 255),
+        color_t(164, 6, 255, 255),
+        color_t(159, 13, 255, 255),
+        color_t(155, 19, 255, 255),
+        color_t(151, 25, 255, 255),
+        color_t(146, 32, 255, 255),
+        color_t(142, 38, 255, 255),
+        color_t(138, 44, 255, 255),
+        color_t(134, 50, 255, 255),
+        color_t(129, 57, 255, 255),
+        color_t(125, 63, 255, 255),
+        color_t(121, 69, 255, 255),
+        color_t(116, 76, 255, 255),
+        color_t(112, 82, 255, 255),
+        color_t(108, 88, 255, 255),
+        color_t(103, 95, 255, 255),
+        color_t(99, 101, 255, 255),
+        color_t(95, 107, 255, 255),
+        color_t(90, 114, 255, 255)
+    }
+
+    local random_color = rainbow_colors[math.random(#rainbow_colors)]
+    for i = #logs.logs, 1, -1 do
+        local log = logs.logs[i]
+        local string_
+
+        if (log.type == 'hit') then
+            string_ = string.format('azura » hit %s in %s (%s) for %i (%i)', log.player, log.hitbox, log.hitbox_predicted, log.damage_dealt, log.damage_predicted)
+        else
+            string_ = string.format('azura » missed (%s) %s in %s for %i (safe: %s)', log.reason, log.player, log.hitbox, log.damage_predicted, log.safepoint)
+        end
+
+        log.pos.y = (i - 1) * 22 + 0
+
+        local orig_offset = vec2_t(screen_size.x / 2, screen_size.y / 2 + 100)
+        orig_offset = orig_offset - vec2_t(render_get_text_size(logs.font, string_).x / 2, 0)
+
+        if (globals.real_time() - log.time <= 0.1) then
+            log.pos.x = -render_get_text_size(logs.font, string_).x
+            log.cached_pos.y = log.pos.y
+        elseif (globals.real_time() - log.time <= 1) then
+            log.pos.x = logs.lerp(log.pos.x, 5, 0.1)
+            log.opacity = logs.lerp(log.opacity, 255, 0.1)
+        elseif (globals.real_time() - log.time >= 3) then
+            log.pos.x = logs.lerp(log.pos.x, -render_get_text_size(logs.font, string_).x - 5, 0.1)
+            log.opacity = logs.lerp(log.opacity, 0, 0.1)
+        end
+
+        if (log.cached_pos.y ~= log.pos.y) then
+            log.cached_pos.y = logs.lerp(log.cached_pos.y, log.pos.y, 0.1)
+        end
+        log.cached_pos.x = log.pos.x
+
+        local offset = 0
+        local height = 0
+
+        local color_accent = color_t(ui.accent_color:get().r, ui.accent_color:get().g, ui.accent_color:get().b, math.floor(log.opacity))
+        local color_default = color_t(logs.neutral_color.r, logs.neutral_color.g, logs.neutral_color.b, math.floor(log.opacity))
+        local color_bg = color_t(logs.background_color.r, logs.background_color.g, logs.background_color.b, math.floor(log.opacity))
+
+        local bg_size = render_get_text_size(logs.font, string_) + vec2_t(14, 6)
+        render_push_clip(orig_offset + log.cached_pos + vec2_t(offset - 7, height + bg_size.y / 2), vec2_t(bg_size.x * (globals.real_time() - log.time) / 2.8, bg_size.y / 2))
+        
+        render_rect(orig_offset + log.cached_pos + vec2_t(offset - 7, height - 3), bg_size, color_accent, 7)
+        render_pop_clip()
+
+        render_text(logs.font, 'azura', orig_offset + log.cached_pos + vec2_t(offset, height), color_accent)
+        offset = offset + render_get_text_size(logs.font, 'azura').x
+
+        render_text(logs.font, ' » ', orig_offset + log.cached_pos + vec2_t(offset, height), random_color)
+        offset = offset + render_get_text_size(logs.font, ' » ').x
+
+        if (log.type == 'hit') then
+            render_text(logs.font, 'hit ', orig_offset + log.cached_pos + vec2_t(offset, height), color_default)
+            offset = offset + render_get_text_size(logs.font, 'hit ').x
+
+            render_text(logs.font, log.player, orig_offset + log.cached_pos + vec2_t(offset, height), color_accent)
+            offset = offset + render_get_text_size(logs.font, log.player).x
+
+            render_text(logs.font, ' in ', orig_offset + log.cached_pos + vec2_t(offset, height), color_default)
+            offset = offset + render_get_text_size(logs.font, ' in ').x
+
+            render_text(logs.font, log.hitbox, orig_offset + log.cached_pos + vec2_t(offset, height), color_accent)
+            offset = offset + render_get_text_size(logs.font, log.hitbox).x
+
+            render_text(logs.font, ' (', orig_offset + log.cached_pos + vec2_t(offset, height), color_default)
+            offset = offset + render_get_text_size(logs.font, ' (').x
+
+            render_text(logs.font, tostring(log.hitbox_predicted), orig_offset + log.cached_pos + vec2_t(offset, height), color_accent)
+            offset = offset + render_get_text_size(logs.font, tostring(log.hitbox_predicted)).x
+            
+            render_text(logs.font, ')', orig_offset + log.cached_pos + vec2_t(offset, height), color_default)
+            offset = offset + render_get_text_size(logs.font, ')').x
+
+            render_text(logs.font, ' for ', orig_offset + log.cached_pos + vec2_t(offset, height), color_default)
+            offset = offset + render_get_text_size(logs.font, ' for ').x
+
+            render_text(logs.font, tostring(log.damage_dealt), orig_offset + log.cached_pos + vec2_t(offset, height), color_accent)
+            offset = offset + render_get_text_size(logs.font, tostring(log.damage_dealt)).x
+
+            render_text(logs.font, ' (', orig_offset + log.cached_pos + vec2_t(offset, height), color_default)
+            offset = offset + render_get_text_size(logs.font, ' (').x
+
+            render_text(logs.font, tostring(log.damage_predicted), orig_offset + log.cached_pos + vec2_t(offset, height), color_accent)
+            offset = offset + render_get_text_size(logs.font, tostring(log.damage_predicted)).x
+
+            render_text(logs.font, ')', orig_offset + log.cached_pos + vec2_t(offset, height), color_default)
+        elseif (log.type == 'miss') then
+            render_text(logs.font, 'missed ', orig_offset + log.cached_pos + vec2_t(offset, height), color_default)
+            offset = offset + render_get_text_size(logs.font, 'missed ').x
+            
+            render_text(logs.font, '(', orig_offset + log.cached_pos + vec2_t(offset, height), color_default)
+            offset = offset + render_get_text_size(logs.font, '(').x
+            
+            render_text(logs.font, log.reason, orig_offset + log.cached_pos + vec2_t(offset, height), color_accent)
+            offset = offset + render_get_text_size(logs.font, log.reason).x
+            
+            render_text(logs.font, ')', orig_offset + log.cached_pos + vec2_t(offset, height), color_default)
+            offset = offset + render_get_text_size(logs.font, ')').x
+            
+            render_text(logs.font, ' ' .. log.player, orig_offset + log.cached_pos + vec2_t(offset, height), color_accent)
+            offset = offset + render_get_text_size(logs.font, ' ' .. log.player).x
+            
+            render_text(logs.font, ' at ', orig_offset + log.cached_pos + vec2_t(offset, height), color_default)
+            offset = offset + render_get_text_size(logs.font, ' at ').x            
+            render_text(logs.font, log.hitbox, orig_offset + log.cached_pos + vec2_t(offset, height), color_accent)
+            offset = offset + render_get_text_size(logs.font, log.hitbox).x
+            
+            render_text(logs.font, ' for ', orig_offset + log.cached_pos + vec2_t(offset, height), color_default)
+            offset = offset + render_get_text_size(logs.font, ' for ').x
+            
+            render_text(logs.font, tostring(log.damage_predicted), orig_offset + log.cached_pos + vec2_t(offset, height), color_accent)
+            offset = offset + render_get_text_size(logs.font, tostring(log.damage_predicted)).x
+            
+            render_text(logs.font, ' (safe: ', orig_offset + log.cached_pos + vec2_t(offset, height), color_default)
+            offset = offset + render_get_text_size(logs.font, ' (safe: ').x
+            
+            render_text(logs.font, tostring(log.safepoint), orig_offset + log.cached_pos + vec2_t(offset, height), color_accent)
+            offset = offset + render_get_text_size(logs.font, tostring(log.safepoint)).x
+            
+            render_text(logs.font, ')', orig_offset + log.cached_pos + vec2_t(offset, height), color_default)
+        end
+
+        if (log.time + 3 < globals.real_time() and log.pos.x <= -render_get_text_size(logs.font, string_).x) then
+            table.remove(logs.logs, i)
+        end
+    end
+end
+
+--- @endregion
+
+--- @info: config system
+--- @region: config
+
+-- cloud based
+
+-- default.cfg: the owner's config (resolver, anti-aim and the rest), applied on the first start (no csgo/azura folder yet)
+configs.default_config = "eyJIZWxwZXJzIjpbWyJGaXggY29ycmVjdGlvbiIsdHJ1ZV0sWyJSdWJiZXJiYW5nIix0cnVlXSxbIkxhZyBvbiBzaG9vdCIsZmFsc2VdXSwiQ29tbXVuaWNhdGlvbiI6W1siVHJhc2ggdGFsayIsMV0sWyJUYWxrIGJhY2siLGZhbHNlXSxbIlZvaWNlIHN0YXRlIiwzXV0sIk1pc2MiOltbIkZha2UgdHlwZSIsW1siSGVhZHNob3QiLGZhbHNlXSxbIldhbGxiYW5nIixmYWxzZV0sWyJObyBTY29wZSIsZmFsc2VdLFsiRmxhc2hlZCIsZmFsc2VdLFsiVGhydSBzbW9rZSIsZmFsc2VdLFsiRG9taW5hdGVkIixmYWxzZV0sWyJSZXZlbmdlIixmYWxzZV1dXSxbIktuaWZlYm90IGhlbHBlciIsdHJ1ZV0sWyJVbmxvY2sgbGF0ZW5jeSIsdHJ1ZV0sWyJGYXN0IHdlYXBvbiBzd2l0Y2giLHRydWVdLFsiQXV0byBkZWZ1c2UiLHRydWVdLFsiRmFrZSBtZWRpYSIsZmFsc2VdXSwiUGxheWVyIjpbWyJBbmltYXRpb24gYnJlYWtlciIsZmFsc2VdLFsiU3VwZXIgdG9zcyIsMV0sWyJDb29sIHRlYW0gYW5pbWF0aW9uIixmYWxzZV0sWyJWaXN1YWwgcmVjb2lsIixmYWxzZV0sWyJGYXN0IGxhZGRlciIsW1siVXAiLHRydWVdLFsiRG93biIsdHJ1ZV1dXV0sIlRpY2tiYXNlIjpbWyJJbXByb3ZlIGJhY2t0cmFjayIsdHJ1ZV0sWyJSZWNvcmQgd2VpZ2h0aW5nIHR5cGUiLDFdLFsiQWdncmVzc2l2ZSBmYWN0b3IiLDE1XSxbIkJhY2t0cmFjayBleHBpcmF0aW9uIiwxXSxbIkxvdyBwZXJmb3JtYW5jZSBtb2RlIixmYWxzZV0sWyJFeHRlbmRlZCBiYWNrdHJhY2siLGZhbHNlXSxbIk1heCB0YXJnZXRzIiwyXSxbIkFkanVzdCB0aWNrcyBkeW5hbWljYWxseSIsMl0sWyJFbmFibGUgaW50ZXJwb2xhdGlvbiIsdHJ1ZV0sWyJQcmlvcml0aXplIG9sZGVyIHJlY29yZHMiLGZhbHNlXSxbIlByZWRpY3Rpb24gZmFjdG9yIiwxMV0sWyJCYWNrdHJhY2sgc21vb3RoaW5nIiw5XSxbIlNtb290aCB0cmFuc2l0aW9uIix0cnVlXSxbIlRyYW5zaXRpb24gc3BlZWQiLDI1XSxbIkVuYWJsZSBleHRyYXBvbGF0aW9uIix0cnVlXSxbIkFnZ3Jlc3NpdmUgYmFja3RyYWNrIix0cnVlXSxbIlRyYW5zaXRpb24gcHJpb3JpdHkiLDJdXSwiUmVzb2x2ZXIiOltbIkxvZ2ljIHJlc29sdmVyIix0cnVlXSxbIkltcHJvdmUgcmVzb2x2ZXIiLHRydWVdXSwiRXhwbG9pdHMiOltbIkRUIFNwZWVkIiwxMl0sWyJCZXR0ZXIgaGlkZXNob3RzIix0cnVlXSxbIkltcHJvdmUgZG91YmxldGFwIix0cnVlXSxbIk9wdGltaXplIGRvdWJsZXRhcCIsdHJ1ZV0sWyJTYWZlIHJlY2hhcmdlIix0cnVlXSxbIk1vZGUiLDFdLFsiU3BlZWQgY2FsY3VsYXRpb24iLDJdXSwiR2xvYmFsIjpbWyJQaXRjaCIsMl0sWyJCYXNlIiwyXSxbIkRlZmVuc2l2ZSBtb2RlIiwyXV0sIlV0aWxzIjpbWyJHbG93IGVmZmVjdHMiLHRydWVdLFsiVGVzbGEgY29sb3IiLDI1NSw4MCw4MCwyNTVdLFsiQ29uc29sZSBjb2xvciIsNTUsNTUsNTUsMTU0XSxbIkFsdCBjb2xvciIsMjAwLDE5OSwxOTcsMjU1XSxbIldhdGVybWFyayIsZmFsc2VdLFsiS2V5YmluZHMiLGZhbHNlXSxbIk1haW4gY29sb3IiLDE3NywyNTUsODcsMjU1XSxbIkJveCBjb2xvciIsNDcsMTE3LDIyMSwyNTVdLFsiU3BlY3RhdG9ycyIsZmFsc2VdLFsiTG9ncyBzZWxlY3Rpb24iLFtbIlNob3cgc3RhdHMiLHRydWVdLFsiSGl0cyIsdHJ1ZV0sWyJQdXJjaGFzZXMiLGZhbHNlXSxbIkh1cnRzIix0cnVlXSxbIk1pc3NlcyIsdHJ1ZV0sWyJFdmFkZXMiLHRydWVdXV1dLCJDbG91ZCBjb25maWdzIjpbXSwiTW92ZW1lbnQiOltbIkp1bXBzaG90IGhlbHBlciIsdHJ1ZV0sWyJObyBmYWxsIGRhbWFnZSIsdHJ1ZV0sWyJBbnRpIGFmayIsZmFsc2VdXSwiQ29uZmlndXJhdGlvbiAoYmV0YSkiOltbIkF0IGRpc2FibGVyIiwzXSxbIllhdyBjYWxjdWxhdGlvbiIsM10sWyJEaXNhYmxlcnMiLFtbIkluIGFpciIsZmFsc2VdLFsiSW4gYWlyZHVjayIsZmFsc2VdLFsiQXQgZHVjayIsZmFsc2VdLFsiQXQgcGVlayIsZmFsc2VdLFsiQXQgc2NvcGUiLGZhbHNlXSxbIkF0IG5vc2NvcGUiLGZhbHNlXSxbIldpdGggZG91YmxldGFwIixmYWxzZV0sWyJXaXRoIGhpZGVzaG90cyIsZmFsc2VdLFsiTG93IGZwcyAoPDc1ZnBzKSIsdHJ1ZV0sWyJIaWdoIHBpbmcgKD44MG1zKSIsdHJ1ZV1dXV0sIlN0YXRpc3RpY3MiOltdLCJIb21lIHwgYXp1cmEgdjUuNCAoYmV0YSkiOltbIlRleHQgY29sb3IiLDE0MCw3MSwyNDcsMjU1XSxbImF6dXJhLnVubyB8IHRlZSBoZWUhPDMiLDFdLFsiQWNjZW50IGNvbG9yIiwyMjIsMTUzLDE4NSwyNTVdXSwiVmlzdWFscyI6W1siQ2hpbmEgaGF0IixmYWxzZV0sWyJUZXNsYSBvbiBzaG9vdCIsZmFsc2VdLFsiQ3Jvc3NoYWlyIGluZGljYXRvcnMiLFtbIkRvdWJsZSB0YXAiLHRydWVdLFsiSGlkZSBzaG90cyIsdHJ1ZV0sWyJNaW5pbXVtIGRtZyIsdHJ1ZV0sWyJRdWljayBwZWVrIix0cnVlXSxbIkZyZWVzdGFuZCIsdHJ1ZV0sWyJQaW5nIHNwaWtlIix0cnVlXSxbIkZvcmNlIGJvZHlhaW0iLHRydWVdLFsiRm9yY2Ugc2FmZXBvaW50Iix0cnVlXSxbIk92ZXJyaWRlIGhpdGJveCIsdHJ1ZV0sWyJPdmVycmlkZSBoaXRjaGFuY2UiLHRydWVdXV0sWyJDb25zb2xlIGNvbG9yIix0cnVlXSxbIkVTUCBGb250IiwzXSxbIkRlYnVnIGxhZ2NvbXAiLHRydWVdLFsiUmlnaHQgaW5kaWNhdG9ycyIsW1siRG91YmxlIHRhcCIsdHJ1ZV0sWyJIaWRlIHNob3RzIix0cnVlXSxbIk1pbmltdW0gZG1nIix0cnVlXSxbIlF1aWNrIHBlZWsiLHRydWVdLFsiRnJlZXN0YW5kIix0cnVlXSxbIlBpbmcgc3Bpa2UiLHRydWVdLFsiRm9yY2UgYm9keWFpbSIsdHJ1ZV0sWyJGb3JjZSBzYWZlcG9pbnQiLHRydWVdLFsiT3ZlcnJpZGUgaGl0Ym94Iix0cnVlXSxbIk92ZXJyaWRlIGhpdGNoYW5jZSIsdHJ1ZV1dXSxbIkhhdCBjb2xvciIsODksMjM3LDI1NSwyNTVdXSwiRmVhdHVyZXMiOltbIkF2b2lkIG9uc2hvdCIsdHJ1ZV0sWyJBbnRpIGJhY2tzdGFiIix0cnVlXSxbIkNyb3VjaCBjb3JyZWN0aW9uIixbWyJZYXciLHRydWVdXV0sWyJSYW5kb21pemF0aW9uIixbWyJObyBlbmVtaWVzIGFsaXZlIixmYWxzZV0sWyJXYXJtdXAiLGZhbHNlXV1dLFsiU2FmZSBoZWFkIixbWyJBaXIga25pZmUiLHRydWVdLFsiQWxsb3cgZGVmZW5zaXZlIix0cnVlXV1dXSwiUmVzb2x2ZXIgKGJldGEpIjpbWyJTaG90IHByZWRpY3Rpb24iLDRdLFsiQ2FsY3VsYXRlIGJveCIsMTldLFsiQ3VzdG9tIHJlc29sdmVyIix0cnVlXSxbIkF1dG8gZHVjayIsdHJ1ZV0sWyJVbnNhZmUgcmVzb2x2ZXIiLHRydWVdLFsiU2FmZSBwZWVrIix0cnVlXSxbIlBvc2UgcmVzb2x2ZXIiLHRydWVdLFsiU2FmZSBtb2RlIiw0XSxbIkR1Y2sgbW9kZSIsZmFsc2VdLFsiSGl0IHNlbnNpdGl2aXR5IiwyNV0sWyJQcmVkaWN0aW9uIHNlbCIsMjBdXSwiUmFnZWJvdCI6W1siRGVmZW5zaXZlIHNhZmVwb2ludCIsdHJ1ZV0sWyJCb29zdGVyIG1vZGUiLDFdLFsiQWNjdXJhY3kgYm9vc3RlciIsdHJ1ZV0sWyJNdWx0aXBvaW50IGNvcnJlY3Rpb24iLHRydWVdXSwiWWF3IjpbWyJTVyB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLDBdLFsiT3ZlcnJpZGUgLSBBaXIgZHVjayIsdHJ1ZV0sWyJGIHwgTGVmdCIsMF0sWyJHIHwgTGVmdCIsLTE1XSxbIk0gfCBSaWdodCByYW5kb21pemF0aW9uIiwxOF0sWyJHIHwgWWF3IiwwXSxbIkQgfCBZYXcgbW9kZSIsM10sWyJBIHwgUmlnaHQgcmFuZG9taXphdGlvbiIsMjBdLFsiU1cgfCBZYXciLDBdLFsiRE0gfCBMZWZ0IiwtMThdLFsiQSB8IFlhdyBtb2RlIiwzXSxbIlNXIHwgTGVmdCByYW5kb21pemF0aW9uIiwwXSxbIk0gfCBZYXcgbW9kZSIsM10sWyJHIHwgWWF3IG1vZGUiLDJdLFsiUyB8IFlhdyIsMF0sWyJGUiB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLDldLFsiRlIgfCBSaWdodCIsMTFdLFsiUyB8IERlbGF5Iiw0XSxbIkcgfCBSaWdodCByYW5kb21pemF0aW9uIiwwXSxbIk0gfCBEZWxheSIsNV0sWyJETSB8IERlbGF5IiwyXSxbIkFEIHwgWWF3IiwwXSxbIlNXIHwgTGVmdCIsLTIwXSxbIkQgfCBEZWxheSIsMl0sWyJETSB8IExlZnQgcmFuZG9taXphdGlvbiIsMF0sWyJHIHwgRGVsYXkiLDVdLFsiRE0gfCBZYXciLDBdLFsiQSB8IERlbGF5IiwzXSxbIkZSIHwgRGVsYXkgZmx1Y3R1YXRpb24iLDNdLFsiRlIgfCBEZWxheSIsNV0sWyJNTiB8IExlZnQgcmFuZG9taXphdGlvbiIsMF0sWyJPdmVycmlkZSAtIE1vdmUiLHRydWVdLFsiUyB8IExlZnQgcmFuZG9taXphdGlvbiIsMF0sWyJPdmVycmlkZSAtIEFpciIsdHJ1ZV0sWyJEIHwgTGVmdCIsLTE1XSxbIk0gfCBSaWdodCIsMTBdLFsiRlIgfCBMZWZ0IHJhbmRvbWl6YXRpb24iLC0xMl0sWyJBIHwgWWF3IiwwXSxbIkZSIHwgWWF3IG1vZGUiLDJdLFsiT3ZlcnJpZGUgLSBHbG9iYWwiLHRydWVdLFsiQUQgfCBSaWdodCIsN10sWyJTVyB8IFlhdyBtb2RlIiwyXSxbIlMgfCBZYXcgbW9kZSIsMl0sWyJGUiB8IExlZnQiLC0xMV0sWyJHIHwgTGVmdCByYW5kb21pemF0aW9uIiwwXSxbIkQgfCBMZWZ0IHJhbmRvbWl6YXRpb24iLC0xMV0sWyJBRCB8IExlZnQiLC0xNV0sWyJPdmVycmlkZSAtIER1Y2siLHRydWVdLFsiTU4gfCBEZWxheSBmbHVjdHVhdGlvbiIsMF0sWyJPdmVycmlkZSAtIFNsb3cgd2FsayIsdHJ1ZV0sWyJBIHwgTGVmdCByYW5kb21pemF0aW9uIiwtMjBdLFsiRiB8IExlZnQgcmFuZG9taXphdGlvbiIsMF0sWyJGUiB8IFlhdyIsMF0sWyJTIHwgRGVsYXkgZmx1Y3R1YXRpb24iLDBdLFsiT3ZlcnJpZGUgLSBEdWNrIG1vdmUiLHRydWVdLFsiTSB8IERlbGF5IGZsdWN0dWF0aW9uIiw4XSxbIk92ZXJyaWRlIC0gRnJlZXN0YW5kIix0cnVlXSxbIk92ZXJyaWRlIC0gU3RhbmQiLHRydWVdLFsiTU4gfCBEZWxheSIsMl0sWyJNTiB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLDBdLFsiU1cgfCBEZWxheSIsOF0sWyJNTiB8IFJpZ2h0IiwwXSxbIkYgfCBEZWxheSBmbHVjdHVhdGlvbiIsMF0sWyJNTiB8IExlZnQiLDBdLFsiTU4gfCBZYXciLDBdLFsiRyB8IERlbGF5IGZsdWN0dWF0aW9uIiwwXSxbIk92ZXJyaWRlIC0gTWFudWFsIixmYWxzZV0sWyJBIHwgRGVsYXkgZmx1Y3R1YXRpb24iLDhdLFsiRCB8IERlbGF5IGZsdWN0dWF0aW9uIiw0XSxbIk1OIHwgWWF3IG1vZGUiLDFdLFsiTSB8IExlZnQgcmFuZG9taXphdGlvbiIsLTE4XSxbIkYgfCBEZWxheSIsMl0sWyJGIHwgUmlnaHQgcmFuZG9taXphdGlvbiIsMF0sWyJGIHwgWWF3IG1vZGUiLDFdLFsiRCB8IFJpZ2h0IiwxMF0sWyJGIHwgWWF3IiwwXSxbIkYgfCBSaWdodCIsMF0sWyJHIHwgUmlnaHQiLDEwXSxbIkFEIHwgTGVmdCByYW5kb21pemF0aW9uIiwwXSxbIkEgfCBSaWdodCIsMjVdLFsiRE0gfCBEZWxheSBmbHVjdHVhdGlvbiIsMF0sWyJTIHwgTGVmdCIsLTIzXSxbIkFEIHwgRGVsYXkgZmx1Y3R1YXRpb24iLDBdLFsiQUQgfCBEZWxheSIsNV0sWyJBRCB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLDBdLFsiQUQgfCBZYXcgbW9kZSIsMl0sWyJETSB8IFJpZ2h0IiwxNV0sWyJETSB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLDBdLFsiTSB8IFlhdyIsMF0sWyJTIHwgUmlnaHQgcmFuZG9taXphdGlvbiIsMF0sWyJTVyB8IFJpZ2h0IiwxNV0sWyJNIHwgTGVmdCIsLTEwXSxbIkQgfCBSaWdodCByYW5kb21pemF0aW9uIiwxMV0sWyJTIHwgUmlnaHQiLDI0XSxbIkRNIHwgWWF3IG1vZGUiLDJdLFsiU1cgfCBEZWxheSBmbHVjdHVhdGlvbiIsMF0sWyJPdmVycmlkZSAtIEZha2VsYWciLGZhbHNlXSxbIkEgfCBMZWZ0IiwtMjVdLFsiRCB8IFlhdyIsMF1dLCJTeXN0ZW0iOltbInZlcnNpb24iLCIxLjAiXSxbImJ1aWxkIiwiYmV0YSJdXSwiRGVmZW5zaXZlIjpbWyJGUiB8IERlZmVuc2l2ZSIsMV0sWyJTVyB8IFNwaW4gcmFuZ2UiLDBdLFsiQUQgfCBTcGluIHNwZWVkIiwxMDBdLFsiRE0gfCBTcGluIHJhbmdlIiwwXSxbIkEgfCBQaXRjaCB2YWx1ZSAoMSkiLC05MF0sWyJTVyB8IFlhdyB2YWx1ZSIsMF0sWyJBRCB8IERlZmVuc2l2ZSIsMl0sWyJGIHwgUGl0Y2ggdmFsdWUgKDEpIiwwXSxbIkQgfCBQaXRjaCB2YWx1ZSAoMSkiLC00N10sWyJTIHwgUGl0Y2ggdmFsdWUgKDIpIiwwXSxbIk1OIHwgRGVmZW5zaXZlIiwxXSxbIk0gfCBTcGluIHNwZWVkIiwwXSxbIkEgfCBEZWZlbnNpdmUiLDJdLFsiUyB8IFBpdGNoIHZhbHVlICgxKSIsMF0sWyJBIHwgWWF3IHZhbHVlIiwtOTBdLFsiRCB8IFlhdyB2YWx1ZSIsLTE4MF0sWyJBIHwgRGVmZW5zaXZlIHlhdyIsM10sWyJTIHwgU3BpbiByYW5nZSIsMF0sWyJBRCB8IFNwaW4gcmFuZ2UiLDM2MF0sWyJGIHwgRGVmZW5zaXZlIHlhdyIsMV0sWyJEIHwgRGVmZW5zaXZlIHlhdyIsNV0sWyJHIHwgRGVmZW5zaXZlIHlhdyIsNV0sWyJNTiB8IERlZmVuc2l2ZSB5YXciLDFdLFsiRiB8IFNwaW4gcmFuZ2UiLDBdLFsiRE0gfCBEZWZlbnNpdmUiLDFdLFsiRCB8IFNwaW4gc3BlZWQiLDEwMF0sWyJEIHwgU3BpbiByYW5nZSIsMzYwXSxbIkcgfCBTcGluIHNwZWVkIiwxMDBdLFsiQSB8IFNwaW4gc3BlZWQiLDEwMF0sWyJETSB8IFBpdGNoIHZhbHVlICgyKSIsLTI4XSxbIlMgfCBZYXcgdmFsdWUiLDBdLFsiRiB8IFNwaW4gc3BlZWQiLDBdLFsiRlIgfCBTcGluIHNwZWVkIiwxMDBdLFsiU1cgfCBEZWZlbnNpdmUgeWF3Iiw2XSxbIkZSIHwgRGVmZW5zaXZlIHlhdyIsM10sWyJGUiB8IFBpdGNoIHZhbHVlICgyKSIsLTkwXSxbIk1OIHwgUGl0Y2ggdmFsdWUgKDIpIiwwXSxbIk1OIHwgU3BpbiByYW5nZSIsMF0sWyJNIHwgU3BpbiByYW5nZSIsMF0sWyJBIHwgRGVmZW5zaXZlIHBpdGNoIiw5XSxbIkYgfCBZYXcgdmFsdWUiLDBdLFsiRlIgfCBEZWZlbnNpdmUgcGl0Y2giLDhdLFsiRyB8IFlhdyB2YWx1ZSIsMF0sWyJTVyB8IERlZmVuc2l2ZSBwaXRjaCIsN10sWyJBRCB8IFBpdGNoIHZhbHVlICgyKSIsLTkwXSxbIk1OIHwgRGVmZW5zaXZlIHBpdGNoIiwxXSxbIkRNIHwgUGl0Y2ggdmFsdWUgKDEpIiwtNTVdLFsiRE0gfCBZYXcgdmFsdWUiLC0xODBdLFsiTSB8IFlhdyB2YWx1ZSIsMF0sWyJNTiB8IFBpdGNoIHZhbHVlICgxKSIsMF0sWyJBIHwgU3BpbiByYW5nZSIsMzYwXSxbIk1OIHwgU3BpbiBzcGVlZCIsMF0sWyJGUiB8IFNwaW4gcmFuZ2UiLDM2MF0sWyJHIHwgRGVmZW5zaXZlIHBpdGNoIiwxMF0sWyJGUiB8IFBpdGNoIHZhbHVlICgxKSIsLTkwXSxbIkRNIHwgRGVmZW5zaXZlIHBpdGNoIiwxMF0sWyJHIHwgRGVmZW5zaXZlIiwxXSxbIkQgfCBEZWZlbnNpdmUiLDFdLFsiTSB8IFBpdGNoIHZhbHVlICgyKSIsMF0sWyJNIHwgRGVmZW5zaXZlIHBpdGNoIiw3XSxbIkFEIHwgRGVmZW5zaXZlIHBpdGNoIiw5XSxbIkZSIHwgWWF3IHZhbHVlIiwtOTBdLFsiTSB8IERlZmVuc2l2ZSIsMV0sWyJBRCB8IFBpdGNoIHZhbHVlICgxKSIsLTkwXSxbIkYgfCBEZWZlbnNpdmUgcGl0Y2giLDFdLFsiRiB8IERlZmVuc2l2ZSIsMV0sWyJBRCB8IERlZmVuc2l2ZSB5YXciLDNdLFsiTSB8IERlZmVuc2l2ZSB5YXciLDZdLFsiUyB8IERlZmVuc2l2ZSIsMV0sWyJTVyB8IFBpdGNoIHZhbHVlICgyKSIsMF0sWyJETSB8IERlZmVuc2l2ZSB5YXciLDRdLFsiU1cgfCBEZWZlbnNpdmUiLDFdLFsiRyB8IFBpdGNoIHZhbHVlICgyKSIsMF0sWyJETSB8IFNwaW4gc3BlZWQiLDBdLFsiUyB8IFNwaW4gc3BlZWQiLDBdLFsiU1cgfCBQaXRjaCB2YWx1ZSAoMSkiLDBdLFsiRyB8IFNwaW4gcmFuZ2UiLDM2MF0sWyJTIHwgRGVmZW5zaXZlIHlhdyIsNl0sWyJBRCB8IFlhdyB2YWx1ZSIsLTkwXSxbIkEgfCBQaXRjaCB2YWx1ZSAoMikiLC05MF0sWyJEIHwgRGVmZW5zaXZlIHBpdGNoIiw5XSxbIkYgfCBQaXRjaCB2YWx1ZSAoMikiLDBdLFsiU1cgfCBTcGluIHNwZWVkIiwwXSxbIkQgfCBQaXRjaCB2YWx1ZSAoMikiLC0yMF0sWyJNIHwgUGl0Y2ggdmFsdWUgKDEpIiwwXSxbIlMgfCBEZWZlbnNpdmUgcGl0Y2giLDddLFsiTU4gfCBZYXcgdmFsdWUiLDBdLFsiRyB8IFBpdGNoIHZhbHVlICgxKSIsMF1dLCJDdXN0b21pemF0aW9uIjpbWyJUZXNsYSDCtyBiZWFtcyIsMjBdLFsiSGF0IG1vZGUiLDFdLFsiVGVzbGEgwrcgd2lkdGgiLDddLFsiVGVzbGEgwrcgZGVsYXkiLDJdLFsiVGVzbGEgwrcgcmFkaXVzIiwxMDFdXSwiU3luY2hyb25pemF0aW9uIjpbWyJTeW5jZWQgcGxheWVycyIsW1siRGlzYWJsZSB0cmFzaC10YWxrIix0cnVlXSxbIklnbm9yZSB0YWxrLWJhY2siLHRydWVdLFsiQ2hhdCBtZW50aW9ucyIsdHJ1ZV1dXSxbIkNsYW4gdGFnIixmYWxzZV0sWyJTaGFyZWQgRVNQIix0cnVlXV0sIkRlc3luYyI6W1siRCB8IEZha2UgbGVmdCIsNjBdLFsiQSB8IEZha2UgbGVmdCIsNjBdLFsiU1cgfCBEZXN5bmMiLDFdLFsiRyB8IEZha2UgbGVmdCIsNjBdLFsiRiB8IEZha2UgbGVmdCIsMF0sWyJHIHwgTGVmdCByYW5kb21pemF0aW9uIiwtMTBdLFsiRCB8IExlZnQgcmFuZG9taXphdGlvbiIsLTIwXSxbIk1OIHwgRmFrZSByaWdodCIsMF0sWyJNIHwgUmlnaHQgcmFuZG9taXphdGlvbiIsMjBdLFsiQSB8IExlZnQgcmFuZG9taXphdGlvbiIsLTI1XSxbIlMgfCBGYWtlIHJpZ2h0Iiw2MF0sWyJTIHwgRmFrZSBsZWZ0Iiw2MF0sWyJETSB8IEZha2UgbGVmdCIsNTBdLFsiRlIgfCBGYWtlIHJpZ2h0Iiw2MF0sWyJTVyB8IEZha2UgbGVmdCIsNDVdLFsiTU4gfCBEZXN5bmMiLDFdLFsiRiB8IEZha2UgcmlnaHQiLDBdLFsiRlIgfCBMZWZ0IHJhbmRvbWl6YXRpb24iLC0yMF0sWyJGUiB8IEZha2UgbGVmdCIsNjBdLFsiRyB8IEZha2UgcmlnaHQiLDYwXSxbIkRNIHwgRmFrZSByaWdodCIsNTBdLFsiQSB8IEZha2UgcmlnaHQiLDYwXSxbIkQgfCBGYWtlIHJpZ2h0Iiw2MF0sWyJTIHwgRGVzeW5jIiwzXSxbIk1OIHwgUmlnaHQgcmFuZG9taXphdGlvbiIsMF0sWyJBIHwgRGVzeW5jIiwzXSxbIk0gfCBMZWZ0IHJhbmRvbWl6YXRpb24iLC0yMF0sWyJTVyB8IExlZnQgcmFuZG9taXphdGlvbiIsLTE1XSxbIkQgfCBEZXN5bmMiLDNdLFsiRlIgfCBSaWdodCByYW5kb21pemF0aW9uIiwyNV0sWyJGIHwgRGVzeW5jIiwxXSxbIkcgfCBEZXN5bmMiLDNdLFsiRiB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLDBdLFsiRyB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLC0xMF0sWyJEIHwgUmlnaHQgcmFuZG9taXphdGlvbiIsLTIwXSxbIkYgfCBMZWZ0IHJhbmRvbWl6YXRpb24iLDBdLFsiQUQgfCBSaWdodCByYW5kb21pemF0aW9uIiwxNF0sWyJNIHwgRGVzeW5jIiwzXSxbIk0gfCBGYWtlIGxlZnQiLDU1XSxbIkFEIHwgTGVmdCByYW5kb21pemF0aW9uIiwtMTFdLFsiQUQgfCBGYWtlIGxlZnQiLDYwXSxbIk0gfCBGYWtlIHJpZ2h0Iiw0NV0sWyJBRCB8IEZha2UgcmlnaHQiLDYwXSxbIkRNIHwgTGVmdCByYW5kb21pemF0aW9uIiwtMTRdLFsiQUQgfCBEZXN5bmMiLDFdLFsiUyB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLC0yMF0sWyJTVyB8IEZha2UgcmlnaHQiLDQ1XSxbIkEgfCBSaWdodCByYW5kb21pemF0aW9uIiwtMjBdLFsiTU4gfCBGYWtlIGxlZnQiLDBdLFsiRE0gfCBEZXN5bmMiLDNdLFsiTU4gfCBMZWZ0IHJhbmRvbWl6YXRpb24iLDBdLFsiU1cgfCBSaWdodCByYW5kb21pemF0aW9uIiwyMF0sWyJTIHwgTGVmdCByYW5kb21pemF0aW9uIiwtMjddLFsiRE0gfCBSaWdodCByYW5kb21pemF0aW9uIiwxNF0sWyJGUiB8IERlc3luYyIsMl1dLCJKaXR0ZXIiOltbIkZSIHwgTW9kaWZpZXIgbW9kZSIsMV0sWyJTVyB8IE1vZGlmaWVyIG1vZGUiLDNdLFsiU1cgfCBNb2RpZmllciByYW5kb21pemF0aW9uIiwxN10sWyJGUiB8IE1vZGlmaWVyIGRlZ3JlZSIsLTE4XSxbIkFEIHwgTW9kaWZpZXIgZGVncmVlIiwtMTBdLFsiRE0gfCBNb2RpZmllciByYW5kb21pemF0aW9uIiwtMTBdLFsiU1cgfCBNb2RpZmllciBkZWdyZWUiLC0yN10sWyJBIHwgTW9kaWZpZXIgZGVncmVlIiwtMzBdLFsiQUQgfCBNb2RpZmllciBtb2RlIiwzXSxbIkZSIHwgTW9kaWZpZXIgcmFuZG9taXphdGlvbiIsMTVdLFsiUyB8IE1vZGlmaWVyIGRlZ3JlZSIsLTE1XSxbIkEgfCBNb2RpZmllciBtb2RlIiwzXSxbIkcgfCBNb2RpZmllciBkZWdyZWUiLC0yNV0sWyJEIHwgTW9kaWZpZXIgZGVncmVlIiwtMjBdLFsiRyB8IE1vZGlmaWVyIG1vZGUiLDNdLFsiRiB8IE1vZGlmaWVyIGRlZ3JlZSIsMF0sWyJEIHwgTW9kaWZpZXIgbW9kZSIsMV0sWyJGIHwgTW9kaWZpZXIgbW9kZSIsMV0sWyJETSB8IE1vZGlmaWVyIG1vZGUiLDFdLFsiTU4gfCBNb2RpZmllciBkZWdyZWUiLDBdLFsiRCB8IE1vZGlmaWVyIHJhbmRvbWl6YXRpb24iLDE1XSxbIkcgfCBNb2RpZmllciByYW5kb21pemF0aW9uIiwxM10sWyJGIHwgTW9kaWZpZXIgcmFuZG9taXphdGlvbiIsMF0sWyJNIHwgTW9kaWZpZXIgbW9kZSIsMV0sWyJNIHwgTW9kaWZpZXIgcmFuZG9taXphdGlvbiIsMTddLFsiTU4gfCBNb2RpZmllciByYW5kb21pemF0aW9uIiwwXSxbIlMgfCBNb2RpZmllciBtb2RlIiwxXSxbIlMgfCBNb2RpZmllciByYW5kb21pemF0aW9uIiw4XSxbIkRNIHwgTW9kaWZpZXIgZGVncmVlIiwtMjVdLFsiTSB8IE1vZGlmaWVyIGRlZ3JlZSIsLTMxXSxbIkEgfCBNb2RpZmllciByYW5kb21pemF0aW9uIiwtMTVdLFsiTU4gfCBNb2RpZmllciBtb2RlIiwxXSxbIkFEIHwgTW9kaWZpZXIgcmFuZG9taXphdGlvbiIsMTVdXSwiQ29uZmlncyI6W10sIlNldHRpbmdzIjpbWyJDdXN0b20gYW50aWFpbSIsdHJ1ZV0sWyJDb25kaXRpb24iLDddLFsiRWRnZSB5YXciLGZhbHNlXV19"
+
+configs.apply_default = function()
+    pcall(libs.eui.import, libs.base64.decode(configs.default_config))
+end
+
+configs.reload_configs = function()
+    local first_start = not libs.filesystem.is_directory(configs.dir)
+    if (first_start) then
+        libs.filesystem.create_directory(configs.dir, "")
+    end
+
+    if (first_start) then
+        configs.apply_default()
+    end
+    libs.filesystem.write(configs.default_dir, configs.default_config)
+    ui.configs.list.ref:set_items(libs.filesystem.get_files())
+end
+
+configs.reload_cloud_configs = function()
+    local encoded_data = {
+        type = "refresh_list",
+        is_beta = tostring(info.beta_build)
+    }
+    app_client.send(libs.json.encode(encoded_data))
+
+    local response_success, response_result = app_client.receive(65535)
+    if (not response_success) then
+        notifications.create("azura.uno", "Cloud is offline!", notifications.types.warning)
+        return
+    end
+
+    local decode_success, decode_result = libs.json.parse(response_success)
+    if (not decode_success) then
+        print("connection has failed. ", get_text_color(), "(error parsing response)")
+        error("azura · an internal error has occurred ~ 0xA9EFD4")
+    end
+
+    if (decode_success.status == "refresh_list") then
+        local decoded_data = decode(decode_success.encrypted_data)
+        local data = libs.json.parse(decoded_data)
+
+        if (data) then
+            ui.configs.cloud_list.ref:set_items(data or {})
+        else
+            print("connection has failed. ", get_text_color(), "(error parsing data)")
+            error("azura · an internal error has occurred ~ 0x2C4E78")
+        end
+    else
+        print("connection has failed. ", get_text_color(), "(unexpected response)")
+        error("azura · an internal error has occurred ~ 0xFF9847")
+    end
+end
+
+ui.reload_cloud_config = menu_add_button("Cloud configs", "Refresh",
+    function()
+        configs.reload_cloud_configs()
+    end
+)
+
+ui.update_cloud_config = menu_add_button("Cloud configs", "Update",
+    function()
+        local config = libs.eui.export()
+        local config_table = libs.json.parse(config)
+        
+        config_table["System"] = {
+            {"version", config_version},
+            {"build", config_build}
+        }
+
+        local encoded_data = {
+            type = "update_config",
+
+            username = encode(tostring(info.user)),
+            is_beta = tostring(info.beta_build),
+
+            config_name = encode(ui.configs.cloud_list.ref:get_active_item_name():match("~ (.+)$")),
+            config_data = libs.base64.encode(libs.json.encode(config_table))
+        }
+        app_client.send(libs.json.encode(encoded_data))
+
+        local response_success, response_result = app_client.receive(65535)
+        if (not response_success) then
+            notifications.create("azura.uno", "Cloud is offline!", notifications.types.warning)
+            return
+        end
+
+        local decode_success, decode_result = libs.json.parse(response_success)
+        if (not decode_success) then
+            print("connection has failed. ", get_text_color(), "(error parsing response)")
+            error("azura · an internal error has occurred ~ 0x3AB6D1")
+        end
+
+        if (decode_success.status == "update_config") then
+            local decoded_data = decode(decode_success.encrypted_data)
+            local data = libs.json.parse(decoded_data)
+    
+            if (data) then
+                if (data.status == "success") then
+                    notifications.create("azura.uno", "Config update completed! Changes saved to the cloud.", notifications.types.success)
+                    print("config has been synced to the cloud.")
+                elseif (data.message == "no_perm") then
+                    notifications.create("azura.uno", "Insufficient permissions to modify this config!", notifications.types.warning)
+                    print("modification of this config is not permitted.")
+                elseif (data.message == "bad_cfg") then
+                    notifications.create("azura.uno", "The config does not appear to exist!", notifications.types.failure)
+                    print("config does not appear to exist.")
+                else
+                    print("connection has failed. ", get_text_color(), "(", data.message or "unknown error", ")")
+                    error("azura · an internal error has occurred ~ 0x9E25C8")
+                end
+            else
+                print("connection has failed. ", get_text_color(), "(error parsing data)")
+                error("azura · an internal error has occurred ~ 0xB74C8E")
+            end
+        else
+            print("connection has failed. ", get_text_color(), "(unexpected response)")
+            error("azura · an internal error has occurred ~ 0xF47E9A")
+        end
+    end
+)
+
+ui.delete_cloud_config = menu_add_button("Cloud configs", "Delete",
+    function()
+        local encoded_data = {
+            type = "delete_config",
+            
+            username = encode(tostring(info.user)),
+            config_name = encode(ui.configs.cloud_list.ref:get_active_item_name():match("~ (.+)$"))
+        }
+        app_client.send(libs.json.encode(encoded_data))
+
+        local response_success, response_result = app_client.receive(65535)
+        if (not response_success) then
+            notifications.create("azura.uno", "Cloud is offline!", notifications.types.warning)
+            return
+        end
+
+        local decode_success, decode_result = libs.json.parse(response_success)
+        if (not decode_success) then
+            print("connection has failed. ", get_text_color(), "(error parsing response)")
+            error("azura · an internal error has occurred ~ 0x7C58E3")
+        end
+
+        if (decode_success.status == "delete_config") then
+            local decoded_data = decode(decode_success.encrypted_data)
+            local data = libs.json.parse(decoded_data)
+    
+            if (data) then
+                if (data.status == "success") then
+                    notifications.create("azura.uno", "Config deleted successfully from the cloud!", notifications.types.success)
+                    print("config has been deleted from the cloud.")
+
+                    configs.reload_cloud_configs()
+                elseif (data.message == "no_perm") then
+                    notifications.create("azura.uno", "Insufficient permissions to delete this config!", notifications.types.warning)
+                    print("deletion of this config is not permitted.")
+                elseif (data.message == "bad_cfg") then
+                    notifications.create("azura.uno", "The config does not appear to exist!", notifications.types.failure)
+                    print("config does not appear to exist.")
+                else
+                    print("connection has failed. ", get_text_color(), "(", data.message or "unknown error", ")")
+                    error("azura · an internal error has occurred ~ 0xD4A83F")
+                end
+            else
+                print("connection has failed. ", get_text_color(), "(error parsing data)")
+                error("azura · an internal error has occurred ~ 0xD4E78B")
+            end
+        else
+            print("connection has failed. ", get_text_color(), "(unexpected response)")
+            error("azura · an internal error has occurred ~ 0x4FA6BD")
+        end
+    end
+)
+
+ui.load_cloud_config = menu_add_button("Cloud configs", "Use",
+    function()
+        local active_item_name = ui.configs.cloud_list.ref:get_active_item_name()
+        
+        local username = active_item_name:match("^(.-) %~")
+        local config_name = active_item_name:match("~ (.+)$")
+    
+        local encoded_data = {
+            type = "load_config",
+
+            username = encode(username),
+            config_name = encode(config_name)
+        }
+        app_client.send(libs.json.encode(encoded_data))
+    
+        local response_success, response_result = app_client.receive(65535)
+        if (not response_success) then
+            notifications.create("azura.uno", "Cloud is offline!", notifications.types.warning)
+            return
+        end
+
+        local decode_success, decode_result = libs.json.parse(response_success)
+        if (not decode_success) then
+            print("connection has failed. ", get_text_color(), "(error parsing response)")
+            error("azura · an internal error has occurred ~ 0xB8459E")
+        end
+
+        if (decode_success.status == "load_config") then
+            local decoded_data = libs.base64.decode(decode_success.encrypted_data)
+            local data = libs.json.parse(decoded_data)
+
+            if (data.status ~= "success") then
+                if (data.message == "bad_cfg") then
+                    notifications.create("azura.uno", "The config does not appear to exist!", notifications.types.failure)
+                    print("config does not appear to exist.")
+                else
+                    print("connection has failed. ", get_text_color(), "(", data and data.message or "unknown error", ")")
+                    error("azura · an internal error has occurred ~ 0x47DA9F")
+                end
+            else
+                local run_success, run_result = pcall(libs.base64.decode, data.message)
+                if (not run_success) then
+                    notifications.create("azura.uno", "Unable to decode the config!", notifications.types.failure)
+                    print("failed to decode config. (" .. run_result .. ")")
+                    
+                    return
+                end
+            
+                run_success, config_table = pcall(libs.json.parse, run_result)
+                if (not run_success) then
+                    notifications.create("azura.uno", "Unable to parse the config!", notifications.types.failure)
+                    print("failed to parse config. (" .. config_table .. ")")
+                    
+                    return
+                end
+            
+                if (type(config_table) ~= "table") then
+                    notifications.create("azura.uno", "The config is not a valid table!", notifications.types.failure)
+                    print("config is not a valid table.")
+                    
+                    return
+                end
+            
+                local system_data = config_table["System"]
+                if (not system_data) then
+                    notifications.create("azura.uno", "The config lacks build informations!", notifications.types.warning)
+                    print("config does not contain build informations.")
+                    
+                    return
+                end
+            
+                local version, build
+                for _, entry in ipairs(system_data) do
+                    if (type(entry) == "table" and #entry == 2) then
+                        if (entry[1] == "version") then
+                            version = entry[2]
+                        elseif (entry[1] == "build") then
+                            build = entry[2]
+                        end
+                    end
+                end
+            
+                if (version ~= config_version) then
+                    notifications.create("azura.uno", "Config version mismatch!", notifications.types.warning)
+                    print("config version does not match.")
+                    
+                    return
+                end
+            
+                if (build ~= config_build) then
+                    notifications.create("azura.uno", "Config build mismatch!", notifications.types.warning)
+                    print("config build does not match.")
+                    
+                    return
+                end
+            
+                local tmp = ui.nav.slider:get()
+                run_success, run_result = pcall(libs.eui.import, libs.json.encode(config_table))
+            
+                if (not run_success) then
+                    notifications.create("azura.uno", "Unable to import the config!", notifications.types.failure)
+                    print("failed to import config. (" .. run_result .. ")")
+                else
+                    notifications.create("azura.uno", "Config loaded successfully from the cloud!", notifications.types.success)
+                    print("config has been loaded from the cloud.")   
+
+                    local settings = read_settings()
+        
+                    settings.accent_color = get_accent_color() or settings.accent_color
+                    settings.text_color = get_text_color() or settings.text_color
+                    
+                    libs.filesystem.write(settings_file, libs.json.encode(settings))
+                    ui.nav.slider.ref:set(tmp)
+                end
+            end
+        else
+            print("connection has failed. ", get_text_color(), "(unexpected response)")
+            error("azura · an internal error has occurred ~ 0x2E9F71")
+        end
+    end
+)
+
+-- file based
+
+ui.import_config = menu_add_button("Configs", "Import from clipboard", function()
+    local run_success, run_result = pcall(libs.base64.decode, clipboard.get())
+    if (not run_success) then
+        notifications.create("azura.uno", "Unable to decode the config!", notifications.types.failure)
+        print("failed to decode config. (" .. run_result .. ")")
+        
+        return
+    end
+
+    run_success, config_table = pcall(libs.json.parse, run_result)
+    if (not run_success) then
+        notifications.create("azura.uno", "Unable to parse the config!", notifications.types.failure)
+        print("failed to parse config. (" .. config_table .. ")")
+        
+        return
+    end
+
+    if (type(config_table) ~= "table") then
+        notifications.create("azura.uno", "The config is not a valid table!", notifications.types.failure)
+        print("config is not a valid table.")
+        
+        return
+    end
+
+    local system_data = config_table["System"]
+    if (not system_data) then
+        notifications.create("azura.uno", "The config lacks build informations!", notifications.types.warning)
+        print("config does not contain build informations.")
+        
+        return
+    end
+
+    local version, build
+    for _, entry in ipairs(system_data) do
+        if (type(entry) == "table" and #entry == 2) then
+            if (entry[1] == "version") then
+                version = entry[2]
+            elseif (entry[1] == "build") then
+                build = entry[2]
+            end
+        end
+    end
+
+    if (version ~= config_version) then
+        notifications.create("azura.uno", "Config version mismatch!", notifications.types.warning)
+        print("config version does not match.")
+        
+        return
+    end
+
+    if (build ~= config_build) then
+        notifications.create("azura.uno", "Config build mismatch!", notifications.types.warning)
+        print("config build does not match.")
+        
+        return
+    end
+
+    local tmp = ui.nav.slider:get()
+    import_success, import_result = pcall(libs.eui.import, libs.json.encode(config_table))
+
+    if (not import_success) then
+        notifications.create("azura.uno", "Unable to import the config!", notifications.types.failure)
+        print("failed to import config. (" .. import_result .. ")")
+    else
+        notifications.create("azura.uno", "Config successfully imported from clipboard!", notifications.types.success)
+        print("successfully imported config from clipboard.")
+
+        local settings = read_settings()
+
+        settings.accent_color = get_accent_color() or settings.accent_color
+        settings.text_color = get_text_color() or settings.text_color
+        
+        libs.filesystem.write(settings_file, libs.json.encode(settings))
+        ui.nav.slider.ref:set(tmp)
+    end
+end)
+
+ui.export_config = menu_add_button("Configs", "Export to clipboard", function()
+    local config = libs.eui.export()
+    local config_table = libs.json.parse(config)
+    
+    config_table["System"] = {
+        {"version", config_version},
+        {"build", config_build}
+    }
+
+    clipboard.set(libs.base64.encode(libs.json.encode(config_table)))
+
+    notifications.create("azura.uno", "Config successfully exported to clipboard!", notifications.types.success)
+    print("successfully exported config to clipboard.")
+end)
+
+ui.open_folder = menu_add_button("Configs", "Open folder",
+    function()
+        configs.ffi.shell_execute(configs.ffi.ivguisystem, "open", configs.path)
+    end
+)
+
+ui.reload_config = menu_add_button("Configs", "Refresh",
+    function()
+        configs.reload_configs()
+    end
+)
+
+ui.upload_config = menu_add_button("Configs", "Upload",
+    function()
+        local config = libs.eui.export()
+        local config_table = libs.json.parse(config)
+        
+        config_table["System"] = {
+            {"version", config_version},
+            {"build", config_build}
+        }
+
+        local encoded_data = {
+            type = "upload_config",
+            
+            username = encode(tostring(info.user)),
+            is_beta = tostring(info.beta_build),
+
+            config_name = encode(ui.configs.list.ref:get_active_item_name():gsub("%.cfg$", "")),
+            config_data = libs.base64.encode(libs.json.encode(config_table))
+        }
+        app_client.send(libs.json.encode(encoded_data))
+
+        local response_success, response_result = app_client.receive(65535)
+        if (not response_success) then
+            notifications.create("azura.uno", "Cloud is offline!", notifications.types.warning)
+            return
+        end
+    
+        local decode_success, decode_result = libs.json.parse(response_success)
+        if (not decode_success) then
+            print("connection has failed. ", get_text_color(), "(error parsing response)")
+            error("azura · an internal error has occurred ~ 0xB892EF")
+        end
+    
+        if (decode_success.status == "upload_config") then
+            local decoded_data = decode(decode_success.encrypted_data)
+            local data = libs.json.parse(decoded_data)
+    
+            if (data) then
+                if (data.status ~= "success") then
+                    if (data.message == "cfg_alr") then
+                        notifications.create("azura.uno", "Config already exists in the cloud!", notifications.types.warning)
+                        print("config already exists in the cloud.")
+                    else
+                        print("connection has failed. ", get_text_color(), "(", data.message or "unknown error", ")")
+                        error("azura · an internal error has occurred ~ 0x83D2FA")
+                    end
+                else
+                    notifications.create("azura.uno", "Config uploaded to the cloud successfully!", notifications.types.success)
+                    print("config has been uploaded.")
+                    
+                    configs.reload_cloud_configs()
+                end
+            else
+                print("connection has failed. ", get_text_color(), "(error parsing data)")
+                error("azura · an internal error has occurred ~ 0x9C42F3")
+            end
+        else
+            print("connection has failed. ", get_text_color(), "(unexpected response)")
+            error("azura · an internal error has occurred ~ 0x3F4D6A")
+        end
+    end
+)
+
+ui.create_config = menu_add_button("Configs", "Create", function()
+    local name = ui.configs.config_name:get()
+    local dir = configs.dir .. "" .. name .. ".cfg"
+
+    if (string.len(name) <= 0) then
+        return
+    end
+
+    if (libs.filesystem.exists(dir)) then
+        notifications.create("azura.uno", "Config already exists!", notifications.types.warning)
+        print("config already exists.")
+    
+        return
+    end
+    
+    libs.filesystem.write(dir, "")
+    configs.reload_configs()
+    
+    notifications.create("azura.uno", "Config created successfully!", notifications.types.success)
+    print("config has been created successfully.")
+end)
+
+ui.delete_config = menu_add_button("Configs", "Delete", function()
+    local active = ui.configs.list.ref:get_active_item_name()
+    local dir = configs.dir .. "" .. active
+    
+    if (active == "default.cfg") then
+        notifications.create("azura.uno", "Deletion of the default config is not permitted!", notifications.types.warning)
+        print("deletion of the default config is not permitted.")
+        
+        return
+    end
+    
+    if (not libs.filesystem.exists(dir)) then
+        notifications.create("azura.uno", "The specified config does not exist!", notifications.types.failure)
+        print("config does not exist.")
+        
+        return
+    end
+    
+    libs.filesystem.delete(dir, "game")
+    configs.reload_configs()
+    
+    notifications.create("azura.uno", "Config deleted successfully!", notifications.types.success)
+    print("config has been deleted successfully.")
+end)
+
+ui.save_config = menu_add_button("Configs", "Save", function()
+    local cur = ui.configs.list.ref:get_active_item_name()
+    if (cur == "default.cfg") then
+        notifications.create("azura.uno", "Saving to the default config is not allowed!", notifications.types.warning)
+        print("saving to the default config is not allowed.")
+        
+        return
+    end
+    
+    local dir = configs.dir .. "" .. cur
+    if (not libs.filesystem.exists(dir)) then
+        notifications.create("azura.uno", "The specified config does not exist!", notifications.types.failure)
+        print("config does not exist.")
+        
+        return
+    end
+    
+    local config = libs.eui.export()
+    local config_table = libs.json.parse(config)
+
+    config_table["System"] = {
+        {"version", config_version},
+        {"build", config_build}
+    }
+    
+    config = libs.base64.encode(libs.json.encode(config_table))
+    libs.filesystem.write(dir, config)
+    
+    notifications.create("azura.uno", "Config saved successfully!", notifications.types.success)
+    print("config has been saved successfully.")
+end)
+
+ui.load_config = menu_add_button("Configs", "Use", function()
+    local cur = ui.configs.list.ref:get_active_item_name()
+    local dir = configs.dir .. cur
+
+    if (not libs.filesystem.exists(dir)) then
+        notifications.create("azura.uno", "The specified config does not exist!", notifications.types.failure)
+        print("config does not exist.")
+        
+        return
+    end
+
+    local config, read_error = libs.filesystem.read(dir)
+    if (not config) then
+        notifications.create("azura.uno", "Unable to read config!", notifications.types.failure)
+        print("failed to read config. (" .. read_error .. ")")
+        
+        return
+    end
+
+    local success, decoded_config = pcall(libs.base64.decode, config)
+    if (not success) then
+        notifications.create("azura.uno", "Unable to decode the config!", notifications.types.failure)
+        print("failed to decode config. (" .. decoded_data .. ")")
+        
+        return
+    end
+
+    success, config_table = pcall(libs.json.parse, decoded_config)
+    if (not success) then
+        notifications.create("azura.uno", "Unable to parse the config!", notifications.types.failure)
+        print("failed to parse config. (" .. config_table .. ")")
+        
+        return
+    end
+
+    if (type(config_table) ~= "table") then
+        notifications.create("azura.uno", "Config is not a valid table!", notifications.types.failure)
+        print("config is not a valid table.")
+        
+        return
+    end
+
+    local system_data = config_table["System"]
+    if (not system_data) then
+        notifications.create("azura.uno", "The config lacks build informations!", notifications.types.warning)
+        print("config does not contain build informations.")
+        
+        return
+    end
+
+    local version, build
+    for _, entry in ipairs(system_data) do
+        if (type(entry) == "table" and #entry == 2) then
+            if (entry[1] == "version") then
+                version = entry[2]
+            elseif (entry[1] == "build") then
+                build = entry[2]
+            end
+        end
+    end
+
+    if (version ~= config_version) then
+        notifications.create("azura.uno", "Config version mismatch!", notifications.types.warning)
+        print("config version does not match.")
+        
+        return
+    end
+
+    if (build ~= config_build) then
+        notifications.create("azura.uno", "Config build mismatch!", notifications.types.warning)
+        print("config build does not match.")
+        
+        return
+    end
+
+    local tmp = ui.nav.slider:get()
+    success, import_error = pcall(libs.eui.import, decoded_config)
+
+    if (not success) then
+        notifications.create("azura.uno", "Unable to import the config!", notifications.types.failure)
+        print("failed to import config. (" .. import_error .. ")")
+    else
+        notifications.create("azura.uno", "Config loaded successfully!", notifications.types.success)
+        print("config has been loaded successfully.")
+
+        local settings = read_settings()
+
+        settings.accent_color = get_accent_color() or settings.accent_color
+        settings.text_color = get_text_color() or settings.text_color
+
+        libs.filesystem.write(settings_file, libs.json.encode(settings))
+        ui.nav.slider.ref:set(tmp)
+    end
+end)
+
+--- @endregion
+
+--- @info: lua network, clantag [sync]
+--- @region: clantag
+
+local clantag_prev
+clan_anim = function(indices)
+    local tickinterval = globals.interval_per_tick()
+    local tickcount = globals.tick_count() + math.floor(engine_get_latency(e_latency_flows.INCOMING) + 0.21 / tickinterval + 0.5)
+
+    return clantag[indices[math.floor(tickcount / math.floor(0.25 / tickinterval + 0.45) % #indices) + 1] + 1]
+end
+
+on_shared_players = function()
+    if (check_conditions()) then
+        for i, v in ipairs(shared_data) do
+            for _, k in pairs(shared_data) do
+                ui.nav.shared_esp.ref:remove_item(k)
+            end
+            table.remove(shared_data, i)
+        end
+
+        found_users = ""
+        user_count = 0
+
+        local players = entity_list_get_players()
+        if (players ~= nil) then
+            for k, v in pairs(players) do
+                local response_data = sync_client.receive(4096)
+                if (response_data) then
+                    local success, response = pcall(libs.json.parse, response_data)
+                    if (#response > 0) then
+                        for _, user_data in ipairs(response) do
+                            if (user_data.steam_id and user_data.username) then
+                                if (user_data.steam_id == v:get_steamids()) then
+                                    if (user_data.beta_build == true) then
+                                        libs.tools.js.update(v:get_index(), "file://{images}/icons/logo_beta.png")
+                                    else
+                                        libs.tools.js.update(v:get_index(), "file://{images}/icons/logo_stable.png")
+                                    end
+                                    
+                                    for _, d in pairs({user_data.username}) do
+                                        local suffix = user_data.beta_build and " ~ beta" or " ~ stable"
+                                        
+                                        ui.nav.shared_esp.ref:add_item(d .. suffix)
+                                        table.insert(shared_data, d .. suffix)
+                                    end
+
+                                    user_count = user_count + 1
+                                    found_users = found_users .. user_data.username .. ", "
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
+            if (found_users ~= "") then
+                notifications.create("azura.uno", "Found users who use azura (x" .. user_count .. "): " .. found_users:sub(1, -3), notifications.types.information)
+                print("found users who use azura ", azura_color_t(108, 108, 108), "(x" .. user_count .. "): ", get_text_color(), found_users:sub(1, -3))
+            else
+                notifications.create("azura.uno", "No users are currently using azura!", notifications.types.information)
+                print("no users are currently using azura.")
+            end
+            return
+        else
+            return
+        end
+    else
+        return
+    end
+end
+
+on_shared_esp = function()
+    if (check_conditions()) then
+        local players = entity_list_get_players()
+        if (players ~= nil) then
+            for k, v in pairs(players) do
+                local steamid, _ = v:get_steamids()
+                if (array.has(esp.sync_user, steamid)) then
+                    esp.unsync_user[steamid] = 0
+                    esp.unsync_user[steamid] = nil
+
+                    esp.sync_user[steamid] = 0
+                    esp.sync_user[steamid] = nil
+
+                    esp.sync_user = {}
+                    esp.unsync_user = {}
+
+                    for i, v in ipairs(shared_data) do
+                        for _, k in pairs(shared_data) do
+                            ui.nav.shared_esp.ref:remove_item(k)
+                        end
+                        table.remove(shared_data, i)
+                    end
+
+                    libs.tools.js.clear()
+                    libs.tools.js.destroy()
+
+                    client_delay_call(function()
+                        libs.tools.js.create()
+                    end, 0.5)
+                else
+                    esp.sync_user = {}
+                    esp.unsync_user = {}
+
+                    for i, v in ipairs(shared_data) do
+                        for _, k in pairs(shared_data) do
+                            ui.nav.shared_esp.ref:remove_item(k)
+                        end
+                        table.remove(shared_data, i)
+                    end
+
+                    libs.tools.js.clear()
+                    libs.tools.js.destroy()
+
+                    client_delay_call(function()
+                        libs.tools.js.create()
+                    end, 0.5)
+                end
+            end
+
+            notifications.create("azura.uno", "Shared data has been reset!", notifications.types.success)
+            print("shared data has been reset.")
+
+            return
+        else
+            return
+        end
+    else
+        return
+    end
+end
+
+on_chatsync = function(event)
+    if (ui.utils.synced_players:get(3)) then
+        local entity = entity_list_get_player_from_userid(event.userid)
+        if (entity ~= nil) then
+            if (entity:get_steamids() ~= entity_list_get_local_player():get_steamids()) then
+                local steamid, _ = entity:get_steamids()
+                local is_sync = false
+
+                for i = 1, #esp.sync_user do
+                    local chat_sync = esp.sync_user[i]
+                    if (chat_sync == steamid) then
+                        is_sync = true
+                    end
+                end
+
+                if (is_sync) then
+                    chat_print("{blue}[{lightgreen}azura.uno{blue}]{white}:{yellow} A user said something on the chat{white}!")
+                end
+                return
+            else
+                return
+            end
+        else
+            return
+        end
+    else
+        return
+    end
+end
+
+lets_sync = function()
+    local user_data
+    if (ui.utils.shared_esp:get()) then
+        user_data = {
+            type = "sync",
+
+            username = info.user,
+            steam_id = entity_list_get_local_player():get_steamids(),
+
+            beta_build = info.beta_build
+        }
+    else
+        user_data = {
+            type = "sync",
+
+            username = info.user,
+            steam_id = "0000000000 00000000000000000",
+
+            beta_build = info.beta_build
+        }
+    end
+
+    sync_client.send(libs.json.encode(user_data))
+    if (esp.sync_update > 16) then
+        local players = entity_list_get_players()
+        if (players ~= nil) then
+            for _, v in pairs(players) do
+                if (v:is_valid() and v:is_alive()) then
+                    local steamid, _ = v:get_steamids()
+                    if (not esp.unsync_user[steamid]) then
+                        esp.unsync_user[steamid] = 0
+                    end
+
+                    local response_data = sync_client.receive(4096)
+                    if (response_data) then
+                        local parse_success, parse_result = pcall(libs.json.parse, response_data)
+                        if (#parse_result > 0) then
+                            for _, user_data in ipairs(parse_result) do
+                                if (user_data.steam_id and user_data.username) then
+                                    if (user_data.steam_id == steamid) then
+                                        if (not array.has(esp.sync_user, steamid)) then
+                                            array.put(esp.sync_user, steamid)
+                                        end
+        
+                                        if (array.has(esp.sync_user, steamid)) then
+                                            esp.unsync_user[steamid] = 0
+                                        end
+                                    elseif (not user_data.steam_id == steamid) then
+                                        if (array.has(esp.sync_user, steamid)) then
+                                            esp.unsync_user[steamid] = esp.unsync_user[steamid] + 1
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+
+                    if (array.has(esp.sync_user, steamid)) then
+                        if (esp.unsync_user[steamid] > 50) then
+                            local to_remove = 0
+                            for i = 1, #esp.sync_user do
+                                if (esp.sync_user[i] == steamid) then
+                                    to_remove = i
+                                end
+                            end
+
+                            if (to_remove ~= 0) then
+                                esp.sync_user[to_remove] = nil
+                            end
+                            esp.unsync_user[steamid] = 0
+                        end
+                    end
+                end
+            end
+            esp.sync_update = 0
+        else
+            return
+        end
+    end
+
+    esp.sync_update = esp.sync_update + 1
+    return
+end
+
+run_clantag = function()
+    if (ui.utils.clantag:get()) then
+        local clantag = clan_anim({ 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 0 })
+        local player_clantag = player_resource_get_prop("m_szClan", entity_list_get_local_player():get_index())
+        
+        if (clantag ~= clantag_prev) then
+            if (player_clantag == "" or player_clantag ~= clantag) then
+                if (game_rules_get_prop("m_gamePhase") == 5 or game_rules_get_prop("m_gamePhase") == 4) then
+                    clantag = clan_anim({25})
+                    if (not menu_find("misc", "utility", "general", "clantag"):get()) then
+                        client_set_clantag(clantag)
+                    end
+                else
+                    if (not menu_find("misc", "utility", "general", "clantag"):get()) then
+                        client_set_clantag(clantag)
+                    end
+                end
+            end
+        end
+
+        clantag_reset = 0
+        clantag_prev = clantag
+
+        return
+    else
+        if (clantag_reset < 1) then
+            client_set_clantag("")
+            clantag_reset = clantag_reset + 1
+        end
+        return
+    end
+end
+
+--- @endregion
+
+--- @info: advanced fast ladder with up and down selection
+--- @region: fastladder
+
+fast_ladder = function(cmd)
+    if (ui.player.fast_ladder:get(1) or ui.player.fast_ladder:get(2)) then
+        local local_player = entity_list_get_local_player()
+        if (local_player:get_prop("m_MoveType") == 9) then
+            local active_weapon = local_player:get_active_weapon()
+            if (active_weapon ~= nil) then
+                local data = active_weapon:get_weapon_data()
+                if (data ~= nil) then
+                    menu_find("antiaim", "main", "general", "ladder antiaim"):set(false)
+                    menu_find("antiaim", "main", "general", "fast ladder move"):set(false)
+                    
+                    if (not data.type == 9 or not cmd:has_button(e_cmd_buttons.ATTACK)) then
+                        local pitch = engine_get_view_angles()
+                        local angle_value = 0
+                
+                        local abs_value = math.abs(angle_value)
+                        if (cmd.move.x == 0) then
+                            cmd.viewangles.x = 89
+                            cmd.viewangles.y = cmd.viewangles.y + angle_value
+                
+                            if (abs_value > 0 and abs_value < 180 and cmd.move.y ~= 0) then
+                                cmd.viewangles.y = cmd.viewangles.y - angle_value
+                            end
+                
+                            if (abs_value == 180) then
+                                if (cmd.move.y < 0) then
+                                    cmd:remove_button(e_cmd_buttons.MOVELEFT)
+                                    cmd:add_button(e_cmd_buttons.MOVERIGHT)
+                                elseif (cmd.move.y > 0) then
+                                    cmd:add_button(e_cmd_buttons.MOVELEFT)
+                                    cmd:remove_button(e_cmd_buttons.MOVERIGHT)
+                                end
+                            end
+                        elseif (cmd.move.x > 0 and ui.player.fast_ladder:get(1)) then
+                            if (pitch.x < 45) then
+                                cmd.viewangles.x = 89
+                
+                                cmd:remove_button(e_cmd_buttons.MOVELEFT)
+                                cmd:add_button(e_cmd_buttons.MOVERIGHT)
+                                
+                                cmd:remove_button(e_cmd_buttons.FORWARD)
+                                cmd:add_button(e_cmd_buttons.BACK)
+                
+                                if (cmd.move.y == 0) then
+                                    cmd.viewangles.y = cmd.viewangles.y + 90
+                                elseif (cmd.move.y < 0) then
+                                    cmd.viewangles.y = cmd.viewangles.y + 150
+                                elseif (cmd.move.y > 0) then
+                                    cmd.viewangles.y = cmd.viewangles.y + 30
+                                end
+                            end
+                        elseif (cmd.move.x < 0 and ui.player.fast_ladder:get(2)) then
+                            cmd.viewangles.x = 89
+                
+                            cmd:add_button(e_cmd_buttons.MOVELEFT)
+                            cmd:remove_button(e_cmd_buttons.MOVERIGHT)
+                            
+                            cmd:add_button(e_cmd_buttons.FORWARD)
+                            cmd:remove_button(e_cmd_buttons.BACK)
+                
+                            if (cmd.move.y == 0) then
+                                cmd.viewangles.y = cmd.viewangles.y + 90
+                            elseif (cmd.move.y > 0) then
+                                cmd.viewangles.y = cmd.viewangles.y + 150
+                            elseif (cmd.move.y < 0) then
+                                cmd.viewangles.y = cmd.viewangles.y + 30
+                            end
+                        end
+                    else
+                        return
+                    end
+                else
+                    return
+                end
+            else
+                return
+            end
+        else
+            return
+        end
+    else
+        return
+    end
+end
+
+--- @endregion
+
+--- @info: advanced super toss with multiple selection methods
+--- @region: super_toss
+
+toss.ang_vec = function(ang)
+    return vec3_t(math.cos(ang.x * math.pi / 180) * math.cos(ang.y * math.pi / 180), math.cos(ang.x * math.pi / 180) * math.sin(ang.y * math.pi / 180), -math.sin(ang.x * math.pi / 180))
+end
+
+super_toss = function(cmd)
+    if (ui.player.super_toss:get() ~= 1) then
+        local local_player = entity_list_get_local_player()
+        local active_weapon = local_player:get_active_weapon()
+
+        if (local_player:get_prop("m_MoveType") ~= 9) then
+            if (active_weapon ~= nil) then
+                if (active_weapon:get_weapon_data()) then
+                    if (active_weapon:get_prop("m_flThrowStrength")) then
+                        toss.lastangles = engine_get_view_angles()
+                        local ang_throw = vec3_t(cmd.viewangles.x, toss.lastangles.y, 0)
+                    
+                        ang_throw.x = ang_throw.x - (90 - math.abs(ang_throw.x)) * 10 / 90
+                        ang_throw = toss.ang_vec(ang_throw)
+                    
+                        local throw_strength = math.clamp(active_weapon:get_prop("m_flThrowStrength"), 0, 1)
+                        local fl_velocity = math.clamp(active_weapon:get_weapon_data().throw_velocity * 0.9, 15, 750)
+                    
+                        fl_velocity = fl_velocity * (throw_strength * 0.7 + 0.3)
+                        fl_velocity = vec3_t(fl_velocity, fl_velocity, fl_velocity)
+                    
+                        local vec_throw = (ang_throw * fl_velocity + local_player:get_prop("m_vecVelocity") * vec3_t(1.45, 1.45, 1.45))
+                        vec_throw = vec_throw:to_angle()
+                    
+                        local yaw_difference = toss.lastangles.y - vec_throw.y
+                        local pitch_difference = toss.lastangles.x - vec_throw.x - 10
+                        
+                        while (yaw_difference > 180) do
+                            yaw_difference = yaw_difference - 360
+                        end
+                    
+                        while (yaw_difference < -180) do
+                            yaw_difference = yaw_difference + 360
+                        end
+
+                        while (pitch_difference > 90) do
+                            pitch_difference = pitch_difference - 45
+                        end
+                    
+                        while (pitch_difference < -90) do
+                            pitch_difference = pitch_difference + 45
+                        end
+                    
+                        toss.target_angles.y = toss.lastangles.y + yaw_difference
+                        toss.target_angles.x = math.clamp(toss.lastangles.x + pitch_difference, -89, 89)
+                    
+                        cmd.viewangles.y = toss.target_angles.y
+                        if (ui.player.super_toss:get() == 2) then
+                            if (bit.band(local_player:get_prop("m_fFlags"), bit.lshift(1, 0)) == 0) then
+                                cmd.viewangles.x = toss.target_angles.x
+                            end
+                        elseif (ui.player.super_toss:get() == 3) then
+                            cmd.viewangles.x = toss.target_angles.x
+                        end
+                        return
+                    else
+                        return
+                    end
+                else
+                    return
+                end
+            else
+                return
+            end
+        else
+            return
+        end
+    else
+        return
+    end
+end
+
+--- @endregion
+
+--- @info: nofall dmg when landing
+--- @region: nofall
+
+calculate_fall = function(length)
+    local local_player = entity_list_get_local_player()
+    local x, y, z = local_player:get_render_origin().x, local_player:get_render_origin().y, local_player:get_render_origin().z
+
+    local max_radias = math.pi * 2
+    local step = max_radias / 8
+
+    for a = 0, max_radias, step do
+        local pt_x, pt_y = ((10 * math.cos(a)) + x), ((10 * math.sin(a)) + y)
+        
+        local traced = trace_line(vec3_t(pt_x, pt_y, z), vec3_t(pt_x, pt_y, z - length), local_player)
+        local fraction, entity = traced.fraction, traced.entity
+
+        if (fraction ~= 1) then
+            return true
+        end
+    end
+    return false
+end
+
+no_fall = function(cmd)
+    if (ui.misc.nofall_dmg:get()) then
+        local velocity = entity_list_get_local_player():get_prop("m_vecVelocity").z
+        local no_falldmg = nil
+
+        if (velocity >= -500) then
+            no_falldmg = false
+        else
+            if (calculate_fall(15)) then
+                no_falldmg = false
+            elseif (calculate_fall(75)) then
+                no_falldmg = true
+            end
+        end
+
+        if (velocity < -500) then
+            if (no_falldmg) then
+                cmd:add_button(e_cmd_buttons.DUCK)
+            else
+                cmd:remove_button(e_cmd_buttons.DUCK)
+            end
+            return
+        else
+            return
+        end
+    else
+        return
+    end
+end
+
+--- @endregion
+
+--- @info: defensive safepoint
+--- @region: safe def
+
+safe_defensive = function(ctx, cmd, unpredicted_data)
+    if (ui.ragebot.safe_defensive:get()) then
+        if (defensive:is_active(ctx.player)) then
+            ctx:set_safepoint_state(true, e_hitscan_groups.HEAD)
+        else
+            return
+        end
+        return
+    else
+        return
+    end
+end
+
+--- @endregion
+
+--- @info: multipoint correction
+--- @region: dmg pred
+
+local damage = {
+    scale = {
+        stomach = 1.25,
+        chest = 1,
+        head = 4
+    },
+
+    calculate = function(self, player, hitbox)
+        local local_player = entity_list_get_local_player()
+        local weapon = local_player:get_active_weapon()
+        
+        if (weapon ~= nil) then
+            local weapon_data = weapon:get_weapon_data()
+            if (weapon_data ~= nil) then
+                local armor = player:get_prop("m_ArmorValue")
+
+                local dmg_after_range = (weapon_data.damage * math.pow(weapon_data.range_modifier, (local_player:get_prop("m_vecAbsOrigin"):dist(player:get_prop("m_vecAbsOrigin")) * 0.002)))
+                local new_dmg = dmg_after_range * (weapon_data.armor_ratio * 0.5)
+
+                if (dmg_after_range - (dmg_after_range * (weapon_data.armor_ratio * 0.5)) * 0.5 > armor) then
+                    new_dmg = dmg_after_range - (armor / 0.5)
+                end
+                return new_dmg * self.scale[hitbox]
+            else
+                return 0
+            end
+        else
+            return 0
+        end
+    end
+}
+
+dmg_prediction = function(ctx, cmd, unpredicted_data)
+    if (ui.ragebot.multipoint_pred:get()) then
+        if (not defensive:is_active(ctx.player)) then
+            local local_pos = entity_list_get_local_player():get_eye_position()
+            local enemy = ctx.player
+
+            local enemy_pos = {
+                head = enemy:get_hitbox_pos(e_hitboxes.HEAD),
+                chest = enemy:get_hitbox_pos(e_hitboxes.CHEST),
+                stomach = enemy:get_hitbox_pos(e_hitboxes.PELVIS)
+            }
+        
+            local enemy_dmg = {
+                head = damage:calculate(enemy, "head"),
+                chest = damage:calculate(enemy, "chest"),
+                stomach = damage:calculate(enemy, "stomach")
+            }
+        
+            for k, v in pairs(enemy_dmg) do
+                if (v > enemy:get_prop("m_iHealth") or v > get_dmg()) then
+                    local bullet = trace_bullet(local_pos, enemy_pos[k], entity_list_get_local_player(), enemy)
+                    if (bullet.valid and (client_get_hitgroup_name(bullet.hitgroup) == k)) then
+                        local hitgroup = e_hitscan_groups[string.upper(k)]
+        
+                        ctx:set_hitchance(70, hitgroup)
+                        ctx:set_hitscan_group_state(hitgroup, true, false)
+                        
+                        break
+                    end
+                end
+            end
+        else
+            return
+        end
+    else
+        return
+    end
+end
+
+--- @endregion
+
+--- @info: boost the prediction time
+--- @region: accuracy boost
+
+accuracy_boost = function(ctx, cmd, unpredicted_data)
+    if (ui.ragebot.accuracy_boost.enable_booster:get()) then
+        if (ui.ragebot.accuracy_boost.booster_mode:get() == 1) then
+            ctx:set_damage_accuracy(45)
+        elseif (ui.ragebot.accuracy_boost.booster_mode:get() == 2) then
+            ctx:set_damage_accuracy(90)
+        end
+        return
+    else
+        return
+    end
+end
+
+--- @endregion
+
+--- @info: anti afk
+--- @region: antiafk
+
+antiafk = function(cmd)
+    if (ui.misc.antiafk:get()) then
+        if (builder.afk_valid == true) then
+            builder.afk = builder.afk + 1
+            if (builder.afk > 128) then
+                builder.afk = 0
+                afk_direction = not afk_direction
+            end
+        end
+    
+        if (cmd:has_button(e_cmd_buttons.MOVELEFT)) then
+            builder.afk_valid = false
+        end
+        
+        if (cmd:has_button(e_cmd_buttons.MOVERIGHT)) then
+            builder.afk_valid = false
+        end
+    
+        if (cmd:has_button(e_cmd_buttons.FORWARD)) then
+            builder.afk_valid = false
+        end
+        
+        if (cmd:has_button(e_cmd_buttons.BACK)) then
+            builder.afk_valid = false
+        end
+    
+        if (builder.afk < 8 and builder.afk_valid) then
+            cmd.move.x = 450 * (afk_direction and 1 or -1)
+        end
+        return
+    else
+        return
+    end
+end
+
+--- @endregion
+
+--- @info: it will defuse at 5.1 or 10.1 sec
+--- @region: defuse bot
+
+enemies_dead = function()
+    for _, enemy in pairs(entity_list_get_players(true)) do
+        if (enemy:is_alive()) then
+            return false
+        end
+    end
+    return true
+end
+
+remaining_ticks = function(player, bomb)
+    local defuse_time = 10.1
+    if (player:get_prop("m_bHasDefuser") == 1) then
+        defuse_time = 5.1
+    end
+    return time_to_ticks(math.abs(global_vars_cur_time() - bomb:get_prop("m_flC4Blow")) - defuse_time)
+end
+
+defuse_bot = function(cmd)
+    if (ui.misc.defuse_bot:get()) then
+        local local_player = entity_list_get_local_player()
+        if (local_player:get_prop("m_iTeamNum") ~= 3) then
+            return false
+        end
+    
+        local bomb = entity_list_get_entities_by_name("CPlantedC4")[1]
+        if (not bomb or bomb:get_prop("m_bBombDefused") == 1) then
+            return false
+        end
+    
+        if (not enemies_dead()) then
+            return false
+        end
+    
+        local player_origin = local_player:get_render_origin()
+        local bomb_origin = bomb:get_render_origin()
+    
+        if (vector_distance(player_origin, bomb_origin) > 75) then
+            return false
+        end
+    
+        local ticks_to_defuse = remaining_ticks(local_player, bomb)
+        if (ticks_to_defuse <= 2) then
+            cmd:add_button(e_cmd_buttons.USE)
+            cmd.viewangles = angle_t(89, 0, 0)
+            
+            return true
+        end
+    else
+        return false
+    end
+end
+
+--- @endregion
+
+--- @info: knifebot helper
+--- @region: knifebot
+
+knifebot_helper = function(cmd)
+    if (ui.misc.knifebot_helper:get()) then
+        local active_weapon = entity_list_get_entity(entity_list_get_local_player():get_prop("m_hActiveWeapon"))
+        if (active_weapon ~= nil) then
+            if (active_weapon:get_name() == "knife") then
+                if (knife.countdown > globals.tick_count()) then
+                    exploits_force_uncharge()
+                    exploits_block_recharge()
+                else
+                    exploits_allow_recharge()
+                end
+                return
+            else
+                return
+            end
+        else
+            return
+        end
+    else
+        return
+    end
+end
+
+on_knifebot = function(event)
+    if (ui.misc.knifebot_helper:get()) then
+        local weapon = event.weapon
+        local is_knife = string.match(weapon, "knife") or weapon == "bayonet"
+
+        if (is_knife ~= nil) then
+            local victim = entity_list_get_player_from_userid(event.userid)
+            local attacker = entity_list_get_player_from_userid(event.attacker)
+            
+            if (victim ~= nil and attacker ~= nil) then
+                if (attacker == entity_list_get_local_player()) then
+                    knife.countdown = globals.tick_count() + 96
+        
+                    exploits_force_uncharge()
+                    exploits_block_recharge()
+                else
+                    return
+                end
+                return
+            else
+                return
+            end
+        else
+            return
+        end
+    else
+        return
+    end
+end
+
+--- @endregion
+
+--- @info: evade message
+--- @region: antibrute
+
+for i = 1, 28 do
+    evades.backtrack_poses[i] = vec3_t.new(0, 0, 0)
+end
+
+evades.remove_player = function(user_id)
+    evades.player_list[tostring(user_id)] = nil
+end
+
+evades.add_player = function(user_id)
+    local user_id_str = tostring(user_id)
+    evades.player_list[user_id_str] = {
+        name = entity_list_get_entity(user_id):get_name(),
+
+        confirmation_dmg = false,
+        last_shot = 0,
+
+        shots = {
+            hit = 0,
+            miss = 0
+        },
+
+        bruteforce_data = {
+            invert_hit = false,
+            invert_miss = false,
+            
+            randomize_miss = false,
+            randomize_hit = false,
+            
+            randomized_miss_desync = 0,
+            randomized_hit_desync = 0
+        }
+    }
+end
+
+evades.create_ray = function(s, e)
+    local ray = {}
+
+    ray.orig = s
+    ray.dir = vec3_t.new(e.x - s.x, e.y - s.y, e.z - s.z)
+
+    local length = ray.dir:length()
+
+    ray.dir.x = ray.dir.x / length
+    ray.dir.y = ray.dir.y / length
+    ray.dir.z = ray.dir.z / length
+
+    return ray
+end
+
+evades.create_box = function(min, max)
+    local box = {}
+    
+    box.min = min
+    box.max = max
+
+    return box
+end
+
+evades.intersect = function(ray, box)
+    local min = box.min
+    local max = box.max
+
+    local t_min = (min.x - ray.orig.x) / ray.dir.x
+    local t_max = (max.x - ray.orig.x) / ray.dir.x
+
+    if (t_min > t_max) then
+        local temp = t_min
+        
+        t_min = t_max
+        t_max = temp
+    end
+
+    local ty_min = (min.y - ray.orig.y) / ray.dir.y
+    local ty_max = (max.y - ray.orig.y) / ray.dir.y
+
+    if (ty_min > ty_max) then
+        local temp = ty_min
+        
+        ty_min = ty_max
+        ty_max = temp
+    end
+
+    if (t_min > ty_max) or (ty_min > t_max) then
+        return false
+    end
+
+    if (ty_min > t_min) then
+        t_min = ty_min
+    end
+
+    if (ty_max < t_max) then
+        t_max = ty_max
+    end
+
+    local tz_min = (min.z - ray.orig.z) / ray.dir.z
+    local tz_max = (max.z - ray.orig.z) / ray.dir.z
+
+    if (tz_min > tz_max) then
+        local temp = tz_min
+        
+        tz_min = tz_max
+        tz_max = temp
+    end
+
+    if (t_min > tz_max) or (tz_min > t_max) then
+        return false
+    end
+
+    if (tz_min > t_min) then
+        t_min = tz_min
+    end
+
+    if (tz_max < t_max) then
+        t_max = tz_max
+    end
+    return true
+end
+
+update_bt = function()
+    if (ui.utils.event_logs:get(6)) then
+        evades.backtrack_poses[1] = entity_list_get_local_player():get_render_origin()
+        for i = 28, 2, -1 do
+            evades.backtrack_poses[i] = evades.backtrack_poses[i - 1]
+        end
+        return
+    else
+        return
+    end
+end
+
+handle_playerlist = function()
+    if (ui.utils.event_logs:get(6)) then
+        for user_id_str, _ in pairs(evades.player_list) do
+            local user_id = tonumber(user_id_str)
+            local entity = entity_list_get_entity(user_id)
+
+            if (entity == nil) then
+                evades.remove_player(user_id)
+            end
+        end
+        return
+    else
+        return
+    end
+end
+
+on_brute = function(event)
+    if (ui.utils.event_logs:get(6)) then
+        if (event.name == "bullet_impact") then
+            local shooter = entity_list_get_player_from_userid(event.userid)
+            if (shooter ~= nil) then
+                if (shooter:is_player() or shooter:is_enemy()) then
+                    local shooter_idx = shooter:get_index()
+                    local shooter_idx_str = tostring(shooter_idx)
+            
+                    local local_player = entity_list_get_local_player()
+                    if (local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
+                        for idx, lp_origin in pairs(evades.backtrack_poses) do
+                            local box_min, box_max = local_player:get_bounds()
+
+                            local impact = vec3_t.new(event.x, event.y, event.z)
+                            local ray = evades.create_ray(shooter:get_eye_position(), impact)
+                
+                            local length_players = ray.orig:dist(lp_origin)
+                            local length_forward_lp = (ray.orig + ray.dir):dist(lp_origin)
+                
+                            if (length_forward_lp > length_players) then
+                                return
+                            end
+                
+                            local length_impact = ray.orig:dist(impact) + 20
+                            if (length_impact < length_players) then
+                                return
+                            end
+                
+                            local box = evades.create_box(lp_origin + box_min, lp_origin + box_max)
+                            local intersect = evades.intersect(ray, box)
+
+                            if (intersect ~= false) then
+                                local time = global_vars_tick_count()
+                                if (not evades.player_list[shooter_idx_str]) then
+                                    evades.add_player(shooter_idx)
+                                    evades.player_list[shooter_idx_str].last_shot = time
+                                end
+
+                                local t_enm_data = evades.player_list[shooter_idx_str]
+                                if (t_enm_data.last_shot == time) then
+                                    return
+                                end
+
+                                client_delay_call(function()
+                                    local bt_start = math.clamp(idx - 1, 0, 28)
+                                    local bt_end = math.clamp(idx + 1, 0, 28)
+                
+                                    if (t_enm_data.confirmation_dmg) then
+                                        t_enm_data.shots.hit = t_enm_data.shots.hit + 1
+                
+                                        t_enm_data.bruteforce_data.invert_hit = not t_enm_data.bruteforce_data.invert_hit
+                                        t_enm_data.bruteforce_data.randomize_hit = not t_enm_data.bruteforce_data.randomize
+                                        t_enm_data.bruteforce_data.randomized_hit_desync = client_random_float(0, 1)
+                
+                                        t_enm_data.bruteforce_data.invert_miss = false
+                                        t_enm_data.bruteforce_data.randomize_miss = false
+
+                                        local hit = t_enm_data.shots.hit
+                                        local miss = t_enm_data.shots.miss
+
+                                        local name = t_enm_data.name
+
+                                        local percentage = (hit / (hit + miss)) * 100
+                                        local rounded_percentage = math.floor(percentage * 100) / 100
+
+                                        if (local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
+                                            print("shot by ", get_text_color(), name, get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "state: ", azura_color_t(168, 168, 168), global.current_state, ", ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), bt_end, "t") -- azura_color_t(108, 108, 108), "total: ", azura_color_t(168, 168, 168), t_enm_data.shots.hit, "/", t_enm_data.shots.miss + t_enm_data.shots.hit, azura_color_t(108, 108, 108), " (", azura_color_t(168, 168, 168), rounded_percentage, "%%", azura_color_t(108, 108, 108), ")")
+                                        end
+                                    else
+                                        t_enm_data.shots.miss = t_enm_data.shots.miss + 1
+
+                                        evades.vars.last_miss = time
+
+                                        t_enm_data.bruteforce_data.invert_miss = not t_enm_data.bruteforce_data.invert_miss
+                                        t_enm_data.bruteforce_data.randomize_miss = not t_enm_data.bruteforce_data.randomize
+                                        t_enm_data.bruteforce_data.randomized_miss_desync = client_random_float(0, 1)
+                
+                                        t_enm_data.bruteforce_data.invert_hit = false
+                                        t_enm_data.bruteforce_data.randomize_hit = false
+
+                                        local hit = t_enm_data.shots.hit
+                                        local miss = t_enm_data.shots.miss
+
+                                        local name = t_enm_data.name
+                                        
+                                        local percentage = (hit / (hit + miss)) * 100
+                                        local rounded_percentage = math.floor(percentage * 100) / 100
+
+                                        if (local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
+                                            if (local_player:get_name() ~= name) then
+                                                print("evaded ", get_text_color(), name, azura_color_t(168, 168, 168), "'s shot", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "state: ", azura_color_t(168, 168, 168), global.current_state, ", ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), bt_end, "t") -- azura_color_t(108, 108, 108), "total: ", azura_color_t(168, 168, 168), t_enm_data.shots.hit, "/", t_enm_data.shots.miss + t_enm_data.shots.hit, azura_color_t(108, 108, 108), " (", azura_color_t(168, 168, 168), rounded_percentage, "%%", azura_color_t(108, 108, 108), ")")
+                                                evades.send_data = true
+                                            end
+                                        end
+                                    end
+                                    t_enm_data.confirmation_dmg = false
+                                end, 0.2)
+
+                                t_enm_data.last_shot = time
+                                if (evades.send_data) then
+                                    evades.send_data = false
+                                    cl_logs.add_log("evades")
+                                end
+                                break
+                            end
+                        end
+                    else
+                        return
+                    end
+                else
+                    return
+                end
+            else
+                return
+            end
+        elseif (event.name == 'player_hurt') then
+            local shooter = entity_list_get_player_from_userid(event.attacker)
+            if (shooter ~= nil) then
+                if (shooter:is_player() and shooter:is_enemy()) then
+                    local local_player = entity_list_get_local_player()
+
+                    local hit_user_id = event.userid
+                    local hit_player = entity_list_get_player_from_userid(hit_user_id)
+            
+                    if (hit_player:is_valid() and hit_player:is_player()) then
+                        if (local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
+                            if (hit_player:get_index() == local_player:get_index()) then
+                                local user_idx = shooter:get_index()
+                                local user_idx_str = tostring(user_idx)
+                        
+                                if (not evades.player_list[user_idx_str]) then
+                                    evades.add_player(user_idx)
+                                end
+
+                                local t_enm_data = evades.player_list[user_idx_str]
+                                t_enm_data.confirmation_dmg = true
+
+                                client_delay_call(function()
+                                    t_enm_data.confirmation_dmg = false
+                                end, 0.5)
+                                return
+                            else
+                                return
+                            end
+                        else
+                            return
+                        end
+                    else
+                        return
+                    end
+                else
+                    return
+                end
+            else
+                return
+            end
+        elseif (event.name == 'player_death') then
+            local dead_player = entity_list_get_player_from_userid(event.userid)
+            local local_player = entity_list_get_local_player()
+
+            if (dead_player ~= nil) then
+                if (dead_player:is_enemy()) then
+                    if (local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
+                        local enm_idx = dead_player:get_index()
+                        if (local_player:get_index() == enm_idx) then
+                            local time = global_vars_tick_count()
+                            if (not evades.player_list[tostring(enm_idx)]) then
+                                evades.add_player(enm_idx)
+                            end
+                
+                            local t_enm_data = evades.player_list[tostring(enm_idx)]
+                            t_enm_data.shots.hit = t_enm_data.shots.hit + 1
+                            
+                            t_enm_data.bruteforce_data.invert_hit = not t_enm_data.bruteforce_data.invert_hit
+                            t_enm_data.bruteforce_data.randomize_hit = not t_enm_data.bruteforce_data.randomize
+                            t_enm_data.bruteforce_data.randomized_hit_desync = client_random_float(0, 1)
+                
+                            t_enm_data.bruteforce_data.invert_miss = false
+                            t_enm_data.bruteforce_data.randomize_miss = false
+
+                            evades.vars.last_hit = time
+                            return
+                        else
+                            return
+                        end
+                    else
+                        return
+                    end
+                else
+                    return
+                end
+            else
+                return
+            end
+        end
+    end
+end
+
+--- @endregion
+
+--- @info: repeats everyone's message
+--- @region: talkback
+
+on_talkback = function(event)
+    if (ui.player.talk_back:get()) then
+        local entity = entity_list_get_player_from_userid(event.userid)
+        if (entity ~= nil) then
+            if (entity:get_steamids() ~= entity_list_get_local_player():get_steamids()) then
+                local steamid, _ = entity:get_steamids()
+                local is_sync = false
+
+                for i = 1, #esp.sync_user do
+                    local chat_sync = esp.sync_user[i]
+                    if (chat_sync == steamid) then
+                        is_sync = true
+                    end
+                end
+
+                if (is_sync) then
+                    if (ui.utils.synced_players:get(2)) then
+                        return
+                    else
+                        message = event.text
+                        if (not message:find("^/") and not message:find("^!")) then
+                            engine_execute_cmd('say ' .. message)
+                        end
+                        return
+                    end
+                else
+                    message = event.text
+                    if (not message:find("^/") and not message:find("^!")) then
+                        engine_execute_cmd('say ' .. message)
+                    end
+                    return
+                end
+            else
+                return
+            end
+        else
+            return
+        end
+    else
+        return
+    end
+end
+
+--- @endregion
+
+--- @info: trash talk
+--- @region: killsay
+
+local old_phrase = ""
+on_killsay = function(event)
+    if (ui.player.trash_talk:get() ~= 1) then
+        local attacker = entity_list_get_player_from_userid(event.attacker)
+        local user_id = entity_list_get_player_from_userid(event.userid)
+
+        if (attacker ~= nil and user_id ~= nil) then
+            if (attacker == entity_list_get_local_player()) then
+                if (entity_list_get_local_player():get_steamids() ~= user_id:get_steamids()) then
+                    if (ui.player.trash_talk:get() == 2) then
+                        local txt
+                        repeat
+                            txt = phrases_old[math.random(1, #phrases_old)]
+                        until txt ~= old_phrase
+                        client_delay_call(function()
+                            engine_execute_cmd('say ' .. txt)
+                        end, 1.8)
+                        old_phrase = txt
+                    elseif (ui.player.trash_talk:get() == 3) then
+                        local txt
+                        repeat
+                            txt = phrases_fem[math.random(1, #phrases_fem)]
+                        until txt ~= old_phrase
+                        client_delay_call(function()
+                            engine_execute_cmd('say ' .. txt)
+                        end, 1.8)
+                        old_phrase = txt
+                    elseif (ui.player.trash_talk:get() == 4) then
+                        local txt
+                        repeat
+                            txt = phrases_new[math.random(1, #phrases_new)]
+                        until txt ~= old_phrase
+                        client_delay_call(function()
+                            engine_execute_cmd('say ' .. txt)
+                        end, 1.8)
+                        old_phrase = txt
+                    end
+                    return
+                else
+                    return
+                end
+            else
+                return
+            end
+        else
+            return
+        end
+    else
+        return
+    end
+end
+
+--- @endregion
+
+--- @info: tesla effect
+--- region: effects
+
+on_tesla = function(shot)
+    if (ui.visuals.tesla.enable_tesla:get()) then
+        local x, y, z = 0, 0, 0
+        local tesla_info = ffi.new("struct tesla_info_t")
+
+        tesla_info.m_flbeamwidth = ui.visuals.tesla.width:get()
+        tesla_info.m_flradius = ui.visuals.tesla.radius:get()
+        tesla_info.m_entindex = engine_get_local_player_index()
+        tesla_info.m_color = { ui.tesla_color:get().r / 255, ui.tesla_color:get().g / 255, ui.tesla_color:get().b / 255 }
+        tesla_info.m_pos = { shot.hitpoint_pos.x + 10, shot.hitpoint_pos.y, shot.hitpoint_pos.z + 10 }
+        tesla_info.m_fltimevis = ui.visuals.tesla.delay:get()
+        tesla_info.m_nbeams = ui.visuals.tesla.beams:get()
+        tesla_info.m_spritename = true and "sprites/physbeam.vmt" or "sprites/purplelaser1.vmt"
+
+        fs_tesla(tesla_info)
+    else
+        return
+    end
+    return
+end
+
+--- @endregion
+
+--- @info: fast weapon switch
+--- @region: fast switch
+
+on_zeus = function(shot)
+    if (ui.misc.fast_switch:get()) then
+        local active_weapon = entity_list_get_local_player():get_active_weapon()
+        if (active_weapon ~= nil) then
+            if (active_weapon:get_name() == "taser") then
+                exploits.force_anti_exploit_shift()
+                
+                engine_execute_cmd("slot2")
+                engine_execute_cmd("slot1")
+            else
+                return
+            end
+            return
+        else
+            return
+        end
+    else
+        return
+    end
+end
+
+on_nade = function(event)
+    if (ui.misc.fast_switch:get()) then
+        if (entity_list_get_player_from_userid(event.userid) == entity_list_get_local_player()) then
+            exploits.force_anti_exploit_shift()
+            
+            engine_execute_cmd("slot2")
+            engine_execute_cmd("slot1")
+        else
+            return
+        end
+        return
+    else
+        return
+    end
+end
+
+--- @endregion
+
+--- @info: optimized backtrack
+--- @region: backtrack system
+
+clamp = function(value, min, max)
+    return math.max(min, math.min(max, value))
+end
+
+simulation_time_to_ticks = function(simulation_time)
+    return math.floor(simulation_time / globals.interval_per_tick() + 0.5)
+end
+
+normalize_angle = function(angle)
+    angle.x = (angle.x + 180) % 360 - 180
+    angle.y = (angle.y + 180) % 360 - 180
+    
+    return angle
+end
+
+predict_position = function(record, factor)
+    if (ui.ragebot.backtrack.enable_extrapolation:get()) then
+        local time_factor = factor * globals.interval_per_tick()
+        return vec3_t(
+            record.eye_position.x + (record.velocity.x * time_factor),
+            record.eye_position.y + (record.velocity.y * time_factor),
+            record.eye_position.z + (record.velocity.z * time_factor)
+        )
+    else
+        return record.eye_position
+    end
+end
+
+calculate_fov = function(view_angle, target_angle)
+    local delta = normalize_angle(target_angle - view_angle)
+    return math.sqrt(delta.x * delta.x + delta.y * delta.y)
+end
+
+calculate_distance = function(pos1, pos2)
+    local delta = pos1 - pos2
+    return math.sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z)
+end
+
+calculate_angle = function(from, to)
+    local delta = to - from
+    return angle_t(math.deg(math.atan2(delta.z, math.sqrt(delta.x * delta.x + delta.y * delta.y))), math.deg(math.atan2(delta.y, delta.x)), 0)
+end
+
+is_record_valid = function(record)
+    return math.abs(clamp(engine_get_latency(e_latency_flows.INCOMING) + engine_get_latency(e_latency_flows.OUTGOING), 0.01, cvars.sv_maxunlag:get_float()) - (globals.cur_time() - record.simulation_time)) <= 0.2
+end
+
+adjust_dynamic_ticks_based_on_latency = function(dynamic_ticks)
+    local latency = engine_get_latency(e_latency_flows.INCOMING) + engine_get_latency(e_latency_flows.OUTGOING)
+    local latency_factor = clamp(latency / cvars.sv_maxunlag:get_float(), 0.5, 1.5)
+    
+    return dynamic_ticks * latency_factor
+end
+
+interpolate_records = function(record1, record2, factor)
+    if (ui.ragebot.backtrack.enable_interpolation:get()) then
+        factor = clamp(factor, 0, 1)
+        local quadratic_factor = factor * factor
+
+        return vec3_t(
+            record1.eye_position.x * (1 - quadratic_factor) + record2.eye_position.x * quadratic_factor,
+            record1.eye_position.y * (1 - quadratic_factor) + record2.eye_position.y * quadratic_factor,
+            record1.eye_position.z * (1 - quadratic_factor) + record2.eye_position.z * quadratic_factor
+        )
+    else
+        return record1.eye_position
+    end
+end
+
+get_dynamic_weighted_record = function(records, eye_position)
+    local best_record = nil
+    local best_weight = math.huge
+
+    for _, record in ipairs(records) do
+        local distance = calculate_distance(eye_position, record.eye_position)
+        local time_weight = globals.cur_time() - record.simulation_time
+        local weight = distance * time_weight
+        
+        if (weight < best_weight) then
+            best_weight = weight
+            best_record = record
+        end
+    end
+    return best_record
+end
+
+clear_old_records = function()
+    local current_time = globals.cur_time()
+    local expiration_time = ui.ragebot.backtrack.bt_expiration:get()
+
+    for index, records in pairs(player_records) do
+        for i = #records, 1, -1 do
+            if (current_time - records[i].timestamp > expiration_time) then
+                table.remove(records, i)
+            end
+        end
+
+        if (#player_records[index] == 0) then
+            player_records[index] = nil
+        end
+    end
+end
+
+store_player_record = function(player)
+    local index = player:get_index()
+    local current_time = globals.cur_time()
+
+    local record = {
+        eye_position = player:get_eye_position(),
+        simulation_time = tonumber(player:get_prop("m_flSimulationTime")) or 0.0,
+        velocity = vec3_t(
+            tonumber(player:get_prop("m_vecVelocity[0]")) or 0.0,
+            tonumber(player:get_prop("m_vecVelocity[1]")) or 0.0,
+            tonumber(player:get_prop("m_vecVelocity[2]")) or 0.0
+        ),
+        timestamp = current_time
+    }
+
+    player_records[index] = player_records[index] or {}
+    table.insert(player_records[index], 1, record)
+
+    if (ui.ragebot.backtrack.extended_backtrack:get()) then
+        if (ui.ragebot.backtrack.prioritize_older_records:get()) then
+            table.sort(player_records[index], function(a, b)
+                return a.simulation_time < b.simulation_time
+            end)
+
+            while (#player_records[index] > 11) do
+                table.remove(player_records[index], 1)
+            end
+        else
+            while (#player_records[index] > 11) do
+                table.remove(player_records[index])
+            end
+        end
+    else
+        if (#player_records[index] > 11) then
+            table.remove(player_records[index])
+        end
+    end
+end
+
+get_limited_targets_by_fov = function(local_player, enemies, view_angle)
+    if (ui.ragebot.backtrack.performance_mode:get()) then
+        local max_targets = ui.ragebot.backtrack.max_targets:get()
+        local eye_position = local_player:get_eye_position()
+
+        local limited_targets = {}
+        local fov_sorted_enemies = {}
+
+        for _, enemy in pairs(enemies) do
+            if (enemy:is_alive()) then
+                local enemy_position = enemy:get_eye_position()
+                local angle_to_enemy = calculate_angle(eye_position, enemy_position)
+                local fov = calculate_fov(view_angle, angle_to_enemy)
+
+                table.insert(fov_sorted_enemies, {enemy = enemy, fov = fov})
+            end
+        end
+
+        table.sort(fov_sorted_enemies, function(a, b) return a.fov < b.fov end)
+        for i = 1, math.min(max_targets, #fov_sorted_enemies) do
+            table.insert(limited_targets, fov_sorted_enemies[i].enemy)
+        end
+        return limited_targets
+    else
+        return enemies
+    end
+end
+
+backtrack_sys = function(cmd)
+    if (ui.ragebot.backtrack.enable_backtrack:get()) then
+        local local_player = entity_list_get_local_player()
+
+        local view_angle = engine_get_view_angles()
+        local eye_position = local_player:get_eye_position()
+        local best_record, best_fov = nil, 180
+
+        local enemies = entity_list_get_players(true)
+        local limited_targets = get_limited_targets_by_fov(local_player, enemies, view_angle)
+
+        for _, enemy in pairs(limited_targets) do
+            if (enemy:is_alive()) then
+                local records = player_records[enemy:get_index()]
+                if (records) then
+                    if (ui.ragebot.backtrack.record_weighting_type:get() == 1) then
+                        table.sort(records, function(a, b)
+                        return a.simulation_time < b.simulation_time end)
+                    elseif (ui.ragebot.backtrack.record_weighting_type:get() == 2) then
+                        table.sort(records, function(a, b) 
+                            return calculate_distance(eye_position, a.eye_position) < calculate_distance(eye_position, b.eye_position) 
+                        end)
+                    end
+
+                    for i = 1, #records - 1 do
+                        local record = records[i]
+                        local next_record = records[i + 1]
+
+                        if (is_record_valid(record)) then
+                            local predicted_position = predict_position(record, ui.ragebot.backtrack.prediction_factor:get())
+                            local fov = calculate_fov(view_angle, calculate_angle(eye_position, predicted_position))
+
+                            local smoothing_factor = ui.ragebot.backtrack.bt_smoothing:get() / 10
+                            fov = fov * (1 - smoothing_factor)
+
+                            if (fov < best_fov) then
+                                best_fov = fov
+                                if (ui.ragebot.backtrack.smooth_transition:get() and next_record) then
+                                    local time_difference = (globals.cur_time() - record.simulation_time) / (next_record.simulation_time - record.simulation_time)
+                                    local interpolation_factor = clamp(time_difference, 0, 1)
+
+                                    if (ui.ragebot.backtrack.transition_priority:get() == 1) then
+                                        interpolation_factor = interpolation_factor * (ui.ragebot.backtrack.transition_speed:get() / 100)
+                                    else
+                                        interpolation_factor = interpolation_factor * ((100 - ui.ragebot.backtrack.transition_speed:get()) / 100)
+                                    end
+
+                                    best_record = {
+                                        eye_position = interpolate_records(record, next_record, interpolation_factor),
+                                        simulation_time = record.simulation_time,
+                                        velocity = record.velocity
+                                    }
+                                else
+                                    best_record = record
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        if (best_record) then
+            local simulation_time = best_record.simulation_time
+            local interval_per_tick = globals.interval_per_tick()
+
+            local dynamic_ticks = 0
+            local max_ticks
+
+            if (interval_per_tick > 0) then
+                max_ticks = math.floor(1 / interval_per_tick + 0.5)
+            else
+                max_ticks = 64
+            end
+
+            if (ui.ragebot.backtrack.dynamic_tick_adjustment:get() ~= 1) then
+                if (ui.ragebot.backtrack.dynamic_tick_adjustment:get() == 2) then
+                    dynamic_ticks = math.min(max_ticks, best_fov)
+                elseif (ui.ragebot.backtrack.dynamic_tick_adjustment:get() == 3) then
+                    local distance = calculate_distance(eye_position, best_record.eye_position)
+                    if (distance > 0) then
+                        dynamic_ticks = math.min(max_ticks, distance / 10)
+                    end
+                end
+                dynamic_ticks = adjust_dynamic_ticks_based_on_latency(dynamic_ticks)
+            else
+                dynamic_ticks = max_ticks
+            end
+
+            if (ui.ragebot.backtrack.aggressive_backtrack:get()) then
+                dynamic_ticks = dynamic_ticks * (ui.ragebot.backtrack.aggressive_factor:get() / 100)
+            end
+
+            local tick_count = simulation_time_to_ticks(simulation_time - dynamic_ticks * interval_per_tick)
+            if (type(tick_count) == "number") then
+                cmd.tick_count = tick_count
+            else
+                print('error on thread! abandoning thread..')
+            end
+            return
+        else
+            return
+        end
+    else
+        return
+    end
+end
+
+--- @endregion
+
+--- @info: resolver: side from freestanding / jitter, learned per player and state from hits and misses
+--- @region: resolver
+
+-- what the menu does here:
+--   Improve resolver / Logic resolver / Pose resolver / Custom resolver: any of them turns the resolver on
+--   Improve resolver: max desync, players without desync, jitter          Logic resolver: learns from hits / misses
+--   Pose resolver: the covered side of the head (freestanding)           Custom resolver: the options below it
+--   Unsafe resolver: Primordial's own resolver off while this one runs (off: both run)
+--   Duck mode / Auto duck / Safe peek / Safe mode: head safe point on crouching targets / with Auto, AWP, Deagle, other /
+--   while we quick peek / on targets at or below that HP. Hit sensitivity: head safe point after that many misses in a row
+--   Prediction sel: the reduced desync size (% of max). Calculate box: freestanding trace width. Shot prediction: jitter step
+--   Yaw calculation: Simple = always 58, Advanced = max desync by speed / duck, Experimental = Advanced + reduced size
+--   Disablers + At disabler: while one of them holds, the resolver is off / head safe point / keeps resolving
+local RES_NOCHOKE = 8                      -- updates without a choked tick in a row: no desync possible, nothing forced
+local RES_FS_TICKS = 8                     -- freestanding traces once per this many ticks per player
+local RES_STATE_NUM = { stand = 1, slow = 2, move = 3, duck = 4, air = 6, jitter = 7 }
+local RES_SCOPE_CFG = { 0, 1, 2, 6 }
+local RES_SAFE_CFG = { 0, 2, 3, 7 }
+
+local function res_clamp(v, lo, hi)
+    if (v ~= v) then
+        return lo
+    end
+    if (v < lo) then
+        return lo
+    end
+    if (v > hi) then
+        return hi
+    end
+    return v
+end
+
+local function res_norm(a)
+    a = math.fmod(a + 180, 360)
+    if (a ~= a) then
+        return 0
+    end
+    if (a < 0) then
+        a = a + 360
+    end
+    return a - 180
+end
+
+local function res_sign(v)
+    return v < 0 and -1 or 1
+end
+
+local function res_custom()
+    return ui.ragebot.resolver.enable_resolver:get()
+end
+
+resolver.animstate = function(idx)
+    local ptr = get_entity_address(idx)
+    if (ptr == nil) then
+        return nil
+    end
+    local state = ffi.cast("CPlayer_animation_State**", ffi.cast("uintptr_t", ptr) + 0x9960)[0]
+    if (state == nil) then
+        return nil
+    end
+    return state
+end
+
+-- the server's max desync: 58 deg scaled down with speed and duck (Yaw calculation "Simple": always 58)
+resolver.max_desync = function(st)
+    if (ui.ragebot.reso_cfg.yaw_calc:get() == 1) then
+        return 58
+    end
+
+    local speed = res_clamp(st.m_flFeetSpeedForwardsOrsideWays, 0, 1)
+    local factor = (res_clamp(st.m_flStopToFullRunningFraction, 0, 1) * -0.3 - 0.2) * speed + 1
+    local duck = res_clamp(st.m_fDuckAmount, 0, 1)
+    if (duck > 0) then
+        factor = factor + duck * speed * (0.5 - factor)
+    end
+    return 58 * res_clamp(factor, 0.5, 1)
+end
+
+resolver.state_of = function(ent)
+    local flags = ent:get_prop("m_fFlags")
+    if (bit.band(flags, 1) == 0) then
+        return "air"
+    end
+    if (bit.band(flags, 2) ~= 0) then
+        return "duck"
+    end
+
+    local speed = math.vec_length2d(ent:get_prop("m_vecVelocity"))
+    if (speed > 100) then
+        return "move"
+    elseif (speed > 5) then
+        return "slow"
+    end
+    return "stand"
+end
+
+-- +1 / -1: which side of the head (seen from us) is behind a wall, 0: neither / both
+resolver.freestand = function(local_player, ent)
+    local eye = local_player:get_eye_position()
+    local head = ent:get_hitbox_pos(e_hitboxes.HEAD)
+    if (eye == nil or head == nil) then
+        return 0
+    end
+
+    local dx, dy = head.x - eye.x, head.y - eye.y
+    local len = math.sqrt(dx * dx + dy * dy)
+    if (len < 1) then
+        return 0
+    end
+
+    local width = res_custom() and res_clamp(ui.ragebot.resolver.calc_box:get(), 10, 35) or 25
+    local rx, ry = -dy / len * width, dx / len * width
+    local left = trace_line(eye, vec3_t(head.x + rx, head.y + ry, head.z), local_player, 0x200400B).fraction
+    local right = trace_line(eye, vec3_t(head.x - rx, head.y - ry, head.z), local_player, 0x200400B).fraction
+    if (math.abs(left - right) < 0.05) then
+        return 0
+    end
+    return left < right and 1 or -1
+end
+
+-- Disablers: 0 = none holds, else the "At disabler" choice (1 off, 2 head safe point, 3 keep resolving)
+resolver.disabler = function(local_player)
+    local d = ui.ragebot.reso_cfg.disablers
+    local on_ground = local_player:has_player_flag(e_player_flags.ON_GROUND)
+    local ducking = local_player:has_player_flag(e_player_flags.DUCKING)
+    local scoped = local_player:get_prop("m_bIsScoped") == 1
+
+    local hit = (d:get(1) and not on_ground)
+        or (d:get(2) and not on_ground and ducking)
+        or (d:get(3) and ducking)
+        or (d:get(4) and ragebot_get_autopeek_pos())
+        or (d:get(5) and scoped)
+        or (d:get(6) and not scoped and table.contains(RES_SCOPE_CFG, ragebot_get_active_cfg()))
+        or (d:get(7) and menu_find("aimbot", "general", "exploits", "doubletap", "enable")[2]:get())
+        or (d:get(8) and menu_find("aimbot", "general", "exploits", "hideshots", "enable")[2]:get())
+        or (d:get(9) and client_get_fps() < 75)
+        or (d:get(10) and get_user_ping() > 80)
+    if (not hit) then
+        return 0
+    end
+    return ui.ragebot.reso_cfg.at_disabler:get()
+end
+
+resolver.memory = function(idx, key, kind)
+    local mem = resolver.mem[idx]
+    if (mem == nil) then
+        mem = {}
+        resolver.mem[idx] = mem
+    end
+    if (mem[key] == nil) then
+        mem[key] = { rel = (kind and resolver.trust[kind] < 0) and -1 or 1, flip = true, misses = 0, half = false }
+    end
+    return mem[key]
+end
+
+resolver.update = function(local_player, ent)
+    local idx = ent:get_index()
+    local st = resolver.animstate(idx)
+    if (st == nil) then
+        return
+    end
+
+    local eye = st.m_flEyeYaw
+    if (eye ~= eye or math.abs(eye) > 1e6) then
+        return
+    end
+
+    local p = resolver.data[idx]
+    if (p == nil) then
+        p = { sim = 0, eye = eye, nochoke = 0, steps = {}, dir = 1, fs = 0, fs_tick = -RES_FS_TICKS }
+        resolver.data[idx] = p
+    end
+
+    -- a new record (the sim time moved forward): choke and jitter history
+    local sim = ent:get_prop("m_flSimulationTime")
+    local ticks = time_to_ticks(sim - p.sim)
+    if (ticks >= 1) then
+        p.nochoke = (ticks == 1) and (p.nochoke + 1) or 0
+
+        local jitter_step = res_custom() and res_clamp(ui.ragebot.resolver.shot_pred:get(), 15, 65) or 30
+        local delta = res_norm(eye - p.eye)
+        local step = 0
+        if (math.abs(delta) > jitter_step) then
+            step = res_sign(delta)
+            p.dir = step
+        end
+        table.insert(p.steps, 1, step)
+        p.steps[9] = nil
+
+        p.sim, p.eye = sim, eye
+    end
+
+    local steps = 0
+    for i = 1, #p.steps do
+        if (p.steps[i] ~= 0) then
+            steps = steps + 1
+        end
+    end
+
+    -- the hint the side is relative to: the jitter direction, the covered side of the head, else none
+    local state = resolver.state_of(ent)
+    local key, kind, hint
+    if (steps >= 3) then
+        key, kind, hint = "jitter", "jitter", -p.dir
+    else
+        key, hint = state, 1
+        if (ui.ragebot.pose_reso:get()) then
+            local tick = globals.tick_count()
+            if (tick - p.fs_tick >= RES_FS_TICKS or tick < p.fs_tick) then
+                p.fs = resolver.freestand(local_player, ent)
+                p.fs_tick = tick
+            end
+            if (p.fs ~= 0) then
+                key, kind, hint = state .. " fs", "fs", p.fs
+            end
+        end
+    end
+
+    local mem = resolver.memory(idx, key, kind)
+    local size = 1
+    if (mem.half and ui.ragebot.reso_cfg.yaw_calc:get() == 3) then
+        size = res_custom() and res_clamp(ui.ragebot.resolver.pred_sel:get(), 25, 70) / 100 or 0.5
+    end
+
+    local value = 0
+    if (p.nochoke < RES_NOCHOKE) then
+        value = hint * mem.rel * size * resolver.max_desync(st)
+        st.m_flGoalFeetYaw = res_norm(eye + value)
+    end
+
+    local prev = resolver.previous[idx]
+    if (prev == nil) then
+        prev = {}
+        resolver.previous[idx] = prev
+    end
+    prev.m_flDesync = value
+    prev.m_flSide = value < 0 and -1 or 1
+    prev.m_flState = key
+    prev.m_flStateNum = RES_STATE_NUM[key] or RES_STATE_NUM[state]
+    prev.is_forced = mem.misses > 0
+    prev.state = state
+    prev.key = key
+    prev.kind = kind
+    prev.rel = value ~= 0 and mem.rel or 0
+end
+
+-- one result per shot (Logic resolver). A resolver miss takes the other side ("flip"), or keeps it against an
+-- anti-aim that switches sides after our miss ("stay"); two misses in a row switch between the two, four between
+-- full and reduced size
+resolver.on_result = function(target, hit_ok, resolver_miss)
+    if (target == nil or reso.idx ~= target:get_index() or reso.key == nil or not reso.rel or reso.rel == 0) then
+        return
+    end
+
+    local mem = resolver.memory(reso.idx, reso.key, reso.kind)
+    if (hit_ok) then
+        mem.misses = 0
+        if (ui.ragebot.logic_reso:get()) then
+            mem.rel = reso.rel
+            if (reso.kind) then
+                resolver.trust[reso.kind] = res_clamp(resolver.trust[reso.kind] + reso.rel, -8, 8)
+            end
+        end
+    elseif (resolver_miss) then
+        mem.misses = mem.misses + 1
+        if (ui.ragebot.logic_reso:get()) then
+            if (mem.flip) then
+                mem.rel = -reso.rel
+            end
+            if (mem.misses % 2 == 0) then
+                mem.flip = not mem.flip
+            end
+            if (mem.misses % 4 == 0) then
+                mem.half = not mem.half
+            end
+            if (reso.kind) then
+                resolver.trust[reso.kind] = res_clamp(resolver.trust[reso.kind] - reso.rel * 0.5, -8, 8)
+            end
+        end
+    end
+    reso.rel = nil
+end
+
+-- head safe point for the aimbot's target (Custom resolver options, "At disabler" = safe point)
+resolver.hitscan = function(ctx)
+    local ent = ctx.player
+    if (not resolver.active or ent == nil) then
+        return
+    end
+
+    local safe = resolver.safe_all
+    if (res_custom()) then
+        local idx = ent:get_index()
+        local prev = resolver.previous[idx]
+        local mem = prev and prev.key and resolver.mem[idx] and resolver.mem[idx][prev.key]
+        local opt = ui.ragebot.resolver
+
+        safe = safe
+            or (mem ~= nil and mem.misses >= res_clamp(opt.hit_sens:get(), 1, 47))
+            or (opt.duck_mode:get() and prev ~= nil and prev.state == "duck")
+            or (opt.auto_duck:get() and table.contains(RES_SAFE_CFG, ragebot_get_active_cfg()))
+            or (opt.safe_peek:get() and ragebot_get_autopeek_pos())
+            or (ent:get_prop("m_iHealth") <= opt.safe_mode:get())
+    end
+
+    if (safe) then
+        ctx:set_safepoint_state(true, e_hitscan_groups.HEAD)
+    end
+end
+
+resolver.reset = function()
+    resolver.data = {}
+    resolver.mem = {}
+    resolver.previous = {}
+end
+
+-- Primordial's own resolver is off while this one runs (unless Unsafe resolver is off) and back to its saved value after
+resolver.native = function(off)
+    if (resolver.native_off ~= off) then
+        menu_find("Aimbot", "General", "Aimbot", "Resolve Antiaim"):set((not off) and auto_cfg.resolve_antiaim == true)
+        resolver.native_off = off
+    end
+end
+
+update_target = function(ctx)
+    resolver.previous.target = ctx.player:get_index()
+end
+
+lets_resolve = function()
+    local local_player = entity_list_get_local_player()
+    local on = local_player ~= nil and (ui.ragebot.nexzu_reso:get() or ui.ragebot.logic_reso:get()
+        or ui.ragebot.pose_reso:get() or res_custom())
+    local mode = on and resolver.disabler(local_player) or 0
+
+    resolver.active = on and mode ~= 1
+    resolver.safe_all = mode == 2
+    resolver.native(resolver.active and (not res_custom() or ui.ragebot.resolver.unsafe_reso:get()))
+    if (not resolver.active) then
+        return
+    end
+
+    local enemies = entity_list_get_players(true)
+    if (enemies == nil) then
+        return
+    end
+
+    for _, v in pairs(enemies) do
+        if (v:is_alive() and not v:is_dormant()) then
+            resolver.update(local_player, v)
+        end
+    end
+end
+
+--- @endregion
+
+
+--- @info: cool team animation with ffi animation
+--- @region: animation
+
+team_animation = function()
+    if (ui.player.team_anim:get()) then
+        local players = entity_list_get_players()
+        local teams = entity_list_get_players(true)
+
+        if (players ~= nil and teams ~= nil) then
+            for _, v in pairs(players) do
+                local is_teammate = false
+                for _, teammate in pairs(teams) do
+                    if (v == teammate) then
+                        is_teammate = true
+                        break
+                    end
+                end
+        
+                if (v:is_alive()) then
+                    if (not is_teammate) then
+                        local anim_fix = ffi.cast("CPlayer_animation_State**", ffi.cast("uintptr_t", get_entity_address(v:get_index())) + 0x9960)[0]
+            
+                        anim_fix.m_flGoalFeetYaw = 549
+                        anim_fix.m_flCurrentFeetYaw = -256
+
+                        anim_fix.m_fDuckAmount = client_random_float(0, 1)
+            
+                        anim_fix.m_flHeadHeightOrOffsetFromHittingGroundanimation = client_random_float(-34.91, 50.6)
+                        anim_fix.m_flPitch = client_random_float(-91, 34)
+            
+                        anim_fix.m_flanimUpdateDelta = client_random_float(-2.758, 3.985)
+                        anim_fix.m_flLeanAmount = client_random_float(-29.15, 51.63)
+
+                        anim_fix.m_vOriginZ = client_random_float(-8726, 87269)
+                        anim_fix.m_vOriginY = client_random_float(-2154, 21543)
+                        anim_fix.m_vOriginX = client_random_float(-6978, 69781)
+            
+                        anim_fix.m_vvelocity_x = client_random_float(-3410, 34109)
+                        anim_fix.m_vvelocity_y = client_random_float(-9842, 98421)
+            
+                        anim_fix.m_flCurrentTorsoYaw = client_random_float(-789, 654)
+                        anim_fix.m_flFeetYawRate = client_random_float(-987, 876)
+                        anim_fix.m_flFeetCycle = client_random_float(0.194, 0.957)
+            
+                        anim_fix.m_flMagicFraction = client_random_float(-4.456, 7.987)
+                        anim_fix.m_flSpeed2D = client_random_float(-10, 2450)
+            
+                        anim_fix.m_flUpVelocity = client_random_float(-20, 100)
+                        anim_fix.m_flSpeedNormalized = client_random_float(-2.456, 5.789)
+
+                        anim_fix.m_flFeetSpeedForwardsOrsideWays = client_random_float(-30, 80)
+                        anim_fix.m_flFeetSpeedUnknownForwardOrsideways = client_random_float(-40, 60)
+                    end
+                end
+            end
+        else
+            return
+        end
+    else
+        return
+    end
+end
+
+--- @endregion
+
+--- @info: advanced antiaim (pasted from metaset)
+--- @region: antiaim
+
+run_exploit = function(ctx, cmd, unpredicted)
+    local weapon = entity_list_get_local_player():get_active_weapon()
+    if (weapon) then
+        local aw = weapon ~= nil and global_vars_cur_time() < weapon:get_prop("m_fLastShotTime") + (global_vars_interval_per_tick() * 4)
+        if (refs.hide_shots:get()) then
+            refs.fake_lag_value:set(15)
+            return
+        end
+
+        if (refs.double_tap:get() and not refs.quick_peek:get()) then
+            if (((exploits_get_charge() < exploits_get_max_charge()) or (exploits_get_max_charge() == 0)) and (ui.exploits.fix_dt:get()) and (not refs.fake_duck:get()) and (global.velocity > 3)) then
+                refs.fake_lag_value:set(0)
+            else
+                refs.fake_lag_value:set(15)
+            end
+        elseif (not refs.double_tap:get()) then
+            refs.fake_lag_value:set(15)
+        end
+
+        if (not aw) then
+            backup.realangle = antiaim_get_real_angle()
+        end
+
+        if (aw and ui.antiaim.features.fakelag:get()) then
+            refs.desyncside:set(1)
+            if (weapon:get_name() == "ssg08" or weapon:get_name() == "awp" or weapon:get_name() == "revolver") then
+                if (backup.realangle == nil) then
+                    backup.realangle = 0
+                end
+                ctx:set_yaw(backup.realangle)
+            else
+                return
+            end
+            return
+        else
+            return
+        end
+    else
+        return
+    end
+end
+
+builder.lerp = function(start, end_pos, time)
+    local val = start + (end_pos - start) * time
+    time = time * (globals.frame_time() * 170)
+
+    if (start == end_pos) then
+        return end_pos
+    end
+
+    if (math.abs(val - end_pos) < 0.01) then
+        return end_pos
+    end
+    return val
+end
+
+builder.spin = function(custom_speed)
+    local currentstate = ui.antiaim.builder[global.current_state_number].override:get() and global.current_state_number or 1
+    
+    local speed = ui.antiaim.builder[currentstate].defensive_speed:get()
+    local range = ui.antiaim.builder[currentstate].defensive_range:get()
+
+    builder.speed = builder.speed + (custom_speed or speed) / 2
+    if (builder.speed < -range) then
+        builder.speed = builder.speed + (2 * range)
+    elseif (builder.speed > range) then
+        builder.speed = builder.speed - (2 * range)
+    end
+    return builder.speed
+end
+
+builder.clockpitch = function()
+    if (builder.current_pitch <= -88) then
+        builder.goal_pitch = 89
+    elseif (builder.current_pitch >= 88) then
+        builder.goal_pitch = -89
+    end
+    builder.current_pitch = builder.lerp(builder.current_pitch, builder.goal_pitch, 0.10)
+end
+
+builder.clockyaw = function()
+    if (builder.current_yaw <= -59) then
+        builder.goal_yaw = 60
+    elseif (builder.current_yaw >= 59) then
+        builder.goal_yaw = -60
+    end
+    builder.current_yaw = builder.lerp(builder.current_yaw, builder.goal_yaw, 0.10)
+end
+
+-- one decision per sent packet: the yaw left / right switch and the desync side, a fresh coin flip that is not tied to
+-- the yaw side (a resolver that learns "yaw left = body right" from a few shots hits every shot after that)
+builder.new_packet = function()
+    local tick = globals.tick_count()
+    if (engine_get_choked_commands() == 0 and builder.packet_tick ~= tick) then
+        builder.packet_tick = tick
+        builder.yaw_flip = not builder.yaw_flip
+        builder.side_flip = math.random(2) == 1
+    end
+end
+
+-- the yaw side of the "switch every packet" modes (delay 2): our own switch, or Primordial's desync side (old behaviour)
+builder.left_now = function()
+    if (ui.antiaim.builder.random_side:get()) then
+        return builder.yaw_flip == true
+    end
+    return antiaim_get_desync_side() > 1
+end
+
+-- the desync side of the jitter / switching modes; a fixed side the user chose (static yaw, left / right / peek) stays
+builder.random_side = function(ctx, anti_aim)
+    if (not ui.antiaim.builder.random_side:get()) then
+        return
+    end
+    if (anti_aim.yaw_mode:get() == 1 and anti_aim.desync:get() ~= 3) then
+        return
+    end
+    refs.desyncside:set(2)
+    ctx:set_invert_desync(builder.side_flip == true)
+end
+
+-- anti bruteforce: an enemy bullet passing near the head or a hit moves the yaw 6-14 deg for 0.5-0.85 s and restarts
+-- the left / right switch, so the angle the enemy just shot at is not the next one
+builder.anti_brute_trigger = function()
+    if (not ui.antiaim.builder.enable:get() or not ui.antiaim.builder.anti_brute:get()) then
+        return
+    end
+    builder.ab_until = globals.tick_count() + time_to_ticks(client_random_float(0.5, 0.85))
+    builder.ab_shift = client_random_int(6, 14) * (math.random(2) == 1 and 1 or -1)
+    builder.target_delay = 0
+    builder.yaw_flip = not builder.yaw_flip
+end
+
+-- the yaw add of the builder, kept apart from what is added on top of it (anti bruteforce, crouch correction)
+builder.set_yaw = function(value)
+    builder.base_yaw = value
+    refs.yawadd:set(builder.yaw_now())
+end
+
+builder.yaw_now = function()
+    local yaw = builder.base_yaw or refs.yawadd:get()
+    if ((builder.ab_until or 0) > globals.tick_count()) then
+        yaw = yaw + builder.ab_shift
+    end
+    return math.max(-180, math.min(180, yaw))
+end
+
+builder.closest_point_on_ray = function(ray_from, ray_to, desired_point)
+    local to = desired_point - ray_from
+    local direction = ray_to - ray_from
+    local ray_length = #direction
+    
+    direction.x = direction.x / ray_length
+    direction.y = direction.y / ray_length
+    direction.z = direction.z / ray_length
+    
+    local direction_along = direction.x * to.x + direction.y * to.y + direction.z * to.z
+    if (direction_along < 0) then
+        return ray_from
+    end
+    
+    if (direction_along > ray_length) then
+        return ray_to
+    end
+    return vec3_t(ray_from.x + direction.x * direction_along, ray_from.y + direction.y * direction_along, ray_from.z + direction.z * direction_along)
+end
+
+run_antiaim = function(ctx, cmd, unpredicted)
+    if (ui.antiaim.builder.enable:get()) then
+        refs.overridemove:set(false)
+        refs.overridemovesw:set(false)
+        
+        local currentstate = ui.antiaim.builder[global.current_state_number].override:get() and global.current_state_number or 1
+        local anti_aim = ui.antiaim.builder[currentstate]
+
+        local local_player = entity_list_get_local_player()
+        local should_safe = 0
+        local enemies = 0
+        
+        local visible = false
+        local knifed = false
+
+        local players = entity_list_get_players(true)
+        local abs_origin = local_player:get_prop('m_vecAbsOrigin')
+        
+        local local_vel = local_player:get_prop("m_vecVelocity")
+        local local_wep = local_player:get_active_weapon()
+
+        local safe_defensive = ui.antiaim.builder.defensive_ping:get() == 1
+        local antiaim_side = antiaim_get_desync_side() > 1 and 1 or -1
+
+        local on_defensive = (anti_aim.trigger_defensive:get() == 2 or anti_aim.trigger_defensive:get() == 4)
+        local is_defensive = refs.double_tap:get() and (exploits_get_charge() == exploits_get_max_charge()) and not refs.fake_duck:get()
+
+        local body_yaw = local_player:get_prop("m_flPoseParameter", 11) * 120 - 60
+        local side = body_yaw > 0 and 1 or -1
+
+        local localmod = vec3_t(local_vel.x / 2, local_vel.y / 2, local_vel.z / 2)
+        local int_vel = local_vel:length()
+        
+        builder.warmup = game_rules_get_prop("m_bWarmupPeriod")
+        builder.onpeek = anti_aim.trigger_defensive:get() == 2
+
+        if (builder.old_defensive ~= defensive:is_active(local_player, safe_defensive) and defensive:is_active(local_player, safe_defensive) == false) then
+            builder.invert_defensive = not builder.invert_defensive
+        end
+    
+        if (game_rules_get_prop("m_gamePhase") == 4 or game_rules_get_prop("m_gamePhase") == 5) then
+            refs.pitch:set(1)
+            
+            refs.yawbase:set(1)
+            refs.jittermode:set(1)
+            
+            refs.desyncside:set(0)
+            
+            refs.fsstate:set(1, false)
+            refs.fsstate:set(2, false)
+            refs.fsstate:set(3, false)
+            
+            return
+        end
+    
+        refs.fsstate:set(1, true)
+        refs.fsstate:set(2, true)
+        refs.fsstate:set(3, true)
+    
+        builder.anti_bruteforce = {
+            [0] = {
+                sides = {-120, 120},
+                pitch = {-90, -90},
+                mode = 1
+            },
+
+            [1] = {
+                sides = {80, 80},
+                pitch = {0, 0},
+                mode = 2
+            },
+
+            [2] = {
+                sides = {-90, -90},
+                pitch = {math.random(-45, 60), math.random(-45, 60)},
+                mode = 0
+            },
+
+            [3] = {
+                sides = {90, 90},
+                pitch = {math.random(-45, 60), math.random(-45, 60)},
+                mode = 0
+            }
+        }
+
+        for _, player in pairs(players) do
+            if (player:is_alive() and player:is_player()) then
+                enemies = enemies + 1
+    
+                if (anti_aim.trigger_defensive:get() == 2) then
+                    if (not player:is_dormant()) then
+                        local vel = player:get_prop("m_vecVelocity")
+                        
+                        local origin = player:get_eye_position()
+                        local tickinterval = globals.interval_per_tick()
+                        
+                        if (vel or origin) then
+                            local ticks_to_predict = 3
+    
+                            local mod = vec3_t(vel.x * tickinterval * ticks_to_predict, vel.y * tickinterval * ticks_to_predict, vel.z * tickinterval * ticks_to_predict)
+        
+                            local traced = trace_bullet(origin + mod, abs_origin, local_player, player)
+                            local tracent = trace_bullet(abs_origin + localmod, player:get_hitbox_pos(e_hitboxes.BODY), local_player, player)
+
+                            if (traced.valid and traced.damage > 3) or (tracent.valid and tracent.damage > 3) then
+                                visible = true
+                            end
+                        end
+                    end
+                end
+    
+                if (ui.antiaim.features.antibackstab:get()) then
+                    if (not player:is_dormant()) then
+                        local enemy_weapon = player:get_active_weapon()
+                        if (enemy_weapon ~= nil) then
+                            if (enemy_weapon:get_class_name() == "CKnife") then
+                                if (local_player:get_render_origin():dist(player:get_render_origin()) < 250) then
+                                    knifed = player
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        if (not cmd:has_button(e_cmd_buttons.USE)) then
+            if (ui.antiaim.features.warmup:get(1) and enemies == 0) or (builder.warmup and ui.antiaim.features.warmup:get(2) and builder.warmup > 0) then
+                if (local_player:get_prop("m_bInBombZone") == 1) then
+                    exploits.force_anti_exploit_shift(true)
+                    
+                    refs.yawadd:set(0)
+                    refs.pitch:set(4)
+                    
+                    refs.jittermode:set(2)
+                    refs.rotate:set(true)
+                    
+                    refs.rotaterange:set(360)
+                    refs.rotatespeed:set(75)
+                    
+                    refs.desyncside:set(5)
+                    
+                    return
+                end
+                return
+            end
+        
+            builder.new_packet()
+            refs.jittertype:set(2)
+            refs.rotate:set(false)
+            
+            refs.pitch:set(ui.antiaim.builder.pitch:get())
+            refs.yawbase:set(ui.antiaim.builder.yaw:get() + 1)
+            
+            refs.leftamount:set(anti_aim.desync_left:get() / 60 * 100 + math.random(0, anti_aim.desync_meta_left:get()))
+            refs.rightamount:set(anti_aim.desync_right:get() / 60 * 100 + math.random(0, anti_aim.desync_meta_right:get()))
+        
+            if (anti_aim.yaw_modifier:get() ~= 1) then
+                refs.jittermode:set(2)
+                
+                refs.jittertype:set(anti_aim.yaw_modifier:get() - 1)
+                refs.jitterrange:set(anti_aim.modifier_degree:get() * -1 + anti_aim.modifier_random:get())
+            else
+                refs.jittermode:set(1)
+            end
+        
+            if (ui.antiaim.features.safehead:get("Air knife")) then
+                local weapon = entity_list_get_entity(local_player:get_prop("m_hActiveWeapon"))
+                if (weapon ~= nil) then
+                    local weapon_name = weapon:get_name()
+                    if (weapon_name == "knife") then
+                        if (global.current_state == "air duck") then
+                            ctx:set_pitch(90)
+                            refs.yawadd:set(0)
+                            
+                            refs.desyncside:set(2)
+                            refs.leftamount:set(0)
+                            
+                            refs.jittermode:set(1)
+                            refs.rotate:set(false)
+        
+                            should_safe = ui.antiaim.features.safehead:get("Allow defensive") and 2 or 1
+                        end
+                    end
+                end
+            end
+        
+            if (should_safe == 0) then
+                if (anti_aim.yaw_mode:get() == 1) then
+                    builder.set_yaw(anti_aim.yaw_val:get())
+                    refs.desyncside:set(anti_aim.desync:get() + 1)
+                elseif (anti_aim.yaw_mode:get() == 2) then
+                    if (anti_aim.yaw_delay:get() == 2) then
+                        builder.set_yaw(builder.left_now() and anti_aim.yaw_left:get() or anti_aim.yaw_right:get())
+                        refs.desyncside:set(anti_aim.desync:get() + 1)
+                    else
+                        if (engine_get_choked_commands() == 0) then
+                            if (globals.tick_count() > builder.target_delay) then
+                                builder.target_delay = globals.tick_count() + anti_aim.yaw_delay:get()
+                                builder.invert_delay = not builder.invert_delay
+                            end
+        
+                            refs.desyncside:set(builder.invert_delay and 2 or 3)
+                            builder.set_yaw(builder.invert_delay and anti_aim.yaw_left:get() or anti_aim.yaw_right:get())
+                        end
+                    end
+                elseif (anti_aim.yaw_mode:get() == 3) then
+                    local left = anti_aim.yaw_left:get() + math.random(0, anti_aim.yaw_meta_left:get())
+                    local right = anti_aim.yaw_right:get() + math.random(0, anti_aim.yaw_meta_right:get())
+                    
+                    if (anti_aim.yaw_delay:get() == 2 and anti_aim.meta_delay:get() == 0) then
+                        builder.set_yaw(builder.left_now() and left or right)
+                        refs.desyncside:set(anti_aim.desync:get() + 1)
+                    else
+                        if (engine_get_choked_commands() == 0) then
+                            if (globals.tick_count() > builder.target_delay) then
+                                builder.target_delay = globals.tick_count() + anti_aim.yaw_delay:get() + math.random(0, anti_aim.meta_delay:get())
+                                builder.invert_delay = not builder.invert_delay
+                            end
+        
+                            refs.desyncside:set(builder.invert_delay and 2 or 3)
+                            builder.set_yaw(builder.invert_delay and left or right)
+                        end
+                    end
+                end
+
+                builder.random_side(ctx, anti_aim)
+            end
+        
+            if (should_safe == 0 and builder.base_yaw ~= nil) then
+                refs.yawadd:set(builder.yaw_now())
+            end
+
+            if (anti_aim.trigger_defensive:get() == 2 and visible) then
+                defensive:trigger()
+            elseif (anti_aim.trigger_defensive:get() > 2) then
+                defensive:trigger()
+            end
+        
+            if (not (should_safe == 1)) then
+                if (defensive:is_active(local_player, safe_defensive) and is_defensive and on_defensive) then
+                    if (anti_aim.defensive_pitch:get() == 10) then
+                        ctx:set_pitch(builder.current_pitch)
+                    elseif (anti_aim.defensive_pitch:get() == 7) then
+                        ctx:set_pitch(math.random(anti_aim.defensive_pitch_val:get(), anti_aim.defensive_pitch_val2:get()))
+                    elseif (anti_aim.defensive_pitch:get() == 8) then
+                        ctx:set_pitch(anti_aim.defensive_pitch_val:get())
+                    elseif (anti_aim.defensive_pitch:get() == 9) then
+                        ctx:set_pitch(builder.invert_defensive and anti_aim.defensive_pitch_val:get() or anti_aim.defensive_pitch_val2:get())
+                    elseif (anti_aim.defensive_pitch:get() > 1) then
+                        refs.pitch:set(anti_aim.defensive_pitch:get() - 1)
+                    end
+        
+                    if (anti_aim.defensive_yaw:get() == 2) then
+                        if (currentstate == 11) then
+                            ctx:set_yaw(builder.save_yaw + (60 * antiaim_side) - anti_aim.defensive_yaw_val:get())
+                        else
+                            refs.yawadd:set(anti_aim.defensive_yaw_val:get())
+                        end
+                    elseif (anti_aim.defensive_yaw:get() == 3) then
+                        refs.desyncside:set(4)
+                        refs.yawadd:set(anti_aim.defensive_yaw_val:get() * antiaim_side)
+                    elseif (anti_aim.defensive_yaw:get() == 4) then
+                        refs.yawadd:set(globals.server_tick() % 24 > 11 and -anti_aim.defensive_yaw_val:get() or anti_aim.defensive_yaw_val:get())
+                        refs.desyncside:set(globals.server_tick() % 24 > 11 and 2 or 3)
+                    elseif (anti_aim.defensive_yaw:get() == 5) then
+                        ctx:set_yaw(builder.spin(ui.antiaim.builder[currentstate].defensive_speed:get()))
+                        refs.desyncside:set(5)
+                    elseif (anti_aim.defensive_yaw:get() == 6) then
+                        ctx:set_yaw(math.random(0, 360))
+                    elseif (ui.antiaim.builder[currentstate].defensive_yaw:get() == 7) then
+                        refs.jittermode:set(2)
+                        refs.jittertype:set(4)
+                        refs.jitterrange:set(180)
+                        refs.desyncside:set(4)
+                    elseif (ui.antiaim.builder[currentstate].defensive_yaw:get() == 8) then
+                        refs.yawadd:set(builder.current_yaw)
+                        refs.desyncside:set(builder.goal_yaw < 0 and 3 or 2)
+                    end
+                end
+        
+                if (not (defensive:is_active(local_player, true, true).tick > globals.tick_count())) then
+                    builder.save_yaw = antiaim_get_real_angle()
+                end
+        
+                if (anti_aim.trigger_defensive:get() == 5) then
+                    if (is_defensive) then
+                        if (defensive:is_active(local_player, safe_defensive)) then
+                            local side = antiaim_get_desync_side() > 1 and 1 or 2
+        
+                            ctx:set_pitch(builder.anti_bruteforce[builder.misses].pitch[side])
+                            if (builder.anti_bruteforce[builder.misses].mode == 1) then
+                                refs.jittermode:set(2)
+                                refs.jittertype:set(2)
+                                
+                                refs.yawadd:set(0)
+                                refs.jitterrange:set(builder.anti_bruteforce[builder.misses].sides[1])
+                            elseif (builder.anti_bruteforce[builder.misses].mode == 0) then
+                                refs.yawadd:set(builder.anti_bruteforce[builder.misses].sides[side])
+                            elseif (builder.anti_bruteforce[builder.misses].mode == 2) then
+                                ctx:set_yaw(builder.spin(builder.anti_bruteforce[builder.misses].sides[side]))
+                            end
+                        end
+                    end
+                end
+            end
+        
+            local forward = cmd:has_button(e_cmd_buttons.FORWARD)
+            
+            local right = cmd:has_button(e_cmd_buttons.MOVERIGHT)
+            local left = cmd:has_button(e_cmd_buttons.MOVELEFT)
+            
+            local use = cmd:has_button(e_cmd_buttons.USE)
+            local speed = math.vec_length2d(local_vel)
+            
+            local ivgleft = speed / 80 * 2
+            local ivgright = speed / 80 * 10
+        
+            if (knifed ~= false) then
+                ctx:set_yaw(math.yaw_to_player(knifed, true))
+                refs.rotate:set(false)
+                
+                refs.desyncside:set(2)
+                refs.leftamount:set(0)
+            end
+        
+            if (ui.antiaim.features.correction:get("Yaw") and (global.current_state_number == 5 or global.current_state_number == 6)) then
+                if (not defensive:is_active(local_player, safe_defensive)) then
+                    if (right and forward) then
+                        refs.yawadd:set(builder.yaw_now() + ivgright * (ui.antiaim.builder[currentstate].yaw_mode:get() == 3 and 1 or 1.3))
+                    end
+                    
+                    if (left and forward) then
+                        refs.yawadd:set(builder.yaw_now() - ivgleft)
+                    end
+                end
+            end
+            builder.old_defensive = defensive:is_active(local_player, safe_defensive)
+        end
+    else
+        return
+    end
+end
+
+on_miss = function(event)
+    if (ui.antiaim.builder.enable:get()) then
+        local userid = event.userid
+        if (userid) then
+            local entity = entity_list_get_player_from_userid(userid)
+            if (entity ~= nil) then
+                local local_player = entity_list_get_local_player()
+                if (local_player:is_player() and local_player:is_alive()) then
+                    if (entity:is_player() and entity:is_enemy()) then
+                        local eye_pos = entity:get_eye_position()
+                        if (eye_pos) then
+                            local bullet_impact = vec3_t(event.x, event.y, event.z)
+                            
+                            local localrecord = eye_pos:dist(bullet_impact)
+                            local localorigin = eye_pos
+                            
+                            misstable[#misstable + 1] = eye_pos:dist(bullet_impact)
+                            client_delay_call(function()
+                                if (localrecord == misstable[#misstable]) then
+                                    local eye_pos = local_player:get_eye_position()
+                                    if (eye_pos) then
+                                        if (builder.closest_point_on_ray(localorigin, bullet_impact, eye_pos):dist(eye_pos) < 50) then
+                                            builder.misses = builder.misses < #builder.anti_bruteforce and builder.misses + 1 or 0
+                                            builder.anti_brute_trigger()
+                                        end
+
+                                        misstable = {}
+                                        return
+                                    else
+                                        return
+                                    end
+                                else
+                                    return
+                                end
+                            end, 0.01)
+                        else
+                            return
+                        end
+                    else
+                        return
+                    end
+                else
+                    return
+                end
+            else
+                return
+            end
+        else
+            return
+        end
+    else
+        return
+    end
+end
+
+--- @endregion
+
+--- @info: rubberbang | no recharge until safe place | teleport back after shot | doubletap optimizer
+--- @region: quickfall | safe recharge | better hideshots | better doubletap
+
+quick_fall = function(cmd, unpredicted_data)
+    if (ui.exploits.quick_fall:get() and ui.quick_fall:get()) then
+        local enemies = entity_list_get_players(true)
+        if (enemies ~= nil) then
+            local in_air = entity_list_get_local_player():get_prop("m_vecVelocity[2]") ~= 0
+            local is_visible = false
+
+            for _, enemy in pairs(enemies) do
+                if (in_air) then
+                    if (is_point_visible(enemy)) then
+                        is_visible = true
+                    end
+                end
+            end
+
+            if (not is_visible and not in_air) then
+                exploits_allow_recharge()
+            elseif (is_visible) then
+                exploits_force_uncharge()
+                exploits_block_recharge()
+            end
+            return
+        else
+            return
+        end
+    else
+        return
+    end
+end
+
+safe_recharge = function(cmd, unpredicted_data)
+    if (ui.exploits.safe_recharge:get()) then
+        local enemies = entity_list_get_players(true)
+        if (enemies ~= nil) then
+            local is_visible = false
+            for _, enemy in pairs(enemies) do
+                if (is_point_visible(enemy)) then
+                    is_visible = true
+                end
+            end
+
+            if (not is_visible and not entity_list_get_local_player():get_prop("m_vecVelocity[2]") ~= 0) then
+                exploits_allow_recharge()
+            end
+
+            if (is_visible) then
+                exploits_block_recharge()
+            elseif (not is_visible) then
+                exploits_allow_recharge()
+            end
+            return
+        else
+            return
+        end
+    elseif (not ui.exploits.safe_recharge:get()) then
+        exploits_allow_recharge()
+    end
+    return
+end
+
+better_hs = function(cmd)
+    if (ui.exploits.better_hs:get()) then
+        if (on_shoot) then
+            local on_hideshots = menu_find("aimbot", "general", "exploits", "hideshots", "enable")
+            local on_peek = menu_find("aimbot", "general", "misc", "autopeek", "enable")
+
+            if (on_hideshots[2]:get() and on_peek[2]:get()) then
+                local velocity = entity_list_get_local_player():get_prop("m_vecVelocity"):length()
+                if (velocity > 35) then
+                    exploits_force_uncharge()
+                    exploits_force_recharge()
+
+                    on_shoot = false
+                    table.insert(on_predict, false)
+                else
+                    return
+                end
+                return
+            else
+                return
+            end
+        else
+            return
+        end
+    else
+        return
+    end
+end
+
+custom_dt = function()
+    if (ui.exploits.better_dt.better_dt:get()) then
+        if (menu_find("aimbot", "general", "exploits", "doubletap", "enable")[2]:get()) then
+            if (ui.exploits.better_dt.dt_mode:get() == 1) then
+                local enemies = entity_list_get_players(true)
+                if (enemies ~= nil) then
+                    local local_player = entity_list_get_local_player()
+                    for _, player in pairs(enemies) do
+                        if (ui.exploits.better_dt.speed_calc:get() == 1) then
+                            cvars.sv_maxusrcmdprocessticks:set_int(17)
+                        elseif (ui.exploits.better_dt.speed_calc:get() == 2) then
+                            if (distance(local_player:get_render_origin(), vec3_t(0.0, 0.0, 0.0)) < 600) then
+                                cvars.sv_maxusrcmdprocessticks:set_int(17)
+                            elseif (distance(local_player:get_render_origin(), vec3_t(0.0, 0.0, 0.0)) > 600) then
+                                cvars.sv_maxusrcmdprocessticks:set_int(14)
+                            end
+                        elseif (ui.exploits.better_dt.speed_calc:get() == 3) then
+                            if (distance(local_player:get_render_origin(), vec3_t(0.0, 0.0, 0.0)) < 600) then
+                                cvars.sv_maxusrcmdprocessticks:set_int(17)
+                            elseif (distance(local_player:get_render_origin(), vec3_t(0.0, 0.0, 0.0)) > 600 and distance(local_player:get_render_origin(), vec3_t(0.0, 0.0, 0.0)) < 1000) then
+                                cvars.sv_maxusrcmdprocessticks:set_int(14)
+                            elseif (distance(local_player:get_render_origin(), vec3_t(0.0, 0.0, 0.0)) > 1000) then
+                                cvars.sv_maxusrcmdprocessticks:set_int(12)
+                            end
+                        end
+                    end
+                    return
+                else
+                    return
+                end
+            else
+                cvars.sv_maxusrcmdprocessticks:set_int(ui.exploits.better_dt.dt_speed:get())
+            end
+            return
+        else
+            return
+        end
+    else
+        cvars.sv_maxusrcmdprocessticks:set_int(15)
+    end
+    return
+end
+
+--- @endregion
+
+--- @info: edge-yaw antiaim
+--- @region: edgeyaw
+
+edgeyaw.fix_yaw = function(yaw)
+    while (yaw > 180) do
+        yaw = yaw - 360
+    end
+    
+    while (yaw < -180) do
+        yaw = yaw + 360
+    end
+    return yaw
+end
+
+edgeyaw.multiply_vector = function(vec, mul)
+    return vec3_t(vec.x * mul, vec.y * mul, vec.z * mul)
+end
+
+edgeyaw.lerp_vector = function(source, destination, percentage)
+    return source + edgeyaw.multiply_vector((destination - source), percentage)
+end
+
+edgeyaw.angle_to_vector = function(angle)
+    return vec3_t(math.cos(angle.y) * math.cos(angle.x), math.sin(angle.y) * math.cos(angle.x), math.sin(angle.x))
+end
+
+edgeyaw.vector_to_angle = function(vec)
+    return angle_t(math.atan2(vec.y, vec.x), math.asin(vec.z), 0)
+end
+
+edgeyaw.normalize_yaw = function(yaw)
+    local result = yaw
+    while (result < -180) do
+        result = result + 360
+    end
+
+    while (result > 180) do
+        result = result - 360
+    end
+    return result
+end
+
+run_edgeyaw = function(ctx, cmd, unpredicted)
+    if (ui.antiaim.builder.edge_yaw:get() and ui.edge_yaw:get()) then
+        local local_player = entity_list_get_local_player()
+        local can_hit = false
+
+        local enemies = entity_list_get_players(true)
+        if (enemies ~= nil) then
+            for _, enemy in pairs(enemies) do
+                if (enemy and enemy:is_player()) then
+                    local trace = trace_bullet(local_player:get_hitbox_pos(e_hitboxes.HEAD), enemy:get_eye_position(), enemy, local_player)
+                    if (trace.valid and trace.damage > 20) then
+                        can_hit = true
+                        break
+                    end
+                end
+            end
+
+            if (edgeyaw.enabled and not can_hit) then
+                local angle = edgeyaw.vector_to_angle(edgeyaw.pos - local_player:get_eye_position())
+
+                local raw_in_degrees = math.deg(angle.x)
+                local new_yaw = raw_in_degrees
+
+                local view_angle_yaw = cmd.viewangles.y
+
+                local difference = math.abs(edgeyaw.normalize_yaw(raw_in_degrees - view_angle_yaw))
+                local angle_difference = edgeyaw.fix_yaw(raw_in_degrees - view_angle_yaw)
+
+                new_yaw = edgeyaw.fix_yaw(raw_in_degrees + angle_difference)
+
+                if (difference > 90) then
+                    new_yaw = edgeyaw.fix_yaw(raw_in_degrees)
+                else
+                    local start_left = local_player:get_render_origin() + vec3_t(0, 0, 20) + edgeyaw.multiply_vector(edgeyaw.angle_to_vector(angle_t(0, math.rad(edgeyaw.normalize_yaw(view_angle_yaw + 90)), 0)), 10)
+                    local end_left = start_left + edgeyaw.multiply_vector(edgeyaw.angle_to_vector(angle_t(0, math.rad(edgeyaw.normalize_yaw(view_angle_yaw)), 0)), 40)
+                    
+                    local start_right = local_player:get_render_origin() + vec3_t(0, 0, 20) + edgeyaw.multiply_vector(edgeyaw.angle_to_vector(angle_t(0, math.rad(edgeyaw.normalize_yaw(view_angle_yaw - 90)), 0)), 10)
+                    local end_left = start_right + edgeyaw.multiply_vector(edgeyaw.angle_to_vector(angle_t(0, math.rad(edgeyaw.normalize_yaw(view_angle_yaw)), 0)), 40)
+                    
+                    local fraction_left = trace_line(start_left, end_left, local_player, 0x200400B).fraction
+                    local fraction_right = trace_line(start_right, end_left, local_player, 0x200400B).fraction
+
+                    if (fraction_left < 0.9 and fraction_right >= 0.95) then
+                        new_yaw = edgeyaw.fix_yaw(new_yaw + 35)
+                    elseif (fraction_right < 0.9 and fraction_left >= 0.95) then
+                        new_yaw = edgeyaw.fix_yaw(new_yaw - 35)
+                    end
+                end
+
+                ctx:set_yaw(new_yaw)
+                return
+            else
+                return
+            end
+        else
+            return
+        end
+    else
+        return
+    end
+end
+
+edge_yaw = function()
+    if (ui.antiaim.builder.edge_yaw:get() and ui.edge_yaw:get()) then
+        local local_player = entity_list_get_local_player()
+        local viewangles = engine_get_view_angles()
+
+        local trace_end = {}
+
+        edgeyaw.enabled = false
+        edgeyaw.vec_trace_start = local_player:get_eye_position()
+
+        if (engine_get_choked_commands() == 0) then
+            edgeyaw.vec_trace_start = local_player:get_eye_position()
+        end
+
+        for yaw_iteration = 20, 360, 20 do
+            yaw_iteration = edgeyaw.fix_yaw(yaw_iteration)
+
+            local yaw_iteration_rad = math.rad(yaw_iteration)
+            local edge_angle = angle_t(0, yaw_iteration_rad, 0)
+
+            local forwarded_angle = edgeyaw.angle_to_vector(edge_angle)
+            local vec_trace_end = edgeyaw.vec_trace_start + edgeyaw.multiply_vector(forwarded_angle, 40)
+
+            local trace_info = trace_line(edgeyaw.vec_trace_start, vec_trace_end, local_player, 0x200400B)
+
+            local fraction = trace_info.fraction
+            local entity_hit = trace_info.entity
+
+            if (entity_hit and entity_hit:get_class_name() == "CWorld" and fraction < 0.9) then
+                trace_end[#trace_end + 1] = {
+                    vec_trace_end = vec_trace_end,
+                    yaw_deg = yaw_iteration
+                }
+            end
+        end
+
+        table.sort(trace_end,
+            function(a, b)
+                return a.yaw_deg < b.yaw_deg
+            end
+        )
+
+        local edge_angle
+        if (#trace_end > 2) then
+            local middle_pos = edgeyaw.lerp_vector(trace_end[1].vec_trace_end, trace_end[#trace_end].vec_trace_end, 0.5)
+            edge_angle = edgeyaw.vector_to_angle(middle_pos - edgeyaw.vec_trace_start)
+
+            edgeyaw.enabled = true
+
+            edgeyaw.pos = middle_pos
+            edgeyaw.angle = edge_angle
+        else
+            return
+        end
+        return
+    else
+        return
+    end
+end
+
+--- @endregion
+
+--- @info: hit and miss indicator
+--- @region: log indicator
+
+handle_dragging = function()
+    if (ui.utils.event_logs:get(1)) then
+        if (indicator.data) then
+            if (indicator.dragging or (input_is_key_held(e_keys.MOUSE_LEFT) and input_is_mouse_in_bounds(indicator.pos, indicator.size))) then
+                indicator.pos = input_get_mouse_pos() - indicator.difference
+                indicator.dragging = true
+            else
+                indicator.difference = input_get_mouse_pos() - indicator.pos
+            end
+
+            if (not input_is_key_held(e_keys.MOUSE_LEFT)) then
+                indicator.dragging = false
+            else
+                return
+            end
+            return
+        else
+            return
+        end
+    else
+        return
+    end
+end
+
+handle_drawing = function()
+    if (ui.utils.event_logs:get(1)) then
+        local different_names = 0
+
+        local y_start = indicator.size.y / 2
+        local height = different_names * 15
+
+        y_start = y_start - (height / 2)
+
+        local text_start = indicator.pos + vec2_t(80, y_start)
+        for name, value in pairs(indicator.data) do
+            local color = colors[name] or color_t(0, 0, 0, 255)
+
+            render_rect_filled(text_start + vec2_t(0, 2), vec2_t(10, 10), color, 2)
+            render_text(indicator.font, string.format("(%.0f%%) %s", value / indicator.shot_count * 100, name), text_start + vec2_t(15, 0), color_t(255, 255, 255, 255))
+            
+            text_start = text_start + vec2_t(0, 15)
+        end
+        return
+    else
+        return
+    end
+end
+
+--- @endregion
+
+--- @info: menu effect, watermark, keybinds spectator, crosshair indicator, gs indicator, china hat
+--- @region: visuals
+
+lerp = function(time, a, b)
+    return a * (1 - time) + b * time
+end
+
+draw_menu = function()
+    local frametime = math.floor(globals.frame_time() * 150)
+
+    animation.alpha = lerp(0.1 + math.min(frametime / 10.1, 0.3), animation.alpha, menu_is_open() and 255 or 0)
+    animation.appearing = lerp(0.06 + math.min(frametime / 10.1, 0.25), animation.appearing, menu_is_open() and 0 or 100)
+    
+    if (animation.alpha < 2) then
+        return
+    end
+
+    render_rect_fade(vec2_t(menu_get_pos().x - math.floor(animation.appearing), menu_get_pos().y - 21 - math.floor(animation.appearing)), vec2_t(200 + math.floor(animation.appearing * 5), 15), color_t(29, 29, 29, math.floor(animation.alpha)), color_t(29, 29, 29, 0), true)
+    render_rect_filled(vec2_t(menu_get_pos().x + 2 - math.floor(animation.appearing), menu_get_pos().y - 19 - math.floor(animation.appearing)), vec2_t(2 + math.floor(animation.appearing * 2), 11), color_t(ui.accent_color:get().r, ui.accent_color:get().g, ui.accent_color:get().b, math.floor(animation.alpha)))
+    
+    local base_x = render_get_text_size(pixel_font, "azura0").x + menu_get_pos().x - 23 - -math.floor(animation.appearing)
+    local base_y = menu_get_pos().y - 19 - math.floor(animation.appearing)
+
+    local x_offset = base_x + render_get_text_size(pixel_font, "azura.uno" .. info.beta_text .. " ").x
+
+    render_text(pixel_font, "azura.uno" .. info.beta_text .. " ", vec2_t(base_x, base_y), color_t(255, 255, 255, math.floor(animation.alpha)))
+    render_text(pixel_font, "|", vec2_t(x_offset, base_y), color_t(ui.text_color:get().r, ui.text_color:get().g, ui.text_color:get().b, math.floor(animation.alpha)))
+
+    x_offset = x_offset + render_get_text_size(pixel_font, "| ").x
+    render_text(pixel_font, "user: " .. info.user .. " ", vec2_t(x_offset, base_y), color_t(255, 255, 255, math.floor(animation.alpha)))
+
+    x_offset = x_offset + render_get_text_size(pixel_font, "user: " .. info.user .. " ").x
+    render_text(pixel_font, "|", vec2_t(x_offset, base_y), color_t(ui.text_color:get().r, ui.text_color:get().g, ui.text_color:get().b, math.floor(animation.alpha)))
+
+    x_offset = x_offset + render_get_text_size(pixel_font, "| ").x
+    render_text(pixel_font, "uid: " .. info.uid, vec2_t(x_offset, base_y), color_t(255, 255, 255, math.floor(animation.alpha)))
+end
+
+draw_watermark = function()
+    local things_tbl = { 'azura.uno' .. info.beta_text }
+    local h, m, s = client_get_local_time()
+
+    if (m < 10) then
+        m = '0' .. m
+    end
+
+    if (h < 10) then
+        h = '0' .. h
+    end
+
+    local period = "AM"
+    if (tonumber(h) >= 12) then
+        period = "PM"
+        if (tonumber(h) > 12) then
+            h = tonumber(h) - 12
+        end
+    end
+
+    if (tonumber(h) == 0) then
+        h = 12
+    end
+    
+    table.insert(things_tbl, (' / %s'):format(info.user))
+    --table.insert(things_tbl, (' / %s'):format(info.uid))
+    table.insert(things_tbl, (' / %i ms'):format(get_user_ping()))
+    table.insert(things_tbl, (' / %i fps'):format(client_get_fps()))
+    table.insert(things_tbl, (' / %s'):format(('%02d:%02d %s'):format(h, m, period)))
+    
+    local text = table.concat(things_tbl)
+    local text_size = render_get_text_size(verdana2, text)
+    
+    drag_watermark:update()
+    drag_watermark:lerp("size", vec2_t(text_size.x + 15, 20), 5)
+    
+    local color = ui.accent_color:get()
+    
+    local pos = drag_watermark.pos
+    local size = drag_watermark.size
+
+    render_rect_filled(pos, size, color_t(15, 15, 15, 255), 5)
+
+    render_rect_filled(vec2_t(pos.x, pos.y + (size.y/2) - 5), vec2_t(2, 10), color_t(color.r,color.g,color.b))
+    if (ui.utils.menu_glow:get()) then
+        libs.etr.glow(vec2_t(pos.x, pos.y + (size.y/2) - 5), vec2_t(2, 10), 5, color_t(color.r,color.g,color.b, 50), 10)
+    end
+
+    render_rect_filled(vec2_t(pos.x + size.x - 2, pos.y + (size.y/2) - 5), vec2_t(2, 10), color_t(color.r,color.g,color.b))
+    if (ui.utils.menu_glow:get()) then
+        libs.etr.glow(vec2_t(pos.x + size.x - 2, pos.y + (size.y/2) - 5), vec2_t(2, 10), 5, color_t(color.r,color.g,color.b, 50), 10)
+    end
+    render_text(verdana2, text, vec2_t(pos.x + (size.x/2), pos.y + (size.y/2)), color_t(255, 255, 255, 255), true)
+end
+
+draw_keybinds = function()
+    drag_keybinds:update()
+
+    local active_binds = {}
+    local active_mode = {}
+
+    local pos = drag_keybinds.pos
+    local size = drag_keybinds.size
+
+    local offset = 22
+
+    for name, keys in pairs(keybinds.unsorted) do
+        local mode = keys:get_mode()
+        if (mode ~= 3 and mode ~= 4) then
+            if (keys:get() and not keybinds.sorted[name] and not menu_is_open()) then
+                table.insert(keybinds.sorted, 1, {name = name, mode = keybinds.mode[mode], alpha = 0})
+                keybinds.sorted[name] = true
+            end
+        end
+    end
+
+    for i = #keybinds.sorted, 1, -1 do
+        local name = keybinds.sorted[i].name
+        local target_alpha = keybinds.unsorted[name]:get() and 1 or 0
+
+        keybinds.sorted[i].alpha = libs.etr.lerp(keybinds.sorted[i].alpha, target_alpha, 8)
+        if (not keybinds.unsorted[name]:get() and keybinds.sorted[i].alpha <= 0.15) or menu_is_open() then
+            table.remove(keybinds.sorted, i)
+            keybinds.sorted[name] = false
+        end
+    end
+
+    if (#keybinds.sorted > 0 or menu_is_open()) then
+        for _, tbl in ipairs(keybinds.sorted) do
+            local bind_name = tbl.name
+            local bind_size = render_get_text_size(verdana2, bind_name)
+    
+            local bind_mode = "[" .. tbl.mode .. "]"
+            local mode_size = render_get_text_size(verdana2, bind_mode)
+    
+            local alpha = tbl.alpha
+    
+            table.insert(active_binds, bind_name)
+            table.insert(active_mode, bind_mode)
+    
+            render_push_alpha_modifier(alpha)
+            render_text(verdana2, bind_name, vec2_t(pos.x, pos.y + offset), color_t(255, 255, 255, 255))
+            render_text(verdana2, bind_mode, vec2_t(pos.x + size.x - mode_size.x, pos.y + offset), color_t(255, 255, 255, 255))
+            render_pop_alpha_modifier()
+    
+            offset = offset + 15 * alpha
+        end
+    
+        local bind_concated = table.concat(active_binds, "\n")
+        local mode_concated = table.concat(active_mode, "\n")
+    
+        local concated_bind = render_get_text_size(verdana2, bind_concated)
+        local concated_mode = render_get_text_size(verdana2, mode_concated)
+    
+        local color = ui.accent_color:get()
+    
+        render_rect_filled(pos, size, color_t(15, 15, 15, 255), 5)
+        render_text(verdana2, 'keybinds', vec2_t(pos.x + (size.x / 2), pos.y + (size.y / 2)), color_t(255, 255, 255, 255), true)
+    
+        render_rect_filled(vec2_t(pos.x, pos.y + (size.y / 2) - 5), vec2_t(2, 10), color_t(color.r, color.g, color.b))
+        if (ui.utils.menu_glow:get()) then
+            libs.etr.glow(vec2_t(pos.x, pos.y + (size.y / 2) - 5), vec2_t(2, 10), 5, color_t(color.r, color.g, color.b, 50), 10)
+        end
+    
+        render_rect_filled(vec2_t(pos.x + size.x - 2, pos.y + (size.y / 2) - 5), vec2_t(2, 10), color_t(color.r, color.g, color.b))
+        if (ui.utils.menu_glow:get()) then
+            libs.etr.glow(vec2_t(pos.x + size.x - 2, pos.y + (size.y / 2) - 5), vec2_t(2, 10), 5, color_t(color.r, color.g, color.b, 50), 10)
+        end
+        drag_keybinds:lerp("size", vec2_t((#active_binds > 0 and (concated_bind.x + concated_mode.x + 35) or 100), 20), 5)
+    else
+        return
+    end
+end
+
+draw_spectators = function()
+    drag_spectators:update()
+
+    local spectators = libs.etr.get_spectators()
+    local offset = 20
+    
+    local pos = drag_spectators.pos
+    local size = drag_spectators.size
+
+    if (spectators ~= nil and #spectators > 0 or spectators ~= nil and menu_is_open()) then
+        if (#spectators <= 0 or menu_is_open()) then
+            largest_name_size = 100
+        else
+            for index, value in pairs(spectators) do
+                if (value ~= nil and value.name ~= nil and value.active ~= false and not menu_is_open()) then
+                    local name = value.name
+                    local avatars = libs.etr.get_avatar(name, value.id)
+                    
+                    local name_y = render_get_text_size(verdana2, name).y
+                    local name_size = render_get_text_size(verdana2, name).x
+
+                    if (name_size > largest_name_size) then
+                        largest_name_size = name_size + name_y + 10
+                    end
+
+                    render_push_alpha_modifier(value.alpha)
+                    if (avatars ~= nil) then
+                        render_texture(avatars.id, vec2_t(pos.x, pos.y + offset), vec2_t(name_y, name_y))
+                    end
+
+                    render_text(verdana2, name, vec2_t(pos.x + name_y + 5, pos.y + offset), color_t(255, 255, 255, 255))
+                    render_pop_alpha_modifier()
+                    
+                    offset = offset + 15 * value.alpha
+                end
+            end
+        end
+
+        local color = ui.accent_color:get()
+
+        render_rect_filled(pos, size, color_t(15, 15, 15, 255), 5)
+        render_text(verdana2, 'spectators', vec2_t(pos.x + (size.x / 2), pos.y + (size.y / 2)), color_t(255, 255, 255, 255), true)
+
+        render_rect_filled(vec2_t(pos.x, pos.y + (size.y / 2) - 5), vec2_t(2, 10), color_t(color.r, color.g, color.b))
+        if (ui.utils.menu_glow:get()) then
+            libs.etr.glow(vec2_t(pos.x, pos.y + (size.y / 2) - 5), vec2_t(2, 10), 5, color_t(color.r, color.g, color.b, 50), 10)
+        end
+        
+        render_rect_filled(vec2_t(pos.x + size.x - 2, pos.y + (size.y / 2) - 5), vec2_t(2, 10), color_t(color.r, color.g, color.b))
+        if (ui.utils.menu_glow:get()) then
+            libs.etr.glow(vec2_t(pos.x + size.x - 2, pos.y + (size.y / 2) - 5), vec2_t(2, 10), 5, color_t(color.r, color.g, color.b, 50), 10)
+        end
+        drag_spectators:lerp('size', vec2_t(largest_name_size, 20), 5)
+    else
+        largest_name_size = 100
+    end
+    return
+end
+
+draw_indicator = function()
+    local local_player = entity_list_get_local_player()
+    local is_scoped = local_player:get_prop("m_bIsScoped") > 0
+
+    binds.movetext = math.floor(animated_sc("offset_ind", is_scoped and 25 or 1, 10))
+    binds.movebinds = math.floor(animated_sc("offset_ind_binds", is_scoped and 14 or 1, 10))
+
+    binds.height = 4
+
+    binds.anim = {}
+    binds.list = {
+        {"dt", refs.double_tap:get() and ui.visuals.crosshair_indc.binds:get(1), (exploits_get_max_charge() < 3 or exploits_get_charge() ~= exploits_get_max_charge()) and color_t(255, 0, 0, 250) or color_t(0, 255, 30, 200)},
+        {"hide", refs.hide_shots:get() and ui.visuals.crosshair_indc.binds:get(2), (exploits_get_max_charge() < 3 or exploits_get_charge() ~= exploits_get_max_charge()) and color_t(255, 0, 0, 250) or color_t(255, 255, 255, 200)},
+        {"dmg", refs.force_damage:get() and ui.visuals.crosshair_indc.binds:get(3), color_t(255, 255, 255, 200)},
+        {"hc", refs.force_hc:get() and ui.visuals.crosshair_indc.binds:get(11), color_t(255, 255, 255, 200)},
+        {"hb", refs.force_hb:get() and ui.visuals.crosshair_indc.binds:get(10), color_t(191, 250, 255, 255)},
+        {"safe", refs.force_safe:get() and ui.visuals.crosshair_indc.binds:get(9), color_t(191, 250, 255, 255)},
+        {"body", refs.force_baim:get() and ui.visuals.crosshair_indc.binds:get(8), color_t(191, 250, 255, 255)},
+        {"peek", refs.quick_peek:get() and ui.visuals.crosshair_indc.binds:get(6), color_t(255, 255, 255, 200)},
+        {"fs", refs.freestand:get() and ui.visuals.crosshair_indc.binds:get(5), color_t(255, 255, 255, 200)},
+        {"fd", antiaim_is_fakeducking() and ui.visuals.crosshair_indc.binds:get(7), color_t(132, 195, 16, 200)},
+        {"ping", refs.ping:get() and ui.visuals.crosshair_indc.binds:get(6), color_t(132, 195, 16, 200)}
+    }
+
+    for k, v in pairs(binds.list) do
+        binds.anim[v[1]] = {}
+        binds.anim[v[1]].alpha = animated_sc('binds_alpha_' .. v[1], v[2] and 255 or 0, 15)
+        
+        if (binds.anim[v[1]].alpha > 1) then
+            render_text(pixel, v[1], vec2_t(screen_size.x / 2 + binds.movebinds - (is_scoped and 0 or render_get_text_size(pixel, v[1]).x / 2), screen_size.y / 2 + screen.positions[2][2] + binds.height), color_t(v[3].r, v[3].g, v[3].b, math.floor(binds.anim[v[1]].alpha > 50 and binds.anim[v[1]].alpha / 255 * v[3].a or 0)))
+            binds.height = binds.height + math.floor(binds.anim[v[1]].alpha / 255 * 8 + 0.5)
+        end
+    end
+
+    local dmg_ovr = menu_find("aimbot", get_active_weapon(), "target overrides", "min. damage")[1]
+    local dmg_ovr_key = menu_find("aimbot", get_active_weapon(), "target overrides", "min. damage")[2]
+    local norm_dmg = menu_find("aimbot", get_active_weapon(), "targeting", "min. damage")
+
+    local value = dmg_ovr_key:get() and dmg_ovr:get() or norm_dmg:get()
+    local lerp = math.floor(animated_sc("dmg", value, 15) + 0.5)
+    
+    local gradient = animated_text(verdana2, "azura.uno", ui.accent_color:get(), vec2_t(screen_size.x / 2 + binds.movetext + 1, screen_size.y / 2 + screen.positions[2][1]), 1)()
+    render_text(fontpixel, tostring(lerp), vec2_t(screen_size.x / 2 + 5, screen_size.y / 2 - 15), color_t(255, 255, 255, 100))
+end
+
+draw_gs_indicator = function()
+    local pos = vec2_t(0, 0)
+    local addpos = vec2_t(0, 40)
+
+    local startpos = vec2_t(screen_size.x * 0.00741666666 + 14, screen_size.y * 0.67777777777 + 5)
+    local user_ticks = tonumber(cvars.sv_maxusrcmdprocessticks:get_string())
+
+    default = function(str, color)
+        local text_size = render_get_text_size(font, str)
+        gradient(17, pos.y - 2, (text_size.x * 2.3) + 30, 33, color_t(0, 0, 0, 50), color_t(0, 0, 0, 0))
+
+        render_text(font, str, pos, color)
+        pos = pos - addpos
+    end
+
+    circle = function(str, color, percent)
+        local text_size = render_get_text_size(font, str)
+        gradient(17, pos.y - 2, (text_size.x * 2.3) + 60, 33, color_t(0, 0, 0, 50), color_t(0, 0, 0, 0))
+
+        render_text(font, str, pos, color)
+        render_progress_circle(pos + vec2_t(text_size.x * 1.5, text_size.y / 1.9), 5, color_t(0, 0, 0, 155), 3, 1)
+        render_progress_circle(pos + vec2_t(text_size.x * 1.5, text_size.y / 1.9), 5, color, 3, percent)
+    
+        pos = pos - addpos
+    end            
+
+    pos = startpos
+    if (ui.visuals.gs_indc.indicators:get(6) and refs.ping:get()) then
+        default("PING", color_t(255, 87, 51, 255))
+    end
+
+    if (ui.visuals.gs_indc.indicators:get(4) and refs.quick_peek:get()) then
+        default("PEEK", get_indc_color())
+    end
+
+    if (ui.visuals.gs_indc.indicators:get(9) and refs.force_hb:get()) then
+        default("HB", color_t(ui.gs_color2:get().r, ui.gs_color2:get().g, ui.gs_color2:get().b))
+    end
+    
+    if (ui.visuals.gs_indc.indicators:get(10) and refs.force_hc:get()) then
+        default("HC", color_t(ui.gs_color2:get().r, ui.gs_color2:get().g, ui.gs_color2:get().b))
+    end
+
+    if (ui.visuals.gs_indc.indicators:get(7) and refs.force_baim:get()) then
+        default("BAIM", get_indc_color())
+    end
+
+    if (ui.visuals.gs_indc.indicators:get(8) and refs.force_safe:get()) then
+        default("SAFE", get_indc_color())
+    end
+
+    if (ui.visuals.gs_indc.indicators:get(7) and antiaim_is_fakeducking()) then
+        default("FD", get_indc_color())
+    end
+
+    if (ui.visuals.gs_indc.indicators:get(2) and refs.hide_shots:get()) then
+        default("OSAA", get_indc_color())
+    end
+
+    if (ui.visuals.gs_indc.indicators:get(1) and refs.double_tap:get()) then
+        local charge = exploits_get_charge()
+        local dt_color = (charge == user_ticks - 2) and get_indc_color() or color_t(ui.gs_color2:get().r, ui.gs_color2:get().g, ui.gs_color2:get().b)
+        
+        circle("DT", dt_color, charge / (user_ticks - 2))
+    end
+
+    if (ui.visuals.gs_indc.indicators:get(3) and refs.force_damage:get()) then
+        default("MD", get_indc_color())
+    end
+
+    if (ui.visuals.gs_indc.indicators:get(5) and refs.freestand:get()) then
+        default("FS", get_indc_color())
+    end
+    return
+end
+
+draw_hat = function()
+    if (client_is_in_thirdperson()) then
+        local local_player = entity_list_get_local_player()
+        local origin = local_player:get_hitbox_pos(e_hitboxes.HEAD) + vec3_t(2, 0, 07)
+
+        local screen_pos = render_world_to_screen(origin)
+        if (screen_pos ~= nil) then
+            local color = get_hat_color()
+            if (ui.visuals.china_hat.hat_mode:get() == 2) then
+                color = color_t.from_hsb(global_vars_tick_count() % 360 / 360, 1, 1)
+            end
+
+            local last_edge
+            local view_yaw = engine_get_view_angles().y
+
+            for angle_deg = 0, 360, 15 do
+                local offset_vector = angle_t(0, angle_deg + view_yaw, 0):to_vector():scaled(10)
+                offset_vector.z = -5
+
+                local screen_pos_edge = render_world_to_screen(origin + offset_vector)
+                if (screen_pos_edge ~= nil) then
+                    render_line(screen_pos, screen_pos_edge, color)
+                    if (last_edge) then
+                        render_line(last_edge, screen_pos_edge, color)
+                    end
+                    last_edge = screen_pos_edge
+                end
+            end
+            return
+        else
+            return
+        end
+    else
+        return
+    end
+end
+
+--- @endregion
+
+--- @info: handle menu
+--- @region: menu
+
+materials_for_each(function(mat)
+    for material = 1, #console_material do
+        if (string.match(tostring(mat:get_name()), console_material[material])) then
+            cnl_material[material] = mat
+        end
+    end
+end)
+
+game_handle = function()
+    if (ui.misc.unlock_pingspike:get()) then
+        if (cvars.sv_maxunlag:get_float() ~= 0.4) then
+            cvars.sv_maxunlag:set_float(0.4)
+        end
+    else
+        if (cvars.sv_maxunlag:get_float() ~= 0.2) then
+            cvars.sv_maxunlag:set_float(0.2)
+        end
+    end
+
+    if (engine_is_app_active()) then
+        local console_color = ui.console_color:get()
+        for material = 1, #cnl_material do
+            mat = cnl_material[material]
+    
+            if (ui.visuals.console:get() and console_is_visible(engine_client)) then
+                mat:color_modulate(console_color.r / 255, console_color.g / 255, console_color.b / 255)
+                mat:alpha_modulate(console_color.a / 255)
+            else
+                mat:color_modulate(1, 1, 1)
+                mat:alpha_modulate(1)
+            end
+        end
+        return
+    else
+        return
+    end
+end
+
+menu_handle = function()
+    if (menu_is_open()) then
+        handle_dragging()
+        if (not info.beta_build) then
+            ui.ragebot.resolver.enable_resolver.ref:set(false)
+            ui.ragebot.reso_cfg.yaw_calc.ref:set(1)
+            ui.ragebot.pose_reso.ref:set(false)
+        end
+
+        -- statistics
+    
+        if (ui.nav.slider:get() == 2) then
+            ui.statistics.list.ref:set_items({})
+            ui.statistics.list.ref:set(1)
+    
+            ui.statistics.list.ref:add_item("Hits: " .. cl_logs.c_logs.hits or 0)
+            ui.statistics.list.ref:add_item("Misses: " .. cl_logs.c_logs.misses or 0)
+            ui.statistics.list.ref:add_item("Kills: " .. cl_logs.c_logs.kills or 0)
+            ui.statistics.list.ref:add_item("Deaths: " .. cl_logs.c_logs.deaths or 0)
+            ui.statistics.list.ref:add_item("Head shots: " .. cl_logs.c_logs.headshots or 0)
+            ui.statistics.list.ref:add_item("Body aims: " .. cl_logs.c_logs.baims or 0)
+            ui.statistics.list.ref:add_item("Mismatches: " .. cl_logs.c_logs.mismatches or 0)
+            ui.statistics.list.ref:add_item("Evades: " .. cl_logs.c_logs.evades or 0)
+        end
+    
+        if (ui.nav.slider:get() == 1) then
+            local item = ui.configs.cloud_list.ref:get_active_item_name()
+            local g_item = ui.configs.list.ref:get_active_item_name()
+    
+            if (item ~= nil) then
+                if (item:match("^(.-) %~") ~= info.user) then
+                    ui.update_cloud_config:set_visible(false)
+                    ui.delete_cloud_config:set_visible(false)
+                else
+                    ui.update_cloud_config:set_visible(true)
+                    ui.delete_cloud_config:set_visible(true)
+                end
+            end
+            
+            if (g_item ~= nil) then
+                if (g_item == "default.cfg") then
+                    ui.save_config:set_visible(false)
+                    ui.upload_config:set_visible(false)
+                    ui.delete_config:set_visible(false)
+                else
+                    ui.save_config:set_visible(true)
+                    ui.upload_config:set_visible(true)
+                    ui.delete_config:set_visible(true)
+                end
+            end
+        end
+    
+        -- main of menu handle
+    
+        ui.nav.slider:depend({(false)})
+        ui.nav.back_button:depend({(ui.nav.slider:get() ~= 0)})
+    
+        ui.nav.ragebot_button:depend({ui.nav.slider, 0})
+        ui.nav.antiaim_button:depend({ui.nav.slider, 0})
+        ui.nav.exploits_button:depend({ui.nav.slider, 0})
+        ui.nav.visuals_button:depend({ui.nav.slider, 0})
+        ui.nav.config_button:depend({ui.nav.slider, 0})
+        ui.nav.player_button:depend({ui.nav.slider, 0})
+        ui.nav.stats_button:depend({ui.nav.slider, 0})
+        ui.nav.misc_button:depend({ui.nav.slider, 0})
+        ui.nav.utils_button:depend({ui.nav.slider, 0})
+    
+        -- resolver (beta) (ragebot)
+        ui.ragebot.resolver.unsafe_reso:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
+        ui.ragebot.resolver.duck_mode:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
+        ui.ragebot.resolver.auto_duck:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
+        ui.ragebot.resolver.safe_peek:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
+        ui.ragebot.resolver.pred_sel:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
+        ui.ragebot.resolver.calc_box:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
+        ui.ragebot.resolver.shot_pred:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
+        ui.ragebot.resolver.hit_sens:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
+        ui.ragebot.resolver.safe_mode:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
+    
+        -- configuration (beta) (ragebot)
+        ui.ragebot.reso_cfg.disablers:depend({info.beta_build == true})
+        ui.ragebot.reso_cfg.at_disabler:depend({info.beta_build == true})
+        ui.ragebot.reso_cfg.yaw_calc:depend({info.beta_build == true})
+    
+        -- backtrack (ragebot)
+        ui.ragebot.backtrack.prediction_factor:depend({ui.ragebot.backtrack.enable_backtrack, true})
+        ui.ragebot.backtrack.smooth_transition:depend({ui.ragebot.backtrack.enable_backtrack, true})
+        ui.ragebot.backtrack.bt_smoothing:depend({ui.ragebot.backtrack.enable_backtrack, true}, {ui.ragebot.backtrack.smooth_transition, true})
+        ui.ragebot.backtrack.transition_priority:depend({ui.ragebot.backtrack.enable_backtrack, true}, {ui.ragebot.backtrack.smooth_transition, true})
+        ui.ragebot.backtrack.transition_speed:depend({ui.ragebot.backtrack.enable_backtrack, true}, {ui.ragebot.backtrack.smooth_transition, true})
+        ui.ragebot.backtrack.extended_backtrack:depend({ui.ragebot.backtrack.enable_backtrack, true})
+        ui.ragebot.backtrack.enable_extrapolation:depend({ui.ragebot.backtrack.enable_backtrack, true})
+        ui.ragebot.backtrack.enable_interpolation:depend({ui.ragebot.backtrack.enable_backtrack, true}, {ui.ragebot.backtrack.smooth_transition, true})
+        ui.ragebot.backtrack.prioritize_older_records:depend({ui.ragebot.backtrack.enable_backtrack, true}, {ui.ragebot.backtrack.extended_backtrack, true})
+        ui.ragebot.backtrack.performance_mode:depend({ui.ragebot.backtrack.enable_backtrack, true})
+        ui.ragebot.backtrack.record_weighting_type:depend({ui.ragebot.backtrack.enable_backtrack, true})
+        ui.ragebot.backtrack.dynamic_tick_adjustment:depend({ui.ragebot.backtrack.enable_backtrack, true})
+        ui.ragebot.backtrack.aggressive_backtrack:depend({ui.ragebot.backtrack.enable_backtrack, true})
+        ui.ragebot.backtrack.aggressive_factor:depend({ui.ragebot.backtrack.enable_backtrack, true}, {ui.ragebot.backtrack.aggressive_backtrack, true})
+        ui.ragebot.backtrack.max_targets:depend({ui.ragebot.backtrack.enable_backtrack, true}, {ui.ragebot.backtrack.performance_mode, true})
+        ui.ragebot.backtrack.bt_expiration:depend({ui.ragebot.backtrack.enable_backtrack, true}, {ui.ragebot.backtrack.extended_backtrack, true})
+    
+        -- accuracy boost (ragebot)
+    
+        ui.ragebot.accuracy_boost.booster_mode:depend({ui.ragebot.accuracy_boost.enable_booster, true})
+    
+        -- improve doubletap (exploits)
+        ui.exploits.better_dt.dt_mode:depend({ui.exploits.better_dt.better_dt, true})
+    
+        ui.exploits.better_dt.speed_calc:depend({ui.exploits.better_dt.better_dt, true}, {ui.exploits.better_dt.dt_mode:get() == 1})
+        ui.exploits.better_dt.dt_speed:depend({ui.exploits.better_dt.better_dt, true}, {ui.exploits.better_dt.dt_mode:get() == 2})
+    
+        -- customization (visuals)
+        ui.visuals.china_hat.hat_mode:depend({ui.visuals.china_hat.enable_hat:get()})
+        
+        ui.visuals.tesla.width:depend({ui.visuals.tesla.enable_tesla:get()})
+        ui.visuals.tesla.beams:depend({ui.visuals.tesla.enable_tesla:get()})
+        ui.visuals.tesla.delay:depend({ui.visuals.tesla.enable_tesla:get()})
+        ui.visuals.tesla.radius:depend({ui.visuals.tesla.enable_tesla:get()})
+    
+        -- fake media (misc)
+        ui.misc.fake_media.type:depend({ui.misc.fake_media.enable_fakemedia:get()})
+
+        -- logs selection (utils)
+        ui.utils.reset_stats:depend({ui.utils.event_logs:get(1)})
+    
+        -- builder (antiaim)
+        ui.antiaim.builder.enable:depend({ui.nav.slider, 4})
+        ui.antiaim.builder.condition:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true})
+    
+        ui.antiaim.features.antibackstab:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true})
+        ui.antiaim.features.fakelag:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true})
+        ui.antiaim.features.safehead:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true})
+        ui.antiaim.features.warmup:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true})
+        ui.antiaim.features.correction:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true})
+    
+        for i = 1, #states do
+            local state = ui.antiaim.builder[i]
+            if (i == 1) then
+                state.override:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {ui.antiaim.builder.condition, -1})
+                state.override.ref:set(true)
+            else
+                state.override:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {ui.antiaim.builder.condition, i})
+            end
+    
+            state.yaw_mode:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
+            state.yaw_val:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() == 1)})
+            state.yaw_left:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() ~= 1)})
+            state.yaw_right:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() ~= 1)})
+            state.yaw_meta_left:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() == 3)})
+            state.yaw_meta_right:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() == 3)})
+            state.yaw_delay:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() ~= 1)})
+            state.meta_delay:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() == 3)})
+            state.yaw_modifier:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
+            state.modifier_degree:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_modifier:get() ~= 1)})
+            state.modifier_random:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_modifier:get() ~= 1)})
+            state.desync:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
+            state.desync_left:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
+            state.desync_right:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
+            state.desync_meta_left:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
+            state.desync_meta_right:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
+            state.trigger_defensive:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
+            state.defensive_pitch:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
+            state.defensive_pitch_val:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.defensive_pitch:get() == 8 or state.defensive_pitch:get() == 9)}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
+            state.defensive_pitch_val2:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {state.defensive_pitch, 9}, {not (state.trigger_defensive:get() == 3)}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
+            state.defensive_yaw:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
+            state.defensive_yaw_val:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.defensive_yaw:get() == 2 or state.defensive_yaw:get() == 3 or state.defensive_yaw:get() == 4)}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
+            state.defensive_speed:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.defensive_yaw:get() == 5)}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
+            state.defensive_range:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.defensive_yaw:get() == 5)}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
+        end
+    
+        groups.nav:depend({(true)})
+    
+        groups.configs:depend({ui.nav.slider, 1})
+        groups.cloud_configs:depend({ui.nav.slider, 1})
+        groups.statistics:depend({ui.nav.slider, 2})
+        groups.antiaim:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true})
+        groups.exploits:depend({ui.nav.slider, 5})
+        groups.helpers:depend({ui.nav.slider, 5})
+        groups.player:depend({ui.nav.slider, 7})
+        groups.communication:depend({ui.nav.slider, 7})
+        groups.customization:depend({ui.nav.slider, 6})
+        groups.misc:depend({ui.nav.slider, 8})
+        groups.movement:depend({ui.nav.slider, 8})
+        groups.utils:depend({ui.nav.slider, 9})
+        groups.sync:depend({ui.nav.slider, 9})
+        groups.visuals:depend({ui.nav.slider, 6})
+    
+        groups.yaw:depend({ui.nav.slider, 4})
+        groups.desync:depend({ui.nav.slider, 4})
+        groups.jitter:depend({ui.nav.slider, 4})
+        groups.settings:depend({ui.nav.slider, 4})
+        groups.features:depend({ui.nav.slider, 4})
+        groups.defensive:depend({ui.nav.slider, 4})
+        
+        if (info.beta_build) then
+            groups.ragebot:depend({ui.nav.slider, 3})
+    
+            groups.tickbase:depend({ui.nav.slider, 3})
+            groups.resolver:depend({ui.nav.slider, 3})
+    
+            groups.resolver_beta:depend({ui.nav.slider, 3})
+            groups.reso_cfg:depend({ui.nav.slider, 3})
+        else
+            groups.ragebot:depend({ui.nav.slider, 3})
+    
+            groups.tickbase:depend({ui.nav.slider, 3})
+            groups.resolver:depend({ui.nav.slider, 3})
+        end
+    
+        if (ui.nav.slider:get() == 0) then
+            menu_set_group_column("Home | azura v" .. client_version .. "" .. info.beta_text2, 2)
+        else
+            menu_set_group_column("Home | azura v" .. client_version .. "" .. info.beta_text2, 1)
+        end
+    
+        if (info.beta_build) then
+            menu_set_group_column("Resolver (beta)", 2)
+    
+            menu_set_group_column("Resolver", 3)
+            menu_set_group_column("Ragebot", 3)
+            menu_set_group_column("Tickbase", 3)
+        else
+            menu_set_group_column("Resolver (beta)", 2)
+    
+            menu_set_group_column("Resolver", 3)
+            menu_set_group_column("Ragebot", 3)
+            menu_set_group_column("Tickbase", 2)
+        end
+        menu_set_group_column("Settings", 1)
+        menu_set_group_column("Global", 3)
+        menu_set_group_column("Visuals", 2)
+        menu_set_group_column("Customization", 3)
+        menu_set_group_column("Yaw", 2)
+        menu_set_group_column("Jitter", 2)
+        menu_set_group_column("Desync", 2)
+        menu_set_group_column("Defensive", 1)
+        menu_set_group_column("Features", 3)
+        menu_set_group_column("Utils", 2)
+        menu_set_group_column("Synchronization", 3)
+    else
+        return
+    end
+end
+
+--- @endregion
+
+--- @info: main code
+--- @region: callbacks
+
+do_player = function()
+    callbacks.add(e_callbacks.PLAYER_ESP, function(ctx)
+        if (ui.visuals.esp_fonts:get() == 2) then
+            ctx:set_font(fonts.pixel)
+        elseif (ui.visuals.esp_fonts:get() == 3) then
+            ctx:set_font(fonts.verdana_b)
+        elseif (ui.visuals.esp_fonts:get() == 4) then
+            ctx:set_font(fonts.tahoma)
+        elseif (ui.visuals.esp_fonts:get() == 5) then
+            ctx:set_font(fonts.tahomabold)
+        end
+        return
+    end)
+end
+
+do_aimhit = function()
+    callbacks.add(e_callbacks.AIMBOT_HIT, function(hit)
+        if (check_conditions()) then
+            local hit_group = hit_groups[hit.hitgroup]
+            local aim_group = hit_groups[hit.aim_hitgroup]
+
+            local target = hit.player
+
+            indicator.data["hit"] = (indicator.data["hit"] or 0) + 1
+            indicator.shot_count = indicator.shot_count + 1
+
+            if (ui.utils.event_logs:get(2)) then
+                local weapon = entity_list_get_local_player():get_active_weapon()
+                if (weapon ~= nil) then
+                    logs.add_hitlog(hit)
+                    if (weapon:get_name() ~= "taser") then
+                        local target_hp = target:get_prop('m_iHealth')
+                        if (hit_group == "head") then
+                            cl_logs.add_log("headshots")
+                        end
+
+                        if (hit_group == "stomach" or hit_group == "chest" or hit_group == "upper chest" or hit_group == "lower chest" or hit_group == "pelvis") then
+                            cl_logs.add_log("baims")
+                        end
+
+                        if (hit_group == aim_group) then
+                            if (hit.damage == hit.aim_damage) then
+                                if (target_hp > 0) then
+                                    cl_logs.add_log("hits")
+                                    print("hurt ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), " in ", get_text_color(), hit_group, azura_color_t(168, 168, 168), " for ", get_text_color(), hit.damage .. " dmg", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), hit.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°, ", azura_color_t(108, 108, 108), "remaining: ", azura_color_t(168, 168, 168), target_hp, " hp")
+                                else
+                                    cl_logs.add_log("kills")
+                                    print("killed ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), " in ", get_text_color(), hit_group, azura_color_t(168, 168, 168), " with ", get_text_color(), hit.damage .. " dmg", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), hit.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
+                                end
+                            else
+                                cl_logs.add_log("mismatches")
+                                if (target_hp > 0) then
+                                    cl_logs.add_log("hits")
+                                    print("hurt ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), " in ", get_text_color(), hit_group, azura_color_t(168, 168, 168), " for ", get_text_color(), hit.damage .. " dmg", azura_color_t(255, 162, 0), "!", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), hit.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°, ", azura_color_t(108, 108, 108), "exp: ", azura_color_t(168, 168, 168), hit.aim_damage, ", ", azura_color_t(108, 108, 108), "remaining: ", azura_color_t(168, 168, 168), target_hp, " hp")
+                                else
+                                    cl_logs.add_log("kills")
+                                    print("killed ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), " in ", get_text_color(), hit_group, azura_color_t(168, 168, 168), " with ", get_text_color(), hit.damage .. " dmg", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), hit.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
+                                end
+                            end
+                        else
+                            cl_logs.add_log("mismatches")
+                            if (hit.damage == hit.aim_damage) then
+                                if (target_hp > 0) then
+                                    cl_logs.add_log("hits")
+                                    print("hurt ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), " in ", get_text_color(), hit_group, azura_color_t(255, 162, 0), "!", azura_color_t(168, 168, 168), " for ", get_text_color(), hit.damage .. " dmg", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), hit.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°, ", azura_color_t(108, 108, 108), "exp: ", azura_color_t(168, 168, 168), aim_group, ", ", azura_color_t(108, 108, 108), azura_color_t(108, 108, 108), "remaining: ", azura_color_t(168, 168, 168), target_hp, " hp")
+                                else
+                                    cl_logs.add_log("kills")
+                                    print("killed ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), " in ", get_text_color(), hit_group, azura_color_t(255, 162, 0), "!", azura_color_t(168, 168, 168), " with ", get_text_color(), hit.damage .. " dmg", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), hit.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
+                                end
+                            else
+                                if (target_hp > 0) then
+                                    cl_logs.add_log("hits")
+                                    print("hurt ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), " in ", get_text_color(), hit_group, azura_color_t(255, 162, 0), "!", azura_color_t(168, 168, 168), " for ", get_text_color(), hit.damage .. " dmg", azura_color_t(255, 162, 0), "!", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), hit.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°, ", azura_color_t(108, 108, 108), "exp: ", azura_color_t(168, 168, 168), aim_group, ":", hit.aim_damage, ", ", azura_color_t(108, 108, 108), "remaining: ", azura_color_t(168, 168, 168), target_hp, " hp")
+                                else
+                                    cl_logs.add_log("kills")
+                                    print("killed ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), " in ", get_text_color(), hit_group, azura_color_t(255, 162, 0), "!", azura_color_t(168, 168, 168), " with ", get_text_color(), hit.damage .. " dmg", azura_color_t(255, 162, 0), "!", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), hit.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
+            if (ui.antiaim.builder.enable:get()) then
+                if (game_rules_get_prop("m_gamePhase") == 4 or game_rules_get_prop("m_gamePhase") == 5) then
+                    refs.pitch:set(1)
+                    refs.yawbase:set(1)
+                    
+                    refs.jittermode:set(1)
+                    refs.desyncside:set(0)
+                end
+            end
+
+            resolver.on_result(target, hit.hitgroup == hit.aim_hitgroup, false)
+            return
+        else
+            return
+        end
+    end)
+end
+
+do_aimmiss = function()
+    callbacks.add(e_callbacks.AIMBOT_MISS, function(miss)
+        local miss_group = hit_groups[miss.aim_hitgroup]
+        
+        local reason = miss.reason_string
+        local target = miss.player
+
+        if (target ~= nil) then
+            cl_logs.add_log("misses")
+            resolver.on_result(target, false, reason == "resolver" or reason == "jitter")
+
+            if (ui.utils.event_logs:get(5)) then
+                local actual_pos = target:get_hitbox_pos(1)
+                local distance = reso.aimpos:dist(actual_pos)
+
+                logs.add_misslog(miss)
+                if (string.find(reason, "server rejection")) then
+                    if (miss.backtrack_ticks > 5) then
+                        indicator.data["unknown"] = (indicator.data["unknown"] or 0) + 1
+                        indicator.shot_count = indicator.shot_count + 1
+
+                        print("missed ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, azura_color_t(168, 168, 168), " due to", get_text_color(), " unknown", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
+                        return
+                    end
+                end
+
+                if (not string.find(reason, "ping (local death)")) then
+                    if (distance > 38) then
+                        indicator.data["prediction error"] = (indicator.data["prediction error"] or 0) + 1
+                        indicator.shot_count = indicator.shot_count + 1
+
+                        print("missed ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, azura_color_t(168, 168, 168), " due to", get_text_color(), " prediction error", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
+                        return
+                    end
+                end
+
+                if (string.find(reason, "spread") or string.find(reason, "spread (missed safe)")) then
+                    if (globals.tick_count() - hurt_tick < 2) then
+                        indicator.data["jitter"] = (indicator.data["jitter"] or 0) + 1
+                        indicator.shot_count = indicator.shot_count + 1
+
+                        print("missed ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, azura_color_t(168, 168, 168), " due to", get_text_color(), " jitter", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
+                        return
+                    end
+                end
+
+                if (miss.backtrack_ticks > 15) then
+                    if (miss.backtrack_ticks > 20) then
+                        indicator.data["dormant aimbot"] = (indicator.data["dormant aimbot"] or 0) + 1
+                        indicator.shot_count = indicator.shot_count + 1
+
+                        print("missed ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, azura_color_t(168, 168, 168), " due to", get_text_color(), " dormant aimbot", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
+                        return
+                    end
+
+                    if (string.find(reason, "jitter")) then
+                        indicator.data["prediction error"] = (indicator.data["prediction error"] or 0) + 1
+                        indicator.shot_count = indicator.shot_count + 1
+
+                        print("missed ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, azura_color_t(168, 168, 168), " due to", get_text_color(), " prediction error", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
+                        return
+                    end
+
+                    indicator.data["backtrack failure"] = (indicator.data["backtrack failure"] or 0) + 1
+                    indicator.shot_count = indicator.shot_count + 1
+
+                    print("missed ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, azura_color_t(168, 168, 168), " due to", get_text_color(), " backtrack failure", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
+                    return
+                end
+
+                indicator.data[reason] = (indicator.data[reason] or 0) + 1
+                indicator.shot_count = indicator.shot_count + 1
+
+                if (string.find(reason, "spread") or string.find(reason, "spread (missed safe)")) then
+                    print("missed ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, azura_color_t(168, 168, 168), " due to ", get_text_color(), reason, get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "hc: ", azura_color_t(168, 168, 168), miss.aim_hitchance, "%%, ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
+                    return
+                end
+                print("missed ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, azura_color_t(168, 168, 168), " due to ", get_text_color(), reason, get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
+            else
+                return
+            end
+            return
+        else
+            return
+        end
+    end)
+end
+
+do_antiaim = function()
+    callbacks.add(e_callbacks.ANTIAIM, function(ctx, cmd, unpredicted)
+        if (check_conditions()) then
+            local on_land = bit.band(entity_list_get_local_player():get_prop("m_fFlags"), bit.lshift(1, 0)) ~= 0
+            local state = get_state(get_velocity())
+        
+            run_antiaim(ctx, cmd, unpredicted)
+            run_exploit(ctx, cmd, unpredicted)
+            run_edgeyaw(ctx, cmd, unpredicted)
+
+            if (ui.exploits.lag_on_shoot:get()) then
+                if (send_lag_packet) then
+                    ctx:set_fakelag(false)
+                    send_lag_packet = false
+                end
+            end
+        
+            if (ui.player.anim_breaker:get()) then
+                if (client_is_in_thirdperson()) then
+                    menu_find("antiaim", "main", "general", "leg slide"):set(3)
+                    ctx:set_render_pose(e_poses.RUN, 0)
+
+                    if (on_land == true) then
+                        ground_tick = ground_tick + 1
+                    else
+                        ground_tick = 0
+                        end_time = global_vars_cur_time() + 1
+                    end
+                
+                    if (state >= 5) then
+                        ctx:set_render_animlayer(e_animlayers.LEAN, 10)
+                    end
+                
+                    if (ground_tick > 1 and end_time > global_vars_cur_time()) then
+                        ctx:set_render_pose(e_poses.BODY_PITCH, 0.5)
+                    end
+                
+                    if (state == 3) then
+                        ctx:set_render_animlayer(e_animlayers.MOVEMENT_MOVE, 0.0, 0.0)
+                    end
+                
+                    if (state >= 5) then
+                        ctx:set_render_pose(e_poses.JUMP_FALL, 1)
+                    end
+                
+                    if (state >= 5) then
+                        ctx:set_render_animlayer(e_animlayers.MOVEMENT_MOVE, 1)
+                    end
+                
+                    if (get_velocity() < 1) then
+                        ctx:set_render_animlayer(e_poses.AIM_BLEND_CROUCH_IDLE, 1)
+                    end
+                else
+                    return
+                end
+                return
+            else
+                return
+            end
+        else
+            return
+        end
+    end)
+end
+
+do_aimshoot = function()
+    callbacks.add(e_callbacks.AIMBOT_SHOOT, function(shot)
+        if (check_conditions()) then
+            local idx = shot.player:get_index()
+            reso.aimpos = shot.player:get_hitbox_pos(1)
+
+            reso.desync = (resolver.previous[idx] and resolver.previous[idx].m_flDesync) and (math.floor(resolver.previous[idx].m_flDesync) or resolver.previous[idx].m_dlDesync)
+            reso.side = resolver.previous[idx] and resolver.previous[idx].m_flSide or "?"
+            
+            reso.state = resolver.previous[idx] and resolver.previous[idx].m_flState or "?"
+            reso.statenum = resolver.previous[idx] and resolver.previous[idx].m_flStateNum or "?"
+
+            reso.idx = idx
+            reso.key = resolver.previous[idx] and resolver.previous[idx].key
+            reso.kind = resolver.previous[idx] and resolver.previous[idx].kind
+            reso.rel = resolver.previous[idx] and resolver.previous[idx].rel
+            
+            if (resolver.previous[idx]) then
+                reso.is_forced = resolver.previous[idx].is_forced
+            else
+                reso.is_forced = false
+            end
+
+            if (menu_find("aimbot", "general", "misc", "autopeek", "enable")[2]:get()) then
+                on_shoot = true
+            end
+        
+            if (ui.exploits.lag_on_shoot:get()) then
+                send_lag_packet = true
+            end
+
+            on_tesla(shot)
+            on_zeus(shot)
+        else
+            return
+        end
+        return
+    end)
+end
+
+do_setupcmd = function()
+    callbacks.add(e_callbacks.SETUP_COMMAND, function(cmd)
+        if (check_conditions()) then
+            global:update(cmd)
+
+            fast_ladder(cmd)
+            super_toss(cmd)
+            antiafk(cmd)
+            no_fall(cmd)
+
+            update_bt(cmd)
+        
+            knifebot_helper(cmd)
+            backtrack_sys(cmd)
+            better_hs(cmd)
+            defuse_bot(cmd)
+        
+            if (ui.player.visual_rec:get()) then
+                if (globals.tick_count() % 64 == 0) then
+                    menu_find("visuals", "view", "removals", "visual recoil"):set(false)
+        
+                    cvars.weapon_recoil_view_punch_extra:set_float(0)
+                    cvars.view_recoil_tracking:set_float(1)
+                end
+            else
+                cvars.weapon_recoil_view_punch_extra:set_float(0)
+                cvars.view_recoil_tracking:set_float(0)
+            end
+            return
+        else
+            knife.countdown = 0
+        end
+        return
+    end)
+end
+
+do_hitscan = function()
+    callbacks.add(e_callbacks.HITSCAN, function(ctx, cmd, unpredicted_data)
+        if (check_conditions()) then
+            update_target(ctx)
+            resolver.hitscan(ctx)
+
+            safe_defensive(ctx, cmd, unpredicted_data)
+            dmg_prediction(ctx, cmd, unpredicted_data)
+        
+            accuracy_boost(ctx, cmd, unpredicted_data)
+            if (builder.onpeek) then
+                exploits.force_anti_exploit_shift()
+            else
+                return
+            end
+            return
+        else
+            return
+        end
+    end)
+end
+
+do_runcmd = function()
+    callbacks.add(e_callbacks.RUN_COMMAND, function(cmd, unpredicted_data)
+        if (check_conditions()) then
+            quick_fall(cmd, unpredicted_data)
+            safe_recharge(cmd, unpredicted_data)
+
+            if (ui.exploits.fix_corr:get()) then
+                cvars.cl_clock_correction:set_int(0)
+            else
+                cvars.cl_clock_correction:set_int(1)
+            end
+            return
+        else
+            return
+        end
+    end)
+end
+
+do_event = function()
+    callbacks.add(e_callbacks.EVENT, function(event)
+        if (check_conditions()) then
+            local local_player = entity_list_get_local_player()
+            local userid = event.userid
+
+            local entity
+            if (userid ~= nil) then
+                entity = entity_list_get_player_from_userid(userid)
+            end
+
+            if (entity ~= nil) then
+                if (event.name == "item_purchase") then
+                    if (ui.utils.event_logs:get(3)) then
+                        local item = string.gsub(event.weapon, "weapon_", "")
+                        if (item ~= nil and item ~= "unknown") then
+                            if (entity:get_name() ~= nil and entity ~= local_player) then
+                                if (string.find(item, "awp") or string.find(item, "scar20") or string.find(item, "g3sg1")) then
+                                    chat_print("{blue}[{lightgreen}azura.uno{blue}]{yellow} " .. entity:get_name() .. " {white}has bought {lightgreen}" .. item .. "{white}!")
+                                end
+
+                                if (string.find(item, "item_defuser")) then
+                                    item = "defuser"
+                                end
+
+                                if (string.find(item, "usp_silencer")) then
+                                    item = "usp-s"
+                                end
+
+                                if (string.find(item, "elite")) then
+                                    item = "dual berettas"
+                                end
+
+                                if (string.find(item, "hkp2000")) then
+                                    item = "p2000"
+                                end
+
+                                if (string.find(item, "incgrenade")) then
+                                    item = "incendiary grenade"
+                                end
+
+                                if (string.find(item, "galilar")) then
+                                    item = "gali ar"
+                                end
+
+                                if (string.find(item, "m4a1_silencer")) then
+                                    item = "m4a1-s"
+                                end
+
+                                if (string.find(item, "m4a1")) then
+                                    item = "m4a4"
+                                end
+
+                                if (string.find(item, "item_assaultsuit")) then
+                                    item = "assaultsuit"
+                                end
+
+                                if (string.find(item, "item_kevlar")) then
+                                    item = "kevlar"
+                                end
+                                print(get_text_color(), entity:get_name(), azura_color_t(168, 168, 168), " has bought ", get_text_color(), item)
+                            end
+                        end
+                    end
+                end
+
+                if (event.name == "player_hurt") then
+                    local attacker = entity_list_get_player_from_userid(event.attacker)
+                    local hit_group = hit_groups[event.hitgroup]
+
+                    local event_dmg = event.dmg_health
+                    local dmg_health = entity:get_prop("m_iHealth") - event_dmg
+
+                    local weapon = event.weapon
+                    if (attacker) then
+                        if (attacker == local_player) then
+                            if (ui.utils.event_logs:get(2)) then
+                                if (dmg_health <= 0) then
+                                    cl_logs.add_log("kills")
+                                    if (string.match(weapon, "knife") or weapon == "bayonet") then
+                                        print("killed ", get_text_color(), entity:get_name(), azura_color_t(168, 168, 168), " with ", get_text_color(), event_dmg, " dmg ", azura_color_t(168, 168, 168), "using ", get_text_color(), "knife")
+                                    elseif (weapon == "hegrenade") then
+                                        print("killed ", get_text_color(), entity:get_name(), azura_color_t(168, 168, 168), " with ", get_text_color(), event_dmg, " dmg ", azura_color_t(168, 168, 168), "using ", get_text_color(), "nade")
+                                    elseif (weapon == "inferno" or weapon == "incgrenade") then
+                                        print("killed ", get_text_color(), entity:get_name(), azura_color_t(168, 168, 168), " with ", get_text_color(), event_dmg, " dmg ", azura_color_t(168, 168, 168), "using ", get_text_color(), "molotov")
+                                    elseif (weapon == "taser") then
+                                        print("killed ", get_text_color(), entity:get_name(), azura_color_t(168, 168, 168), " with ", get_text_color(), event_dmg, " dmg ", azura_color_t(168, 168, 168), "using ", get_text_color(), "taser")
+                                    end
+                                else
+                                    cl_logs.add_log("hits")
+                                    if (string.match(weapon, "knife") or weapon == "bayonet") then
+                                        print("hurt ", get_text_color(), entity:get_name(), azura_color_t(168, 168, 168), " for ", get_text_color(), event_dmg, " hp ", azura_color_t(168, 168, 168), "with ", get_text_color(), "a knife", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "remaining: ", azura_color_t(168, 168, 168), dmg_health, " hp")
+                                    elseif (weapon == "hegrenade") then
+                                        print("hurt ", get_text_color(), entity:get_name(), azura_color_t(168, 168, 168), " for ", get_text_color(), event_dmg, " hp ", azura_color_t(168, 168, 168), "with ", get_text_color(), "a nade", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "remaining: ", azura_color_t(168, 168, 168), dmg_health, " hp")
+                                    elseif (weapon == "inferno" or weapon == "incgrenade") then
+                                        print("hurt ", get_text_color(), entity:get_name(), azura_color_t(168, 168, 168), " for ", get_text_color(), event_dmg, " hp ", azura_color_t(168, 168, 168), "with ", get_text_color(), "a molotov", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "remaining: ", azura_color_t(168, 168, 168), dmg_health, " hp")
+                                    elseif (weapon == "taser") then
+                                        print("hurt ", get_text_color(), entity:get_name(), azura_color_t(168, 168, 168), " for ", get_text_color(), event_dmg, " hp ", azura_color_t(168, 168, 168), "with ", get_text_color(), "a taser", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "remaining: ", azura_color_t(168, 168, 168), dmg_health, " hp")
+                                    end
+                                end
+                            end
+                        end
+
+                        if (entity:get_index() == local_player:get_index()) then
+                            if (ui.utils.event_logs:get(4)) then
+                                if (dmg_health <= 0) then
+                                    cl_logs.add_log("deaths")
+                                    print("killed by ", get_text_color(), attacker:get_name(), azura_color_t(168, 168, 168), " in ", get_text_color(), hit_group, azura_color_t(168, 168, 168), " with ", get_text_color(), event_dmg, " dmg")
+                                else
+                                    print("hurt by ", get_text_color(), attacker:get_name(), azura_color_t(168, 168, 168), " in ", get_text_color(), hit_group, azura_color_t(168, 168, 168), " for ", get_text_color(), event_dmg, " dmg", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "remaining: ", azura_color_t(168, 168, 168), dmg_health, " hp")
+                                end
+                            end
+                        end
+                    end
+                end
+
+                if (event.name == "player_falldamage") then
+                    if (ui.utils.event_logs:get(4)) then
+                        if (entity:get_index() == local_player:get_index()) then
+                            print("took ", get_text_color(), math.floor(event.damage + 0.1), " dmg", azura_color_t(168, 168, 168), " from ", get_text_color(), "fall damage.")
+                        end
+                    end
+                end
+            end
+
+            if (event.name == "player_connect_full") then
+                resolver.reset()
+        
+                on_shared_esp()
+                on_shared_players()
+            end
+
+            if (event.name == "round_prestart") then
+                if (game_rules_get_prop("m_totalRoundsPlayed") == 0) then
+                    resolver.reset()
+                end
+            end
+
+            if (event.name == "round_start") then
+                builder.misses = 0
+
+                if (ui.misc.antiafk:get()) then
+                    builder.afk_valid = true
+                end
+
+
+                collectgarbage("collect")
+                print("round ", get_text_color(), game_rules_get_prop("m_totalRoundsPlayed"))
+            end
+
+            if (event.name == "player_connect" or event.name == "round_start") then
+                on_shared_esp()
+                client_delay_call(function()
+                    on_shared_players()
+                end, 2.0)
+            end
+
+            if (event.name == "game_end") then
+                on_shared_esp()
+            end
+
+            if (event.name == "bullet_impact") then
+                on_miss(event)
+            end
+
+            if (event.name == "player_hurt") then
+                on_knifebot(event)
+                if (local_player == entity) and not (local_player == entity_list_get_player_from_userid(event.attacker)) then
+                    hurt_tick = globals.tick_count()
+                    builder.anti_brute_trigger()
+                end
+            end
+
+            if (event.name == "player_death") then
+                on_killsay(event)
+                if (local_player == entity_list_get_player_from_userid(event.attacker)) then
+                    if (ui.misc.fake_media.enable_fakemedia:get()) then
+                        if (ui.misc.fake_media.type:get(1)) then
+                            event.headshot = true
+                        end
+
+                        if (ui.misc.fake_media.type:get(2)) then
+                            event.penetrated = true
+                        end
+
+                        if (ui.misc.fake_media.type:get(3)) then
+                            event.noscope = true
+                        end
+
+                        if (ui.misc.fake_media.type:get(4)) then
+                            event.attackerblind = true
+                        end
+
+                        if (ui.misc.fake_media.type:get(5)) then
+                            event.thrusmoke = true
+                        end
+
+                        if (ui.misc.fake_media.type:get(6)) then
+                            event.dominated = true
+                        end
+
+                        if (ui.misc.fake_media.type:get(7)) then
+                            event.revenge = true
+                        end
+                    end
+                    knife.countdown = 0
+                end
+            end
+            
+            if (event.name == "player_say") then
+                on_chatsync(event)
+                on_talkback(event)
+            end
+
+            if (event.name == "grenade_thrown") then
+                on_nade(event)
+            end
+            on_brute(event)
+        else
+            return
+        end
+        return
+    end)
+end
+
+do_net = function()
+    callbacks.add(e_callbacks.NET_UPDATE, function(ctx)
+        if (check_conditions()) then
+            if (ui.ragebot.backtrack.enable_backtrack:get()) then
+                local enemies = entity_list_get_players(true)
+                if (enemies ~= nil) then
+                    for _, enemy in pairs(enemies) do
+                        if (enemy:is_alive()) then
+                            store_player_record(enemy)
+                        end
+                    end
+                end
+                clear_old_records()
+            end
+
+            lets_resolve()
+        
+            team_animation()
+        else
+            return
+        end
+        return
+    end)
+end
+
+do_paint = function()
+    local center_pos
+    local load_success, load_result = pcall(function()
+        if (info.beta_build) then
+            logo = render_load_image("csgo/materials/panorama/images/icons/clean_beta.png")
+        else
+            logo = render_load_image("csgo/materials/panorama/images/icons/clean_stable.png")
+        end
+
+        center_pos = vec2_t(screen_size.x / 2 - logo.size.x / 2, screen_size.y / 2 - logo.size.y / 2)
+        return logo
+    end)
+    
+    if (not load_success or logo == nil) then
+        client_delay_call(function()
+            load_success, load_result = pcall(function()
+                if (info.beta_build) then
+                    logo = render_load_image("csgo/materials/panorama/images/icons/clean_beta.png")
+                else
+                    logo = render_load_image("csgo/materials/panorama/images/icons/clean_stable.png")
+                end
+
+                center_pos = vec2_t(screen_size.x / 2 - logo.size.x / 2, screen_size.y / 2 - logo.size.y / 2)
+                return logo
+            end)
+        end, 8)
+    end
+
+    callbacks.add(e_callbacks.PAINT, function()
+        notifications.render()
+        if (ui.utils.watermark:get()) then
+            draw_watermark()
+            draw_menu()
+        end
+
+        game_handle()
+        menu_handle()
+
+        if (engine_is_in_game() and engine_is_connected()) then
+            run_clantag()
+        end
+
+        if (check_conditions()) then
+            local local_player = entity_list_get_local_player()
+
+            lets_sync()
+            handle_logs()
+        
+            if (local_player:is_alive()) then
+                if (ui.misc.jumpshot:get()) then
+                    local m_flags = local_player:get_prop("m_fFlags")
+                    if (ent_speed_2d(local_player) > 10 and (m_flags == 256 or m_flags == 262)) then
+                        menu_find("misc","main","movement","autostrafer"):set(true)
+                        menu_find("misc","main","movement","autostrafer"):set(true)
+    
+                        menu_find("aimbot",get_active_weapon(),"accuracy","auostop options","In-Air")[3]:set(7, true)
+                    else
+                        menu_find("misc","main","movement","autostrafer"):set(false)
+                        menu_find("misc","main","movement","autostrafer"):set(false)
+    
+                        menu_find("aimbot",get_active_weapon(),"accuracy","auostop options","In-Air")[3]:set(7, false)
+                    end
+                end
+
+                handle_drawing()
+                handle_playerlist()
+    
+                builder.clockpitch()
+                builder.clockyaw()
+            
+                custom_dt()
+                edge_yaw()
+
+                if (ui.visuals.china_hat.enable_hat:get()) then
+                    draw_hat()
+                end
+
+                if (ui.utils.keybinds:get()) then
+                    draw_keybinds()
+                end
+            
+                if (ui.utils.spectators:get()) then
+                    draw_spectators()
+                end
+
+                if (not menu_is_open()) then
+                    if (ui.visuals.crosshair_indc.binds:get(1) or ui.visuals.crosshair_indc.binds:get(2) or ui.visuals.crosshair_indc.binds:get(3) or ui.visuals.crosshair_indc.binds:get(4) or ui.visuals.crosshair_indc.binds:get(5) or ui.visuals.crosshair_indc.binds:get(6) or ui.visuals.crosshair_indc.binds:get(7) or ui.visuals.crosshair_indc.binds:get(8) or ui.visuals.crosshair_indc.binds:get(9) or ui.visuals.crosshair_indc.binds:get(10)) then
+                        draw_indicator()
+                    end
+
+                    if (ui.visuals.gs_indc.indicators:get(1) or ui.visuals.gs_indc.indicators:get(2) or ui.visuals.gs_indc.indicators:get(3) or ui.visuals.gs_indc.indicators:get(4) or ui.visuals.gs_indc.indicators:get(5) or ui.visuals.gs_indc.indicators:get(6) or ui.visuals.gs_indc.indicators:get(7) or ui.visuals.gs_indc.indicators:get(8) or ui.visuals.gs_indc.indicators:get(9) or ui.visuals.gs_indc.indicators:get(10)) then
+                        draw_gs_indicator()
+                    end
+                end
+            end
+
+            if (globals.tick_count() - delay.last_tick > delay.tick_delay) then
+                local players = entity_list_get_players()
+                if (players ~= nil) then
+                    delay.last_tick = globals.tick_count()
+                    for _, player in pairs(players) do
+                        local xuid = libs.tools.js2.GameStateAPI.GetPlayerXuidStringFromEntIndex(player:get_index())
+                        if (ui.player.voice_state:get() == 2 and libs.tools.js2.GameStateAPI.IsSelectedPlayerMuted(xuid) == false) then 
+                            libs.tools.js2.GameStateAPI.ToggleMute(xuid)
+                        elseif (ui.player.voice_state:get() == 3 and libs.tools.js2.GameStateAPI.IsSelectedPlayerMuted(xuid) == true) then
+                            libs.tools.js2.GameStateAPI.ToggleMute(xuid)
+                        end
+                    end
+                end
+            end
+        end
+
+        if (logo ~= nil) then
+            if (is_visible) then
+                render_push_alpha_modifier(alpha)
+                render_texture(logo.id, center_pos, logo.size)
+                render_pop_alpha_modifier()
+            end
+    
+            if (is_fading_in) then
+                if (alpha < 1.0) then
+                    alpha = alpha + 0.003
+                else
+                    is_fading_in = false
+                    fade_out_time = globals.cur_time() + 2.0
+                    is_fading_out = true
+                end
+            end
+        
+            if (is_fading_out) then
+                if (globals.cur_time() >= fade_out_time) then
+                    if (alpha > 0) then
+                        alpha = alpha - 0.003
+                    else
+                        is_visible = false
+                    end
+                end
+            end
+        else
+            return
+        end
+        return
+    end)
+    is_fading_in = true
+end
+
+callbacks.add(e_callbacks.SHUTDOWN, function()
+    print("restoring configuration..")
+
+    client_set_clantag("")
+    menu_find("antiaim", "main", "general", "ladder antiaim"):set(auto_cfg.ladder_antiaim)
+    menu_find("antiaim", "main", "general", "fast ladder move"):set(auto_cfg.fast_ladder_move)
+
+    menu_find("Aimbot", "General", "Aimbot", "Resolve Antiaim"):set(auto_cfg.resolve_antiaim)
+    menu_find("aimbot",get_active_weapon(),"accuracy","auostop options","In-Air")[3]:set(7, auto_cfg.air_autostop)
+
+    menu_find("antiaim", "main", "angles", "pitch"):set(auto_cfg.pitch)
+    menu_find("antiaim", "main", "angles", "yaw base"):set(auto_cfg.yawbase)
+    menu_find("antiaim", "main", "angles", "yaw add"):set(auto_cfg.yawadd)
+    
+    menu_find("antiaim", "main", "angles", "rotate"):set(auto_cfg.rotate)
+    menu_find("antiaim", "main", "angles", "rotate range"):set(auto_cfg.rotaterange)
+    menu_find("antiaim", "main", "angles", "rotate speed"):set(auto_cfg.rotatespeed)
+    
+    menu_find("antiaim", "main", "angles", "jitter mode"):set(auto_cfg.jittermode)
+    menu_find("antiaim", "main", "angles", "jitter type"):set(auto_cfg.jittertype)
+    menu_find("antiaim", "main", "angles", "jitter add"):set(auto_cfg.jitterrange)
+    
+    menu_find("antiaim", "main", "desync", "override stand#move"):set(auto_cfg.overridemove)
+    menu_find("antiaim", "main", "desync", "override stand#slow walk"):set(auto_cfg.overridemovesw)
+    
+    menu_find("antiaim", "main", "desync", "stand", "side"):set(auto_cfg.desyncside)
+    
+    menu_find("antiaim", "main", "desync", "left amount"):set(auto_cfg.leftamount)
+    menu_find("antiaim", "main", "desync", "right amount"):set(auto_cfg.rightamount)
+    
+    menu_find("antiaim", "main", "auto direction", "states"):set(1, auto_cfg.fsstate)
+    menu_find("antiaim", "main", "auto direction", "states"):set(2, auto_cfg.fsstate2)
+    menu_find("antiaim", "main", "auto direction", "states"):set(3, auto_cfg.fsstate3)
+
+    menu_find("misc","main","movement","autostrafer"):set(auto_cfg.autostrafer)
+
+    cvars.weapon_recoil_view_punch_extra:set_float(auto_cfg.weapon_recoil_view_punch_extra)
+    cvars.view_recoil_tracking:set_float(auto_cfg.view_recoil_tracking)
+
+    cvars.sv_maxusrcmdprocessticks:set_int(auto_cfg.sv_maxusrcmdprocessticks)
+    cvars.cl_clock_correction:set_int(auto_cfg.cl_clock_correction)
+
+    cvars.cl_interpolate:set_int(auto_cfg.cl_interpolate)
+    cvars.sv_maxunlag:set_float(auto_cfg.sv_maxunlag)
+
+    cvars.sv_party_mode:set_int(auto_cfg.sv_party_mode)
+
+    cvars.sv_maxupdaterate:set_int(auto_cfg.sv_maxupdaterate)
+    cvars.sv_minupdaterate:set_int(auto_cfg.sv_minupdaterate)
+    
+    cvars.r_3dsky:set_int(auto_cfg.r_3dsky)
+    cvars.cl_csm_shadows:set_int(auto_cfg.cl_csm_shadows)
+    cvars.cl_use_opens_buy_menu:set_int(auto_cfg.cl_use_opens_buy_menu)
+    cvars.cl_csm_world_shadows:set_int(auto_cfg.cl_csm_world_shadows)
+    cvars.cl_foot_contact_shadows:set_int(auto_cfg.cl_foot_contact_shadows)
+    cvars.cl_csm_viewmodel_shadows:set_int(auto_cfg.cl_csm_viewmodel_shadows)
+    cvars.cl_csm_rope_shadows:set_int(auto_cfg.cl_csm_rope_shadows)
+    cvars.cl_csm_sprite_shadows:set_int(auto_cfg.cl_csm_sprite_shadows)
+    cvars.r_drawropes:set_int(auto_cfg.r_drawropes)
+    cvars.r_drawsprites:set_int(auto_cfg.r_drawsprites)
+    cvars.func_break_max_pieces:set_int(auto_cfg.func_break_max_pieces)
+    cvars.mat_queue_mode:set_int(auto_cfg.mat_queue_mode)
+    cvars.mat_drawwater:set_int(auto_cfg.mat_drawwater)
+    cvars.cl_detail_multiplier:set_int(auto_cfg.cl_detail_multiplier)
+    cvars.cl_bob_lower_amt:set_int(auto_cfg.cl_bob_lower_amt)
+    cvars.m_rawinput:set_int(auto_cfg.m_rawinput)
+    cvars.fps_max:set_int(auto_cfg.fps_max)
+    cvars.fps_max_menu:set_int(auto_cfg.fps_max_menu)
+    cvars.gameinstructor_enable:set_int(auto_cfg.gameinstructor_enable)
+    cvars.cl_freezecameffects_showholiday:set_int(auto_cfg.cl_freezecameffects_showholiday)
+    cvars.cl_disablehtmlmotd:set_int(auto_cfg.cl_disablehtmlmotd)
+    cvars.muzzleflash_light:set_int(auto_cfg.muzzleflash_light)
+    cvars.r_drawdecals:set_int(auto_cfg.r_drawdecals)
+    cvars.cl_freezecampanel_position_dynamic:set_int(auto_cfg.cl_freezecampanel_position_dynamic)
+    cvars.cl_disablefreezecam:set_int(auto_cfg.cl_disablefreezecam)
+    cvars.fog_enable_water_fog:set_int(auto_cfg.fog_enable_water_fog)
+    cvars.r_drawtracers:set_int(auto_cfg.r_drawtracers)
+    cvars.r_drawtracers_firstperson:set_int(auto_cfg.r_drawtracers_firstperson)
+    cvars.r_eyegloss:set_int(auto_cfg.r_eyegloss)
+    cvars.r_eyemove:set_int(auto_cfg.r_eyemove)
+    cvars.r_eyeshift_x:set_int(auto_cfg.r_eyeshift_x)
+    cvars.r_eyeshift_y:set_int(auto_cfg.r_eyeshift_y)
+    cvars.r_eyeshift_z:set_int(auto_cfg.r_eyeshift_z)
+    cvars.r_eyesize:set_int(auto_cfg.r_eyesize)
+    cvars.cl_autohelp:set_int(auto_cfg.cl_autohelp)
+    cvars.cl_showhelp:set_int(auto_cfg.cl_showhelp)
+    cvars.r_dynamic:set_int(auto_cfg.r_dynamic)
+    cvars.cl_csm_static_prop_shadows:set_int(auto_cfg.cl_csm_static_prop_shadows)
+
+    for material = 1, #cnl_material do
+        mat = cnl_material[material]
+
+        mat:color_modulate(1, 1, 1)
+        mat:alpha_modulate(1)
+    end
+
+    on_shared_esp()
+    print("goodbye, hope we can see you soon!", azura_color_t(131, 111, 255), " </3")
+end)
+
+--- @endregion
+
+--- @info: initialization of everything (so you wont crash)
+--- @region: init
+
+print("preparing lua..")
+setup = function()
+
+    imports_setup = function()
+        libs.tools.js.create()
+        print("preparing lua..", get_text_color(), " (stage 25%%)")
+    end
+
+    save_cfg = function()
+        auto_cfg.ladder_antiaim = menu_find("antiaim", "main", "general", "ladder antiaim"):get()
+        auto_cfg.fast_ladder_move = menu_find("antiaim", "main", "general", "fast ladder move"):get()
+
+        auto_cfg.resolve_antiaim = menu_find("Aimbot", "General", "Aimbot", "Resolve Antiaim"):get()
+        auto_cfg.air_autostop = menu_find("aimbot",get_active_weapon(),"accuracy","auostop options","In-Air")[3]:get(7)
+
+        auto_cfg.pitch = menu_find("antiaim","main", "angles", "pitch"):get()
+        auto_cfg.yawbase = menu_find("antiaim","main", "angles","yaw base"):get()
+        auto_cfg.yawadd = menu_find("antiaim","main", "angles","yaw add"):get()
+
+        auto_cfg.rotate = menu_find("antiaim","main", "angles", "rotate"):get()
+        auto_cfg.rotaterange = menu_find("antiaim","main", "angles","rotate range"):get()
+        auto_cfg.rotatespeed = menu_find("antiaim","main", "angles","rotate speed"):get()
+    
+        auto_cfg.jittermode = menu_find("antiaim","main", "angles","jitter mode"):get()
+        auto_cfg.jittertype = menu_find("antiaim","main", "angles","jitter type"):get()
+        auto_cfg.jitterrange = menu_find("antiaim","main", "angles","jitter add"):get()
+
+        auto_cfg.overridemove = menu_find("antiaim","main", "desync", "override stand#move"):get()
+        auto_cfg.overridemovesw = menu_find("antiaim","main", "desync", "override stand#slow walk"):get()
+
+        auto_cfg.desyncside = menu_find("antiaim","main", "desync", "stand", "side"):get()
+
+        auto_cfg.leftamount = menu_find("antiaim","main", "desync", "left amount"):get()
+        auto_cfg.rightamount = menu_find("antiaim","main", "desync", "right amount"):get()
+
+        auto_cfg.fsstate = menu_find("antiaim","main", "auto direction", "states"):get(1)
+        auto_cfg.fsstate2 = menu_find("antiaim","main", "auto direction", "states"):get(2)
+        auto_cfg.fsstate3 = menu_find("antiaim","main", "auto direction", "states"):get(3)
+
+        auto_cfg.autostrafer = menu_find("misc","main","movement","autostrafer"):get()
+
+        auto_cfg.weapon_recoil_view_punch_extra = cvars.weapon_recoil_view_punch_extra:get_float()
+        auto_cfg.view_recoil_tracking = cvars.view_recoil_tracking:get_float()
+
+        auto_cfg.sv_maxusrcmdprocessticks = cvars.sv_maxusrcmdprocessticks:get_int()
+        auto_cfg.cl_clock_correction = cvars.cl_clock_correction:get_int()
+
+        auto_cfg.cl_interpolate = cvars.cl_interpolate:get_int()
+        auto_cfg.sv_maxunlag = cvars.sv_maxunlag:get_float()
+
+        auto_cfg.sv_party_mode = cvars.sv_party_mode:get_int()
+
+        auto_cfg.sv_maxupdaterate = cvars.sv_maxupdaterate:get_int()
+        auto_cfg.sv_minupdaterate = cvars.sv_minupdaterate:get_int()
+        
+        auto_cfg.r_3dsky = cvars.r_3dsky:get_int()
+        auto_cfg.cl_csm_shadows = cvars.cl_csm_shadows:get_int()
+        auto_cfg.cl_use_opens_buy_menu = cvars.cl_use_opens_buy_menu:get_int()
+        auto_cfg.cl_csm_world_shadows = cvars.cl_csm_world_shadows:get_int()
+        auto_cfg.cl_foot_contact_shadows = cvars.cl_foot_contact_shadows:get_int()
+        auto_cfg.cl_csm_viewmodel_shadows = cvars.cl_csm_viewmodel_shadows:get_int()
+        auto_cfg.cl_csm_rope_shadows = cvars.cl_csm_rope_shadows:get_int()
+        auto_cfg.cl_csm_sprite_shadows = cvars.cl_csm_sprite_shadows:get_int()
+        auto_cfg.r_drawropes = cvars.r_drawropes:get_int()
+        auto_cfg.r_drawsprites = cvars.r_drawsprites:get_int()
+        auto_cfg.func_break_max_pieces = cvars.func_break_max_pieces:get_int()
+        auto_cfg.mat_queue_mode = cvars.mat_queue_mode:get_int()
+        auto_cfg.mat_drawwater = cvars.mat_drawwater:get_int()
+        auto_cfg.cl_detail_multiplier = cvars.cl_detail_multiplier:get_int()
+        auto_cfg.cl_bob_lower_amt = cvars.cl_bob_lower_amt:get_int()
+        auto_cfg.m_rawinput = cvars.m_rawinput:get_int()
+        auto_cfg.fps_max = cvars.fps_max:get_int()
+        auto_cfg.fps_max_menu = cvars.fps_max_menu:get_int()
+        auto_cfg.gameinstructor_enable = cvars.gameinstructor_enable:get_int()
+        auto_cfg.cl_freezecameffects_showholiday = cvars.cl_freezecameffects_showholiday:get_int()
+        auto_cfg.cl_disablehtmlmotd = cvars.cl_disablehtmlmotd:get_int()
+        auto_cfg.muzzleflash_light = cvars.muzzleflash_light:get_int()
+        auto_cfg.r_drawdecals = cvars.r_drawdecals:get_int()
+        auto_cfg.cl_freezecampanel_position_dynamic = cvars.cl_freezecampanel_position_dynamic:get_int()
+        auto_cfg.cl_disablefreezecam = cvars.cl_disablefreezecam:get_int()
+        auto_cfg.fog_enable_water_fog = cvars.fog_enable_water_fog:get_int()
+        auto_cfg.r_drawtracers = cvars.r_drawtracers:get_int()
+        auto_cfg.r_drawtracers_firstperson = cvars.r_drawtracers_firstperson:get_int()
+        auto_cfg.r_eyegloss = cvars.r_eyegloss:get_int()
+        auto_cfg.r_eyemove = cvars.r_eyemove:get_int()
+        auto_cfg.r_eyeshift_x = cvars.r_eyeshift_x:get_int()
+        auto_cfg.r_eyeshift_y = cvars.r_eyeshift_y:get_int()
+        auto_cfg.r_eyeshift_z = cvars.r_eyeshift_z:get_int()
+        auto_cfg.r_eyesize = cvars.r_eyesize:get_int()
+        auto_cfg.cl_autohelp = cvars.cl_autohelp:get_int()
+        auto_cfg.cl_showhelp = cvars.cl_showhelp:get_int()
+        auto_cfg.r_dynamic = cvars.r_dynamic:get_int()
+        auto_cfg.cl_csm_static_prop_shadows = cvars.cl_csm_static_prop_shadows:get_int()
+
+        print("preparing lua..", get_text_color(), " (stage 30%%)")
+    end
+
+    fps_boost = function()
+        cvars.sv_party_mode:set_int(1)
+
+        cvars.sv_maxupdaterate:set_int(64)
+        cvars.sv_minupdaterate:set_int(64)
+
+        cvars.r_3dsky:set_int(0)
+        cvars.cl_csm_shadows:set_int(1)
+        cvars.cl_use_opens_buy_menu:set_int(0)
+        cvars.cl_csm_world_shadows:set_int(1)
+        cvars.cl_foot_contact_shadows:set_int(0)
+        cvars.cl_csm_viewmodel_shadows:set_int(0)
+        cvars.cl_csm_rope_shadows:set_int(0)
+        cvars.cl_csm_sprite_shadows:set_int(0)
+        cvars.r_drawropes:set_int(0)
+        cvars.r_drawsprites:set_int(0)
+        cvars.func_break_max_pieces:set_int(0)
+        cvars.mat_queue_mode:set_int(-1)
+        cvars.mat_drawwater:set_int(0)
+        cvars.cl_detail_multiplier:set_int(0)
+        cvars.cl_bob_lower_amt:set_int(0)
+        cvars.m_rawinput:set_int(1)
+        cvars.fps_max:set_int(0)
+        cvars.fps_max_menu:set_int(0)
+        cvars.gameinstructor_enable:set_int(0)
+        cvars.cl_freezecameffects_showholiday:set_int(0)
+        cvars.cl_disablehtmlmotd:set_int(0)
+        cvars.muzzleflash_light:set_int(0)
+        cvars.r_drawdecals:set_int(0)
+        cvars.cl_freezecampanel_position_dynamic:set_int(0)
+        cvars.cl_disablefreezecam:set_int(0)
+        cvars.fog_enable_water_fog:set_int(0)
+        cvars.r_drawtracers:set_int(0)
+        cvars.r_drawtracers_firstperson:set_int(0)
+        cvars.r_eyegloss:set_int(0)
+        cvars.r_eyemove:set_int(0)
+        cvars.r_eyeshift_x:set_int(0)
+        cvars.r_eyeshift_y:set_int(0)
+        cvars.r_eyeshift_z:set_int(0)
+        cvars.r_eyesize:set_int(0)
+        cvars.cl_autohelp:set_int(0)
+        cvars.cl_showhelp:set_int(0)
+        cvars.r_dynamic:set_int(0)
+        cvars.cl_csm_static_prop_shadows:set_int(1)
+
+        print("preparing lua..", get_text_color(), " (stage 35%%)")
+    end
+
+    configure_groups = function()
+        groups.nav:depend({false})
+
+        groups.ragebot:depend({false})
+        groups.antiaim:depend({false})
+        groups.exploits:depend({false})
+        groups.helpers:depend({false})
+        groups.statistics:depend({false})
+        groups.configs:depend({false})
+        groups.cloud_configs:depend({false})
+        groups.player:depend({false})
+        groups.communication:depend({false})
+        groups.misc:depend({false})
+        groups.movement:depend({false})
+        groups.reso_cfg:depend({false})
+        groups.utils:depend({false})
+        groups.sync:depend({false})
+        groups.yaw:depend({false})
+        groups.jitter:depend({false})
+        groups.desync:depend({false})
+        groups.visuals:depend({false})
+        groups.tickbase:depend({false})
+        groups.resolver:depend({false})
+        groups.features:depend({false})
+        groups.customization:depend({false})
+        groups.settings:depend({false})
+        groups.defensive:depend({false})
+        groups.resolver_beta:depend({false})
+
+        print("preparing lua..", get_text_color(), " (stage 40%%)")
+    end
+
+    execute_tasks = function()
+        do_paint()
+        print("preparing lua..", get_text_color(), " (stage 45%%)")
+
+        do_net()
+        print("preparing lua..", get_text_color(), " (stage 50%%)")
+
+        do_event()
+        print("preparing lua..", get_text_color(), " (stage 55%%)")
+
+        do_runcmd()
+        print("preparing lua..", get_text_color(), " (stage 60%%)")
+
+        do_hitscan()
+        print("preparing lua..", get_text_color(), " (stage 65%%)")
+
+        do_setupcmd()
+        print("preparing lua..", get_text_color(), " (stage 70%%)")
+
+        do_aimshoot()
+        print("preparing lua..", get_text_color(), " (stage 75%%)")
+
+        do_antiaim()
+        print("preparing lua..", get_text_color(), " (stage 80%%)")
+
+        do_aimmiss()
+        print("preparing lua..", get_text_color(), " (stage 85%%)")
+
+        do_aimhit()
+        print("preparing lua..", get_text_color(), " (stage 90%%)")
+
+        do_player()
+        print("preparing lua..", get_text_color(), " (stage 95%%)")
+    end
+
+    finish_up = function()
+        configs.reload_configs()
+        configs.reload_cloud_configs()
+
+        print("preparing lua..", get_text_color(), " (stage 100%%)")
+    end
+
+    imports_setup()
+    save_cfg()
+    fps_boost()
+    configure_groups()
+    execute_tasks()
+    finish_up()
+
+    collectgarbage("collect")
+
+    notifications.create("azura.uno", "Welcome on azura, " .. info.user .. "!", notifications.types.information)
+    print("welcome on azura.uno!", get_text_color(), " <3")
+end
+setup()
+
+--- @endregion
+
+--- @info: helper
+--- @region: search table(s)
+
+table.insert(on_predict, false)
+table.contains = function(tbl, value)
+    for _, v in ipairs(tbl) do
+        if (v == value) then
+            return true
+        end
+    end
+    return false
+end
+
+table.check = function(t)
+    for _ in pairs(t) do
+        return false
+    end
+    return true
+end
+
+--- @endregion

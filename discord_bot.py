@@ -25,7 +25,7 @@ ENV VARS (set in Discord bot host or .env):
                         below also gets its own GitHub API limit (without it: 60 calls / hour per IP, shared on Railway)
   RELEASE_CHANNEL     — staff channel (name or id) new script versions are posted in (default: staff). Only posted when
                         neither @everyone nor a member / customer / plan role can read it
-  RELEASE_FILES       — files posted there when a new commit changes them (default: specter_dev.lua)
+  RELEASE_FILES       — files posted there when a new commit changes them (default: specter_dev.lua, azura.lua)
   RELEASE_MINUTES     — how often GitHub is checked (default: 5, 0 = only /release_check)
   AUTO_UPLOAD         — 1 (default): a new specter_cloud.lua of CLOUD_BRANCH goes to the license server by itself (every
                         plan; the loader downloads it from there), 0: only /script_upload
@@ -1315,7 +1315,7 @@ def _env_int(name: str, default: int) -> int:
 
 RELEASE_CHANNEL = _env("RELEASE_CHANNEL", "staff")
 UPDATES_CHANNEL = _env("UPDATES_CHANNEL", "updates")
-RELEASE_FILES   = [f.strip() for f in _env("RELEASE_FILES", "specter_dev.lua").split(",") if f.strip()]
+RELEASE_FILES   = [f.strip() for f in _env("RELEASE_FILES", "specter_dev.lua,azura.lua").split(",") if f.strip()]
 RELEASE_MINUTES = _env_int("RELEASE_MINUTES", 5)
 AUTO_UPLOAD     = _env("AUTO_UPLOAD", "1").lower() not in ("0", "false", "off", "no")
 AUTO_PANELS     = _env("AUTO_PANELS", "1").lower() not in ("0", "false", "off", "no")
