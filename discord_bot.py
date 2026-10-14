@@ -216,6 +216,14 @@ CHANNEL_STRUCTURE = [
         ],
     },
     {
+        "category": "\U0001f51c Specter·Primordial",
+        "channels": [
+            {"name": "primordial-news", "type": "text", "readonly": True, "emoji": "\U0001f4e2", "topic": "Specter for primordial: news and the release"},
+            {"name": "sneak-peeks",     "type": "text", "readonly": True, "emoji": "\U0001f440", "topic": "Sneak peeks of the primordial lua"},
+            {"name": "primordial-chat", "type": "text", "access": "member", "emoji": "\U0001f4ac", "topic": "Talk about the primordial lua"},
+        ],
+    },
+    {
         "category": "⭐ Staff",
         "channels": [
             {"name": "staff", "type": "text", "access": "staff", "emoji": "\U0001f6e0️", "topic": "Staff discussion"},
@@ -653,9 +661,17 @@ async def setup_channels(interaction: discord.Interaction):
             except discord.HTTPException:
                 failed.append(f"#{ch_name}")
 
+    # the panels of the new channels at once (e.g. the primordial announcement), not only at the next start
+    try:
+        panels = [line.split(": ", 1)[-1] for line in await sync_panels() if line.startswith(guild.name + ":")]
+    except discord.HTTPException:
+        panels = []
+
     embed = discord.Embed(title="\U0001f319 Channel Setup Complete", color=0x82C3FF)
     if created:
         embed.add_field(name="Created", value="\n".join(created), inline=False)
+    if panels:
+        embed.add_field(name="Panels", value="\n".join(panels)[:1024], inline=False)
     if existed:
         embed.add_field(name="Already exist", value="\n".join(existed), inline=False)
     if failed:
@@ -1834,7 +1850,7 @@ def prices_embed() -> discord.Embed:
         name="\U0001f51c Specter for Primordial — Coming Soon",
         value=(
             "• The Specter lua for **primordial** is on its way\n"
-            "• Prices and the release date will be posted in #updates"
+            "• Sneak peeks in #sneak-peeks, the release and prices in #primordial-news"
         ),
         inline=False,
     )
@@ -1900,8 +1916,24 @@ def howto_embed() -> discord.Embed:
         ),
         inline=False,
     )
-    embed.add_field(name="Primordial?", value="Specter for **primordial** is coming soon, watch #updates.", inline=False)
+    embed.add_field(name="Primordial?", value="Specter for **primordial** is coming soon: sneak peeks in #sneak-peeks, news in #primordial-news.", inline=False)
     embed.add_field(name="Trouble?", value="Open a ticket in #support-ticket and we'll help.", inline=False)
+    embed.set_footer(text="Specter \U0001f319 • primordial lua soon")
+    return embed
+
+
+def primordial_embed() -> discord.Embed:
+    embed = discord.Embed(title="\U0001f319 Specter is coming to Primordial \U0001f51c", color=0x82C3FF)
+    embed.description = (
+        "We've been working on something new: **Specter for primordial**.\n\n"
+        "The lua is almost ready and will be released **soon**. Before that, we'll share a few **sneak peeks**: "
+        "the menu, the anti-aim, and how it plays in game.\n\n"
+        "\U0001f440 Sneak peeks: #sneak-peeks\n"
+        "\U0001f514 Release and prices: #primordial-news\n"
+        "\U0001f4ac Talk about it: #primordial-chat\n"
+        "\u2753 Questions: open a ticket in #support-ticket\n\n"
+        "Stay tuned. \U0001f440"
+    )
     embed.set_footer(text="Specter \U0001f319 • primordial lua soon")
     return embed
 
@@ -1912,6 +1944,7 @@ PANELS = {
     "rules":   {"channel": "rules",          "build": rules_embed,   "banner": False, "button": False},
     "howto":   {"channel": "how-to-use",     "build": howto_embed,   "banner": False, "button": False},
     "tickets": {"channel": "support-ticket", "build": tickets_embed, "banner": False, "button": True},
+    "primordial": {"channel": "primordial-news", "build": primordial_embed, "banner": True, "button": False},
 }
 
 
