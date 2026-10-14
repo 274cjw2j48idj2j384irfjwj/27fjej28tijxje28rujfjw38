@@ -238,7 +238,7 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   the features; it wins over Kill Say / Trash Talk on a kill.
   The victim's name is cleaned before it goes into `say "..."` (no quote / semicolon / % / control chars: a name could run a command)
 - "Roast Kill Say" (owners, Oct 2026: "olyan killsayeket ami megérinti az embereket ... sokkal mélyebb is", like "your mom
-  waited 9 months"): `roast_messages`, 28 family / life roasts with {name}, no slurs and nothing about self harm (a report gets
+  waited 9 months"): `roast_messages`, 58 roasts with {name} (28 family / life, 30 more about the game, rank, setup and life: "nem muszáj csak családias"), no slurs and nothing about self harm (a report gets
   the account banned). Sponsor > Roast > Kill Say. specter_primordial.lua has the same lines as Trash talk "Roast"
   (`phrases_roast`, the name cleaned the same way, `say "..."`).
 
