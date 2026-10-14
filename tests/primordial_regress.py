@@ -566,5 +566,67 @@ check(r[1] == "Delay tied" and r[2] == 2 and all(x.split(":")[1] == ("false" if 
       "Adaptive AA at run time: Delay tied switches only after its delay ticks, on a sent packet, the desync on the "
       "yaw side (%s)" % (r,))
 
+# cloud configs (owners, Oct 2026: "a cloud cfg ... nem működik"): the old azura.uno socket is gone, they go through our
+# server (lua=pm): the list, Use, the upload in parts (part 0 first, then the rest), no key = a message, nothing sent
+CLOUD = chunk("-- cloud configs (owners, Oct 2026", "-- file based")
+cl = L.LuaRuntime(unpack_returned_tuples=True)
+cl.execute("""
+ffi = require("ffi")
+GETS, PENDING, NOTES, BUTTONS, IMPORTED, KEY = {}, {}, {}, {}, nil, "abc-key"
+presence = { server = "https://srv" }
+config_version, config_build, settings_file = "1.0", "beta", "settings.json"
+notifications = { types = { success = "s", warning = "w", failure = "f", information = "i" },
+    create = function(_, body) NOTES[#NOTES + 1] = body end }
+JSON = {}
+libs = {
+    tools = { http = { get = function(_, url, cb) GETS[#GETS + 1] = url PENDING[#PENDING + 1] = { url = url, cb = cb } end } },
+    json = { parse = function(b) local v = JSON[b] if v == nil then error("bad json") end return v end,
+             encode = function(t) return "ENCODED" end },
+    base64 = { encode = function(x) return string.rep("A", 7000) end, decode = function(x) return "CFG:" .. x end },
+    eui = { export = function() return "EXPORT" end, import = function(x) IMPORTED = x end },
+    filesystem = { exists = function() return KEY ~= nil end, read = function() return " " .. KEY .. " " end, write = function() end },
+}
+JSON["EXPORT"] = {}
+local function item(v) return { v = v, get = function(self) return self.v end } end
+local list = { items = {}, active = nil }
+function list:set_items(t) self.items = t end
+function list:get_active_item_name() return self.active end
+local local_list = { get_active_item_name = function() return "my cfg.cfg" end }
+ui = { configs = { cloud_list = { ref = list }, list = { ref = local_list } }, nav = { slider = { v = 3, get = function() return 3 end, ref = { set = function() end } } } }
+configs = {}
+menu_add_button = function(_, name, fn) BUTTONS[name] = fn return {} end
+read_settings = function() return {} end
+get_accent_color, get_text_color = function() return nil end, function() return nil end
+function ANSWER(body, value) local r = table.remove(PENDING, 1) JSON[body] = value r.cb({ body = body }) return r.url end
+""" + CLOUD)
+r = cl.eval("""(function()
+    configs.reload_cloud_configs(true)
+    local list_url = ANSWER("L", { { name = "hvh", author = "bob", ts = 1 }, { name = "new", author = "ann", ts = 5 } })
+    local rows = table.concat(ui.configs.cloud_list.ref.items, "|")
+    ui.configs.cloud_list.ref.active = "bob ~ hvh"
+    BUTTONS["Use"]()
+    local get_url = ANSWER("G", { ok = true, data = "Zm9v" })
+    local imported = IMPORTED
+    -- Update (the selected one's name): 7000 chars = 3 parts, part 0 alone first, then 1 and 2 together
+    BUTTONS["Update"]()
+    local first = #PENDING
+    local up0 = ANSWER("U0", { ok = true, done = false })
+    local after = #PENDING
+    local up1 = ANSWER("U1", { ok = true, done = false })
+    ANSWER("U2", { ok = true, done = true, author = "me" })
+    local refreshed = PENDING[1] and PENDING[1].url
+    -- no saved key: nothing goes out
+    KEY = nil
+    PENDING = {}
+    BUTTONS["Delete"]()
+    return list_url, rows, get_url, imported, first, after, up0, up1, refreshed, #PENDING, NOTES[#NOTES]
+end)()""")
+check(r[0] == "https://srv/configs?lua=pm" and r[1] == "ann ~ new|bob ~ hvh"
+      and r[2] == "https://srv/configs/get?lua=pm&name=hvh&author=bob" and r[3] == "CFG:Zm9v"
+      and r[4] == 1 and r[5] == 2 and "upload_part?lua=pm&key=abc-key&hwid=PM-" in r[6] and "&name=hvh&total=3&idx=0&data=" in r[6]
+      and "&idx=1&" in r[7] and r[8] == "https://srv/configs?lua=pm" and r[9] == 0 and "Log in once" in r[10],
+      "cloud configs: list newest first, Use imports, upload in 3 parts (0 first), refresh after, no key = nothing sent (%s)"
+      % (r[:6],))
+
 print("\n%d failed" % len(FAILS) if FAILS else "\nall passed")
 sys.exit(1 if FAILS else 0)

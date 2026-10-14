@@ -129,8 +129,8 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   of the same 45 frames), configs in csgo/specter/ (the old csgo/azura/ ones are not read). Edited directly (no generator). The bot posts it to #staff like the dev build (`RELEASE_FILES`).
   That #staff file IS the Primordial dev build: no dev loader for it (owners, Oct 2026: "a devnek nem kell loader elég a
   sima lua"; a server-side dev loader was made and taken out again).
-- Offline (owners, Oct 2026): the azura.uno login / HWID check, stats upload and cloud / sync sockets are gone (dummy sockets,
-  the cloud buttons say "Cloud is offline"); settings.json and the logo PNGs that the old loader installed are optional; the
+- Offline (owners, Oct 2026): the azura.uno login / HWID check, stats upload and cloud / sync sockets are gone; settings.json
+  and the logo PNGs that the old loader installed are optional; the
   lagcomp debug boxes are gone. default.cfg = the owner's config (`configs.default_config`), applied on the first start
   and written to csgo/specter/default.cfg at every start (load it from the list to get it). Its anti-aim is the advanced
   engine (owners, Oct 2026: "csináld meg a legjobb configot ezzel"), the rest stays the owner's: states 1-8 tight X-Way /
@@ -264,6 +264,17 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   csgo/materials/panorama/images/icons/), a row "name ~ version" in Specter Revealer, a notification once per name,
   `esp.sync_user` (talk back / chat mention). With Shared ESP on our own row gets the moon too (owners: "ha csak én vagyok
   fent ... nem jelzi"; our hash goes into `q` as well, icon only, no list row / notification). The dead azura sync socket is gone.
+  Shared ESP is this user detection only (the old azura's was too: no positions are shared). "Refresh players" says why
+  nothing shows (owners, Oct 2026: "a shared esp nem működik"): no answer from the server / nobody else in the game (N
+  players asked, whether we are visible).
+- Cloud configs (owners, Oct 2026: "a cloud cfg ... nem működik"; it was the dead azura.uno socket): the `cloud` module
+  talks to OUR license server like the gamesense lua, `lua=pm` keeps the two apart (server.js `config_lua`: the gs list /
+  dedup / delete never see a pm config and the other way round). `GET /configs?lua=pm` = the list without the data
+  (rows "author ~ name", newest first, loaded at start and by Refresh), `GET /configs/get?lua=pm&name&author` = one config
+  (Use imports it). Upload (Configs: the selected local cfg) / Update (the selected cloud row's name) send the eui export
+  in base64 through `/configs/upload_part` (3000 char parts, part 0 first: it starts the upload), Delete only the own ones.
+  Listing and Use need nothing; sharing needs the key the Primordial loader saved in csgo/specter/key.txt and the
+  loader's HWID (`cloud.hwid` = the loader's `get_hwid`, keep them the same), else a "log in once with the loader" note.
 - Loader + versions (owners, Oct 2026: "beta és nightly ... a bétaba nincs resolver, a ragebot Helper maradhat"):
   `specter_primordial_loader.lua` (key text input + Login, the key saved in csgo/specter/key.txt and used at the next
   start, HWID = hash of the C: volume serial + computer name, steam http + filesystem libs copied from the script):
