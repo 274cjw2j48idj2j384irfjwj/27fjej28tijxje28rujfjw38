@@ -27,6 +27,12 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   vgui2 VGUI_System010 calls through ffi with pcall), `spec_key <key>` in the console also sets it. Once the script runs the whole login
   menu is hidden (the script's menu is in the same tabs; `spec_logout` in the console). `python3 tests/loader_menu.py`
 - `specter_primordial_loader.lua` — the Primordial loader (see specter_primordial.lua below)
+- Loader update notice (owners, Oct 2026: "verziófigyelés a loaderben"): both loaders have `LOADER_VERSION = N` (BUMP IT
+  whenever a loader file changes). The bot (`sync_loader_versions`, AUTO_UPLOAD, every RELEASE_MINUTES) reads it from the
+  loaders of CLOUD_BRANCH and sends it to `POST /admin/loader_version` (Redis `specter:loader:gs|pm`); `/verify` answers
+  `loader_gs` / `loader_pm`, and an older loader says so (gamesense: console + 12 s on screen, "download it from
+  #loader-download"; Primordial: console + a "Specter update" menu text); the script still loads. A loader can not
+  update itself (owners' choice: no exe launcher). `python3 tests/loader_menu.py` tests the gamesense one.
 - `specter_dev_loader.lua` — DEV loader for the owners: no login / key / HWID / server. Put it into the gamesense lua folder once; it
   downloads the newest `specter_dev.lua` from GitHub raw on every load (SOURCES list: main first, then the `dev` branch), saves it
   as `specter_dev_cache.lua` and falls back to that copy offline. `python3 tests/dev_loader.py` tests it. `specter_dev.lua` itself stays
@@ -201,6 +207,12 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   spin / `adv.native_jitter` = Offset / Center / 3Way / 5Way per packet), `set_pitch`, `set_desync` (left negative,
   invert held off so they never cancel). An own `set_yaw` / `set_pitch` / `set_invert_desync` of the old code wins.
   Peek fake / peek real desync stay on the menu (no ctx equivalent). Untested in game.
+- FPS (owners, Oct 2026: "az FPS nagyon gatya van 70 fpsem"): `menu_find` is memoized (menu.find walked the whole menu
+  for the same items every frame / tick); the double tap speed cvar (set every frame, 15 with Better DT off), the console
+  colour materials and the jumpshot autostrafer / in-air autostop are written only on change. Profiler (dev build):
+  Utils "Profile 10 s (dev)" times every callback (`perf.add` instead of callbacks.add) and the PAINT parts (`perf.span`)
+  with QueryPerformanceCounter, prints ms per frame and sends a `kind` "perf" line to shotlogs/primordial/. Find the
+  next FPS problem with it, not by guessing.
 - Circles: Primordial's `render_circle_filled` / `render_circle` take an int radius (a fraction stopped the PAINT
   callback in `sky`); the script wraps both and rounds the radius.
 - Menu (owners, Oct 2026, chose the "buttons" mock-up): four main buttons (Config, Ragebot, Anti-Aim, Misc), under them

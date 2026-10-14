@@ -36,6 +36,75 @@ player_resource_get_prop, player_resource_set_prop = player_resource.get_prop, p
 ragebot_get_active_cfg, ragebot_get_autopeek_pos = ragebot.get_active_cfg, ragebot.get_autopeek_pos
 render_get_text_size, render_push_clip, render_load_image, render_rect_filled, render_line, render_pop_clip, render_rect_fade, render_circle_filled, render_weapon_icon, render_rect, render_texture, render_get_screen_size, render_load_image_buffer, render_create_font, render_weapon_icon_size, render_pop_alpha_modifier, render_circle, render_text, render_get_default_font, render_polygon, render_polyline, render_triangle, render_push_alpha_modifier, render_triangle_filled, render_progress_circle, render_world_to_screen = render.get_text_size, render.push_clip, render.load_image, render.rect_filled, render.line, render.pop_clip, render.rect_fade, render.circle_filled, render.weapon_icon, render.rect, render.texture, render.get_screen_size, render.load_image_buffer, render.create_font, render.weapon_icon_size, render.pop_alpha_modifier, render.circle, render.text, render.get_default_font, render.polygon, render.polyline, render.triangle, render.push_alpha_modifier, render.triangle_filled, render.progress_circle, render.world_to_screen
 
+-- menu.find walks Primordial's whole menu by name, and the script asks for the same items every frame / tick (jumpshot,
+-- the anti-aim refs, the keybinds ...). An item never changes, so each one is looked up once (owners, Oct 2026: 70 fps)
+do
+    local find, cache = menu_find, {}
+    menu_find = function(...)
+        local n, parts = select("#", ...), { ... }
+        for i = 1, n do
+            if (type(parts[i]) ~= "string") then
+                return find(...)
+            end
+        end
+        local key = table.concat(parts, "\1")
+        local item = cache[key]
+        if (item == nil) then
+            item = find(...)
+            cache[key] = item
+        end
+        return item
+    end
+end
+
+-- FPS profiler (dev build, owners Oct 2026: "az FPS nagyon gatya van 70 fpsem"): Utils "Profile 10 s" times every
+-- callback and the parts of PAINT with the performance counter, then prints the most expensive ones and sends them to
+-- the shot logs (kind "perf"). Nothing is timed while it is off
+local perf = { on = false, t = {}, n = {}, frames = 0 }
+do
+    local ok, ffi = pcall(require, "ffi")
+    local buf, freq = nil, 0
+    if (ok) then
+        pcall(ffi.cdef, "int QueryPerformanceCounter(int64_t *c); int QueryPerformanceFrequency(int64_t *f);")
+        pcall(function()
+            buf = ffi.new("int64_t[1]")
+            ffi.C.QueryPerformanceFrequency(buf)
+            freq = tonumber(buf[0]) or 0
+        end)
+    end
+    perf.now = function()
+        if (freq <= 0) then
+            return 0
+        end
+        ffi.C.QueryPerformanceCounter(buf)
+        return tonumber(buf[0]) / freq * 1000
+    end
+    perf.usable = freq > 0
+end
+
+perf.span = function(name, fn, ...)
+    if (not perf.on) then
+        return fn(...)
+    end
+    local t0 = perf.now()
+    fn(...)
+    perf.t[name] = (perf.t[name] or 0) + perf.now() - t0
+    perf.n[name] = (perf.n[name] or 0) + 1
+end
+
+perf.add = function(id, name, fn)
+    return callbacks.add(id, function(...)
+        if (not perf.on) then
+            return fn(...)
+        end
+        local t0 = perf.now()
+        fn(...)
+        local key = "cb " .. name
+        perf.t[key] = (perf.t[key] or 0) + perf.now() - t0
+        perf.n[key] = (perf.n[key] or 0) + 1
+    end)
+end
+
 -- Primordial's circle calls take the radius as an int: a fraction (the watermark's moon / sun, 4.5 * night ...) is
 -- "not a numeric type" and stops the PAINT callback, so every radius is rounded here
 do
@@ -1433,6 +1502,9 @@ ui.utils.aa_stats = groups.utils:checkbox("AA stats", true)
 ui.utils.aa_stats_reset = groups.utils:button("Reset AA stats", function()
     builder.aa_stats = {}
     notifications.create("Specter", "Anti-aim stats have been reset!", notifications.types.success)
+end)
+ui.utils.profile = groups.utils:button("Profile 10 s (dev)", function()
+    perf.start()
 end)
 ui.antiaim.features.fl_variance = groups.features:checkbox("Fakelag variance")
 ui.antiaim.builder.preset = groups.settings:button("Apply advanced preset", function()
@@ -4949,6 +5021,51 @@ shotlog.aa = function(kind, snap, hitgroup, damage)
     end
 end
 
+-- the FPS profiler (see perf at the top): 10 s of timings, then the most expensive parts in ms per frame
+perf.start = function()
+    if (not perf.usable) then
+        notifications.create("Specter", "No performance counter on this PC.", notifications.types.failure)
+        return
+    end
+    perf.t, perf.n, perf.frames = {}, {}, 0
+    perf.until_t = globals.real_time() + 10
+    perf.on = true
+    notifications.create("Specter", "Profiling for 10 seconds, play normally.", notifications.types.information)
+end
+
+perf.tick = function()
+    if (not perf.on) then
+        return
+    end
+    perf.frames = perf.frames + 1
+    if (globals.real_time() < perf.until_t) then
+        return
+    end
+    perf.on = false
+    local frames = math.max(1, perf.frames)
+    local rows = {}
+    for name, ms in pairs(perf.t) do
+        rows[#rows + 1] = { name = name, ms = ms / frames, calls = perf.n[name] or 0 }
+    end
+    table.sort(rows, function(a, b) return a.ms > b.ms end)
+    print(string.format("specter perf: %d frames in 10 s (%.0f fps), ms per frame:", frames, frames / 10))
+    local parts = {}
+    for i = 1, math.min(#rows, 14) do
+        local r = rows[i]
+        print(string.format("  %-16s %7.3f ms  (%d calls)", r.name, r.ms, r.calls))
+        parts[r.name] = math.floor(r.ms * 1000 + 0.5) / 1000
+    end
+    notifications.create("Specter", "Profile done, the results are in the console.", notifications.types.success)
+    if (info.plan == "dev") then
+        local ok, line = pcall(libs.json.encode, { lua = "primordial", v = 1, kind = "perf", t = client_get_unix_time(),
+            fps = math.floor(frames / 10), ms = parts })
+        if (ok and type(line) == "string") then
+            shotlog.buf[#shotlog.buf + 1] = line
+            pcall(shotlog.send)
+        end
+    end
+end
+
 shotlog.send = function()
     if (shotlog.sending or #shotlog.buf == 0) then
         return
@@ -6300,47 +6417,43 @@ better_hs = function(cmd)
     end
 end
 
-custom_dt = function()
-    if (ui.exploits.better_dt.better_dt:get()) then
-        if (menu_find("aimbot", "general", "exploits", "doubletap", "enable")[2]:get()) then
-            if (ui.exploits.better_dt.dt_mode:get() == 1) then
-                local enemies = entity_list_get_players(true)
-                if (enemies ~= nil) then
-                    local local_player = entity_list_get_local_player()
-                    for _, player in pairs(enemies) do
-                        if (ui.exploits.better_dt.speed_calc:get() == 1) then
-                            cvars.sv_maxusrcmdprocessticks:set_int(17)
-                        elseif (ui.exploits.better_dt.speed_calc:get() == 2) then
-                            if (distance(local_player:get_render_origin(), vec3_t(0.0, 0.0, 0.0)) < 600) then
-                                cvars.sv_maxusrcmdprocessticks:set_int(17)
-                            elseif (distance(local_player:get_render_origin(), vec3_t(0.0, 0.0, 0.0)) > 600) then
-                                cvars.sv_maxusrcmdprocessticks:set_int(14)
-                            end
-                        elseif (ui.exploits.better_dt.speed_calc:get() == 3) then
-                            if (distance(local_player:get_render_origin(), vec3_t(0.0, 0.0, 0.0)) < 600) then
-                                cvars.sv_maxusrcmdprocessticks:set_int(17)
-                            elseif (distance(local_player:get_render_origin(), vec3_t(0.0, 0.0, 0.0)) > 600 and distance(local_player:get_render_origin(), vec3_t(0.0, 0.0, 0.0)) < 1000) then
-                                cvars.sv_maxusrcmdprocessticks:set_int(14)
-                            elseif (distance(local_player:get_render_origin(), vec3_t(0.0, 0.0, 0.0)) > 1000) then
-                                cvars.sv_maxusrcmdprocessticks:set_int(12)
-                            end
-                        end
-                    end
-                    return
-                else
-                    return
-                end
-            else
-                cvars.sv_maxusrcmdprocessticks:set_int(ui.exploits.better_dt.dt_speed:get())
-            end
-            return
-        else
-            return
-        end
-    else
-        cvars.sv_maxusrcmdprocessticks:set_int(15)
+-- the double tap speed (sv_maxusrcmdprocessticks), written only when it changes: it was set every frame (15 with Better
+-- DT off, once per enemy with the distance modes), a cvar write per call (owners, Oct 2026: 70 fps)
+local dt_ticks_set = nil
+local function set_dt_ticks(ticks)
+    if (ticks ~= nil and ticks ~= dt_ticks_set) then
+        cvars.sv_maxusrcmdprocessticks:set_int(ticks)
+        dt_ticks_set = ticks
     end
-    return
+end
+
+custom_dt = function()
+    if (not ui.exploits.better_dt.better_dt:get()) then
+        set_dt_ticks(15)
+        return
+    end
+    if (not menu_find("aimbot", "general", "exploits", "doubletap", "enable")[2]:get()) then
+        return
+    end
+    if (ui.exploits.better_dt.dt_mode:get() ~= 1) then
+        set_dt_ticks(ui.exploits.better_dt.dt_speed:get())
+        return
+    end
+    local enemies = entity_list_get_players(true)
+    if (enemies == nil or next(enemies) == nil) then
+        return
+    end
+    local calc = ui.exploits.better_dt.speed_calc:get()
+    if (calc == 1) then
+        set_dt_ticks(17)
+        return
+    end
+    local dist = distance(entity_list_get_local_player():get_render_origin(), vec3_t(0.0, 0.0, 0.0))
+    if (calc == 2) then
+        set_dt_ticks(dist < 600 and 17 or dist > 600 and 14 or nil)
+    elseif (calc == 3) then
+        set_dt_ticks(dist < 600 and 17 or (dist > 600 and dist < 1000) and 14 or dist > 1000 and 12 or nil)
+    end
 end
 
 --- @endregion
@@ -7390,6 +7503,8 @@ materials_for_each(function(mat)
     end
 end)
 
+local console_state = nil
+local jumpshot_state = {}
 game_handle = function()
     if (ui.misc.unlock_pingspike:get()) then
         if (cvars.sv_maxunlag:get_float() ~= 0.4) then
@@ -7401,22 +7516,24 @@ game_handle = function()
         end
     end
 
+    -- the console colour: the materials are written only when the colour / console state changes (every frame before)
     if (engine_is_app_active()) then
-        local console_color = ui.console_color:get()
-        for material = 1, #cnl_material do
-            mat = cnl_material[material]
-    
-            if (ui.visuals.console:get() and console_is_visible(engine_client)) then
-                mat:color_modulate(console_color.r / 255, console_color.g / 255, console_color.b / 255)
-                mat:alpha_modulate(console_color.a / 255)
-            else
-                mat:color_modulate(1, 1, 1)
-                mat:alpha_modulate(1)
+        local c = ui.console_color:get()
+        local on = ui.visuals.console:get() and console_is_visible(engine_client)
+        local state = on and string.format("%d,%d,%d,%d", c.r, c.g, c.b, c.a) or "off"
+        if (state ~= console_state) then
+            console_state = state
+            for material = 1, #cnl_material do
+                local mat = cnl_material[material]
+                if (on) then
+                    mat:color_modulate(c.r / 255, c.g / 255, c.b / 255)
+                    mat:alpha_modulate(c.a / 255)
+                else
+                    mat:color_modulate(1, 1, 1)
+                    mat:alpha_modulate(1)
+                end
             end
         end
-        return
-    else
-        return
     end
 end
 
@@ -7533,6 +7650,7 @@ menu_handle = function()
         ui.antiaim.builder.condition:depend({aa_page}, {ui.antiaim.builder.enable, true})
         ui.antiaim.builder.ab_mode:depend({aa_page}, {ui.antiaim.builder.enable, true}, {ui.antiaim.builder.anti_brute, true})
         ui.antiaim.builder.direct:depend({aa_page}, {ui.antiaim.builder.enable, true}, {info.plan == "dev"})
+        ui.utils.profile:depend({info.plan == "dev"})
         ui.antiaim.builder.preset:depend({aa_page}, {ui.antiaim.builder.enable, true})
         ui.antiaim.features.fl_variance:depend({aa_page}, {ui.antiaim.builder.enable, true})
     
@@ -7659,7 +7777,7 @@ end
 --- @region: callbacks
 
 do_player = function()
-    callbacks.add(e_callbacks.PLAYER_ESP, function(ctx)
+    perf.add(e_callbacks.PLAYER_ESP, "PLAYER_ESP", function(ctx)
         if (ui.visuals.esp_fonts:get() == 2) then
             ctx:set_font(fonts.pixel)
         elseif (ui.visuals.esp_fonts:get() == 3) then
@@ -7674,7 +7792,7 @@ do_player = function()
 end
 
 do_aimhit = function()
-    callbacks.add(e_callbacks.AIMBOT_HIT, function(hit)
+    perf.add(e_callbacks.AIMBOT_HIT, "AIMBOT_HIT", function(hit)
         if (check_conditions()) then
             local hit_group = hit_groups[hit.hitgroup]
             local aim_group = hit_groups[hit.aim_hitgroup]
@@ -7761,7 +7879,7 @@ do_aimhit = function()
 end
 
 do_aimmiss = function()
-    callbacks.add(e_callbacks.AIMBOT_MISS, function(miss)
+    perf.add(e_callbacks.AIMBOT_MISS, "AIMBOT_MISS", function(miss)
         local miss_group = hit_groups[miss.aim_hitgroup]
         
         local reason = miss.reason_string
@@ -7850,7 +7968,7 @@ do_aimmiss = function()
 end
 
 do_antiaim = function()
-    callbacks.add(e_callbacks.ANTIAIM, function(ctx, cmd, unpredicted)
+    perf.add(e_callbacks.ANTIAIM, "ANTIAIM", function(ctx, cmd, unpredicted)
         if (check_conditions()) then
             local on_land = bit.band(entity_list_get_local_player():get_prop("m_fFlags"), bit.lshift(1, 0)) ~= 0
             local state = get_state(get_velocity())
@@ -7933,7 +8051,7 @@ do_antiaim = function()
 end
 
 do_aimshoot = function()
-    callbacks.add(e_callbacks.AIMBOT_SHOOT, function(shot)
+    perf.add(e_callbacks.AIMBOT_SHOOT, "AIMBOT_SHOOT", function(shot)
         if (check_conditions()) then
             local idx = shot.player:get_index()
             reso.aimpos = shot.player:get_hitbox_pos(1)
@@ -7973,7 +8091,7 @@ do_aimshoot = function()
 end
 
 do_setupcmd = function()
-    callbacks.add(e_callbacks.SETUP_COMMAND, function(cmd)
+    perf.add(e_callbacks.SETUP_COMMAND, "SETUP_COMMAND", function(cmd)
         if (check_conditions()) then
             global:update(cmd)
 
@@ -8013,7 +8131,7 @@ do_setupcmd = function()
 end
 
 do_target = function()
-    callbacks.add(e_callbacks.TARGET_SELECTION, function(ctx)
+    perf.add(e_callbacks.TARGET_SELECTION, "TARGET_SELECTION", function(ctx)
         if (check_conditions()) then
             backtrack.target_selection(ctx)
         end
@@ -8021,7 +8139,7 @@ do_target = function()
 end
 
 do_hitscan = function()
-    callbacks.add(e_callbacks.HITSCAN, function(ctx, cmd, unpredicted_data)
+    perf.add(e_callbacks.HITSCAN, "HITSCAN", function(ctx, cmd, unpredicted_data)
         if (check_conditions()) then
             update_target(ctx)
             if (info.plan ~= "beta") then
@@ -8045,7 +8163,7 @@ do_hitscan = function()
 end
 
 do_runcmd = function()
-    callbacks.add(e_callbacks.RUN_COMMAND, function(cmd, unpredicted_data)
+    perf.add(e_callbacks.RUN_COMMAND, "RUN_COMMAND", function(cmd, unpredicted_data)
         if (check_conditions()) then
             quick_fall(cmd, unpredicted_data)
             safe_recharge(cmd, unpredicted_data)
@@ -8063,7 +8181,7 @@ do_runcmd = function()
 end
 
 do_event = function()
-    callbacks.add(e_callbacks.EVENT, function(event)
+    perf.add(e_callbacks.EVENT, "EVENT", function(event)
         if (check_conditions()) then
             local local_player = entity_list_get_local_player()
             local userid = event.userid
@@ -8292,7 +8410,7 @@ do_event = function()
 end
 
 do_net = function()
-    callbacks.add(e_callbacks.NET_UPDATE, function(ctx)
+    perf.add(e_callbacks.NET_UPDATE, "NET_UPDATE", function(ctx)
         if (check_conditions()) then
             lets_resolve()
         
@@ -8332,73 +8450,71 @@ do_paint = function()
         end, 8)
     end
 
-    callbacks.add(e_callbacks.PAINT, function()
-        notifications.render()
+    perf.add(e_callbacks.PAINT, "PAINT", function()
+        perf.tick()
+        perf.span("notifications", notifications.render)
         if (ui.utils.watermark:get()) then
-            draw_watermark()
-            draw_menu()
+            perf.span("watermark", draw_watermark)
+            perf.span("menu effect", draw_menu)
         end
         if (ui.utils.aa_stats:get() and engine_is_in_game()) then
-            draw_aa_stats()
+            perf.span("aa stats", draw_aa_stats)
         end
 
-        game_handle()
-        menu_handle()
+        perf.span("game handle", game_handle)
+        perf.span("menu handle", menu_handle)
 
         if (engine_is_in_game() and engine_is_connected()) then
-            run_clantag()
+            perf.span("clantag", run_clantag)
         end
 
         if (check_conditions()) then
             local local_player = entity_list_get_local_player()
 
-            lets_sync()
-            handle_logs()
+            perf.span("presence", lets_sync)
+            perf.span("hit logs", handle_logs)
         
             if (local_player:is_alive()) then
                 if (ui.misc.jumpshot:get()) then
+                    -- written when the state (or the weapon group) changes, not every frame
                     local m_flags = local_player:get_prop("m_fFlags")
-                    if (ent_speed_2d(local_player) > 10 and (m_flags == 256 or m_flags == 262)) then
-                        menu_find("misc","main","movement","autostrafer"):set(true)
-                        menu_find("misc","main","movement","autostrafer"):set(true)
-    
-                        menu_find("aimbot",get_active_weapon(),"accuracy","auostop options","In-Air")[3]:set(7, true)
-                    else
-                        menu_find("misc","main","movement","autostrafer"):set(false)
-                        menu_find("misc","main","movement","autostrafer"):set(false)
-    
-                        menu_find("aimbot",get_active_weapon(),"accuracy","auostop options","In-Air")[3]:set(7, false)
+                    local air = ent_speed_2d(local_player) > 10 and (m_flags == 256 or m_flags == 262)
+                    local weapon = get_active_weapon()
+                    if (air ~= jumpshot_state.air or weapon ~= jumpshot_state.weapon) then
+                        jumpshot_state.air, jumpshot_state.weapon = air, weapon
+                        menu_find("misc","main","movement","autostrafer"):set(air)
+                        menu_find("aimbot",weapon,"accuracy","auostop options","In-Air")[3]:set(7, air)
                     end
                 end
 
-                handle_drawing()
-                handle_playerlist()
+                perf.span("miss stats", handle_drawing)
+                perf.span("evade list", handle_playerlist)
     
                 builder.clockpitch()
                 builder.clockyaw()
             
-                custom_dt()
-                edge_yaw()
+                perf.span("better dt", custom_dt)
+                perf.span("edge yaw", edge_yaw)
 
                 if (ui.visuals.china_hat.enable_hat:get()) then
-                    draw_hat()
+                    perf.span("china hat", draw_hat)
                 end
 
                 if (ui.utils.keybinds:get()) then
-                    draw_keybinds()
+                    perf.span("keybinds", draw_keybinds)
                 end
             
                 if (ui.utils.spectators:get()) then
-                    draw_spectators()
+                    perf.span("spectators", draw_spectators)
                 end
 
                 if (not menu_is_open()) then
                     if (ui.visuals.crosshair_indc.binds:get(1) or ui.visuals.crosshair_indc.binds:get(2) or ui.visuals.crosshair_indc.binds:get(3) or ui.visuals.crosshair_indc.binds:get(4) or ui.visuals.crosshair_indc.binds:get(5) or ui.visuals.crosshair_indc.binds:get(6) or ui.visuals.crosshair_indc.binds:get(7) or ui.visuals.crosshair_indc.binds:get(8) or ui.visuals.crosshair_indc.binds:get(9) or ui.visuals.crosshair_indc.binds:get(10)) then
-                        draw_indicator()
+                        perf.span("crosshair ind", draw_indicator)
                     end
 
                     if (ui.visuals.gs_indc.indicators:get(1) or ui.visuals.gs_indc.indicators:get(2) or ui.visuals.gs_indc.indicators:get(3) or ui.visuals.gs_indc.indicators:get(4) or ui.visuals.gs_indc.indicators:get(5) or ui.visuals.gs_indc.indicators:get(6) or ui.visuals.gs_indc.indicators:get(7) or ui.visuals.gs_indc.indicators:get(8) or ui.visuals.gs_indc.indicators:get(9) or ui.visuals.gs_indc.indicators:get(10)) then
-                        draw_gs_indicator()
+                        perf.span("gs ind", draw_gs_indicator)
                     end
                 end
             end
