@@ -4594,11 +4594,37 @@ end
 -- never comes back, center / 3-way / 5-way / random jitter goes back and forth. It stays a jitter target for
 -- RES_JIT_HOLD seconds of its sim time after the last time it looked like one: with a high real or fake ping the aimbot
 -- shoots records up to ~1 s old, those were jittering too.
+-- Small jitter (owners: "van small jitter is ami akár lehet 5-6 is"): steps under the big step, so the eye yaw itself is
+-- read: it keeps coming back to the same few values (within RES_JIT_TOL of the yaw 2-4 records before) while it moved
+-- RES_JIT_SMALL+ from the previous record, on RES_JIT_RETURNS+ of the last records. A mouse moves on and does not come
+-- back to the exact angle, a still player does not move; a 2-way / 3-way / 4-way jitter of any size does both.
 local RES_JIT_N = 12
 local RES_JIT_MIN = 20
 local RES_JIT_HOLD = 1.0
+local RES_JIT_SMALL = 4
+local RES_JIT_TOL = 1.5
+local RES_JIT_RETURNS = 6
 
-resolver.jit_classify = function(steps, min)
+resolver.jit_returns = function(yaws)
+    local returns = 0
+    for i = 1, #yaws - 2 do
+        if (math.abs(res_norm(yaws[i] - yaws[i + 1])) >= RES_JIT_SMALL) then
+            for k = 2, 4 do
+                local old = yaws[i + k]
+                if (old ~= nil and math.abs(res_norm(yaws[i] - old)) <= RES_JIT_TOL) then
+                    returns = returns + 1
+                    break
+                end
+            end
+        end
+    end
+    return returns
+end
+
+resolver.jit_classify = function(steps, min, yaws)
+    if (yaws ~= nil and resolver.jit_returns(yaws) >= RES_JIT_RETURNS) then
+        return true
+    end
     local big, flips, net, total, last = 0, 0, 0, 0, 0
     for i = 1, #steps do
         local d = steps[i]
@@ -4617,13 +4643,15 @@ resolver.jit_classify = function(steps, min)
 end
 
 -- one record: its eye yaw step, the jitter state; p.dir = the direction of the newest big step (the lua side override)
-resolver.jit_record = function(p, delta, sim, min)
+resolver.jit_record = function(p, delta, sim, min, eye)
     table.insert(p.jd, 1, delta)
     p.jd[RES_JIT_N + 1] = nil
+    table.insert(p.jy, 1, eye)
+    p.jy[RES_JIT_N + 1] = nil
     if (math.abs(delta) >= min) then
         p.dir = delta < 0 and -1 or 1
     end
-    if (resolver.jit_classify(p.jd, min)) then
+    if (resolver.jit_classify(p.jd, min, p.jy)) then
         p.jit_sim = sim
     end
     p.jitter = p.jit_sim ~= nil and sim - p.jit_sim >= 0 and sim - p.jit_sim <= RES_JIT_HOLD
@@ -4634,7 +4662,7 @@ resolver.track = function(ent, eye)
     local idx = ent:get_index()
     local p = resolver.data[idx]
     if (p == nil) then
-        p = { sim = 0, eye = eye, nochoke = 0, jd = {}, dir = 1, jitter = false, fs = 0, fs_tick = -RES_FS_TICKS }
+        p = { sim = 0, eye = eye, nochoke = 0, jd = {}, jy = {}, dir = 1, jitter = false, fs = 0, fs_tick = -RES_FS_TICKS }
         resolver.data[idx] = p
     end
 
@@ -4643,13 +4671,13 @@ resolver.track = function(ent, eye)
         return p
     end
     if (sim < p.sim) then -- a new player in the slot / a new map
-        p.sim, p.jd, p.jit_sim, p.jitter = 0, {}, nil, false
+        p.sim, p.jd, p.jy, p.jit_sim, p.jitter = 0, {}, {}, nil, false
     end
     local ticks = time_to_ticks(sim - p.sim)
     if (ticks >= 1) then
         p.nochoke = (ticks == 1) and (p.nochoke + 1) or 0
         local min = res_custom() and res_clamp(ui.ragebot.resolver.shot_pred:get(), 15, 65) or RES_JIT_MIN
-        resolver.jit_record(p, res_norm(eye - p.eye), sim, min)
+        resolver.jit_record(p, res_norm(eye - p.eye), sim, min, eye)
         p.sim, p.eye = sim, eye
     end
     return p
