@@ -288,6 +288,18 @@ return ctx.calls.set_desync == nil, ctx.calls.set_yaw == nil, REAL.desyncside.v
 """)
 check(r[0] and r[1] and r[2] == 5, "direct control: peek fake stays Primordial's, yaw base 1 (round end) sends no yaw (%s)" % (r,))
 r = D("""
+refs.freestand = { get = function() return true end }
+builder.direct_begin()
+local ctx = CTX()
+refs.yawbase:set(2) refs.yawadd:set(15) refs.jittermode:set(1) refs.desyncside:set(2) refs.leftamount:set(80)
+builder.direct_restore()
+builder.direct_apply(ctx, {})
+refs.freestand = nil
+return ctx.calls.set_yaw == nil, REAL.yawadd.v, ctx.calls.set_desync
+""")
+check(r == (True, 15, -0.8), "direct control + Freestand key: Primordial's auto direction keeps the yaw, our add goes into "
+      "its menu, the desync still ours (%s)" % (r,))
+r = D("""
 local st, a = {}, {}
 for n = 1, 6 do a[#a + 1] = builder.adv.native_jitter(st, 3, 30, true) end
 local st2, b = {}, {}
