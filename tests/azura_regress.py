@@ -250,5 +250,66 @@ old = aa_rates(False)
 check(sum(old) / len(old) >= 0.70, "Random desync side off: the side follows the yaw again, the resolver learns it (%.2f)"
       % (sum(old) / len(old)))
 
+# ── menu: four main points, the pages of the active one ───────────────
+
+NAV = chunk("-- menu (owners, Oct 2026): four main points", "--- @endregion")
+MENU_HANDLE = chunk("menu_handle = function()", "\nend\n") + "\nend\n"
+MENU_MOCK = r'''
+PAGE = 0
+local function proxy()
+    return setmetatable({}, { __index = function(t, k)
+        if k == "get" then return function(_, i) if t == ui.nav.slider then return PAGE end return i == nil and true or false end end
+        local p = proxy(); rawset(t, k, p); return p end,
+        __call = function() return nil end })
+end
+local function holds(conds)
+    for _, c in ipairs(conds) do
+        if #c == 1 then if not c[1] then return false end
+        elseif c[1]:get() ~= c[2] then return false end
+    end
+    return true
+end
+SHOWN = {}
+local function element(name)
+    local e = proxy()
+    rawset(e, "depend", function(_, ...) SHOWN[name] = holds({...}) end)
+    return e
+end
+groups = setmetatable({}, { __index = function(t, k)
+    local g = element("group:" .. k)
+    rawset(g, "button", function(_, label) return element("button:" .. label) end)
+    rawset(t, k, g); return g end })
+ui = proxy()
+info = { beta_build = true, beta_text2 = " (beta)" }
+client_version = "5.5"
+menu_add_separator = function() return proxy() end
+menu_is_open = function() return true end
+menu_set_group_column = function() end
+handle_dragging = function() end
+cl_logs = { c_logs = setmetatable({}, { __index = function() return 0 end }) }
+states = {"Global", "Stand", "Move", "Slow walk", "Duck", "Duck move", "Air", "Air duck", "Fakelag", "Manual", "Freestand"}
+'''
+lua = L.LuaRuntime()
+lua.execute(MENU_MOCK)
+lua.execute(NAV + MENU_HANDLE)  # one chunk, like the file: menu_handle sees nav_main_of
+EXPECT = {  # page -> (main point, groups that show)
+    1: ("Config", {"configs", "cloud_configs"}), 2: ("Config", {"statistics"}),
+    3: ("Ragebot", {"resolver", "resolver_beta", "reso_cfg"}), 10: ("Ragebot", {"ragebot"}), 11: ("Ragebot", {"tickbase"}),
+    5: ("Ragebot", {"exploits", "helpers"}),
+    4: ("Anti-Aim", {"settings", "antiaim", "features"}), 12: ("Anti-Aim", {"settings", "yaw", "jitter"}),
+    13: ("Anti-Aim", {"settings", "desync"}), 14: ("Anti-Aim", {"settings", "defensive"}),
+    6: ("Misc", {"visuals", "customization"}), 7: ("Misc", {"player", "communication"}), 8: ("Misc", {"misc", "movement"}),
+    9: ("Misc", {"utils", "sync"}),
+}
+SUBS = {"Config": {"Configs", "Statistics"}, "Ragebot": {"Resolver", "Aimbot", "Tickbase", "Exploits"},
+        "Anti-Aim": {"Builder", "Yaw / Jitter", "Desync", "Defensive"}, "Misc": {"Visuals", "Player", "Movement", "Utils"}}
+for page, (main, want) in sorted(EXPECT.items()):
+    lua.execute("PAGE = %d; SHOWN = {}; menu_handle()" % page)
+    shown = {k.split(":", 1)[1] for k, v in dict(lua.globals().SHOWN).items() if v}
+    groups_shown = {g for g in shown if g in {n for _, gs in EXPECT.values() for n in gs}}
+    buttons = {b[2:] for b in shown if b.startswith("› ")}
+    check(groups_shown == want and buttons == SUBS[main],
+          "menu page %2d (%s): groups %s, pages %s" % (page, main, sorted(groups_shown), sorted(buttons)))
+
 print("\n%d failed" % len(FAILS) if FAILS else "\nall passed")
 sys.exit(1 if FAILS else 0)

@@ -964,7 +964,7 @@ local defensive = {
 
 local ui = {
     nav = {
-        slider = groups.nav:slider("azura.uno | tee hee!<3", 0, 9),
+        slider = groups.nav:slider("azura.uno | tee hee!<3", 0, 14),
 
         text = groups.nav:text("Welcome, " .. info.user .. "!"),
         sep0 = menu_add_separator("Home | azura v" .. client_version .. "" .. info.beta_text2),
@@ -1506,65 +1506,37 @@ get_text_color = function()
     return azura_color_t(r, g, b)
 end
 
-ui.nav.back_button = groups.nav:button("Back",
-    function()
-        ui.nav.slider.ref:set(0)
-    end
-)
+-- menu (owners, Oct 2026): four main points, under them the pages of the active one; the page is ui.nav.slider (0 = home)
+local nav_pages = {
+    { name = "Config", subs = { { "Configs", 1 }, { "Statistics", 2 } } },
+    { name = "Ragebot", subs = { { "Resolver", 3 }, { "Aimbot", 10 }, { "Tickbase", 11 }, { "Exploits", 5 } } },
+    { name = "Anti-Aim", subs = { { "Builder", 4 }, { "Yaw / Jitter", 12 }, { "Desync", 13 }, { "Defensive", 14 } } },
+    { name = "Misc", subs = { { "Visuals", 6 }, { "Player", 7 }, { "Movement", 8 }, { "Utils", 9 } } },
+}
+local nav_main_of = {}
+ui.nav.mains = {}
+ui.nav.subs = {}
 
-ui.nav.config_button = groups.nav:button("Configs menu",
-    function()
-        ui.nav.slider.ref:set(1)
-    end
-)
+for i, main in ipairs(nav_pages) do
+    ui.nav.mains[i] = groups.nav:button(main.name,
+        function()
+            ui.nav.slider.ref:set(main.subs[1][2])
+        end
+    )
+end
 
-ui.nav.stats_button = groups.nav:button("Statistics",
-    function()
-        ui.nav.slider.ref:set(2)
-    end
-)
+ui.nav.sep2 = menu_add_separator("Home | azura v" .. client_version .. "" .. info.beta_text2)
 
-ui.nav.ragebot_button = groups.nav:button("Ragebot",
-    function()
-        ui.nav.slider.ref:set(3)
+for i, main in ipairs(nav_pages) do
+    for _, page in ipairs(main.subs) do
+        nav_main_of[page[2]] = i
+        table.insert(ui.nav.subs, { main = i, button = groups.nav:button("› " .. page[1],
+            function()
+                ui.nav.slider.ref:set(page[2])
+            end
+        ) })
     end
-)
-
-ui.nav.antiaim_button = groups.nav:button("Anti Aim",
-    function()
-        ui.nav.slider.ref:set(4)
-    end
-)
-
-ui.nav.exploits_button = groups.nav:button("Exploits",
-    function()
-        ui.nav.slider.ref:set(5)
-    end
-)
-
-ui.nav.visuals_button = groups.nav:button("Visuals",
-    function()
-        ui.nav.slider.ref:set(6)
-    end
-)
-
-ui.nav.player_button = groups.nav:button("Player",
-    function()
-        ui.nav.slider.ref:set(7)
-    end
-)
-
-ui.nav.misc_button = groups.nav:button("Misc",
-    function()
-        ui.nav.slider.ref:set(8)
-    end
-)
-
-ui.nav.utils_button = groups.nav:button("Utils",
-    function()
-        ui.nav.slider.ref:set(9)
-    end
-)
+end
 
 --- @endregion
 
@@ -6501,17 +6473,12 @@ menu_handle = function()
         -- main of menu handle
     
         ui.nav.slider:depend({(false)})
-        ui.nav.back_button:depend({(ui.nav.slider:get() ~= 0)})
-    
-        ui.nav.ragebot_button:depend({ui.nav.slider, 0})
-        ui.nav.antiaim_button:depend({ui.nav.slider, 0})
-        ui.nav.exploits_button:depend({ui.nav.slider, 0})
-        ui.nav.visuals_button:depend({ui.nav.slider, 0})
-        ui.nav.config_button:depend({ui.nav.slider, 0})
-        ui.nav.player_button:depend({ui.nav.slider, 0})
-        ui.nav.stats_button:depend({ui.nav.slider, 0})
-        ui.nav.misc_button:depend({ui.nav.slider, 0})
-        ui.nav.utils_button:depend({ui.nav.slider, 0})
+
+        local page = ui.nav.slider:get()
+        local aa_page = page == 4 or (page >= 12 and page <= 14)
+        for _, nav_sub in ipairs(ui.nav.subs) do
+            nav_sub.button:depend({nav_main_of[page] == nav_sub.main})
+        end
     
         -- resolver (beta) (ragebot)
         ui.ragebot.resolver.unsafe_reso:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
@@ -6572,89 +6539,81 @@ menu_handle = function()
         ui.utils.reset_stats:depend({ui.utils.event_logs:get(1)})
     
         -- builder (antiaim)
-        ui.antiaim.builder.enable:depend({ui.nav.slider, 4})
-        ui.antiaim.builder.condition:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true})
+        ui.antiaim.builder.enable:depend({aa_page})
+        ui.antiaim.builder.condition:depend({aa_page}, {ui.antiaim.builder.enable, true})
     
-        ui.antiaim.features.antibackstab:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true})
-        ui.antiaim.features.fakelag:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true})
-        ui.antiaim.features.safehead:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true})
-        ui.antiaim.features.warmup:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true})
-        ui.antiaim.features.correction:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true})
+        ui.antiaim.features.antibackstab:depend({aa_page}, {ui.antiaim.builder.enable, true})
+        ui.antiaim.features.fakelag:depend({aa_page}, {ui.antiaim.builder.enable, true})
+        ui.antiaim.features.safehead:depend({aa_page}, {ui.antiaim.builder.enable, true})
+        ui.antiaim.features.warmup:depend({aa_page}, {ui.antiaim.builder.enable, true})
+        ui.antiaim.features.correction:depend({aa_page}, {ui.antiaim.builder.enable, true})
     
         for i = 1, #states do
             local state = ui.antiaim.builder[i]
             if (i == 1) then
-                state.override:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {ui.antiaim.builder.condition, -1})
+                state.override:depend({aa_page}, {ui.antiaim.builder.enable, true}, {ui.antiaim.builder.condition, -1})
                 state.override.ref:set(true)
             else
-                state.override:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {ui.antiaim.builder.condition, i})
+                state.override:depend({aa_page}, {ui.antiaim.builder.enable, true}, {ui.antiaim.builder.condition, i})
             end
     
-            state.yaw_mode:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
-            state.yaw_val:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() == 1)})
-            state.yaw_left:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() ~= 1)})
-            state.yaw_right:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() ~= 1)})
-            state.yaw_meta_left:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() == 3)})
-            state.yaw_meta_right:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() == 3)})
-            state.yaw_delay:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() ~= 1)})
-            state.meta_delay:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() == 3)})
-            state.yaw_modifier:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
-            state.modifier_degree:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_modifier:get() ~= 1)})
-            state.modifier_random:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_modifier:get() ~= 1)})
-            state.desync:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
-            state.desync_left:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
-            state.desync_right:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
-            state.desync_meta_left:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
-            state.desync_meta_right:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
-            state.trigger_defensive:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
-            state.defensive_pitch:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
-            state.defensive_pitch_val:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.defensive_pitch:get() == 8 or state.defensive_pitch:get() == 9)}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
-            state.defensive_pitch_val2:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {state.defensive_pitch, 9}, {not (state.trigger_defensive:get() == 3)}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
-            state.defensive_yaw:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
-            state.defensive_yaw_val:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.defensive_yaw:get() == 2 or state.defensive_yaw:get() == 3 or state.defensive_yaw:get() == 4)}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
-            state.defensive_speed:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.defensive_yaw:get() == 5)}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
-            state.defensive_range:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.defensive_yaw:get() == 5)}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
+            state.yaw_mode:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
+            state.yaw_val:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() == 1)})
+            state.yaw_left:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() ~= 1)})
+            state.yaw_right:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() ~= 1)})
+            state.yaw_meta_left:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() == 3)})
+            state.yaw_meta_right:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() == 3)})
+            state.yaw_delay:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() ~= 1)})
+            state.meta_delay:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() == 3)})
+            state.yaw_modifier:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
+            state.modifier_degree:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_modifier:get() ~= 1)})
+            state.modifier_random:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_modifier:get() ~= 1)})
+            state.desync:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
+            state.desync_left:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
+            state.desync_right:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
+            state.desync_meta_left:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
+            state.desync_meta_right:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
+            state.trigger_defensive:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
+            state.defensive_pitch:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
+            state.defensive_pitch_val:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.defensive_pitch:get() == 8 or state.defensive_pitch:get() == 9)}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
+            state.defensive_pitch_val2:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {state.defensive_pitch, 9}, {not (state.trigger_defensive:get() == 3)}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
+            state.defensive_yaw:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
+            state.defensive_yaw_val:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.defensive_yaw:get() == 2 or state.defensive_yaw:get() == 3 or state.defensive_yaw:get() == 4)}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
+            state.defensive_speed:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.defensive_yaw:get() == 5)}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
+            state.defensive_range:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.defensive_yaw:get() == 5)}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
         end
     
         groups.nav:depend({(true)})
     
-        groups.configs:depend({ui.nav.slider, 1})
-        groups.cloud_configs:depend({ui.nav.slider, 1})
-        groups.statistics:depend({ui.nav.slider, 2})
-        groups.antiaim:depend({ui.nav.slider, 4}, {ui.antiaim.builder.enable, true})
-        groups.exploits:depend({ui.nav.slider, 5})
-        groups.helpers:depend({ui.nav.slider, 5})
-        groups.player:depend({ui.nav.slider, 7})
-        groups.communication:depend({ui.nav.slider, 7})
-        groups.customization:depend({ui.nav.slider, 6})
-        groups.misc:depend({ui.nav.slider, 8})
-        groups.movement:depend({ui.nav.slider, 8})
-        groups.utils:depend({ui.nav.slider, 9})
-        groups.sync:depend({ui.nav.slider, 9})
-        groups.visuals:depend({ui.nav.slider, 6})
-    
-        groups.yaw:depend({ui.nav.slider, 4})
-        groups.desync:depend({ui.nav.slider, 4})
-        groups.jitter:depend({ui.nav.slider, 4})
-        groups.settings:depend({ui.nav.slider, 4})
-        groups.features:depend({ui.nav.slider, 4})
-        groups.defensive:depend({ui.nav.slider, 4})
-        
-        if (info.beta_build) then
-            groups.ragebot:depend({ui.nav.slider, 3})
-    
-            groups.tickbase:depend({ui.nav.slider, 3})
-            groups.resolver:depend({ui.nav.slider, 3})
-    
-            groups.resolver_beta:depend({ui.nav.slider, 3})
-            groups.reso_cfg:depend({ui.nav.slider, 3})
-        else
-            groups.ragebot:depend({ui.nav.slider, 3})
-    
-            groups.tickbase:depend({ui.nav.slider, 3})
-            groups.resolver:depend({ui.nav.slider, 3})
-        end
-    
+        groups.configs:depend({page == 1})
+        groups.cloud_configs:depend({page == 1})
+        groups.statistics:depend({page == 2})
+
+        groups.resolver:depend({page == 3})
+        groups.resolver_beta:depend({page == 3}, {info.beta_build == true})
+        groups.reso_cfg:depend({page == 3}, {info.beta_build == true})
+        groups.ragebot:depend({page == 10})
+        groups.tickbase:depend({page == 11})
+        groups.exploits:depend({page == 5})
+        groups.helpers:depend({page == 5})
+
+        groups.settings:depend({aa_page})
+        groups.antiaim:depend({page == 4}, {ui.antiaim.builder.enable, true})
+        groups.features:depend({page == 4})
+        groups.yaw:depend({page == 12})
+        groups.jitter:depend({page == 12})
+        groups.desync:depend({page == 13})
+        groups.defensive:depend({page == 14})
+
+        groups.visuals:depend({page == 6})
+        groups.customization:depend({page == 6})
+        groups.player:depend({page == 7})
+        groups.communication:depend({page == 7})
+        groups.misc:depend({page == 8})
+        groups.movement:depend({page == 8})
+        groups.utils:depend({page == 9})
+        groups.sync:depend({page == 9})
+
         if (ui.nav.slider:get() == 0) then
             menu_set_group_column("Home | azura v" .. client_version .. "" .. info.beta_text2, 2)
         else
@@ -6665,8 +6624,8 @@ menu_handle = function()
             menu_set_group_column("Resolver (beta)", 2)
     
             menu_set_group_column("Resolver", 3)
-            menu_set_group_column("Ragebot", 3)
-            menu_set_group_column("Tickbase", 3)
+            menu_set_group_column("Ragebot", 2)
+            menu_set_group_column("Tickbase", 2)
         else
             menu_set_group_column("Resolver (beta)", 2)
     
@@ -6681,7 +6640,7 @@ menu_handle = function()
         menu_set_group_column("Yaw", 2)
         menu_set_group_column("Jitter", 2)
         menu_set_group_column("Desync", 2)
-        menu_set_group_column("Defensive", 1)
+        menu_set_group_column("Defensive", 2)
         menu_set_group_column("Features", 3)
         menu_set_group_column("Utils", 2)
         menu_set_group_column("Synchronization", 3)

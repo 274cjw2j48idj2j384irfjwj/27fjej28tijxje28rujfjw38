@@ -111,6 +111,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   switch-every-packet modes use their own switch; anti bruteforce (enemy bullet within 50 units of the head or a hit: yaw
   6-14 deg off for 0.5-0.85 s; the old check measured from our own eye, every bullet counted); the yaw add is kept apart
   from the shift / crouch correction (it grew every tick). Menu: Settings "Random desync side", "Anti bruteforce".
+- Menu (owners, Oct 2026, chose the "buttons" mock-up): four main buttons (Config, Ragebot, Anti-Aim, Misc), under them
+  the "› " page buttons of the active one (`nav_pages`; the page is still `ui.nav.slider`: 1-9 kept, 10-14 new: Aimbot,
+  Tickbase, Yaw / Jitter, Desync, Defensive). The builder's items use `aa_page` (any anti-aim page), the Settings group
+  (Condition) shows on all of them. Primordial buttons can not be coloured: no 2x2 grid / highlighted main button.
 - Primordial API: docs.primordial.dev is blocked from the cloud container; the leaked workshop luas
   (github.com/DuckOpenSourceFoundation/femordial-workshop-luas) show the calls. ANTIAIM ctx: set_yaw, set_pitch,
   set_desync (-1..1), set_invert_desync, set_fakelag, set_body_lean; desync side items: none, left, right, jitter, peek
