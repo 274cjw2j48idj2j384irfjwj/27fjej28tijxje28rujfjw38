@@ -4789,9 +4789,9 @@ resolver.on_result = function(target, hit_ok, resolver_miss)
     reso.rel = nil
 end
 
--- safe points for the aimbot's target. Always (whichever resolver is on, also none): a jittering target gets them on the
--- head and the chest, a target we missed for "resolver" / "jitter" on the head until the next hit (shot logs, Oct 2026: after
--- one such miss the next shot missed the same way 5 of 18 times). The resolver options add theirs on top
+-- safe points / head for the aimbot's target. Always (whichever resolver is on, also none): a jittering target gets safe
+-- points on the head and the chest, a target we missed for "resolver" / "jitter" is shot in the body until the next hit.
+-- The resolver options add their safe points on top
 resolver.hitscan = function(ctx)
     local ent = ctx.player
     if (ent == nil) then
@@ -4815,9 +4815,19 @@ resolver.hitscan = function(ctx)
         end
     end
 
-    -- what the shot logs carry: 2 = a safe point for a jittering target, 1 = for another reason
+    -- after a resolver / jitter miss: no head until the next hit (shot logs, Oct 2026, 231 shots: the next head shot after a
+    -- jitter miss missed for "jitter" again 7 of 19 times, a body shot hit 5 of 5; the head safe point did not lower the
+    -- jitter misses, 4.4 vs 3.8 per 30 shots). A body hit resets the misses, so the shot after it goes for the head again
+    local body = misses >= 1
+
+    -- what the shot logs carry: 3 = head off after a miss, 2 = a safe point for a jittering target, 1 = for another reason
     resolver.safe = resolver.safe or {}
-    resolver.safe[idx] = safe and (jitter and 2 or 1) or nil
+    resolver.safe[idx] = body and 3 or safe and (jitter and 2 or 1) or nil
+    if (body) then
+        ctx:set_hitscan_group_state(e_hitscan_groups.HEAD, false, false)
+        ctx:set_hitscan_group_state(e_hitscan_groups.CHEST, true, false)
+        ctx:set_hitscan_group_state(e_hitscan_groups.STOMACH, true, false)
+    end
     if (safe) then
         ctx:set_safepoint_state(true, e_hitscan_groups.HEAD)
     end
