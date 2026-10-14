@@ -136,6 +136,12 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   the "› " page buttons of the active one (`nav_pages`; the page is still `ui.nav.slider`: 1-9 kept, 10-14 new: Aimbot,
   Tickbase, Yaw / Jitter, Desync, Defensive). The builder's items use `aa_page` (any anti-aim page), the Settings group
   (Condition) shows on all of them. Primordial buttons can not be coloured: no 2x2 grid / highlighted main button.
+- Visuals (owners, Oct 2026: "same watermark same keybinds" as the GS lua, cleaner): `hud` + `draw_watermark` /
+  `draw_keybinds` / `draw_spectators` draw the gamesense look with Primordial's render calls: dark rounded panel, the
+  moon / sun, shimmering "specter", user / fps / ping / tick / time segments (Utils: Watermark style Specter / Split /
+  Glass / Neon, Watermark info incl. Icons), a "Hotkeys" header pill + one pill per bind (Keybinds style Pills icons /
+  classic, Show bind mode), spectators in the same pills with avatars. Dragged with the old `libs.etr` drags (M2 centers);
+  the watermark starts top right. `get_user_ping` = 1000 x (out + in) latency (the incoming part was not x1000).
 - Primordial API: docs.primordial.dev is blocked from the cloud container; the leaked workshop luas
   (github.com/DuckOpenSourceFoundation/femordial-workshop-luas) show the calls. ANTIAIM ctx: set_yaw, set_pitch,
   set_desync (-1..1), set_invert_desync, set_fakelag, set_body_lean; desync side items: none, left, right, jitter, peek
