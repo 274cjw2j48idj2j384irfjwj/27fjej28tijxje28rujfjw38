@@ -306,7 +306,7 @@ check("render_circle_filled = function(pos, radius" in SRC, "circle radii are ro
 # through the jitter detector whichever resolver is on (also none); a jittering target gets head + chest safe points, any
 # target after a resolver / jitter miss the head one. A mouse turn and a spin are not jitter, centre / 3-way / random are
 RES = chunk("local RES_JIT_N = 12", "resolver.update = function(local_player, ent)") + \
-      chunk("-- safe points for the aimbot's target.", "resolver.reset = function()")
+      chunk("-- safe points / head for the aimbot's target.", "resolver.reset = function()")
 jr = L.LuaRuntime(unpack_returned_tuples=True)
 jr.execute("""RES_FS_TICKS = 16 SIM = 0
 resolver = { data = {}, misses = {}, active = false }
@@ -316,13 +316,15 @@ res_custom = function() return false end
 res_clamp = function(v, a, b) return math.max(a, math.min(b, v)) end
 res_norm = function(v) return (v + 180) % 360 - 180 end
 time_to_ticks = function(t) return math.floor(t * 64 + 0.5) end
-e_hitscan_groups = { HEAD = 0, CHEST = 1 }
+e_hitscan_groups = { HEAD = 0, CHEST = 1, STOMACH = 2 }
 ENT = { get_index = function() return 3 end, get_prop = function() return SIM end }
 function HS()
-    local c = { safe = {} }
+    local c = { safe = {}, groups = {} }
     c.player = ENT
     c.set_safepoint_state = function(self, on, g) self.safe[g] = on end
+    c.set_hitscan_group_state = function(self, g, on) self.groups[g] = on end
     resolver.hitscan(c)
+    LAST = c
     return c.safe[0] == true, c.safe[1] == true
 end
 -- a target that shows these eye yaws one record (2 ticks) apart: is it a jitter target at the end?
@@ -369,13 +371,16 @@ RUN(SEQ(20, function() return 10 end))
 local h0, c0 = HS()
 resolver.misses[3] = 1
 local h1, c1 = HS()
+local nohead = LAST.groups[0] == false and LAST.groups[1] == true and LAST.groups[2] == true and resolver.safe[3] == 3
 resolver.misses[3] = 0
 RUN(SEQ(20, function(i) return i % 2 == 0 and 30 or -30 end))
 local h2, c2 = HS()
-return h0, c0, h1, c1, h2, c2, resolver.safe[3]
+local head_back = LAST.groups[0] == nil
+return h0, c0, h1, c1, h2, c2, resolver.safe[3], nohead, head_back
 """)
-check(r == (False, False, True, False, True, True, 2),
-      "jitter misses: with every resolver off, safe head after a miss, safe head + chest on a jitter target (%s)" % (r,))
+check(r == (False, False, True, False, True, True, 2, True, True),
+      "jitter misses: with every resolver off, body (no head) after a miss until a hit, safe head + chest on a jitter "
+      "target (%s)" % (r,))
 
 print("\n%d failed" % len(FAILS) if FAILS else "\nall passed")
 sys.exit(1 if FAILS else 0)
