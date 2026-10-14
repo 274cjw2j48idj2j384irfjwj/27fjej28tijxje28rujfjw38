@@ -342,12 +342,20 @@ local spin = RUN(SEQ(20, function(i) return (i * 70) % 360 end))  -- a spin
 local center = RUN(SEQ(20, function(i) return i % 2 == 0 and 30 or -30 end))
 local three = RUN(SEQ(20, function(i) return ({ -35, 0, 35 })[i % 3 + 1] end))
 local rnd = RUN(SEQ(20, function() return math.random(-40, 40) end))
-local small = RUN(SEQ(20, function(i) return i % 2 == 0 and 4 or -4 end))   -- +-4: micro movement, under the step
+local small = RUN(SEQ(20, function() return 10 + math.random() - 0.5 end))   -- aim noise under a degree
 local wide = RUN(SEQ(20, function(i) return i % 2 == 0 and 150 or -150 end)) -- +-30 around 180
-return still, turn, spin, center, three, rnd, small, wide
+-- small jitter (owners: "small jitter ... 5-6"): +-5 / +-3 around a slowly moving base, a small 3-way, and against them a
+-- mouse that sweeps back and forth (+-60 deg, 0.6 s, aim noise): it passes the same angles but never returns to one in
+-- 2-4 records (small steps in random directions every record is not a hand, it is a random jitter and counts as one)
+local s5 = RUN(SEQ(20, function(i) return 90 + i * 0.2 + (i % 2 == 0 and 5 or -5) end))
+local s3 = RUN(SEQ(20, function(i) return -170 + (i % 2 == 0 and 3 or -3) end))
+local s3way = RUN(SEQ(20, function(i) return 40 + ({ -6, 0, 6 })[i % 3 + 1] end))
+local aim = RUN(SEQ(60, function(i) return 60 * math.sin(2 * math.pi * (i * 2 / 64) / 0.6) + math.random() - 0.5 end))
+return still, turn, spin, center, three, rnd, small, wide, s5, s3, s3way, aim
 """)
-check(r == (False, False, False, True, True, True, False, True),
-      "jitter detector: still / mouse turn / spin no, centre / 3-way / random / +-30 over 180 yes (%s)" % (r,))
+check(r == (False, False, False, True, True, True, False, True, True, True, True, False),
+      "jitter detector: still / mouse turn / spin / mouse aim no, centre / 3-way / random / +-30 over 180 / small +-3..6 "
+      "yes (%s)" % (r,))
 r = J("""
 RUN(SEQ(20, function(i) return i % 2 == 0 and 30 or -30 end))
 local base = SIM

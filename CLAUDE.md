@@ -148,6 +148,8 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   after a resolver / jitter miss a head one until a hit. The jitter detector (`resolver.track` on every net update for
   every enemy, `jit_record` / `jit_classify`): the last 12 eye yaw steps between records, jitter = 3+ big steps (20 deg,
   Custom resolver: "Shot prediction" 15-65) that change direction 2+ times and cancel out (a mouse turn / spin does not),
+  OR small jitter (owners: "small jitter ... 5-6"): on 6+ of the last 12 records the eye yaw moved 4+ deg from the previous
+  one and is back within 1.5 deg of the yaw 2-4 records before (`jit_returns`; a smooth mouse sweep never does),
   held 1 s of sim time after the last such window (high real / fake ping shoots ~1 s old records). The resolver toggles
   add their safe points on top (safe_all, Custom: duck / weapons / peek / HP; "Hit sensitivity" is gone). Shot logs, Oct
   2026: 21 of 31 misses resolver / jitter before; after the first version 6 of 35. The shot logs carry `sp` (1 safe
