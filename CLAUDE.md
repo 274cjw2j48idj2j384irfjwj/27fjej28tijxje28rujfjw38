@@ -209,10 +209,16 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   neutral (yaw add 0, no jitter / rotate, pitch off, desync side left at 100 %), `ctx:set_yaw` (base + 180 + add + own
   spin / `adv.native_jitter` = Offset / Center / 3Way / 5Way per packet), `set_pitch`, `set_desync` (left negative,
   invert held off so they never cancel). An own `set_yaw` / `set_pitch` / `set_invert_desync` of the old code wins.
-  Peek fake / peek real desync stay on the menu (no ctx equivalent). With the Freestand key (Primordial's "auto
-  direction", `refs.freestand`) no set_yaw: its own yaw is the freestanding one, our yaw add (+ jitter) goes into its menu
-  (owners, Oct 2026: "az aa nagyon hittable"; the shot logs had 41 hits in 51 shots at the Freestand state with direct
-  control, an own set_yaw took the head out from behind the wall). The Freestand state of default.cfg / "Apply advanced
+  Peek fake / peek real desync stay on the menu (no ctx equivalent). Own manual and freestand (owners, Oct 2026: "teljesen
+  saját aa defensive jitter minden"): Primordial's manual keys (`refs.left/right/back`) give view + 90 / - 90 / 180
+  (`builder.own_manual`; with direct control Primordial's own manual was overridden, and the lua's "manual" state
+  tested an undefined global, it never came); the Freestand key uses `builder.own_freestand` (the threat = the enemy
+  nearest the crosshair, two traces from its eye to our head moved 24 units left / right, walls only 0x400B, every 4
+  ticks; `adv.fs_pick`: one side covered = the head there (yaw = toward it + / - 90), both = keep, none = the normal AA).
+  Primordial's auto direction is not used any more (the shot logs had 41 hits in 51 shots at the Freestand state when
+  an own set_yaw overrode it). The "Sideways" defensive yaw takes our last desync side (`direct.last_left`), Primordial's
+  menu side is always left. What stays Primordial's: making the desync / fakelag (the lua api has no send packet
+  control) and the tickbase shift of defensive (its double tap). The Freestand state of default.cfg / "Apply advanced
   preset" was a static yaw with the desync always "Right" and no defensive: now Random desync, a small lua jitter (8) and
   Smart defensive (Peek / Shot at / Threat aim); Move and Air also trigger on Threat aim.
 - Adaptive AA (Settings "Adaptive AA", default.cfg + "Apply advanced preset" on; owners, Oct 2026: "az aa sokkal jobb
