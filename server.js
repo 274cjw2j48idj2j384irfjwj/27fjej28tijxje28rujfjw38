@@ -94,8 +94,7 @@ async function get_script(plan) {
 }
 
 // pm_*: Specter for Primordial (specter_primordial_loader.lua), nightly = everything, beta = no resolver page
-// pm_dev: the newest specter_primordial.lua of main for the owners' dev loader (GET /dev/script, no key)
-const VALID_PLANS = ['beta', 'nightly', 'specter', 'debug', 'pm_nightly', 'pm_beta', 'pm_dev']
+const VALID_PLANS = ['beta', 'nightly', 'specter', 'debug', 'pm_nightly', 'pm_beta']
 
 function parse_duration(dur) {
     if (!dur || dur === 'lifetime') return null
@@ -662,22 +661,6 @@ app.get('/admin/shotlog', async (req, res) => {
         res.json({ ok: true, items: (items || []).map(i => typeof i === 'string' ? JSON.parse(i) : i) })
     } catch (e) {
         res.status(500).json({ error: 'redis: ' + e.message })
-    }
-})
-
-// ── GET /dev/script — the owners' Primordial dev loader ───────────────────
-// The bot uploads every new specter_primordial.lua of main as plan pm_dev and writes this token into the dev loader it
-// posts in #staff (the repo is private, so the loader can not read GitHub). The token comes from ADMIN_SECRET, so no
-// new variable is needed; with the default secret it is off. Whoever has the token gets the whole script (= the #staff file).
-const DEV_TOKEN = ADMIN_SECRET === 'change_this_secret_now' ? '' : sha256('specter-dev|' + ADMIN_SECRET).slice(0, 32)
-app.get('/dev/script', async (req, res) => {
-    if (!DEV_TOKEN || req.query.token !== DEV_TOKEN) return res.status(404).send('not found')
-    try {
-        const script = await read_script('pm_dev')
-        if (!script) return res.status(404).send('not uploaded yet')
-        res.type('text/plain').send(script)
-    } catch (e) {
-        res.status(500).send('server error')
     }
 })
 
