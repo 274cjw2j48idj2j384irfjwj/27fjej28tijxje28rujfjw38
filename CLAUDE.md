@@ -42,7 +42,7 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   install steps into #loader-download and deletes the bot's older loader posts there. `is_customer_loader` refuses anything but the
   production loader: the cloud script, the dev build and the dev loader run the whole script without a key
   New versions by themselves (`release_loop`, every `RELEASE_MINUTES` = 5, `/release_check [force]` = now):
-  * `RELEASE_FILES` (default: specter_dev.lua and azura.lua) of `SCRIPT_BRANCH`, without comments, into `RELEASE_CHANNEL` (#staff),
+  * `RELEASE_FILES` (default: specter_dev.lua and specter_primordial.lua) of `SCRIPT_BRANCH`, without comments, into `RELEASE_CHANNEL` (#staff),
     only when neither @everyone nor a member / customer / plan role can read it (managed bot roles do not count). The
     footer `file @ sha256` keeps a restart from posting it twice; a new post deletes the bot's older posts of that file
     there (`remove_older_posts`, owners: only the newest dev build stays). The commit message is posted short (`commit_points`:
@@ -69,7 +69,9 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   the automatic refresh): `AUTO_PANELS` (default on) checks them at every start (`startup_panels`, a deploy that changed a
   text) and posts the ones that are missing or say something else (`embed_text`: title, text, fields, footer and whether
   it has its logo: a post from before the logo is posted again), deleting the bot's older posts of that panel there
-  (`post_panel`, by title; a member's message stays). The #updates changelog carries the logo too, but every version is a
+  (`post_panel`, by title; a member's message stays). Every panel says the primordial lua is coming (owners, Oct 2026: "a pricesnal meg mindenhol
+  írd ki hogy primordial lua soon"): a "Specter for Primordial — Coming Soon" field and "primordial soon" on prices, a line on
+  how-to, "primordial lua soon" in the footers. The #updates changelog carries the logo too, but every version is a
   new post and the old ones stay (owners: the history stays there). A new
   specter_loader.lua of `CLOUD_BRANCH` goes to #loader-download the same way every `RELEASE_MINUTES` (`sync_loader`, the
   post's SHA-256 field says which one is out; only `is_customer_loader`). /post_* and /post_loader replace the old post too
@@ -95,14 +97,16 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   from main when missing): `shotlogs/<day>/<time>-<shots>.jsonl`, each line `{"at","src","batch"}<TAB>{shot}`, then
   drops them on the server (`/admin/shotlog?n=`); a failed write drops nothing. Read them with
   `git fetch origin shotlogs`. `python3 tests/shot_log.py`
-- azura.lua sends its own (owners, Oct 2026: "ugyan úgy feltölti repoba a hitlogokat", it will be sold as Specter too):
-  batch ids start with "az", every line has `"lua":"azura"`, and the bot writes them to `shotlogs/azura/<day>/` (the dev
-  build's stay in `shotlogs/<day>/`). Same server (`shotlog.server` in azura.lua), no key = src "dev". When azura gets a
+- specter_primordial.lua sends its own (owners, Oct 2026: "ugyan úgy feltölti repoba a hitlogokat"):
+  batch ids start with "pm", every line has `"lua":"primordial"`, and the bot writes them to `shotlogs/primordial/<day>/` (the dev
+  build's stay in `shotlogs/<day>/`). Same server (`shotlog.server` in specter_primordial.lua), no key = src "dev". When it gets a
   key system for customers, it must send nothing with a key (like the cloud script).
 
-## azura.lua (Primordial)
-- The owner's own older PRIMORDIAL script "azura.uno" (author e0n3x, default user matehun111), not gamesense, nothing to do with
-  Specter's code. Edited directly (no generator). The bot posts it to #staff like the dev build (`RELEASE_FILES`).
+## specter_primordial.lua (Primordial, was azura.lua)
+- The owner's own older PRIMORDIAL script "azura.uno" (author e0n3x, default user matehun111), renamed to Specter (owners,
+  Oct 2026: "minden azurat írj át specterre", it will be sold as Specter for primordial). Not gamesense, nothing to do with
+  Specter's gamesense code. Every text says Specter (menu, watermark, notifications, console, killsay, a "specter" clantag
+  of the same 45 frames), configs in csgo/specter/ (the old csgo/azura/ ones are not read). Edited directly (no generator). The bot posts it to #staff like the dev build (`RELEASE_FILES`).
 - Offline (owners, Oct 2026): the azura.uno login / HWID check, stats upload and cloud / sync sockets are gone (dummy sockets,
   the cloud buttons say "Cloud is offline"); settings.json and the logo PNGs that the old loader installed are optional; the
   lagcomp debug boxes are gone. default.cfg = the owner's config (`configs.default_config`), applied on the first start.
@@ -137,7 +141,7 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   backtrack ticks, hit chance, damage, the miss reason), our state (resolver misses of the target, Primordial's resolver
   on, fake ping amount, predicted peeker, ping, weapon, map) and the target's netvars (speed, flags, eye yaw, LBY, HP);
   every 40 lines and at round start to /shotlog (see Shot logs).
-- Tests: `python3 tests/azura_regress.py` (compiles, survives the bot's comment stripping, removed parts stay out, the menu
+- Tests: `python3 tests/primordial_regress.py` (compiles, survives the bot's comment stripping, removed parts stay out, the menu
   shows the right groups on every page). No simulations (the owners' rule above).
 
 ## Tamper reports

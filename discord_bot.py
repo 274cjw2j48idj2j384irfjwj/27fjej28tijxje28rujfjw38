@@ -25,7 +25,7 @@ ENV VARS (set in Discord bot host or .env):
                         below also gets its own GitHub API limit (without it: 60 calls / hour per IP, shared on Railway)
   RELEASE_CHANNEL     — staff channel (name or id) new script versions are posted in (default: staff). Only posted when
                         neither @everyone nor a member / customer / plan role can read it
-  RELEASE_FILES       — files posted there when a new commit changes them (default: specter_dev.lua, azura.lua)
+  RELEASE_FILES       — files posted there when a new commit changes them (default: specter_dev.lua, specter_primordial.lua)
   RELEASE_MINUTES     — how often GitHub is checked (default: 5, 0 = only /release_check)
   AUTO_UPLOAD         — 1 (default): a new specter_cloud.lua of CLOUD_BRANCH goes to the license server by itself (every
                         plan; the loader downloads it from there), 0: only /script_upload
@@ -1315,7 +1315,7 @@ def _env_int(name: str, default: int) -> int:
 
 RELEASE_CHANNEL = _env("RELEASE_CHANNEL", "staff")
 UPDATES_CHANNEL = _env("UPDATES_CHANNEL", "updates")
-RELEASE_FILES   = [f.strip() for f in _env("RELEASE_FILES", "specter_dev.lua,azura.lua").split(",") if f.strip()]
+RELEASE_FILES   = [f.strip() for f in _env("RELEASE_FILES", "specter_dev.lua,specter_primordial.lua").split(",") if f.strip()]
 RELEASE_MINUTES = _env_int("RELEASE_MINUTES", 5)
 AUTO_UPLOAD     = _env("AUTO_UPLOAD", "1").lower() not in ("0", "false", "off", "no")
 AUTO_PANELS     = _env("AUTO_PANELS", "1").lower() not in ("0", "false", "off", "no")
@@ -1626,7 +1626,7 @@ async def gh_ensure_branch(token: str, branch: str) -> bool:
 
 async def sync_shotlogs() -> list[str]:
     """The shot logs (license server /shotlog) -> new files on SHOTLOG_BRANCH, then dropped on the server. The dev build's
-    go to shotlogs/<day>/, azura.lua's (batch ids "az...") to shotlogs/azura/<day>/. Nothing is dropped when a write
+    go to shotlogs/<day>/, specter_primordial.lua's (batch ids "pm...") to shotlogs/primordial/<day>/. Nothing is dropped when a write
     fails: the next round tries again."""
     if not SHOTLOG_TOKEN:
         return []
@@ -1639,7 +1639,7 @@ async def sync_shotlogs() -> list[str]:
         if not isinstance(it, dict):
             continue
         batch = str(it.get("id") or "")
-        folder = "shotlogs/azura" if batch.startswith("az") else "shotlogs"
+        folder = "shotlogs/primordial" if batch.startswith("pm") else "shotlogs"
         head = {"at": it.get("at"), "src": it.get("src"), "batch": batch}
         for line in str(it.get("lines") or "").splitlines():
             line = line.strip()
@@ -1810,7 +1810,7 @@ def tickets_embed() -> discord.Embed:
         ),
         color=0x82C3FF,
     )
-    embed.set_footer(text="Specter \U0001f319")
+    embed.set_footer(text="Specter \U0001f319 • primordial lua soon")
     return embed
 
 
@@ -1826,7 +1826,15 @@ def prices_embed() -> discord.Embed:
         value=(
             "• *Versions* — `beta` | `nightly` | `specter`\n"
             "• *Status* — fully updated for 2026\n"
-            "• *Platform* — gamesense"
+            "• *Platform* — gamesense (primordial soon)"
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="\U0001f51c Specter for Primordial — Coming Soon",
+        value=(
+            "• The Specter lua for **primordial** is on its way\n"
+            "• Prices and the release date will be posted in #updates"
         ),
         inline=False,
     )
@@ -1839,7 +1847,7 @@ def prices_embed() -> discord.Embed:
         ),
         inline=False,
     )
-    embed.set_footer(text="Specter \U0001f319 • gamesense lua")
+    embed.set_footer(text="Specter \U0001f319 • gamesense lua • primordial lua soon")
     return embed
 
 
@@ -1856,7 +1864,7 @@ def rules_embed() -> discord.Embed:
         "**8.** Staff decisions are final.\n\n"
         "*Breaking any rule may result in a mute, kick, or ban.*"
     )
-    embed.set_footer(text="Specter \U0001f319")
+    embed.set_footer(text="Specter \U0001f319 • primordial lua soon")
     return embed
 
 
@@ -1892,8 +1900,9 @@ def howto_embed() -> discord.Embed:
         ),
         inline=False,
     )
+    embed.add_field(name="Primordial?", value="Specter for **primordial** is coming soon, watch #updates.", inline=False)
     embed.add_field(name="Trouble?", value="Open a ticket in #support-ticket and we'll help.", inline=False)
-    embed.set_footer(text="Specter \U0001f319")
+    embed.set_footer(text="Specter \U0001f319 • primordial lua soon")
     return embed
 
 
