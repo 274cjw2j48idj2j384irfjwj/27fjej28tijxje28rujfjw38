@@ -141,11 +141,17 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - Resolver (owners, Oct 2026: "fixald teljesen"; their old stats: 1262 hits / 443 misses): Primordial's own "Resolve
   Antiaim" does the resolving (its records and animation fix; no workshop lua writes an enemy's feet yaw, there is no
   resolver hook). The block counts resolver misses per player (`resolver.misses`, a hit resets it) and puts a head safe
-  point through HITSCAN: Logic resolver = after the FIRST resolver / jitter miss, Custom resolver = Hit sensitivity (1-47,
-  default.cfg 1; it was 25 = never) / duck / weapons / peek / HP, and both on a jittering target (`resolver.track` keeps
-  every enemy's eye yaw steps while the resolver is on, `resolver.steps` >= 3 of the last 8 records). Shot logs, Oct 2026
-  (99 shots): 21 of 31 misses were resolver / jitter, 19 at the head, after one miss the next shot missed again 5 of 18.
-  The shot logs carry `sp` (1 safe point, 2 for jitter), the AA lines `dc` (Direct control on).
+  point through HITSCAN. Jitter (owners, Oct 2026: "ha ki van kapcsolva mind a 3 resolver hogyan kapunk jitter misst",
+  "max 1-2 jitter 20-30 lövésenként"): the "jitter" / "resolver" miss reasons are PRIMORDIAL's resolver (it resolves
+  whatever the lua toggles say; the api gives no way to tell its aimbot the side). What the lua decides is where it may
+  shoot: ALWAYS (every resolver toggle off too, not beta) a jittering target gets head + chest safe points and any target
+  after a resolver / jitter miss a head one until a hit. The jitter detector (`resolver.track` on every net update for
+  every enemy, `jit_record` / `jit_classify`): the last 12 eye yaw steps between records, jitter = 3+ big steps (20 deg,
+  Custom resolver: "Shot prediction" 15-65) that change direction 2+ times and cancel out (a mouse turn / spin does not),
+  held 1 s of sim time after the last such window (high real / fake ping shoots ~1 s old records). The resolver toggles
+  add their safe points on top (safe_all, Custom: duck / weapons / peek / HP; "Hit sensitivity" is gone). Shot logs, Oct
+  2026: 21 of 31 misses resolver / jitter before; after the first version 6 of 35. The shot logs carry `sp` (1 safe
+  point, 2 for jitter), the AA lines `dc` (Direct control on).
   The lua side override (freestanding / jitter side written into the animstate, the old "Unsafe resolver" that switched
   Primordial's resolver off) is "Lua side override (experimental)", off by default (the label changed so the old configs
   do not switch it on).

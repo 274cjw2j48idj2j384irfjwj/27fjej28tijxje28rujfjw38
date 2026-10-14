@@ -302,44 +302,72 @@ check(r[0] == "0,30,-30,0,30,-30" and r[1] == "-20,0,20,40,-40" and r[2],
 check("render_circle_filled = function(pos, radius" in SRC, "circle radii are rounded (Primordial wants an int)")
 
 
-# jitter misses (shot logs, Oct 2026): every enemy's eye yaw history is kept while the resolver is on, a jittering target
-# (3+ of its last 8 records jumped) and any target after its first resolver miss get the head safe point (Logic resolver)
-RES = chunk("resolver.track = function(ent, eye)", "resolver.update = function(local_player, ent)") + \
-      chunk("resolver.hitscan = function(ctx)", "resolver.reset = function()")
+# jitter misses (shot logs, Oct 2026; owners: "max 1-2 jitter miss 20-30 lövésenként"): every enemy's eye yaw steps go
+# through the jitter detector whichever resolver is on (also none); a jittering target gets head + chest safe points, any
+# target after a resolver / jitter miss the head one. A mouse turn and a spin are not jitter, centre / 3-way / random are
+RES = chunk("local RES_JIT_N = 12", "resolver.update = function(local_player, ent)") + \
+      chunk("-- safe points for the aimbot's target.", "resolver.reset = function()")
 jr = L.LuaRuntime(unpack_returned_tuples=True)
 jr.execute("""RES_FS_TICKS = 16 SIM = 0
-resolver = { data = {}, misses = {}, active = true }
+resolver = { data = {}, misses = {}, active = false }
 local function item(v) return { get = function() return v end } end
-ui = { ragebot = { logic_reso = item(true), resolver = {} } }
+ui = { ragebot = { logic_reso = item(false), resolver = { shot_pred = item(4) } } }
 res_custom = function() return false end
 res_clamp = function(v, a, b) return math.max(a, math.min(b, v)) end
-res_sign = function(v) return v < 0 and -1 or 1 end
 res_norm = function(v) return (v + 180) % 360 - 180 end
 time_to_ticks = function(t) return math.floor(t * 64 + 0.5) end
-e_hitscan_groups = { HEAD = 0 }
+e_hitscan_groups = { HEAD = 0, CHEST = 1 }
 ENT = { get_index = function() return 3 end, get_prop = function() return SIM end }
 function HS()
-    local c = {}
+    local c = { safe = {} }
     c.player = ENT
-    c.set_safepoint_state = function(self, on) self.safe = on end
+    c.set_safepoint_state = function(self, on, g) self.safe[g] = on end
     resolver.hitscan(c)
-    return c.safe == true
+    return c.safe[0] == true, c.safe[1] == true
 end
+-- a target that shows these eye yaws one record (2 ticks) apart: is it a jitter target at the end?
+function RUN(yaws)
+    resolver.data = {} SIM = 0
+    for i, y in ipairs(yaws) do SIM = i * 2 / 64 resolver.track(ENT, y) end
+    return resolver.data[3].jitter
+end
+function SEQ(n, f) local t = {} for i = 1, n do t[i] = f(i) end return t end
 """ + RES)
 J = jr.eval("function(code) return assert(loadstring(code))() end")
 r = J("""
-local still = {}
-for i = 1, 8 do SIM = i / 64 resolver.track(ENT, 10) end
-still[1] = HS()
-resolver.misses[3] = 1
-still[2] = HS()
-resolver.misses[3] = 0
-resolver.data = {}
-for i = 1, 8 do SIM = i / 64 resolver.track(ENT, i % 2 == 0 and 40 or -40) end
-return still[1], still[2], HS(), resolver.safe[3]
+math.randomseed(7)
+local still = RUN(SEQ(20, function() return 10 end))
+local turn = RUN(SEQ(20, function(i) return i * 25 end))          -- a fast mouse turn, 25 deg a record one way
+local spin = RUN(SEQ(20, function(i) return (i * 70) % 360 end))  -- a spin
+local center = RUN(SEQ(20, function(i) return i % 2 == 0 and 30 or -30 end))
+local three = RUN(SEQ(20, function(i) return ({ -35, 0, 35 })[i % 3 + 1] end))
+local rnd = RUN(SEQ(20, function() return math.random(-40, 40) end))
+local small = RUN(SEQ(20, function(i) return i % 2 == 0 and 4 or -4 end))   -- +-4: micro movement, under the step
+local wide = RUN(SEQ(20, function(i) return i % 2 == 0 and 150 or -150 end)) -- +-30 around 180
+return still, turn, spin, center, three, rnd, small, wide
 """)
-check(r[0] is False and r[1] is True and r[2] is True and r[3] == 2,
-      "jitter misses: head safe point on a jittering target and after the first resolver miss, not on a still one (%s)" % (r,))
+check(r == (False, False, False, True, True, True, False, True),
+      "jitter detector: still / mouse turn / spin no, centre / 3-way / random / +-30 over 180 yes (%s)" % (r,))
+r = J("""
+RUN(SEQ(20, function(i) return i % 2 == 0 and 30 or -30 end))
+local base = SIM
+local held = {}
+for i = 1, 60 do SIM = base + i * 2 / 64 resolver.track(ENT, 30) held[#held + 1] = resolver.data[3].jitter end
+return held[20], held[60]   -- 0.63 s / 1.9 s after it stopped (the last 12 steps leave the window first)
+""")
+check(r == (True, False), "jitter detector: a target stays a jitter target for 1 s after it stops (older records) (%s)" % (r,))
+r = J("""
+RUN(SEQ(20, function() return 10 end))
+local h0, c0 = HS()
+resolver.misses[3] = 1
+local h1, c1 = HS()
+resolver.misses[3] = 0
+RUN(SEQ(20, function(i) return i % 2 == 0 and 30 or -30 end))
+local h2, c2 = HS()
+return h0, c0, h1, c1, h2, c2, resolver.safe[3]
+""")
+check(r == (False, False, True, False, True, True, 2),
+      "jitter misses: with every resolver off, safe head after a miss, safe head + chest on a jitter target (%s)" % (r,))
 
 print("\n%d failed" % len(FAILS) if FAILS else "\nall passed")
 sys.exit(1 if FAILS else 0)
