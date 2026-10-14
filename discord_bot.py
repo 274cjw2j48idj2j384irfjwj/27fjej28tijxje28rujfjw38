@@ -27,7 +27,7 @@ ENV VARS (set in Discord bot host or .env):
                         neither @everyone nor a member / customer / plan role can read it
   RELEASE_FILES       — files posted there when a new commit changes them (default: specter_dev.lua, specter_primordial.lua)
   RELEASE_MINUTES     — how often GitHub is checked (default: 5, 0 = only /release_check)
-  PRIMORDIAL_UPDATES  — 1: the Primordial changelog goes to #updates too (with the Primordial logo); default 0 until it is out
+  PRIMORDIAL_UPDATES  — 1 (default): the Primordial changelog goes to #updates too (with the Primordial logo); 0 = off
   AUTO_UPLOAD         — 1 (default): a new specter_cloud.lua of CLOUD_BRANCH goes to the license server by itself (every
                         plan; the loader downloads it from there), 0: only /script_upload
   UPDATES_CHANNEL     — public channel (name or id) the changelog of a new cloud script is posted in (default: updates)
@@ -84,8 +84,9 @@ VALID_PLANS     = ["beta", "nightly", "specter", "debug"]
 PM_PLANS        = ["pm_nightly", "pm_beta"]
 KEY_PLANS       = VALID_PLANS + PM_PLANS
 PRIMORDIAL_FILE = "specter_primordial.lua"
-# the Primordial changelog in #updates (with its logo, like the gamesense one): off until the Primordial lua is out
-PRIMORDIAL_UPDATES = _env("PRIMORDIAL_UPDATES", "0").lower() in ("1", "true", "yes", "on")
+# the Primordial changelog in #updates (with its logo, like the gamesense one; owners, Oct 2026: it goes out even before
+# the Primordial lua is released); PRIMORDIAL_UPDATES=0 turns it off
+PRIMORDIAL_UPDATES = _env("PRIMORDIAL_UPDATES", "1").lower() in ("1", "true", "yes", "on")
 VALID_DURATIONS = ["lifetime", "1d", "7d", "14d", "30d", "90d"]
 
 # what the Staff role may do on the server: moderation, not the server / roles / channels (those stay the owner's)
@@ -1525,10 +1526,12 @@ def short_point(text: str, limit: int = 80) -> str:
     return text
 
 
-def commit_points(message: str, most: int = 6) -> str:
+def commit_points(message: str, most: int = 6, lua: str = "") -> str:
     """The commit as a short list: its title in bold, then one short line per "- " item of the body (or per sentence
     when it has no list). A merge says it after its first line ("Merge pull request #N from ..." / "Merge branch ...",
-    a bare one gives nothing); the attribution lines are left out."""
+    a bare one gives nothing); the attribution lines are left out. A release message can tag a point for one lua:
+    "- [GS] ..." only in the gamesense changelog, "- [PM] ..." only in the Primordial one (lua = "gamesense" /
+    "primordial"), an untagged point in both; without `lua` every point stays (the tag is dropped)."""
     lines = (message or "").strip().split("\n")
     if re.match(r"Merge (pull request|branch|remote-tracking branch) ", lines[0]):
         lines = lines[1:]
@@ -1541,7 +1544,14 @@ def commit_points(message: str, most: int = 6) -> str:
     items = [m.group(1) for m in re.finditer(r"^\s*[-*•]\s+(.+?)(?=^\s*[-*•]\s|^\s*$|\Z)", body, re.M | re.S)]
     if not items:
         items = [x for x in re.split(r"(?<=[.!?])\s+(?=[A-Z])", " ".join(body.split())) if x][:3]
-    points = [short_point(x) for x in items]
+    want = {"gamesense": "GS", "primordial": "PM"}.get(lua)
+    kept = []
+    for x in items:
+        m = re.match(r"\[(GS|PM)\]\s*", x.strip())
+        if m and want and m.group(1) != want:
+            continue
+        kept.append(x.strip()[m.end():] if m else x)
+    points = [short_point(x) for x in kept]
     out = [f"**{title}**"] + [f"• {p}" for p in points[:most]]
     if len(points) > most:
         out.append(f"• … and {len(points) - most} more (see the commit)")
@@ -1713,7 +1723,7 @@ async def sync_cloud(force: bool = False) -> list[str]:
         if len(done) == len(plans):
             _cloud_on_server = full
         report = [f"cloud script `{ver['hash'][:7]}` to the server: " + " ".join(lines)]
-        points = commit_points(ver["commit"]["commit"].get("message", "")) if ver["commit"] else ""
+        points = commit_points(ver["commit"]["commit"].get("message", ""), lua="gamesense") if ver["commit"] else ""
         if done and new:
             _cloud_told["updates"] = full
             embed = changelog_embed("gamesense", points)
@@ -1826,7 +1836,7 @@ async def sync_primordial(force: bool = False) -> list[str]:
     full = hashlib.sha256(builds["pm_nightly"].encode("utf-8")).hexdigest()
     if PRIMORDIAL_UPDATES and done and _cloud_told.get("primordial") != full:
         _cloud_told["primordial"] = full
-        points = commit_points(ver["commit"]["commit"].get("message", "")) if ver["commit"] else ""
+        points = commit_points(ver["commit"]["commit"].get("message", ""), lua="primordial") if ver["commit"] else ""
         for guild in client.guilds:
             ch = named_channel(guild, UPDATES_CHANNEL)
             if ch is None:
@@ -1841,20 +1851,25 @@ async def sync_primordial(force: bool = False) -> list[str]:
 
 
 @tree.command(name="post_changelog", description="Post the changelog of the newest cloud release again (with its lua's logo)")
-@app_commands.describe(lua="Which lua's changelog", here="Post it in this channel (a preview) instead of #updates")
+@app_commands.describe(lua="Which lua's changelog", here="Post it in this channel (a preview) instead of #updates",
+                       text="Own text instead of the release's: title | point | point ...")
 @app_commands.choices(lua=[app_commands.Choice(name="Gamesense", value="gamesense"),
                            app_commands.Choice(name="Primordial", value="primordial")])
-async def post_changelog(interaction: discord.Interaction, lua: str = "gamesense", here: bool = False):
+async def post_changelog(interaction: discord.Interaction, lua: str = "gamesense", here: bool = False, text: str = ""):
     if not is_admin(interaction):
         await interaction.response.send_message("No permission.", ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True)
-    try:
-        ver = await newest_version(PRIMORDIAL_FILE if lua == "primordial" else CLOUD_FILE, CLOUD_BRANCH, head=True)
-    except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError) as e:
-        await interaction.followup.send(f"Could not read `{CLOUD_BRANCH}`: {e}", ephemeral=True)
-        return
-    points = commit_points(ver["commit"]["commit"].get("message", "")) if ver["commit"] else ""
+    if text.strip():
+        parts = [p.strip() for p in text.split("|") if p.strip()]
+        points = commit_points(parts[0] + "\n" + "".join(f"- {p}\n" for p in parts[1:]))
+    else:
+        try:
+            ver = await newest_version(PRIMORDIAL_FILE if lua == "primordial" else CLOUD_FILE, CLOUD_BRANCH, head=True)
+        except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError) as e:
+            await interaction.followup.send(f"Could not read `{CLOUD_BRANCH}`: {e}", ephemeral=True)
+            return
+        points = commit_points(ver["commit"]["commit"].get("message", ""), lua=lua) if ver["commit"] else ""
     ch = interaction.channel if here else named_channel(interaction.guild, UPDATES_CHANNEL)
     if ch is None:
         await interaction.followup.send(f"No #{UPDATES_CHANNEL} channel here.", ephemeral=True)

@@ -9,7 +9,8 @@
   its changelog to #updates, its specter_loader.lua to #loader-download.
   RELEASE ("mehet cloudra", "rakd ki az updatet") = a PR `main` -> `cloud`, merged with a merge commit: its title (or the merge
   message: a short title + "- " points) IS the public #updates changelog, short and for players: "Sponsor kill added",
-  "Fixed ...". Never release without the owners asking. A PR into `main` (the dev build) is merged right away with a
+  "Fixed ...". A point only about one lua is tagged "- [GS] ..." / "- [PM] ...": it goes only into that lua's changelog
+  (`commit_points(lua=)`), an untagged point into both. Never release without the owners asking. A PR into `main` (the dev build) is merged right away with a
   merge commit once its tests pass (owners, Oct 2026: "always merge it"): every session pushes, opens the PR and merges
   it itself, the bot only posts what is on `main` (owners: "mindig be kell olvasztani"); `cloud` still only when they ask. `server.js` deploys from `main` at once: keep it compatible with the
   loader / cloud script on `cloud` (an auth change is released together with them)
@@ -84,9 +85,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   Which lua a post is about (owners, Oct 2026: "rakjon elé egy Primo logót vagy egy GS logot"): `lua_badge` puts
   "Specter for Gamesense" / "Specter for Primordial" with `assets/gs_icon.png` / `assets/primordial_icon.png` in the embed's
   author line, above the title, on the #updates changelogs and the #staff dev build posts (`lua_of(path)`). The two PNGs are
-  the logos the owners sent (Oct 2026), 128 x 128: the GS badge, and the Primordial hourglass cut out of its black side bars. The Primordial changelog in #updates (`sync_primordial`, the release merge's message) only with
-  `PRIMORDIAL_UPDATES=1` (default off: the Primordial lua is not out yet).
-  `/post_changelog [lua] [here]` (admin) posts the newest cloud release's changelog again (owners: "újra rakd ki ... akarom
+  the logos the owners sent (Oct 2026), 128 x 128: the GS badge, and the Primordial hourglass cut out of its black side bars. The Primordial changelog in #updates (`sync_primordial`, the release merge's message, its [PM] + untagged points) goes
+  out even before the Primordial lua is released (owners: "a changelog attól függetlenül mehet ki"; `PRIMORDIAL_UPDATES`,
+  default 1, 0 = off).
+  `/post_changelog [lua] [here] [text]` (admin; `text` = own "title | point | point") posts the newest cloud release's changelog again (owners: "újra rakd ki ... akarom
   nézni hogy néz ki"; the loop posts a version only once), in #updates or, with `here`, in the current channel as a preview.
   `changelog_embed` builds it for both the loop and the command. A
   Discord upload link (cdn.discordapp.com/attachments ...?ex=) expires in a day and is ignored. The PNGs are the watermark's
