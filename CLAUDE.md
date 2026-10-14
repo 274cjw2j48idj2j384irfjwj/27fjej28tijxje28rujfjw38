@@ -41,7 +41,7 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   install steps into #loader-download and deletes the bot's older loader posts there. `is_customer_loader` refuses anything but the
   production loader: the cloud script, the dev build and the dev loader run the whole script without a key
   New versions by themselves (`release_loop`, every `RELEASE_MINUTES` = 5, `/release_check [force]` = now):
-  * `RELEASE_FILES` (default: specter_dev.lua only) of `SCRIPT_BRANCH`, without comments, into `RELEASE_CHANNEL` (#staff),
+  * `RELEASE_FILES` (default: specter_dev.lua and azura.lua) of `SCRIPT_BRANCH`, without comments, into `RELEASE_CHANNEL` (#staff),
     only when neither @everyone nor a member / customer / plan role can read it (managed bot roles do not count). The
     footer `file @ sha256` keeps a restart from posting it twice; a new post deletes the bot's older posts of that file
     there (`remove_older_posts`, owners: only the newest dev build stays). The commit message is posted short (`commit_points`:
@@ -94,6 +94,28 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   from main when missing): `shotlogs/<day>/<time>-<shots>.jsonl`, each line `{"at","src","batch"}<TAB>{shot}`, then
   drops them on the server (`/admin/shotlog?n=`); a failed write drops nothing. Read them with
   `git fetch origin shotlogs`. `python3 tests/shot_log.py`
+
+## azura.lua (Primordial)
+- The owner's own older PRIMORDIAL script "azura.uno" (author e0n3x, default user matehun111), not gamesense, nothing to do with
+  Specter's code. Edited directly (no generator). The bot posts it to #staff like the dev build (`RELEASE_FILES`).
+- Offline (owners, Oct 2026): the azura.uno login / HWID check, stats upload and cloud / sync sockets are gone (dummy sockets,
+  the cloud buttons say "Cloud is offline"); settings.json and the logo PNGs that the old loader installed are optional; the
+  lagcomp debug boxes are gone. default.cfg = the owner's config (`configs.default_config`), applied on the first start.
+- Resolver (one block, `--- @info: resolver: side from ...`): every old menu item stays and drives a part of it (the old four
+  wrote random numbers into the enemy animstate and turned Primordial's own resolver off even when unused). Side from
+  freestanding / jitter direction, max desync, no forcing on players that do not choke, learning per player and state
+  (flip / stay against anti-brute, reduced size), head safe point options through the HITSCAN callback.
+- Anti-aim (owners: "nagyon nehéz legyen ellőni"): the desync side is a fresh coin flip per sent packet through
+  `ctx:set_invert_desync`, not tied to the yaw side (it followed it 100%: the azura resolver hit 0.81, now 0.50); the
+  switch-every-packet modes use their own switch; anti bruteforce (enemy bullet within 50 units of the head or a hit: yaw
+  6-14 deg off for 0.5-0.85 s; the old check measured from our own eye, every bullet counted); the yaw add is kept apart
+  from the shift / crouch correction (it grew every tick). Menu: Settings "Random desync side", "Anti bruteforce".
+- Primordial API: docs.primordial.dev is blocked from the cloud container; the leaked workshop luas
+  (github.com/DuckOpenSourceFoundation/femordial-workshop-luas) show the calls. ANTIAIM ctx: set_yaw, set_pitch,
+  set_desync (-1..1), set_invert_desync, set_fakelag, set_body_lean; desync side items: none, left, right, jitter, peek
+  fake, peek real.
+- Tests: `python3 tests/azura_regress.py` (compiles, survives the bot's comment stripping, resolver sim, the real
+  run_antiaim with the default config vs the azura resolver; mocks in tests/azura/).
 
 ## Tamper reports
 - The Discord webhook URL lives ONLY on the server (`TAMPER_WEBHOOK` on the license server service). It is never put in
