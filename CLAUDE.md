@@ -232,15 +232,15 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 
 ## Tier System
 4-tier feature gating: `debug` (full) > `specter` (no AA stealer) > `nightly` (no resolver) > `beta` (minimal)
-- Misc "Sponsor Kill Say", every plan (first in the dev build only, then released to the cloud, owners Oct 2026):
-  25 toxic kill say lines, every one names Specter, 12 carry the Discord invite (first "csak 1-2be", then owners Oct 2026: "tobb
-  olyan killsay ami hirdeti a dc-t"; the invite lines alternate with the plain ones), nothing about
-  the features; it wins over Kill Say / Trash Talk on a kill.
-  The victim's name is cleaned before it goes into `say "..."` (no quote / semicolon / % / control chars: a name could run a command)
-- "Roast Kill Say" (owners, Oct 2026: "olyan killsayeket ami megérinti az embereket ... sokkal mélyebb is", like "your mom
-  waited 9 months"): `roast_messages`, 58 roasts with {name} (28 family / life, 30 more about HvH, the cheat, the config, rank and life: "nem muszáj csak családias"; no legit-only lines like corner clearing or crosshair placement, owners: "felesleges az hvh"), no slurs and nothing about self harm (a report gets
-  the account banned). Sponsor > Roast > Kill Say. specter_primordial.lua has the same lines as Trash talk "Roast"
-  (`phrases_roast`, the name cleaned the same way, `say "..."`).
+- Misc "Kill Say", every plan: ONE list (owners, Oct 2026: "nem kell ... külön sponsor killsay legyen egybe az egész killsay"; the
+  separate Sponsor Kill Say / Roast Kill Say checkboxes and lists are gone): `killsay_messages`, 58 roasts with {name}
+  ("olyan killsayeket ami megérinti az embereket": family / life, plus HvH / the cheat / the config / rank; no legit-only
+  lines like corner clearing or crosshair placement, owners: "felesleges az hvh"), no slurs and nothing about self harm (a
+  report gets the account banned). 10 of the cheat / lua lines end with the Discord invite (`DISCORD`), e.g. "{name}, your
+  lua is from youtube / and so is your skill / there is a working one at discord.gg/..." ("there is a working lua for you").
+  The victim's name is cleaned before it goes into `say "..."` (no quote / semicolon / % / control chars: a name could run a
+  command), every " / " part is its own chat line. specter_primordial.lua has the same list as Trash talk "Roast"
+  (`phrases_roast`, `PM_DISCORD`, the same cleaning, one `say` per part).
 
 ## Resolver (computed body yaw + learned models, one module)
 - Code lives between the `-- [resolver:begin]` / `-- [resolver:end]` markers in `specter_cloud.lua`. Keep the markers (tests extract the block).
