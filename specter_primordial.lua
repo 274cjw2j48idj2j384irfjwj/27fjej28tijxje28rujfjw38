@@ -617,7 +617,6 @@ local offline_client = {
     send = function(data) end,
     receive = function(buffer_size) return nil end
 }
-local sync_client = offline_client
 local app_client = offline_client
 
 --- @info: authentication
@@ -642,7 +641,11 @@ local info = {
     beta_text = beta_event and " (ac130)" or "",
     beta_text2 = beta_event and " (beta)" or " (stable)",
 
-    beta_build = beta_event
+    beta_build = beta_event,
+
+    -- the version the Primordial loader got from the server (BUILD_VERSION pm_nightly / pm_beta), "dev" without a key:
+    -- beta has no resolver (its page and the lua part), the ragebot helpers stay
+    plan = (tostring(rawget(_G, "BUILD_VERSION") or ""):match("^pm_(%a+)$")) or "dev"
 }
 
 
@@ -780,6 +783,9 @@ local misstable = {}
 local on_predict = {}
 local player_pose = {}
 local shared_data = {}
+local presence = { server = "https://specter-license-mh111-production.up.railway.app", next = 0, shown = {}, announced = {},
+                   icon = "file://{images}/icons/specter_moon.png",
+                   version = info.plan }
 local animlayer_average_t = {}
 local cnl_material = {}
 local animlayer_rec_t = {}
@@ -970,7 +976,7 @@ local ui = {
         shared_esp = groups.nav:list("Specter Revealer", {}),
         restart_esp = groups.nav:button("Restart esp",
             function()
-                on_shared_esp()
+                on_shared_esp(true)
             end
         ),
 
@@ -1496,6 +1502,9 @@ local nav_pages = {
     { name = "Anti-Aim", subs = { { "Builder", 4 }, { "Yaw / Jitter", 12 }, { "Desync", 13 }, { "Defensive", 14 } } },
     { name = "Misc", subs = { { "Visuals", 6 }, { "Player", 7 }, { "Movement", 8 }, { "Utils", 9 } } },
 }
+if (info.plan == "beta") then
+    table.remove(nav_pages[2].subs, 1)
+end
 local nav_main_of = {}
 ui.nav.mains = {}
 ui.nav.subs = {}
@@ -3053,125 +3062,150 @@ clan_anim = function(indices)
     return clantag[indices[math.floor(tickcount / math.floor(0.25 / tickinterval + 0.45) % #indices) + 1] + 1]
 end
 
-on_shared_players = function()
-    if (check_conditions()) then
-        for i, v in ipairs(shared_data) do
-            for _, k in pairs(shared_data) do
-                ui.nav.shared_esp.ref:remove_item(k)
-            end
-            table.remove(shared_data, i)
-        end
+-- user detection (owners, Oct 2026: like the original lua, through our own server): the players of our game who run
+-- Specter get the moon on the scoreboard and a row in "Specter Revealer". Every 30 s the license server hears that we are
+-- online (a hash of our steam id, only with Shared ESP on) and is asked which of the players here are. No names leave the game
+presence.hash = function(s)
+    local h1, h2 = 5381, 52711
+    s = "specter|" .. tostring(s)
+    for i = 1, #s do
+        local c = s:byte(i)
+        h1 = (h1 * 33 + c) % 4294967296
+        h2 = (h2 * 31 + c * 7) % 4294967296
+    end
+    return string.format("%08x%08x", h1, h2)
+end
 
-        found_users = ""
-        user_count = 0
+presence.steamid = function(player)
+    local ok, sid = pcall(player.get_steamids, player)
+    if (ok and type(sid) == "string" and sid:find("%d%d%d%d")) then
+        return sid
+    end
+    return nil
+end
 
-        local players = entity_list_get_players()
-        if (players ~= nil) then
-            for k, v in pairs(players) do
-                local response_data = sync_client.receive(4096)
-                if (response_data) then
-                    local success, response = pcall(libs.json.parse, response_data)
-                    if (#response > 0) then
-                        for _, user_data in ipairs(response) do
-                            if (user_data.steam_id and user_data.username) then
-                                if (user_data.steam_id == v:get_steamids()) then
-                                    if (user_data.beta_build == true) then
-                                        libs.tools.js.update(v:get_index(), "file://{images}/icons/logo_beta.png")
-                                    else
-                                        libs.tools.js.update(v:get_index(), "file://{images}/icons/logo_stable.png")
-                                    end
-                                    
-                                    for _, d in pairs({user_data.username}) do
-                                        local suffix = user_data.beta_build and " ~ beta" or " ~ stable"
-                                        
-                                        ui.nav.shared_esp.ref:add_item(d .. suffix)
-                                        table.insert(shared_data, d .. suffix)
-                                    end
-
-                                    user_count = user_count + 1
-                                    found_users = found_users .. user_data.username .. ", "
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-
-            if (found_users ~= "") then
-                notifications.create("Specter", "Found users who use Specter (x" .. user_count .. "): " .. found_users:sub(1, -3), notifications.types.information)
-                print("found users who use Specter ", specter_color_t(108, 108, 108), "(x" .. user_count .. "): ", get_text_color(), found_users:sub(1, -3))
-            else
-                notifications.create("Specter", "No users are currently using Specter!", notifications.types.information)
-                print("no users are currently using Specter.")
-            end
-            return
-        else
-            return
-        end
-    else
+-- the moon for the scoreboard, downloaded once into the game's panorama icons
+presence.install_icon = function()
+    local path = "materials/panorama/images/icons/specter_moon.png"
+    local ok, exists = pcall(libs.filesystem.exists, path, "MOD")
+    if (ok and exists) then
         return
+    end
+    pcall(libs.filesystem.create_directory, "materials/panorama/images/icons", "MOD")
+    pcall(libs.tools.http.download_image, libs.tools.http, presence.server .. "/moon.png", path)
+end
+
+-- forgets who was found (map change, game end, "Restart esp")
+presence.reset = function(announce)
+    presence.shown = {}
+    esp.sync_user = {}
+    for _, item in ipairs(shared_data) do
+        ui.nav.shared_esp.ref:remove_item(item)
+    end
+    shared_data = {}
+    pcall(libs.tools.js.clear)
+    pcall(libs.tools.js.destroy_panel)
+    if (announce) then
+        notifications.create("Specter", "Shared data has been reset!", notifications.types.success)
+        print("shared data has been reset.")
     end
 end
 
-on_shared_esp = function()
-    if (check_conditions()) then
-        local players = entity_list_get_players()
-        if (players ~= nil) then
-            for k, v in pairs(players) do
-                local steamid, _ = v:get_steamids()
-                if (array.has(esp.sync_user, steamid)) then
-                    esp.unsync_user[steamid] = 0
-                    esp.unsync_user[steamid] = nil
+-- the answer of the server: hash -> version of every Specter user among the players we asked about
+presence.apply = function(on, asked)
+    local found, changed = {}, false
+    for hash, idx in pairs(asked) do
+        if (on[hash] ~= nil) then
+            found[idx] = tostring(on[hash])
+            changed = changed or presence.shown[idx] == nil
+        end
+    end
+    for idx in pairs(presence.shown) do
+        changed = changed or found[idx] == nil
+    end
 
-                    esp.sync_user[steamid] = 0
-                    esp.sync_user[steamid] = nil
-
-                    esp.sync_user = {}
-                    esp.unsync_user = {}
-
-                    for i, v in ipairs(shared_data) do
-                        for _, k in pairs(shared_data) do
-                            ui.nav.shared_esp.ref:remove_item(k)
-                        end
-                        table.remove(shared_data, i)
-                    end
-
-                    libs.tools.js.clear()
-                    libs.tools.js.destroy()
-
-                    client_delay_call(function()
-                        libs.tools.js.create()
-                    end, 0.5)
-                else
-                    esp.sync_user = {}
-                    esp.unsync_user = {}
-
-                    for i, v in ipairs(shared_data) do
-                        for _, k in pairs(shared_data) do
-                            ui.nav.shared_esp.ref:remove_item(k)
-                        end
-                        table.remove(shared_data, i)
-                    end
-
-                    libs.tools.js.clear()
-                    libs.tools.js.destroy()
-
-                    client_delay_call(function()
-                        libs.tools.js.create()
-                    end, 0.5)
+    if (changed) then
+        presence.reset(false)
+        local names = {}
+        for idx, version in pairs(found) do
+            local player = entity_list_get_entity(idx)
+            if (player ~= nil) then
+                local name = tostring(player:get_name())
+                pcall(libs.tools.js.update, idx, presence.icon)
+                ui.nav.shared_esp.ref:add_item(name .. " ~ " .. version)
+                shared_data[#shared_data + 1] = name .. " ~ " .. version
+                esp.sync_user[#esp.sync_user + 1] = presence.steamid(player)
+                presence.shown[idx] = true
+                if (not presence.announced[name]) then
+                    presence.announced[name] = true
+                    names[#names + 1] = name
                 end
             end
-
-            notifications.create("Specter", "Shared data has been reset!", notifications.types.success)
-            print("shared data has been reset.")
-
-            return
-        else
-            return
         end
-    else
+        if (#names > 0) then
+            notifications.create("Specter", "Specter user" .. (#names > 1 and "s" or "") .. " here: " .. table.concat(names, ", "), notifications.types.information)
+            print("found users who use Specter: ", get_text_color(), table.concat(names, ", "))
+        end
+    end
+
+    if (presence.report) then
+        presence.report = false
+        if (#shared_data == 0) then
+            notifications.create("Specter", "No other Specter users in this game.", notifications.types.information)
+        end
+    end
+end
+
+presence.update = function(force)
+    local now = globals.real_time()
+    if (presence.busy and now - presence.busy < 20 and now >= presence.busy) then
         return
     end
+    if (not force and now < presence.next and now > presence.next - 60) then
+        return
+    end
+    presence.next = now + 30
+
+    local me = entity_list_get_local_player()
+    if (me == nil) then
+        return
+    end
+    local asked, list = {}, {}
+    for _, player in pairs(entity_list_get_players() or {}) do
+        if (player:get_index() ~= me:get_index() and #list < 64) then
+            local sid = presence.steamid(player)
+            if (sid ~= nil) then
+                local hash = presence.hash(sid)
+                asked[hash] = player:get_index()
+                list[#list + 1] = hash
+            end
+        end
+    end
+
+    local url = presence.server .. "/presence?t=" .. presence.version .. "&q=" .. table.concat(list, ",")
+    local own = presence.steamid(me)
+    if (ui.utils.shared_esp:get() and own ~= nil) then
+        url = url .. "&me=" .. presence.hash(own)
+    end
+    presence.busy = now
+    libs.tools.http:get(url, function(response)
+        presence.busy = nil
+        local ok, data = pcall(libs.json.parse, response.body or "")
+        if (ok and type(data) == "table" and type(data.on) == "table") then
+            presence.apply(data.on, asked)
+        end
+    end)
+end
+
+on_shared_players = function()
+    if (check_conditions()) then
+        presence.report = true
+        presence.update(true)
+    end
+end
+
+on_shared_esp = function(announce)
+    presence.reset(announce == true)
 end
 
 on_chatsync = function(event)
@@ -3205,87 +3239,7 @@ on_chatsync = function(event)
 end
 
 lets_sync = function()
-    local user_data
-    if (ui.utils.shared_esp:get()) then
-        user_data = {
-            type = "sync",
-
-            username = info.user,
-            steam_id = entity_list_get_local_player():get_steamids(),
-
-            beta_build = info.beta_build
-        }
-    else
-        user_data = {
-            type = "sync",
-
-            username = info.user,
-            steam_id = "0000000000 00000000000000000",
-
-            beta_build = info.beta_build
-        }
-    end
-
-    sync_client.send(libs.json.encode(user_data))
-    if (esp.sync_update > 16) then
-        local players = entity_list_get_players()
-        if (players ~= nil) then
-            for _, v in pairs(players) do
-                if (v:is_valid() and v:is_alive()) then
-                    local steamid, _ = v:get_steamids()
-                    if (not esp.unsync_user[steamid]) then
-                        esp.unsync_user[steamid] = 0
-                    end
-
-                    local response_data = sync_client.receive(4096)
-                    if (response_data) then
-                        local parse_success, parse_result = pcall(libs.json.parse, response_data)
-                        if (#parse_result > 0) then
-                            for _, user_data in ipairs(parse_result) do
-                                if (user_data.steam_id and user_data.username) then
-                                    if (user_data.steam_id == steamid) then
-                                        if (not array.has(esp.sync_user, steamid)) then
-                                            array.put(esp.sync_user, steamid)
-                                        end
-        
-                                        if (array.has(esp.sync_user, steamid)) then
-                                            esp.unsync_user[steamid] = 0
-                                        end
-                                    elseif (not user_data.steam_id == steamid) then
-                                        if (array.has(esp.sync_user, steamid)) then
-                                            esp.unsync_user[steamid] = esp.unsync_user[steamid] + 1
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-
-                    if (array.has(esp.sync_user, steamid)) then
-                        if (esp.unsync_user[steamid] > 50) then
-                            local to_remove = 0
-                            for i = 1, #esp.sync_user do
-                                if (esp.sync_user[i] == steamid) then
-                                    to_remove = i
-                                end
-                            end
-
-                            if (to_remove ~= 0) then
-                                esp.sync_user[to_remove] = nil
-                            end
-                            esp.unsync_user[steamid] = 0
-                        end
-                    end
-                end
-            end
-            esp.sync_update = 0
-        else
-            return
-        end
-    end
-
-    esp.sync_update = esp.sync_update + 1
-    return
+    presence.update(false)
 end
 
 run_clantag = function()
@@ -4788,7 +4742,7 @@ end
 
 lets_resolve = function()
     local local_player = entity_list_get_local_player()
-    local on = local_player ~= nil and (ui.ragebot.nexzu_reso:get() or ui.ragebot.logic_reso:get()
+    local on = local_player ~= nil and info.plan ~= "beta" and (ui.ragebot.nexzu_reso:get() or ui.ragebot.logic_reso:get()
         or ui.ragebot.pose_reso:get() or res_custom())
     local mode = on and resolver.disabler(local_player) or 0
 
@@ -4820,7 +4774,7 @@ end
 --- shotlogs/primordial (the batch ids start with "pm"). No names: the target is a hash of its steam id with a salt of this load
 --- @region: shot logs
 
-local shotlog = { server = "https://specter-license-mh111-production.up.railway.app", buf = {}, sending = false,
+local shotlog = { server = presence.server, buf = {}, sending = false,
                   salt = tostring(client_get_unix_time()) .. tostring(math.random(1000000)) }
 
 shotlog.hash = function(s)
@@ -4876,7 +4830,7 @@ end
 -- one line per shot result: what Primordial says about the shot, our resolver / backtrack / prediction state, the target
 shotlog.result = function(shot, hit)
     local target = shot.player
-    if (target == nil) then
+    if (target == nil or info.plan ~= "dev") then -- with a key (the loader's versions) nothing is sent
         return
     end
     local idx = target:get_index()
@@ -6780,9 +6734,9 @@ menu_handle = function()
         groups.cloud_configs:depend({page == 1})
         groups.statistics:depend({page == 2})
 
-        groups.resolver:depend({page == 3})
-        groups.resolver_beta:depend({page == 3}, {info.beta_build == true})
-        groups.reso_cfg:depend({page == 3}, {info.beta_build == true})
+        groups.resolver:depend({page == 3}, {info.plan ~= "beta"})
+        groups.resolver_beta:depend({page == 3}, {info.beta_build == true}, {info.plan ~= "beta"})
+        groups.reso_cfg:depend({page == 3}, {info.beta_build == true}, {info.plan ~= "beta"})
         groups.ragebot:depend({page == 10})
         groups.tickbase:depend({page == 11})
         groups.exploits:depend({page == 5})
@@ -7193,7 +7147,9 @@ do_hitscan = function()
     callbacks.add(e_callbacks.HITSCAN, function(ctx, cmd, unpredicted_data)
         if (check_conditions()) then
             update_target(ctx)
-            resolver.hitscan(ctx)
+            if (info.plan ~= "beta") then
+                resolver.hitscan(ctx)
+            end
 
             safe_defensive(ctx, cmd, unpredicted_data)
             dmg_prediction(ctx, cmd, unpredicted_data)
@@ -7381,7 +7337,6 @@ do_event = function()
             end
 
             if (event.name == "player_connect" or event.name == "round_start") then
-                on_shared_esp()
                 client_delay_call(function()
                     on_shared_players()
                 end, 2.0)
@@ -7725,6 +7680,7 @@ setup = function()
 
     imports_setup = function()
         libs.tools.js.create()
+        presence.install_icon()
         print("preparing lua..", get_text_color(), " (stage 25%%)")
     end
 

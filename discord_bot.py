@@ -79,6 +79,10 @@ CLOUD_BRANCH      = _env("CLOUD_BRANCH", "cloud")       # release: what the cust
 SCRIPT_TOKEN      = _env("SCRIPT_TOKEN", "")
 
 VALID_PLANS     = ["beta", "nightly", "specter", "debug"]
+# Specter for Primordial (specter_primordial_loader.lua): nightly = everything, beta = no resolver page
+PM_PLANS        = ["pm_nightly", "pm_beta"]
+KEY_PLANS       = VALID_PLANS + PM_PLANS
+PRIMORDIAL_FILE = "specter_primordial.lua"
 VALID_DURATIONS = ["lifetime", "1d", "7d", "14d", "30d", "90d"]
 
 # what the Staff role may do on the server: moderation, not the server / roles / channels (those stay the owner's)
@@ -98,6 +102,7 @@ ROLE_CONFIG = {
     "Specter":  {"color": 0x82C3FF, "hoist": True,  "position": "mid"},
     "Nightly":  {"color": 0xFF82A0, "hoist": True,  "position": "mid"},
     "Beta":     {"color": 0xC882FF, "hoist": True,  "position": "mid"},
+    "Primordial": {"color": 0xB4A0FF, "hoist": True, "position": "mid"},
     "Customer": {"color": 0x60FF90, "hoist": True,  "position": "mid"},
     "Staff":    {"color": 0xFFC850, "hoist": True,  "position": "top", "permissions": STAFF_PERMISSIONS},
 }
@@ -107,6 +112,8 @@ PLAN_TO_ROLE = {
     "specter":  "Specter",
     "nightly":  "Nightly",
     "beta":     "Beta",
+    "pm_nightly": "Primordial",
+    "pm_beta":    "Primordial",
 }
 
 # ── Prices (edit these to match your pricing) ────────────────────────
@@ -751,7 +758,7 @@ async def remove_role(interaction: discord.Interaction, user: discord.Member, ro
     note="Who this key is for",
 )
 @app_commands.choices(
-    plan=[app_commands.Choice(name=p, value=p) for p in VALID_PLANS],
+    plan=[app_commands.Choice(name=p, value=p) for p in KEY_PLANS],
     duration=[app_commands.Choice(name=d, value=d) for d in VALID_DURATIONS],
 )
 async def key_create(
@@ -875,7 +882,7 @@ async def key_reset_hwid(interaction: discord.Interaction, key: str):
 @tree.command(name="key_list", description="List all license keys")
 @app_commands.describe(plan="Filter by plan (optional)")
 @app_commands.choices(
-    plan=[app_commands.Choice(name=p, value=p) for p in VALID_PLANS],
+    plan=[app_commands.Choice(name=p, value=p) for p in KEY_PLANS],
 )
 async def key_list(interaction: discord.Interaction, plan: str = ""):
     if not is_staff(interaction):
@@ -1190,6 +1197,49 @@ async def script_upload(
     log_embed.add_field(name="Source", value=source, inline=True)
     log_embed.add_field(name="By", value=interaction.user.mention, inline=True)
     await log_action(interaction.guild, log_embed)
+
+
+@tree.command(name="primordial_upload", description="Upload specter_primordial.lua to the license server (pm_nightly + pm_beta)")
+@app_commands.describe(
+    file="specter_primordial.lua (empty: taken from GitHub)",
+    branch="GitHub branch when no file is given (default: CLOUD_BRANCH)",
+)
+async def primordial_upload(interaction: discord.Interaction, file: discord.Attachment = None, branch: str = ""):
+    if not is_admin(interaction):
+        await interaction.response.send_message("No permission.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    try:
+        if file is not None:
+            raw, source = await file.read(), file.filename
+        else:
+            raw, source = await gh_fetch_file(PRIMORDIAL_FILE, branch)
+        script = strip_lua_comments(raw.decode("utf-8"))
+    except GitHubFetchError as e:
+        await interaction.followup.send(str(e), ephemeral=True)
+        return
+    except Exception as e:
+        await interaction.followup.send(f"Could not read the script: {e}", ephemeral=True)
+        return
+    if not is_primordial_script(script):
+        await interaction.followup.send("This is not specter_primordial.lua. Nothing uploaded.", ephemeral=True)
+        return
+
+    lines, _ = await upload_script(script, PM_PLANS)
+    embed = discord.Embed(title="Primordial Upload", color=0xB4A0FF, description="\n".join(lines))
+    embed.add_field(name="Source", value=source, inline=False)
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+    log_embed = discord.Embed(title="Primordial Script Uploaded", color=0xB4A0FF)
+    log_embed.add_field(name="Source", value=source, inline=True)
+    log_embed.add_field(name="By", value=interaction.user.mention, inline=True)
+    await log_action(interaction.guild, log_embed)
+
+
+def is_primordial_script(text: str) -> bool:
+    """specter_primordial.lua (Primordial API, the eui menu), not the gamesense script or a loader."""
+    return "e_callbacks" in text and "libs.eui" in text and "_specter_loader_loaded" not in text and "AUTH GATE" not in text
 
 
 # ── /post_loader — the customer loader in #loader-download ──────────
@@ -1684,6 +1734,24 @@ async def sync_shotlogs() -> list[str]:
     return report
 
 
+async def sync_primordial(force: bool = False) -> list[str]:
+    """A new specter_primordial.lua of CLOUD_BRANCH -> the license server for pm_nightly and pm_beta (the Primordial loader
+    downloads it at every login). Nothing is posted: the Primordial lua is not out yet; main never reaches the server."""
+    try:
+        ver = await newest_version(PRIMORDIAL_FILE, CLOUD_BRANCH)
+    except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError) as e:
+        return [f"`{PRIMORDIAL_FILE}`: {e}"]
+    if not ver["stripped"] or not is_primordial_script(ver["body"].decode("utf-8", "replace")):
+        return [f"`{PRIMORDIAL_FILE}` of `{CLOUD_BRANCH}`: not the primordial script, not uploaded"]
+    full = hashlib.sha256(ver["body"]).hexdigest()
+    have = await server_script_hashes()
+    plans = [p for p in PM_PLANS if force or have is None or have.get(p) != full]
+    if not plans:
+        return []
+    lines, _ = await upload_script(ver["body"].decode("utf-8"), plans)
+    return [f"primordial script `{ver['hash'][:7]}` to the server: " + " ".join(lines)]
+
+
 async def release_loop():
     """Checks GitHub every RELEASE_MINUTES; a problem is printed once, not every round."""
     await client.wait_until_ready()
@@ -1693,6 +1761,7 @@ async def release_loop():
             report = await check_releases()
             if AUTO_UPLOAD:
                 report += await sync_cloud()
+                report += await sync_primordial()
             if AUTO_PANELS:
                 report += await sync_loader()
         except Exception as e:
@@ -1718,6 +1787,7 @@ async def release_check(interaction: discord.Interaction, force: bool = False):
     report = await check_releases(force)
     if AUTO_UPLOAD:
         report += await sync_cloud(force)
+        report += await sync_primordial(force)
     if AUTO_PANELS:
         report += await sync_loader(force)
     text = "\n".join(report) or "Nothing new: the newest versions are already out."
