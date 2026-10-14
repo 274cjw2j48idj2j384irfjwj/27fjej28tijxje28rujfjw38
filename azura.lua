@@ -4809,6 +4809,115 @@ end
 --- @endregion
 
 
+--- @info: shot logs (owners, Oct 2026: like Specter's): one JSON line per shot with a result, to the license server
+--- (/shotlog, base64 parts) every 40 shots and at round start; the bot writes them to the "shotlogs" branch, folder
+--- shotlogs/azura (the batch ids start with "az"). No names: the target is a hash of its steam id with a salt of this load
+--- @region: shot logs
+
+local shotlog = { server = "https://specter-license-mh111-production.up.railway.app", buf = {}, sending = false,
+                  salt = tostring(client_get_unix_time()) .. tostring(math.random(1000000)) }
+
+shotlog.hash = function(s)
+    local h = 5381
+    s = shotlog.salt .. tostring(s)
+    for i = 1, #s do
+        h = (h * 33 + s:byte(i)) % 4294967296
+    end
+    return string.format("%08x", h)
+end
+
+shotlog.num = function(v, digits)
+    v = tonumber(v)
+    if (v == nil or v ~= v or v == math.huge or v == -math.huge) then
+        return nil
+    end
+    local m = 10 ^ (digits or 0)
+    return math.floor(v * m + 0.5) / m
+end
+
+shotlog.send = function()
+    if (shotlog.sending or #shotlog.buf == 0) then
+        return
+    end
+    local lines = shotlog.buf
+    shotlog.buf = {}
+
+    local data = libs.base64.encode(table.concat(lines, "\n"))
+    local parts = {}
+    for i = 1, #data, 3000 do
+        parts[#parts + 1] = data:sub(i, i + 2999)
+    end
+    if (#parts > 60) then
+        return
+    end
+
+    local id = "az" .. shotlog.hash(globals.real_time() .. #lines):sub(1, 8) .. tostring(client_get_unix_time() % 100000)
+    local base = shotlog.server .. "/shotlog?id=" .. id .. "&total=" .. #parts
+    shotlog.sending = true
+    local function part(i)
+        local enc = parts[i]:gsub("([^%w%-_.~])", function(c) return string.format("%%%02X", c:byte()) end)
+        libs.tools.http:get(base .. "&idx=" .. (i - 1) .. "&data=" .. enc, function(response)
+            if (not response:success() or i >= #parts) then
+                shotlog.sending = false
+                return
+            end
+            part(i + 1)
+        end)
+    end
+    part(1)
+end
+
+-- one line per shot result: what Primordial says about the shot, our resolver / backtrack / prediction state, the target
+shotlog.result = function(shot, hit)
+    local target = shot.player
+    if (target == nil) then
+        return
+    end
+    local idx = target:get_index()
+    local local_player = entity_list_get_local_player()
+    local weapon = local_player and local_player:get_active_weapon()
+    local velocity = target:get_prop("m_vecVelocity")
+    local steamid = target:get_steamids()
+    local peeking = false
+    for _, p in ipairs(backtrack.peekers) do
+        if (p == idx) then
+            peeking = true
+        end
+    end
+
+    local row = {
+        lua = "azura", v = 1, t = client_get_unix_time(), map = engine_get_level_name_short(),
+        ping = get_user_ping(), wpn = weapon and weapon:get_name() or nil,
+        tg = shotlog.hash(steamid or idx), r = hit and "hit" or "miss",
+        ahg = shot.aim_hitgroup, bt = shotlog.num(shot.backtrack_ticks), hc = shotlog.num(shot.aim_hitchance),
+        adm = shotlog.num(shot.aim_damage),
+        cm = resolver.misses[idx] or 0, native = not resolver.native_off, fp = backtrack.amount, peek = peeking or nil,
+        spd = velocity and shotlog.num(math.vec_length2d(velocity)) or nil, fl = target:get_prop("m_fFlags"),
+        eye = shotlog.num(target:get_prop("m_angEyeAngles[1]"), 1),
+        lby = shotlog.num(target:get_prop("m_flLowerBodyYawTarget"), 1),
+        hp = target:get_prop("m_iHealth"),
+    }
+    if (hit) then
+        row.hg, row.dmg = shot.hitgroup, shotlog.num(shot.damage)
+        row.dead = (tonumber(row.hp) or 1) <= 0 or nil
+    else
+        row.why = tostring(shot.reason_string or "?")
+    end
+
+    local ok, line = pcall(libs.json.encode, row)
+    if (ok and type(line) == "string") then
+        shotlog.buf[#shotlog.buf + 1] = line
+        while (#shotlog.buf > 400) do
+            table.remove(shotlog.buf, 1)
+        end
+    end
+    if (#shotlog.buf >= 40) then
+        shotlog.send()
+    end
+end
+
+--- @endregion
+
 --- @info: cool team animation with ffi animation
 --- @region: animation
 
@@ -6547,6 +6656,7 @@ do_aimhit = function()
             end
 
             resolver.on_result(target, hit.hitgroup == hit.aim_hitgroup, false)
+            pcall(shotlog.result, hit, true)
             return
         else
             return
@@ -6564,6 +6674,7 @@ do_aimmiss = function()
         if (target ~= nil) then
             cl_logs.add_log("misses")
             resolver.on_result(target, false, reason == "resolver" or reason == "jitter")
+            pcall(shotlog.result, miss, false)
 
             if (ui.utils.event_logs:get(5)) then
                 local actual_pos = target:get_hitbox_pos(1)
@@ -6974,6 +7085,7 @@ do_event = function()
             end
 
             if (event.name == "round_start") then
+                pcall(shotlog.send)
                 builder.misses = 0
 
                 if (ui.misc.antiafk:get()) then

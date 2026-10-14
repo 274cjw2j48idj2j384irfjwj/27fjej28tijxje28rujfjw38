@@ -95,6 +95,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   from main when missing): `shotlogs/<day>/<time>-<shots>.jsonl`, each line `{"at","src","batch"}<TAB>{shot}`, then
   drops them on the server (`/admin/shotlog?n=`); a failed write drops nothing. Read them with
   `git fetch origin shotlogs`. `python3 tests/shot_log.py`
+- azura.lua sends its own (owners, Oct 2026: "ugyan úgy feltölti repoba a hitlogokat", it will be sold as Specter too):
+  batch ids start with "az", every line has `"lua":"azura"`, and the bot writes them to `shotlogs/azura/<day>/` (the dev
+  build's stay in `shotlogs/<day>/`). Same server (`shotlog.server` in azura.lua), no key = src "dev". When azura gets a
+  key system for customers, it must send nothing with a key (like the cloud script).
 
 ## azura.lua (Primordial)
 - The owner's own older PRIMORDIAL script "azura.uno" (author e0n3x, default user matehun111), not gamesense, nothing to do with
@@ -129,6 +133,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   (github.com/DuckOpenSourceFoundation/femordial-workshop-luas) show the calls. ANTIAIM ctx: set_yaw, set_pitch,
   set_desync (-1..1), set_invert_desync, set_fakelag, set_body_lean; desync side items: none, left, right, jitter, peek
   fake, peek real.
+- Shot logs (`--- @region: shot logs`): one JSON line per shot result from the AIMBOT_HIT / AIMBOT_MISS data (aim hitgroup,
+  backtrack ticks, hit chance, damage, the miss reason), our state (resolver misses of the target, Primordial's resolver
+  on, fake ping amount, predicted peeker, ping, weapon, map) and the target's netvars (speed, flags, eye yaw, LBY, HP);
+  every 40 lines and at round start to /shotlog (see Shot logs).
 - Tests: `python3 tests/azura_regress.py` (compiles, survives the bot's comment stripping, removed parts stay out, the menu
   shows the right groups on every page). No simulations (the owners' rule above).
 
