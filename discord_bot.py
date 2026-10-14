@@ -1893,6 +1893,7 @@ async def release_loop():
             if AUTO_UPLOAD:
                 report += await sync_cloud()
                 report += await sync_primordial()
+                report += await sync_loader_versions()
             if AUTO_PANELS:
                 report += await sync_loader()
         except Exception as e:
@@ -1919,6 +1920,7 @@ async def release_check(interaction: discord.Interaction, force: bool = False):
     if AUTO_UPLOAD:
         report += await sync_cloud(force)
         report += await sync_primordial(force)
+        report += await sync_loader_versions(force)
     if AUTO_PANELS:
         report += await sync_loader(force)
     text = "\n".join(report) or "Nothing new: the newest versions are already out."
@@ -2191,6 +2193,42 @@ async def sync_panels() -> list[str]:
                 continue
             if what:
                 report.append(f"{guild.name}: {name} panel {what} in {ch.mention}")
+    return report
+
+
+PM_LOADER_FILE = "specter_primordial_loader.lua"
+_loader_sent: dict[str, int] = {}
+
+
+def loader_version(raw: bytes) -> int | None:
+    """The `LOADER_VERSION = N` of a loader file (bumped whenever the loader changes), None when it has none."""
+    m = re.search(rb"LOADER_VERSION\s*=\s*(\d+)", raw)
+    return int(m.group(1)) if m else None
+
+
+async def sync_loader_versions(force: bool = False) -> list[str]:
+    """The LOADER_VERSION of both loaders of CLOUD_BRANCH to the license server: /verify hands it out and an older
+    loader tells its user to download the new one (#loader-download). Sent when it changed (or the bot restarted)."""
+    report = []
+    for path, lua in ((LOADER_FILE, "gs"), (PM_LOADER_FILE, "pm")):
+        try:
+            ver = await newest_version(path, CLOUD_BRANCH)
+        except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError) as e:
+            report.append(f"`{path}` version: {e}")
+            continue
+        v = loader_version(ver["raw"])
+        if v is None or (_loader_sent.get(lua) == v and not force):
+            continue
+        try:
+            res = await api_post("/admin/loader_version", {"lua": lua, "version": v})
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as e:
+            report.append(f"`{path}` version {v}: the server did not take it ({e})")
+            continue
+        if res.get("ok"):
+            _loader_sent[lua] = v
+            report.append(f"`{path}` version {v} to the server")
+        else:
+            report.append(f"`{path}` version {v}: {res.get('error', res.get('status'))}")
     return report
 
 

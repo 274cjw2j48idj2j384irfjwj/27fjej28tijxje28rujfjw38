@@ -5,6 +5,9 @@
 -- ======================================================================
 
 local AUTH_VER   = 3
+-- bump whenever this file changes: the server hands out the number of the newest loader (the bot reads it from the cloud
+-- branch) and an older one tells its user to download the new one from #loader-download
+local LOADER_VERSION = 1
 local DB_USERS   = "specter_users_v3"
 local DB_SESSION = "specter_session_v3"
 
@@ -143,6 +146,25 @@ local function set_status(r,g,b,msg)
     status_msg = msg
 end
 
+-- ── LOADER UPDATE NOTICE: console + 12 s on screen ───────────────────
+local function loader_update_notice(latest)
+    local text = "A new Specter loader is out (v" .. latest .. ", you have v" .. LOADER_VERSION
+        .. "): download it from #loader-download and replace this file."
+    warn(text)
+    local until_t = globals.realtime() + 12
+    local function paint()
+        local left = until_t - globals.realtime()
+        if left <= 0 then
+            client.unset_event_callback("paint", paint)
+            return
+        end
+        local w = client.screen_size()
+        local a = _flr(255 * math.min(1, left))
+        renderer.text(w / 2, 90, 255, 200, 80, a, "cb", 0, text)
+    end
+    client.set_event_callback("paint", paint)
+end
+
 -- ── SERVER AUTH: verify key → get ticket → fetch script ─────────────
 local function load_from_server(key, hwid, on_plan)
     if hwid == nil or not get_steam_id() then
@@ -180,6 +202,11 @@ local function load_from_server(key, hwid, on_plan)
             set_status(255,60,60, reasons[data.reason] or ("Denied: "..(data.reason or "?")))
             err("Verify failed: "..(data.reason or "unknown"))
             return
+        end
+
+        local latest = tonumber(data.loader_gs)
+        if latest and latest > LOADER_VERSION then
+            loader_update_notice(latest)
         end
 
         local plan    = data.plan or "beta"

@@ -311,6 +311,40 @@ app.get('/admin/script_info', async (req, res) => {
     }
 })
 
+// ── POST /admin/loader_version ────────────────────────────────────────────
+// The LOADER_VERSION of the newest specter_loader.lua ("gs") / specter_primordial_loader.lua ("pm") of the cloud branch,
+// set by the bot. /verify hands it out, a loader with a lower number tells its user to download the new one
+const LOADERS = ['gs', 'pm']
+app.post('/admin/loader_version', async (req, res) => {
+    if (req.headers['x-admin-secret'] !== ADMIN_SECRET)
+        return res.status(403).json({ error: 'forbidden' })
+    const { lua, version } = req.body
+    const v = parseInt(version, 10)
+    if (!LOADERS.includes(lua) || !(v >= 1))
+        return res.status(400).json({ error: 'bad lua / version' })
+    try {
+        await redis.set(`specter:loader:${lua}`, String(v))
+        res.json({ ok: true, lua, version: v })
+    } catch(e) {
+        res.status(500).json({ error: 'redis: ' + e.message })
+    }
+})
+
+app.get('/admin/loader_version', async (req, res) => {
+    if (req.headers['x-admin-secret'] !== ADMIN_SECRET)
+        return res.status(403).json({ error: 'forbidden' })
+    res.json(await loader_versions())
+})
+
+async function loader_versions() {
+    try {
+        const v = await redis.mget(...LOADERS.map(l => `specter:loader:${l}`))
+        return Object.fromEntries(LOADERS.map((l, i) => [l, parseInt(v[i], 10) || 0]))
+    } catch {
+        return Object.fromEntries(LOADERS.map(l => [l, 0]))       // unknown: no loader is told to update
+    }
+}
+
 // ── GET /verify ───────────────────────────────────────────────────────────
 app.get('/verify', async (req, res) => {
     const { key, hwid } = req.query
@@ -336,9 +370,11 @@ app.get('/verify', async (req, res) => {
     await db_write(db)
 
     console.log(`[VERIFY OK] key=${key} plan=${license.plan}`)
+    const loader = await loader_versions()
     res.json({
         valid: true, plan: license.plan, expires_at: license.expires_at,
         user: license.note||null, ticket, ticket_exp, nonce,
+        loader_gs: loader.gs, loader_pm: loader.pm,
     })
 })
 
