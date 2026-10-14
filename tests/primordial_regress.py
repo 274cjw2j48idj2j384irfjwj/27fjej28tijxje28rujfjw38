@@ -148,5 +148,61 @@ check("/verify?key=" in LOADER and "/script?key=" in LOADER and 'plan:find("^pm_
       "loader: verify -> script, only pm_ keys")
 check("[resolver:begin]" not in LOADER and "shotlog" not in LOADER, "loader carries no script code")
 
+# the advanced anti-aim's deciding functions (builder.adv: X-Way, Distort, Random hold, lua jitter, defensive picks): pure
+# lua, run here with a seeded math.random. Not a simulation of the game: only the numbers they give
+ADV = chunk("builder.xw_st, builder.ds_st", "-- \"Apply advanced preset\"")
+adv = L.LuaRuntime(unpack_returned_tuples=True)
+adv.execute("builder = {} globals = { tick_count = function() return 0 end } math.randomseed(7)\n" + ADV)
+R = adv.eval("""function(code) return assert(loadstring(code))() end""")
+xw = R("""local st, out = {}, {}
+for n = 1, 2000 do out[n] = builder.adv.xway(st, 5, 50, 10, 1, builder.rnd) end
+local seen, rep, lo, hi = {}, 0, 1e9, -1e9
+for n = 1, #out do seen[out[n]] = (seen[out[n]] or 0) + 1; if n > 1 and out[n] == out[n-1] then rep = rep + 1 end
+  lo = math.min(lo, out[n]); hi = math.max(hi, out[n]) end
+local kinds, minc = 0, 1e9
+for _, c in pairs(seen) do kinds = kinds + 1; minc = math.min(minc, c) end
+return kinds, rep, lo, hi, minc""")
+check(xw[0] == 5 and xw[1] == 0 and xw[2] == -40 and xw[3] == 60 and xw[4] == 400,
+      "X-Way: 5 positions over centre +- range, each once a round, never twice in a row (%s)" % (xw,))
+hold = R("""local st, run, worst, prev = {}, 0, 0, nil
+for n = 1, 3000 do local v = builder.adv.xway(st, 3, 30, 0, 4, builder.rnd)
+  if v == prev then run = run + 1 else run = 1 end; worst = math.max(worst, run); prev = v end
+return worst""")
+check(hold <= 8 and hold >= 2, "X-Way: a position is held at most hold packets (twice in a row only across a round: %d)" % hold)
+ds = R("""local st, bad, lo, hi = {}, 0, 1e9, -1e9
+for n = 1, 3000 do local v = builder.adv.distort(st, 40, 5, 35, 15, builder.rnd)
+  if v ~= v then bad = bad + 1 end; lo = math.min(lo, v); hi = math.max(hi, v) end
+local st2 = {}; builder.adv.distort(st2, 40, 0, 35, 15, builder.rnd)
+local inside = builder.adv.distort(st2, 0, 0, 35, 15, builder.rnd)
+return bad, lo, hi, inside""")
+check(ds[0] == 0 and ds[1] >= -35 and ds[2] <= 45 and ds[3] == 0, "Distort: inside centre +- range, no NaN, a smaller range pulls it in (%s)" % (ds,))
+hd = R("""local st, run, worst, prev, sides = {}, 0, 0, nil, {}
+for n = 1, 3000 do local v = builder.adv.hold(st, -30, 30, 3, builder.rnd); sides[v] = true
+  if v == prev then run = run + 1 else run = 1 end; worst = math.max(worst, run); prev = v end
+return worst, sides[-30] and sides[30] and true or false""")
+check(hd[0] == 3 and hd[1], "Random hold: both sides, each held at most hold packets (%s)" % (hd,))
+jt = R("""local st, ok = {}, true
+for n = 1, 500 do local v = builder.adv.jitter(st, 6, -12, 0, builder.rnd); ok = ok and v >= -12 and v <= 12 end
+local prev = nil
+for n = 1, 500 do local v = builder.adv.jitter(st, 7, 15, 10, builder.rnd)
+  ok = ok and math.abs(v) >= 15 and math.abs(v) <= 25 and (prev == nil or (v > 0) ~= (prev > 0)); prev = v end
+return ok""")
+check(jt, "lua jitter: Random inside +- degree, Switch random changes side every packet with degree .. degree + random")
+df = R("""local st, ok = {}, true
+local a = builder.adv.def_pitch(st, 11, 0, 0, true, 0, builder.rnd)
+ok = ok and (a == 89 or a == -89) and builder.adv.def_pitch(st, 11, 0, 0, false, 0, builder.rnd) == a
+for t = 0, 5, 0.01 do local p = builder.adv.def_pitch(st, 12, -60, 80, false, t, builder.rnd); ok = ok and p >= -60 and p <= 80 end
+local s1 = builder.adv.def_yaw(st, 10, 0, 0, true, 0, builder.rnd)
+ok = ok and math.abs(s1) >= 90 and math.abs(s1) <= 150 and builder.adv.def_yaw(st, 10, 0, 0, false, 1, builder.rnd) == s1
+ok = ok and builder.adv.def_yaw(st, 9, 0, 170, false, 0, builder.rnd) == -10 and builder.adv.def_yaw(st, 9, 0, -30, false, 0, builder.rnd) == 150
+ok = ok and builder.adv.def_yaw(st, 11, 140, 0, false, 2, builder.rnd) == 140 and builder.adv.def_yaw(st, 11, -140, 0, false, 3, builder.rnd) == -140
+for n = 1, 500 do local d = builder.adv.def_yaw(st, 12, 120, 0, n % 50 == 0, n, builder.rnd); ok = ok and d >= -120 and d <= 120 and d == d end
+return ok""")
+check(df, "defensive: Random up/down holds its pick, Sway stays between the values, Opposite / Random side / Jitter flick / Distort angles")
+aim = R("""return builder.adv.aims_at(0, 100, 5, 20), builder.adv.aims_at(90, 100, 0, 20), builder.adv.aims_at(0/0, 1, 1, 20),
+  builder.adv.aims_at(179, -100, 1, 20), builder.rnd(5, -5) >= -5, builder.adv.norm(540), builder.adv.norm(-190)""")
+check(aim[0] and not aim[1] and not aim[2] and aim[3] and aim[4] and aim[5] == -180 and aim[6] == 170,
+      "threat aim / rnd with b < a / yaw normalising (%s)" % (aim,))
+
 print("\n%d failed" % len(FAILS) if FAILS else "\nall passed")
 sys.exit(1 if FAILS else 0)

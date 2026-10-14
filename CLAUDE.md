@@ -145,6 +145,24 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   switch-every-packet modes use their own switch; anti bruteforce (enemy bullet within 50 units of the head or a hit: yaw
   6-14 deg off for 0.5-0.85 s; the old check measured from our own eye, every bullet counted); the yaw add is kept apart
   from the shift / crouch correction (it grew every tick). Menu: Settings "Random desync side", "Anti bruteforce".
+- Advanced anti-aim (owners, Oct 2026: "nagyon advanced aa sok új funkcióval ... nagyon nehezen eltalalhato ... próbáljuk ki
+  először a nagyon komolyat"): a new engine NEXT TO the old builder (the old items / list indices stay, so every saved config
+  and default.cfg still load; new options are at the END of the lists, new items default off). The deciding parts are
+  pure functions in `builder.adv` (no game api; `tests/primordial_regress.py` runs them with a seeded math.random), every value
+  decided once per sent packet (`builder.fresh` from `new_packet`):
+  * Yaw mode 4 X-Way (Ways 3-7 over "Yaw" +- Range, a shuffled bag: each position once a round, never twice in a row, held
+    1..Hold packets), 5 Distort (creeps to random targets in +- Range at Sway speed %, Snap chance % jumps), 6 Random hold
+    (left / right + randomization, each side held 1..Hold packets).
+  * Modifier 6 Random / 7 Switch random: the lua's own jitter (`builder.jit_off`, added in `yaw_now`), Primordial's off.
+  * Desync 5 Random: side = a coin flip per packet even without "Random desync side" (`desync_side` -> left + invert).
+  * Defensive 6 Smart + "Smart triggers" (Peek = the old on-peek trace, Shot at = HP dropped in the last 1.5 s, Air, Threat
+    aim = an enemy's eye yaw within 20 deg of us, Random = 30 % per 8 ticks); pitch 11 Random up/down (per defensive start)
+    / 12 Sway (between the two values); yaw 9 Opposite / 10 Random side (90-150, per start) / 11 Jitter flick / 12 Distort.
+  * Anti brute mode "Phases": each trigger starts a 4-7 s phase with its own yaw centre shift (8-22), spread / jitter scale
+    (0.7-1.4) and flipped desync side, the X-Way order restarts. "Shift" = the old 6-14 deg for 0.5-0.85 s.
+  * Fakelag variance (no DT / HS): choke 10-15, a new one each cycle.
+  * "Apply advanced preset" (Settings): every state 1-8 on these modes (`builder.apply_preset`, X-Way stand / duck / air,
+    Distort move, Random hold slow walk, Random desync 58, Smart defensive). Untested in game: the owners judge it there.
 - Menu (owners, Oct 2026, chose the "buttons" mock-up): four main buttons (Config, Ragebot, Anti-Aim, Misc), under them
   the "› " page buttons of the active one (`nav_pages`; the page is still `ui.nav.slider`: 1-9 kept, 10-14 new: Aimbot,
   Tickbase, Yaw / Jitter, Desync, Defensive). The builder's items use `aa_page` (any anti-aim page), the Settings group
