@@ -392,5 +392,19 @@ check(r == (False, False, True, True, False, True, True, True, True, True, True)
       "jitter / smart body aim, every resolver off: a sure head stays, after a miss / on a jitter target the head is a safe "
       "point, the body only when a body hit kills (%s)" % (r,))
 
+# FPS (owners, Oct 2026: "70 fpsem"): menu.find is asked once per item, the profiler only times while it runs
+MF = chunk("-- menu.find walks Primordial's whole menu by name", "-- FPS profiler (dev build")
+mf = L.LuaRuntime(unpack_returned_tuples=True)
+mf.execute("CALLS = 0 menu_find = function(...) CALLS = CALLS + 1 return { name = table.concat({ ... }, '/') } end\n" + MF)
+r = mf.eval("""(function()
+    local a = menu_find("misc", "main", "movement", "autostrafer")
+    local b = menu_find("misc", "main", "movement", "autostrafer")
+    local c = menu_find("aimbot", "auto", "accuracy")
+    return a == b, CALLS, c.name
+end)()""")
+check(r == (True, 2, "aimbot/auto/accuracy"), "menu_find: each item looked up once (%s)" % (r,))
+check('perf.add(e_callbacks.PAINT, "PAINT"' in SRC and "perf.span(\"watermark\", draw_watermark)" in SRC
+      and "    callbacks.add(e_callbacks.PAINT, function()" not in SRC, "FPS profiler wraps the callbacks and the PAINT parts")
+
 print("\n%d failed" % len(FAILS) if FAILS else "\nall passed")
 sys.exit(1 if FAILS else 0)

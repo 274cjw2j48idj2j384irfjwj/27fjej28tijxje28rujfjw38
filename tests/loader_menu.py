@@ -17,7 +17,7 @@ SRC = open(sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "specter_loa
 MOCK = r'''
 return function(src, mode, clip)
   local ffi = require("ffi")
-  local W = { logs = {}, gets = {}, pending = {}, els = {}, cb = {} }
+  local W = { logs = {}, gets = {}, pending = {}, els = {}, cb = {}, drawn = {} }
   local function el(kind, name, val)
     local e = { kind = kind, name = name, v = val, enabled = true, visible = true }
     function e:set_visible(b) self.visible = b end
@@ -38,6 +38,8 @@ return function(src, mode, clip)
     client = {
       color_log = function(r, g, b, m) W.logs[#W.logs + 1] = m end,
       set_event_callback = function(n, f) W.cb[n] = f end,
+      unset_event_callback = function(n, f) if W.cb[n] == f then W.cb[n] = nil end end,
+      screen_size = function() return 1920, 1080 end,
       create_interface = function(mod, name)
         if mode ~= "vgui" or mod ~= "vgui2.dll" or name ~= "VGUI_System010" then return nil end
         local text = clip
@@ -52,13 +54,16 @@ return function(src, mode, clip)
       end,
     },
     database = { read = function() return nil end, write = function() end },
+    globals = { realtime = function() return W.t or 0 end },
+    renderer = { text = function(...) local t = { ... } W.drawn[#W.drawn + 1] = t[#t] end },
     panorama = { open = function() return { MyPersonaAPI = { GetXuid = function() return "76561198000000001" end } } end },
     entity = { get_local_player = function() return nil end },
     require = function(n)
       if n == "gamesense/http" then return { get = function(url, cb)
         W.gets[#W.gets + 1] = url; W.pending[#W.pending + 1] = { url = url, cb = cb } end } end
       if n == "json" then return { parse = function(b)
-        if b == "VERIFY" then return { valid = true, plan = "nightly", ticket = "t", nonce = "n" } end
+        if b == "VERIFY" then return { valid = true, plan = "nightly", ticket = "t", nonce = "n", loader_gs = 1 } end
+        if b == "VERIFY_OLD" then return { valid = true, plan = "nightly", ticket = "t", nonce = "n", loader_gs = 9 } end
         if b == "BAD" then return { valid = false, reason = "invalid_key" } end
         return {} end } end
       if n == "gamesense/pui" then return pui end
@@ -148,6 +153,17 @@ hidden, total = w.hidden()
 check("loaded: the script ran", ran == 1, f"ran {ran}x")
 check("loaded: the whole login menu is hidden", hidden == total and total > 20, f"{hidden} / {total} hidden")
 check("loaded: spec_plan still answers", w.cb.console_input("spec_plan") is True and "Plan: nightly" in str(w.logs[len(w.logs)]))
+notice = [l for l in w.logs.values() if "new Specter loader" in str(l)]
+check("loader up to date: no update notice", not notice and w.cb.paint is None, notice)
+w, ran = login("VERIFY_OLD")
+notice = [l for l in w.logs.values() if "new Specter loader" in str(l)]
+w.cb.paint()
+drawn = len(w.drawn)
+w.t = 13
+w.cb.paint()
+check("older loader: console + on screen notice for 12 s, the script still loads",
+      ran == 1 and len(notice) == 1 and "#loader-download" in str(notice[0]) and drawn == 1 and w.cb.paint is None,
+      (ran, notice, drawn))
 w, ran = login("BAD")
 hidden, total = w.hidden()
 check("wrong key: the menu stays", ran == 0 and hidden == 0 and "Invalid license key" in str(w.status()), f"{hidden} hidden")
