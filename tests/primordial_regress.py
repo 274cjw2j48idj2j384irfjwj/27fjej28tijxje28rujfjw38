@@ -1,8 +1,8 @@
-"""Checks for azura.lua (the Primordial script): it compiles under LuaJIT, it survives the bot's comment stripping, the
+"""Checks for specter_primordial.lua (the Primordial script): it compiles under LuaJIT, it survives the bot's comment stripping, the
 removed parts stay out, and the menu shows the right groups / page buttons on every page.
 
     pip install lupa
-    python3 tests/azura_regress.py
+    python3 tests/primordial_regress.py
 
 No simulations (owners, Oct 2026: the mock only confuses): resolver / anti-aim / backtrack decisions come from how
 Primordial and CS:GO work and from the game."""
@@ -14,7 +14,7 @@ import sys
 import lupa.luajit21 as L
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SRC = open(os.path.join(ROOT, "azura.lua"), encoding="utf-8").read()
+SRC = open(os.path.join(ROOT, "specter_primordial.lua"), encoding="utf-8").read()
 FAILS = []
 
 
@@ -45,9 +45,9 @@ def strip_like_the_bot(src):
 # ── compile ───────────────────────────────────────────────────────────
 
 r = compiles(SRC)
-check(r[1], "azura.lua compiles under LuaJIT (%s)" % r[2])
+check(r[1], "specter_primordial.lua compiles under LuaJIT (%s)" % r[2])
 r = compiles(strip_like_the_bot(SRC))
-check(r[1], "azura.lua without comments (the #staff post) compiles (%s)" % r[2])
+check(r[1], "specter_primordial.lua without comments (the #staff post) compiles (%s)" % r[2])
 for gone in ("udp_connect", "auth.check_user", "send_logs", "sigmoid_adjustment", "resolver_helper", "cmd.tick_count ="):
     check(gone not in SRC, "no %s (login / server / old random resolver / tick count override)" % gone)
 

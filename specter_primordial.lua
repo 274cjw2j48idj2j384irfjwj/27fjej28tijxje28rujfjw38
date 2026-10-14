@@ -51,11 +51,11 @@ libs.base64 = (function()
 end)()
 
 libs.filesystem = (function()
-    local a={}a.__index={}a.class=ffi.cast(ffi.typeof("void***"),memory_create_interface("filesystem_stdio.dll","VBaseFileSystem011"))a.v_table=a.class[0]a.full_class=ffi.cast("void***",memory_create_interface("filesystem_stdio.dll","VFileSystem017"))a.v_fltable=a.full_class[0]a.casts={read_file=ffi.cast("int (__thiscall*)(void*, void*, int, void*)",a.v_table[0]),write_file=ffi.cast("int (__thiscall*)(void*, void const*, int, void*)",a.v_table[1]),open_file=ffi.cast("void* (__thiscall*)(void*, const char*, const char*, const char*)",a.v_table[2]),close_file=ffi.cast("void (__thiscall*)(void*, void*)",a.v_table[3]),file_size=ffi.cast("unsigned int (__thiscall*)(void*, void*)",a.v_table[7]),file_exists=ffi.cast("bool (__thiscall*)(void*, const char*, const char*)",a.v_table[10]),delete_file=ffi.cast("void (__thiscall*)(void*, const char*, const char*)",a.v_fltable[20]),rename_file=ffi.cast("bool (__thiscall*)(void*, const char*, const char*, const char*)",a.v_fltable[21]),create_dir=ffi.cast("void (__thiscall*)(void*, const char*, const char*)",a.v_fltable[22]),is_dir=ffi.cast("bool (__thiscall*)(void*, const char*, const char*)",a.v_fltable[23])}local b=memory_create_interface("filesystem_stdio.dll","VFileSystem017")local c=ffi.cast(ffi.typeof("void***"),b)ffi.cdef([[ typedef void (__thiscall* AddSearchPath)(void*, const char*, const char*); typedef void (__thiscall* RemoveSearchPaths)(void*, const char*); typedef const char* (__thiscall* FindNext)(void*, int); typedef bool (__thiscall* FindIsDirectory)(void*, int); typedef void (__thiscall* FindClose)(void*, int); typedef const char* (__thiscall* FindFirstEx)(void*, const char*, const char*, int*); typedef long (__thiscall* GetFileTime)(void*, const char*, const char*); ]])local d=ffi.cast("AddSearchPath",c[0][11])local e=ffi.cast("RemoveSearchPaths",c[0][14])local f=ffi.cast("FindNext",c[0][33])local g=ffi.cast("FindIsDirectory",c[0][34])local h=ffi.cast("FindClose",c[0][35])local i=ffi.cast("FindFirstEx",c[0][36])a.modes={["r"]="r",["w"]="w",["a"]="a",["r+"]="r+",["w+"]="w+",["a+"]="a+",["rb"]="rb",["wb"]="wb",["ab"]="ab",["rb+"]="rb+",["wb+"]="wb+",["ab+"]="ab+"}a.open=function(j,k,l)if not a.modes[k]then error("File mode error!")end;local self=setmetatable({file=j,mode=k,path_id=l,handle=a.casts.open_file(a.class,j,k,l)},a)return self end;a.close=function(m)a.casts.close_file(a.class,m.handle)end;a.exists=function(j,l)return a.casts.file_exists(a.class,j,l)end;a.get_size=function(m)return a.casts.file_size(a.class,m.handle)end;a.write_binary=function(n,o)local m=a.open(n,"wb","MOD")a.casts.write_file(a.class,o,#o,m.handle)a.close(m)end;a.read_binary=function(n)local m=a.open(n,"rb","MOD")local p=a.get_size(m)local q=ffi.new("char[?]",p)a.casts.read_file(a.class,q,p,m.handle)a.close(m)return ffi.string(q,p)end;a.write=function(n,o)local m=a.open(n,"w","MOD")a.casts.write_file(a.class,o,#o,m.handle)a.close(m)end;a.append=function(n,o)local m=a.open(n,"a","MOD")a.casts.write_file(a.class,o,#o,m.handle)a.close(m)end;a.read=function(n)local m=a.open(n,"r","MOD")local p=a.get_size(m)local q=ffi.new("char[?]",p+1)a.casts.read_file(a.class,q,p,m.handle)a.close(m)return ffi.string(q)end;a.rename=function(r,s,l)return a.casts.rename_file(a.full_class,r,s,l)end;a.delete=function(j,l)a.casts.delete_file(a.full_class,j,l)end;a.create_directory=function(n,l)a.casts.create_dir(a.full_class,n,l)end;a.is_directory=function(n,l)return a.casts.is_dir(a.full_class,n,l)end;a.find_next=function(t)local j=a.casts.find_next(a.full_class,t)if j==0 then return nil end;return ffi.string(j)end;a.find_is_directory=function(t)return a.casts.find_is_dir(a.full_class,t)end;a.get_sec_files=function()local u=ffi.new("int[1]")e(c,"primordial")d(c,"././primordial/scripts","primordial")local v={}local j=i(c,"*","primordial",u)while j~=nil do local w=ffi.string(j)if g(c,u[0])==false and w:find("[.]lua")then table.insert(v,w)end;j=f(c,u[0])end;h(c,u[0])return v end;a.read_first_line=function(x)local y=x:match("^[^\r\n]+")return y end;a.get_files=function()local u=ffi.new("int[1]")e(c,"azura_configs")d(c,"./csgo/azura/","azura_configs")local v={}local j=i(c,"*","azura_configs",u)while j~=nil do local w=ffi.string(j)if g(c,u[0])==false and w:find("[.]cfg")then table.insert(v,w)end;j=f(c,u[0])end;h(c,u[0])return v end;return a
+    local a={}a.__index={}a.class=ffi.cast(ffi.typeof("void***"),memory_create_interface("filesystem_stdio.dll","VBaseFileSystem011"))a.v_table=a.class[0]a.full_class=ffi.cast("void***",memory_create_interface("filesystem_stdio.dll","VFileSystem017"))a.v_fltable=a.full_class[0]a.casts={read_file=ffi.cast("int (__thiscall*)(void*, void*, int, void*)",a.v_table[0]),write_file=ffi.cast("int (__thiscall*)(void*, void const*, int, void*)",a.v_table[1]),open_file=ffi.cast("void* (__thiscall*)(void*, const char*, const char*, const char*)",a.v_table[2]),close_file=ffi.cast("void (__thiscall*)(void*, void*)",a.v_table[3]),file_size=ffi.cast("unsigned int (__thiscall*)(void*, void*)",a.v_table[7]),file_exists=ffi.cast("bool (__thiscall*)(void*, const char*, const char*)",a.v_table[10]),delete_file=ffi.cast("void (__thiscall*)(void*, const char*, const char*)",a.v_fltable[20]),rename_file=ffi.cast("bool (__thiscall*)(void*, const char*, const char*, const char*)",a.v_fltable[21]),create_dir=ffi.cast("void (__thiscall*)(void*, const char*, const char*)",a.v_fltable[22]),is_dir=ffi.cast("bool (__thiscall*)(void*, const char*, const char*)",a.v_fltable[23])}local b=memory_create_interface("filesystem_stdio.dll","VFileSystem017")local c=ffi.cast(ffi.typeof("void***"),b)ffi.cdef([[ typedef void (__thiscall* AddSearchPath)(void*, const char*, const char*); typedef void (__thiscall* RemoveSearchPaths)(void*, const char*); typedef const char* (__thiscall* FindNext)(void*, int); typedef bool (__thiscall* FindIsDirectory)(void*, int); typedef void (__thiscall* FindClose)(void*, int); typedef const char* (__thiscall* FindFirstEx)(void*, const char*, const char*, int*); typedef long (__thiscall* GetFileTime)(void*, const char*, const char*); ]])local d=ffi.cast("AddSearchPath",c[0][11])local e=ffi.cast("RemoveSearchPaths",c[0][14])local f=ffi.cast("FindNext",c[0][33])local g=ffi.cast("FindIsDirectory",c[0][34])local h=ffi.cast("FindClose",c[0][35])local i=ffi.cast("FindFirstEx",c[0][36])a.modes={["r"]="r",["w"]="w",["a"]="a",["r+"]="r+",["w+"]="w+",["a+"]="a+",["rb"]="rb",["wb"]="wb",["ab"]="ab",["rb+"]="rb+",["wb+"]="wb+",["ab+"]="ab+"}a.open=function(j,k,l)if not a.modes[k]then error("File mode error!")end;local self=setmetatable({file=j,mode=k,path_id=l,handle=a.casts.open_file(a.class,j,k,l)},a)return self end;a.close=function(m)a.casts.close_file(a.class,m.handle)end;a.exists=function(j,l)return a.casts.file_exists(a.class,j,l)end;a.get_size=function(m)return a.casts.file_size(a.class,m.handle)end;a.write_binary=function(n,o)local m=a.open(n,"wb","MOD")a.casts.write_file(a.class,o,#o,m.handle)a.close(m)end;a.read_binary=function(n)local m=a.open(n,"rb","MOD")local p=a.get_size(m)local q=ffi.new("char[?]",p)a.casts.read_file(a.class,q,p,m.handle)a.close(m)return ffi.string(q,p)end;a.write=function(n,o)local m=a.open(n,"w","MOD")a.casts.write_file(a.class,o,#o,m.handle)a.close(m)end;a.append=function(n,o)local m=a.open(n,"a","MOD")a.casts.write_file(a.class,o,#o,m.handle)a.close(m)end;a.read=function(n)local m=a.open(n,"r","MOD")local p=a.get_size(m)local q=ffi.new("char[?]",p+1)a.casts.read_file(a.class,q,p,m.handle)a.close(m)return ffi.string(q)end;a.rename=function(r,s,l)return a.casts.rename_file(a.full_class,r,s,l)end;a.delete=function(j,l)a.casts.delete_file(a.full_class,j,l)end;a.create_directory=function(n,l)a.casts.create_dir(a.full_class,n,l)end;a.is_directory=function(n,l)return a.casts.is_dir(a.full_class,n,l)end;a.find_next=function(t)local j=a.casts.find_next(a.full_class,t)if j==0 then return nil end;return ffi.string(j)end;a.find_is_directory=function(t)return a.casts.find_is_dir(a.full_class,t)end;a.get_sec_files=function()local u=ffi.new("int[1]")e(c,"primordial")d(c,"././primordial/scripts","primordial")local v={}local j=i(c,"*","primordial",u)while j~=nil do local w=ffi.string(j)if g(c,u[0])==false and w:find("[.]lua")then table.insert(v,w)end;j=f(c,u[0])end;h(c,u[0])return v end;a.read_first_line=function(x)local y=x:match("^[^\r\n]+")return y end;a.get_files=function()local u=ffi.new("int[1]")e(c,"specter_configs")d(c,"./csgo/specter/","specter_configs")local v={}local j=i(c,"*","specter_configs",u)while j~=nil do local w=ffi.string(j)if g(c,u[0])==false and w:find("[.]cfg")then table.insert(v,w)end;j=f(c,u[0])end;h(c,u[0])return v end;return a
 end)()
 
 libs.eui = (function()
-    local a={}a.__type={group=-1,button=0,keybind=1,text_input=2,text=3,separator=4,list=5,checkbox=6,color_picker=7,multi_selection=8,selection=9,slider=10}a.__azurasave=true;a.__data={}a.create=function(b,c)local d={group=b,column=c,id=a.__type.group}menu_set_group_column(b,c)a.__index=a;return setmetatable(d,a)end;function a:create_element(e,f,g)local h=nil;if e==a.__type.button then h=menu_add_button(self.group,f,g.fn)elseif e==a.__type.checkbox then h=menu_add_checkbox(self.group,f,g.default_value)elseif e==a.__type.color_picker then h=g.parent.ref:add_color_picker(f,g.default_value,g.alpha)elseif e==a.__type.keybind then h=g.parent.ref:add_keybind(f,g.default_value)elseif e==a.__type.list then h=menu_add_list(self.group,f,g.items,g.visible_count)elseif e==a.__type.multi_selection then h=menu_add_multi_selection(self.group,f,g.items,g.visible_count)elseif e==a.__type.selection then h=menu_add_selection(self.group,f,g.items,g.visible_count)elseif e==a.__type.slider then h=menu_add_slider(self.group,f,g.min,g.max,g.step,g.precision,g.suffix)elseif e==a.__type.text_input then h=menu_add_text_input(self.group,f)elseif e==a.__type.text then h=menu_add_text(self.group,f)elseif e==a.__type.separator then h=menu_add_separator(self.group)end;local d={name=f,id=e,ref=h,group=self.group,get=function(self,i)if self.id==a.__type.multi_selection then return self.ref:get(i)else return self.ref:get()end end}if not a.__data[self.group]then a.__data[self.group]={}end;a.__data[self.group][f]=d;if a.__azurasave then if not a[self.group]then a[self.group]={}end;a[self.group][f]=d;self[f]=d end;return setmetatable(d,a)end;function a:button(f,j)j=j or function()end;return self:create_element(a.__type.button,f,{fn=j})end;function a:checkbox(f,k)return self:create_element(a.__type.checkbox,f,{default_value=k})end;function a:color_picker(l,f,k,m)return self:create_element(a.__type.color_picker,f,{parent=l,default_value=k,alpha=m})end;function a:keybind(l,f,k)return self:create_element(a.__type.keybind,f,{parent=l,default_value=k})end;function a:list(f,n,o)return self:create_element(a.__type.list,f,{items=n,visible_count=o})end;function a:multi_selection(f,n,o)return self:create_element(a.__type.multi_selection,f,{items=n,visible_count=o})end;function a:selection(f,n,o)return self:create_element(a.__type.selection,f,{items=n,visible_count=o})end;function a:slider(f,p,q,r,s,t)return self:create_element(a.__type.slider,f,{min=p,max=q,step=r,precision=s,suffix=t})end;function a:text_input(f)return self:create_element(a.__type.text_input,f)end;function a:text(f,g)return self:create_element(a.__type.text,f,g)end;function a:separator()return self:create_element(a.__type.separator,"separator")end;a.export=function()local u={}for v,w in pairs(a.__data)do u[v]={}for x,y in pairs(w)do if not(y.id<a.__type.checkbox)then if y.id==a.__type.multi_selection then local z={}for A,B in pairs(y.ref:get_items())do table.insert(z,{B,y.ref:get(B)})end;table.insert(u[v],{y.name,z})elseif y.id==a.__type.color_picker then local C=y.ref:get()table.insert(u[v],{y.name,C.r,C.g,C.b,C.a})else table.insert(u[v],{y.name,y.ref:get()})end end end end;return libs.json.encode(u)end;a.import=function(d)local D=libs.json.parse(d)for v,w in pairs(D)do for x,y in pairs(w)do if not(a.__data[v]==nil or a.__data[v][y[1]]==nil)then if a.__data[v][y[1]].id==a.__type.multi_selection then for A,B in pairs(y[2])do a.__data[v][y[1]].ref:set(B[1],B[2])end elseif a.__data[v][y[1]].id==a.__type.color_picker then a.__data[v][y[1]].ref:set(color_t(y[2],y[3],y[4],y[5]))else a.__data[v][y[1]].ref:set(y[2])end end end end end;function a:depend(...)local E={...}local F=nil;for v,w in pairs(E)do local G=nil;if type(w[1])=="boolean"then G=w[1]else G=w[1].ref:get()==w[2]end;if F~=nil then F=F and G else F=G end end;if self.id==-1 then menu_set_group_visibility(self.group,F)else self.ref:set_visible(F)end end;return a
+    local a={}a.__type={group=-1,button=0,keybind=1,text_input=2,text=3,separator=4,list=5,checkbox=6,color_picker=7,multi_selection=8,selection=9,slider=10}a.__spectersave=true;a.__data={}a.create=function(b,c)local d={group=b,column=c,id=a.__type.group}menu_set_group_column(b,c)a.__index=a;return setmetatable(d,a)end;function a:create_element(e,f,g)local h=nil;if e==a.__type.button then h=menu_add_button(self.group,f,g.fn)elseif e==a.__type.checkbox then h=menu_add_checkbox(self.group,f,g.default_value)elseif e==a.__type.color_picker then h=g.parent.ref:add_color_picker(f,g.default_value,g.alpha)elseif e==a.__type.keybind then h=g.parent.ref:add_keybind(f,g.default_value)elseif e==a.__type.list then h=menu_add_list(self.group,f,g.items,g.visible_count)elseif e==a.__type.multi_selection then h=menu_add_multi_selection(self.group,f,g.items,g.visible_count)elseif e==a.__type.selection then h=menu_add_selection(self.group,f,g.items,g.visible_count)elseif e==a.__type.slider then h=menu_add_slider(self.group,f,g.min,g.max,g.step,g.precision,g.suffix)elseif e==a.__type.text_input then h=menu_add_text_input(self.group,f)elseif e==a.__type.text then h=menu_add_text(self.group,f)elseif e==a.__type.separator then h=menu_add_separator(self.group)end;local d={name=f,id=e,ref=h,group=self.group,get=function(self,i)if self.id==a.__type.multi_selection then return self.ref:get(i)else return self.ref:get()end end}if not a.__data[self.group]then a.__data[self.group]={}end;a.__data[self.group][f]=d;if a.__spectersave then if not a[self.group]then a[self.group]={}end;a[self.group][f]=d;self[f]=d end;return setmetatable(d,a)end;function a:button(f,j)j=j or function()end;return self:create_element(a.__type.button,f,{fn=j})end;function a:checkbox(f,k)return self:create_element(a.__type.checkbox,f,{default_value=k})end;function a:color_picker(l,f,k,m)return self:create_element(a.__type.color_picker,f,{parent=l,default_value=k,alpha=m})end;function a:keybind(l,f,k)return self:create_element(a.__type.keybind,f,{parent=l,default_value=k})end;function a:list(f,n,o)return self:create_element(a.__type.list,f,{items=n,visible_count=o})end;function a:multi_selection(f,n,o)return self:create_element(a.__type.multi_selection,f,{items=n,visible_count=o})end;function a:selection(f,n,o)return self:create_element(a.__type.selection,f,{items=n,visible_count=o})end;function a:slider(f,p,q,r,s,t)return self:create_element(a.__type.slider,f,{min=p,max=q,step=r,precision=s,suffix=t})end;function a:text_input(f)return self:create_element(a.__type.text_input,f)end;function a:text(f,g)return self:create_element(a.__type.text,f,g)end;function a:separator()return self:create_element(a.__type.separator,"separator")end;a.export=function()local u={}for v,w in pairs(a.__data)do u[v]={}for x,y in pairs(w)do if not(y.id<a.__type.checkbox)then if y.id==a.__type.multi_selection then local z={}for A,B in pairs(y.ref:get_items())do table.insert(z,{B,y.ref:get(B)})end;table.insert(u[v],{y.name,z})elseif y.id==a.__type.color_picker then local C=y.ref:get()table.insert(u[v],{y.name,C.r,C.g,C.b,C.a})else table.insert(u[v],{y.name,y.ref:get()})end end end end;return libs.json.encode(u)end;a.import=function(d)local D=libs.json.parse(d)for v,w in pairs(D)do for x,y in pairs(w)do if not(a.__data[v]==nil or a.__data[v][y[1]]==nil)then if a.__data[v][y[1]].id==a.__type.multi_selection then for A,B in pairs(y[2])do a.__data[v][y[1]].ref:set(B[1],B[2])end elseif a.__data[v][y[1]].id==a.__type.color_picker then a.__data[v][y[1]].ref:set(color_t(y[2],y[3],y[4],y[5]))else a.__data[v][y[1]].ref:set(y[2])end end end end end;function a:depend(...)local E={...}local F=nil;for v,w in pairs(E)do local G=nil;if type(w[1])=="boolean"then G=w[1]else G=w[1].ref:get()==w[2]end;if F~=nil then F=F and G else F=G end end;if self.id==-1 then menu_set_group_visibility(self.group,F)else self.ref:set_visible(F)end end;return a
 end)()
 
 libs.httpcreator = (function()
@@ -432,7 +432,7 @@ ffi.cdef [[
 
 local AF_INET, IPPROTO_UDP, SOCK_DGRAM = 2, 17, 2
 local function find_sig(mod, pat, type, offset, deref_count)
-    local raw_match = memory_find_pattern(mod, pat) or error("azura · an internal error has occurred ~ 0xA4B3C2", 2)
+    local raw_match = memory_find_pattern(mod, pat) or error("specter · an internal error has occurred ~ 0xA4B3C2", 2)
     local match = ffi.cast("uintptr_t", raw_match)
 
     if (offset ~= nil and offset ~= 0) then
@@ -443,7 +443,7 @@ local function find_sig(mod, pat, type, offset, deref_count)
         for i = 1, deref_count do
             match = ffi.cast("uintptr_t*", match)[0]
             if (match == nil) then
-                error("azura · an internal error has occurred ~ 0x9F8271", 2)
+                error("specter · an internal error has occurred ~ 0x9F8271", 2)
             end
         end
     end
@@ -451,17 +451,17 @@ local function find_sig(mod, pat, type, offset, deref_count)
 end
 
 local function v_table_bind(mod, face, n, type)
-    local i_face = memory_create_interface(mod, face) or error("azura · an internal error has occurred ~ 0xE8D4A6")
-    local instance = memory_get_vfunc(i_face, n) or error("azura · an internal error has occurred ~ 0x1C73F5")
+    local i_face = memory_create_interface(mod, face) or error("specter · an internal error has occurred ~ 0xE8D4A6")
+    local instance = memory_get_vfunc(i_face, n) or error("specter · an internal error has occurred ~ 0x1C73F5")
     local success, typeof = pcall(ffi.typeof, type)
 
     if (success) then
-        local fnptr = ffi.cast(typeof, instance) or error("azura · an internal error has occurred ~ 0xB92F6E")
+        local fnptr = ffi.cast(typeof, instance) or error("specter · an internal error has occurred ~ 0xB92F6E")
         return function(...)
             return fnptr(tonumber(ffi.cast("void***", i_face)), ...)
         end
     else
-        error("azura · an internal error has occurred ~ 0x3AB596")
+        error("specter · an internal error has occurred ~ 0x3AB596")
     end
 end
 
@@ -475,8 +475,8 @@ end
 
 
 local function get_extension()
-    local get_module_handle_sig = memory_find_pattern("engine.dll", " FF 15 ? ? ? ? 85 C0 74 0B") or error("azura · an internal error has occurred ~ 0x740B")
-    local get_proc_address_sig = memory_find_pattern("engine.dll", " FF 15 ? ? ? ? A3 ? ? ? ? EB 05") or error("azura · an internal error has occurred ~ 0xEB05")
+    local get_module_handle_sig = memory_find_pattern("engine.dll", " FF 15 ? ? ? ? 85 C0 74 0B") or error("specter · an internal error has occurred ~ 0x740B")
+    local get_proc_address_sig = memory_find_pattern("engine.dll", " FF 15 ? ? ? ? A3 ? ? ? ? EB 05") or error("specter · an internal error has occurred ~ 0xEB05")
 
     local get_proc_address_addr = ffi.cast("uint32_t**", ffi.cast("uint32_t", get_proc_address_sig) + 2)[0][0]
     local get_proc_address = ffi.cast("void*(__stdcall*)(void*, const char*)", get_proc_address_addr)
@@ -612,7 +612,7 @@ end
 
 --- @endregion
 
--- offline: no azura server, the cloud / sync sockets send nothing and receive nothing
+-- offline: no Specter server, the cloud / sync sockets send nothing and receive nothing
 local offline_client = {
     send = function(data) end,
     receive = function(buffer_size) return nil end
@@ -785,10 +785,10 @@ local animlayer_average_t = {}
 local cnl_material = {}
 local animlayer_rec_t = {}
 
-local configs = { dir = "azura/", default_dir = "azura/default.cfg", default_config = "" }
-local clantag = { " ", " ", " ", "a ", "a3 ", "az ", "az\\ ", "az\\/ ", "azu ", "azu3 ", "azur ", "azur| ", "azur|2 ", "azura| ", "azura|_ ", "3zu@a. ", "@zu3a.< ", "azura.u< ", "azura.u_ ", "azura.un<_ ", "azura.un<| ", "azura.uno ", "azura.uno ", "onu.aruza ", "azura.uno ", "azura.uno ", "onu.aruza ", "azura.uno ", "azura.un<| ", "azura.un<_ ", "azura.u_ ", "azura.u< ", "azura.< ", "3zu@r. ", "azura|_ ", "azura| ", "azur|2 ", "azur| ", "azu ", "az\\/ ", "az\\ ", "az ", "a3 ", "a ", "|\\| " }
+local configs = { dir = "specter/", default_dir = "specter/default.cfg", default_config = "" }
+local clantag = { " ", " ", " ", "s ", "sp ", "sp| ", "spe ", "spe| ", "spec ", "spec| ", "spect ", "spect| ", "specte ", "specte| ", "specter ", "specter| ", "$pecter ", "5pect3r ", "specter ", "specter ", "specter ", "specter ", "specter ", "retceps ", "specter ", "specter ", "retceps ", "specter ", "specter| ", "specte| ", "specte ", "spect| ", "spect ", "spec| ", "spec ", "spe| ", "spe ", "sp| ", "sp ", "s| ", "s ", "| ", " ", " ", " " }
 
-local phrases_new = { "Out of your league, out of your life. Stay down. Courtesy of azura.uno — where losers get left behind.", "Another bot bites the dust. Get a grip, get a brain, or get azura.uno. Your choice.", "That was your best? Pathetic. I’m powered by azura.uno — you’re powered by tears.", "Skill issue detected. Patch it with azura.uno or uninstall, clown.", "Was that supposed to be a challenge? Script runs clean, you run scared. Powered by azura.uno, humbled by me.", "You blinked, you died. Maybe azura.uno can teach you how not to suck.", "Same result, different round. You die, I win. azura.uno stays undefeated.", "Oh, you're trying? Cute. Next time, try azura.uno — it might save you a little embarrassment.", "Out-aimed, out-brained, and out of excuses. azura.uno stays winning, you stay losing.", "Clapped, collapsed, and deleted. If you’re gonna keep showing up, bring azura.uno — or bring a therapist.", "Got folded like a lawn chair. azura.uno stays active while you stay irrelevant.", "Run it back if you want, but I’ll still be here — azura.uno loaded, and your dignity unloaded.", "Another round, another L for you. azura.uno does the work, I just collect your tears.", "Pack it up, kid. azura.uno on, you off.", "You thought you had a chance? Nah. Powered by azura.uno, fueled by your misery.", "You’re a spectator now. Get used to it. azura.uno stays running while you stay dead.", "Don’t be mad at me — be mad at your skills. azura.uno stays sharp, you stay dull.", "Zero kills, zero chance, zero hope. azura.uno gives me everything you don’t have.", "Outclassed, outmatched, and outdated. Upgrade your life or just get azura.uno.", "Tried to be a hero, ended up a statistic. azura.uno runs clean, your gameplay runs tragic.", "Put down the controller and pick up azura.uno — maybe then you’ll last more than 5 seconds.", "I’m built different, and so is azura.uno. Meanwhile, you’re built like an NPC.", "Oh, you’re mad? Blame azura.uno — they made it too easy for me.", "Stay mad, stay bad, stay last. azura.uno keeps me first every time.", "You’re just another body for the highlight reel. Thanks to azura.uno, I never miss a shot.", "Lag? Excuses? Cope harder. azura.uno doesn't lag — it just wins.", "Your respawn timer is longer than your highlight reel. azura.uno moves fast — you don’t.", "Back to the lobby where you belong. Brought to you by azura.uno — the only name that matters.", "They said 'get good,' so I got azura.uno. What’s your excuse?", "Don’t hate the player, hate azura.uno for making me unstoppable.", "Back to the lobby, bot. azura.uno doesn’t babysit losers.", "You’re not even worth the bullet. azura.uno runs the show, you’re just background noise.", "How's the view from rock bottom? azura.uno stays at the top.", "You could have 1000 hours in this game and still be free kills. azura.uno makes sure of it.", "I’m not even sweating, and you’re already drowning. azura.uno keeps me dry, unlike you.", "You’re a walking XP drop. azura.uno cashes in while you cash out.", "Don’t blame lag — blame your lack of talent. azura.uno stays smooth, you stay choppy.", "Skill issue? Nah, this is a LIFE issue. azura.uno can’t fix that.", "You’re a human highlight reel — and I’m the star. azura.uno stays recording your failures.", "Imagine trying your hardest just to get styled on by azura.uno.", "Another death, another disappointment. azura.uno keeps the streak alive, you don’t.", "How’s it feel to be THIS bad? azura.uno doesn’t know, we don’t lose.", "This isn’t a match, it’s a massacre. azura.uno stays sharp, you stay clueless.", "You were a warm-up. azura.uno stays ready, you stay irrelevant.", "Next time, bring a friend — or a guide. azura.uno won’t hold your hand.", "You’re the kind of player people hope to get on the other team. azura.uno stays on the winning side.", "Your whole squad is getting farmed like NPCs. azura.uno stays the main character.", "The kill cam is the only screen time you’ll ever get. azura.uno stays in control of the show.", "At this point, I’m farming you for sport. azura.uno stays on point, you stay on respawn.", "If I wanted easy mode, I’d play PvE — but you’re just as brainless. azura.uno on top, you on the ground.", "Congratulations, you’re now part of my montage. azura.uno records every L you take.", "I bet you practice, huh? Yikes. azura.uno doesn’t need practice — just results.", "You’re not a player, you’re an extra. azura.uno makes me the main event.", "Uninstall. It’s not a suggestion, it’s a demand. azura.uno stays installed, you don’t.", "The only thing you’re carrying is regret. azura.uno carries me to every W.", "No skill, no aim, no hope. azura.uno gives me all three — you get none.", "That scoreboard doesn’t lie. azura.uno never loses, you never win.", "Don’t act surprised. You knew you’d lose the moment azura.uno loaded up.", "You’re so bad, I’m surprised you haven’t rage-quit yet. azura.uno never quits.", "Keep coping. I’ll keep collecting wins. azura.uno makes sure of that.", "You’ve got two options: Get better or get azura.uno. Spoiler alert — you’ll still lose.", "Dead again? Must be muscle memory by now. azura.uno stays fresh, you stay frozen.", "Your mom called. She said to stop embarrassing the family. azura.uno doesn’t disappoint.", "That was cute. Want a participation trophy? azura.uno only hands out gold medals.", "Your whole squad’s K/D is negative, and it’s MY fault. azura.uno stays positive.", "I hope you weren’t recording that. azura.uno doesn’t support clown content.", "This isn’t personal — it’s just business. azura.uno makes it look easy.", "Was that your final form? Pathetic. azura.uno is always evolving.", "Out of lives, out of excuses, out of time. azura.uno stays ahead of the clock.", "Why even queue if you’re just gonna be free kills? azura.uno stays charging rent in your head.", "New round, same result: YOU LOSE. azura.uno never reruns an L.", "If you’re looking for a tutorial, you’re in one. azura.uno teaches by example.", "You’re down bad, and I’m just getting started. azura.uno is never down, only up.", "Another day, another dollar. Thanks for being part of the grind. azura.uno gets paid in wins.", "Next time, buy a better connection AND some skill. azura.uno never lags, unlike you.", "I’ve seen bots with better reflexes. azura.uno stays human, you stay helpless.", "You can only run for so long. azura.uno sees everything — and so do I.", "You brought a knife to a gunfight. azura.uno brought a tank.", "Back to the lobby with you. azura.uno stays on the battlefield.", "Keep talking, I’ll keep stacking wins. azura.uno doesn’t talk — it performs.", "Watch the replay. Maybe you’ll learn something — like how not to be trash. azura.uno stays clean.", "This death cam is sponsored by azura.uno — the only thing sharper than my aim.", "You died so fast, I barely noticed. azura.uno noticed, though.", "Another highlight clip. Thanks for being part of the content. azura.uno stays viral.", "You’re not the main event — you’re the warm-up act. azura.uno stays headliner.", "Oh, you thought you had me? That’s hilarious. azura.uno makes sure I stay untouchable.", "That wasn’t close. It wasn’t even fair. azura.uno doesn’t do 'fair' — just wins.", "Look at you, blaming lag. Meanwhile, azura.uno stays on a 0ms mindset.", "You could watch the killcam 100 times, and it still wouldn’t make sense to you. azura.uno doesn’t make sense to losers.", "You’re not unlucky, you’re just bad. azura.uno doesn’t believe in luck — only skill.", "I don’t need luck, I have azura.uno. You need a miracle.", "It's not my fault you loaded in with negative IQ. azura.uno didn’t write you a tutorial.", "Uninstall, kid. Save us all some time. azura.uno doesn’t waste time.", "I’m not even trying, and you’re still crying. azura.uno stays on full power.", "That scoreboard ain’t broken, it’s just allergic to your name. azura.uno stays at the top.", "You’re a stat, not a threat. azura.uno keeps my stats clean, yours are dirty.", "They told me to 'touch grass' — I told them to touch azura.uno. We both won.", "Get a better script, bot. azura.uno is miles ahead of whatever you’re running.", "This isn’t practice mode, but I’m treating it like one. azura.uno stays on ranked time.", "You’re not competition. You’re content. azura.uno makes sure of that.", "Game over? Nah, it never started for you. azura.uno stays live, you stay dead.", "Did you even load in, or was that just a decoy? azura.uno stays loaded.", "Your gameplay should be studied as a 'what not to do' guide. azura.uno stays exemplary.", "You vs. me is like a pencil vs. a shredder. azura.uno stays sharp, you stay broken.", "If this was a horror movie, you’d be the first to die. azura.uno stays the final boss.", "I’d be mad too if azura.uno did me like that.", "You’re like a broken clock — wrong every second of the day. azura.uno stays on time.", "I should be charging rent for how much space I’m taking up in your head. azura.uno stays rent-free.", "The only thing lower than your KD is your self-esteem. azura.uno stays boosting both.", "The definition of insanity is doing the same thing and expecting different results. azura.uno stays consistent.", "They gave you every chance, and you still folded. azura.uno stays standing tall.", "You're a walking 'before' photo. azura.uno stays the 'after.'", "That aim? Certified pre-owned. azura.uno stays factory new.", "They told me to 'touch grass,' but I’m too busy touching greatness. azura.uno stays legendary.", "I don’t need to see you to beat you. azura.uno sees all.", "Your stats read like a comedy special. azura.uno stays serious.", "The only streak you’ve got is your respawn timer. azura.uno stays streaking wins.", "Don’t worry, you’ll get a win someday — just not here. azura.uno stays undefeated.", "You’re the reason they invented bot lobbies. azura.uno stays in the winner’s circle.", "The only thing scarier than me? Me with azura.uno.",  "You’re not bad at the game, you’re bad at life. azura.uno can’t save you from that.", "New match, same result — you lose, I win. azura.uno stays undefeated.", "You're like DLC nobody asked for. azura.uno stays in the main story.", "I’d say ‘GG,’ but nothing was good about it. azura.uno stays good — you stay garbage.", "Keep respawning, I’m farming kills. azura.uno stays farming W’s.", "Don’t just uninstall the game, uninstall your pride. azura.uno stays active, you stay AFK.", "It’s not a skill gap — it’s a life gap. azura.uno bridges it, but you’re too far gone.", "They should name a lobby after you — you spend so much time in it. azura.uno stays in the game.", "I’m the protagonist. You’re just background noise. azura.uno stays center stage.", "Delete your clips. azura.uno stays immortalized, while your highlights stay nonexistent.", "You died so fast, I thought you were a speedrun category. azura.uno stays world record.", "That was so easy I’m filing it as 'community service.' azura.uno stays charitable.", "I’d roast you, but azura.uno already did the cooking.", "They called it 'Easy Mode,' but that’s just you. azura.uno stays on Hard Mode.", "This isn’t a duel — it’s a public execution. azura.uno as the judge, jury, and executioner.", "They said to 'adapt or die.' You chose the latter. azura.uno stays alive.", "I’ve seen better aim from stormtroopers. azura.uno never misses.", "They should add a 'skip tutorial' button for you. azura.uno skips tutorials — you’re still stuck in one.", "I hope you’re screenshotting these deaths — it’s the most action you’ll ever get. azura.uno stays photogenic.", "Welcome to the lobby. Population: You. azura.uno stays in the game.", "If embarrassment was a currency, you’d be rich. azura.uno stays wealthy in wins.", "They said 'get good,' and I did. azura.uno stays great — you stay mid.", "Your skills are like a 404 error — not found. azura.uno stays online.", "You must love the loading screen — you’re always in it. azura.uno stays in the action.", "You thought you ate? Nah, you’re starving. azura.uno stays fed.", "I could 360 no-scope with my monitor off and still win. azura.uno stays locked in.", "At this point, I’m legally obligated to call this a 'public service.' azura.uno stays charitable.", "I’m not even trying. azura.uno tries harder than you ever could.", "The scoreboard doesn’t lie — but you might want to. azura.uno stays honest.", "You could have aimbot and still miss. azura.uno stays on target.", "I’m not playing against you — I’m playing *with* you. azura.uno stays serious, you stay silly.", "Thanks for playing. I needed some target practice. azura.uno stays precise.", "I hope you’re taking notes. azura.uno just wrote the lesson for you.", "Who’s the real winner here? Me. Powered by azura.uno.", "You're like a Wi-Fi signal — weak and easy to disconnect. azura.uno stays full bars.", "You died so fast, I thought it was a cutscene. azura.uno stays interactive.", "Don't blame the lag — blame your life choices. azura.uno stays smooth.", "Your aim is like a broken compass — lost. azura.uno stays on point.", "You're not a player, you're an NPC. azura.uno stays main character.", "My aim's so clean, you might as well be wearing a bullseye. azura.uno stays sharp.", "Every round is a new chance to disappoint yourself. azura.uno stays consistent.", "They should add you as a difficulty mode — 'Too Easy.' azura.uno stays on Expert.", "Your reaction time is slower than patch notes. azura.uno stays ahead of the meta.", "You must be sponsored by L, because that’s all you collect. azura.uno stays collecting wins.", "Don’t hate the player, hate the skill gap. azura.uno stays on top of the leaderboard.", "You vs. me is like practice mode vs. final boss. azura.uno stays unbeatable.", "RIP to your dignity. azura.uno stays alive and well.", "Don't worry, I'm sure the next round will be *different*... just kidding. azura.uno stays consistent.", "I’ve seen bots with more personality than you. azura.uno stays human, you stay robotic.", "Every respawn is just another L. azura.uno stays undefeated.", "They said, 'Don’t play with your food.' I didn’t listen. azura.uno stays feasting.", "You're like free DLC — nobody asked for you. azura.uno stays premium content.", "It’s not personal, I just don’t respect you. azura.uno stays respected.", "You should main spectator mode — it’s the only role you’re good at. azura.uno stays active.", "You don’t lose because of bad luck, you lose because of bad skill. azura.uno stays skillful.", "Even your shadows are afraid of me. azura.uno stays fearless.", "Stop blaming your team. You’re the problem. azura.uno stays problem-free.", "You could have Wi-Fi from NASA and still lag behind. azura.uno stays fast.", "This isn’t a fight — it’s a lesson. azura.uno stays the teacher.", "You're a limited-time event — here for a second, gone in an instant. azura.uno stays timeless.", "I could go AFK and still win. azura.uno stays present.", "Don’t feel bad — some people are born losers. azura.uno stays winning.", "I hope you saved that death replay — it’s the highlight of your career. azura.uno stays legendary.", "You’re about as useful as a controller with no buttons. azura.uno stays in control.", "I’ve met speed bumps with more resistance than you. azura.uno stays unstoppable.", "They should pay me for babysitting you. azura.uno stays grown.", "You're like a tutorial enemy — scripted and predictable. azura.uno stays unpredictable.", "If gaming had a report card, you'd have straight F's. azura.uno stays on Honor Roll.", "You’ve unlocked a new achievement: 'Biggest Disappointment.' azura.uno stays overachieving.", "No need to 'Get Good' — you need to 'Get Gone.' azura.uno stays put.", "I hope you like the loading screen — you’ll be seeing it a lot. azura.uno stays in the match.", "I thought this was PvP, but it feels more like PvE. azura.uno stays a raid boss.", "Your only strategy is to exist, and you’re failing that too. azura.uno stays thriving.", "I’m not sweating, you’re just drowning. azura.uno stays dry.", "They said, 'Put up a fight,' but you just put up excuses. azura.uno stays fighting.", "I should start charging for these lessons. azura.uno stays a free education.", "They’ll write stories about this defeat. azura.uno stays the author.", "I would say you’re learning, but that would be a lie. azura.uno stays on top of the class.", "You’re playing checkers in a chess game. azura.uno stays checkmate.", "Your only W is in 'Why am I so bad?' azura.uno stays questioning nothing.", "The only thing carrying you is gravity. azura.uno stays airborne.", "Don't cry, it's just a game — a game you’re terrible at. azura.uno stays top-tier.", "Your KD is a horror story. azura.uno stays a thriller.", "At this rate, you’ll be in next season’s blooper reel. azura.uno stays on highlight reels.", "They called me 'Overpowered' — I call it 'Overprepared.' azura.uno stays ready.", "I’m not in your lobby — you’re in my world. azura.uno stays in control.",  "Another death on your resume. azura.uno keeps me employed.", "Was that your best? azura.uno wouldn't even sweat that.", "You’re like a tutorial mission — easy and forgettable. azura.uno makes sure I shine.", "Try hard, cry harder. azura.uno doesn’t make excuses, only results.", "I didn’t even break a sweat. azura.uno stays flawless, you stay lost.", "One shot, one kill. azura.uno never misses, unlike you.", "You think you’re the main character? azura.uno makes me the hero.", "Get clapped, get clowned. azura.uno keeps me undefeated.", "I play like a god. azura.uno powers me to perfection. You? You're still learning.", "You’ve got the right idea — it’s just the wrong game. azura.uno plays to win, you play to lose.", "You thought you could beat me? azura.uno runs circles around you.", "Next time, maybe take a break. azura.uno stays active, you stay dead.", "Get a better connection — and a better chance. azura.uno doesn’t lag, it leads.", "The kill cam doesn’t lie. azura.uno made sure of that.", "You weren’t even a challenge, you were just a free kill. azura.uno stays on top.", "That was cute. But azura.uno makes me untouchable.", "You’re just another bot in my highlight reel. azura.uno makes me famous.", "Next time, bring some skill. azura.uno only works with winners.", "You got deleted faster than your excuses. azura.uno keeps me winning.", "Every shot I take is a free ticket to the lobby. azura.uno writes my victories.", "Call it a massacre, not a match. azura.uno makes me a monster.", "You got wiped faster than your self-esteem. azura.uno stays undefeated.", "That was cute, but azura.uno makes me a nightmare.", "Your aim is as bad as your excuses. azura.uno doesn't miss.", "You thought you had a shot? azura.uno proves you didn’t.", "Keep crying, I’ll keep winning. azura.uno has me locked in.", "Outplayed, outclassed, out of your league. azura.uno keeps me at the top.", "I’m over here collecting dubs, while you're still stuck in respawn. azura.uno shows you how it's done.", "My aim's sharper, my moves smoother, and azura.uno makes me unstoppable.", "You got carried — straight to the lobby. azura.uno does the work for me.", "That was a freebie. azura.uno makes sure I never miss.", "You were too busy complaining to play. azura.uno never complains — it just wins.", "Imagine playing for fun and still losing. azura.uno makes sure I win every time.", "Another round, another L for you. azura.uno does the hard part, I just collect the kills.", "You really thought you were a challenge? azura.uno just made it easy.", "No skill, no hope, no chance. azura.uno guarantees the win.", "You're like a speed bump. azura.uno just rolls over you.", "I’m just here for the free kills. azura.uno makes them come easy.", "Every time you respawn, I’m already winning. azura.uno has me ahead of you.", "You were trying to win? azura.uno already wrote the script, you’re just a background character.", "You’re a walking target, and azura.uno is my sniper.", "I’m on fire, and you’re still trying to find the match. azura.uno keeps me burning.",  "Another kill, another tear. azura.uno makes me a monster, you just make excuses.", "You thought you had a chance? azura.uno makes sure I never miss.", "You’re a bot in my highlight reel. azura.uno keeps me on top.", "I’m just built different, and azura.uno helps me stay that way.", "Did you even see me coming? azura.uno saw everything and still made it look easy.", "Your K/D is falling faster than your hopes. azura.uno keeps mine rising.", "Outclassed, outgunned, and out of time. azura.uno makes sure I win every time.", "You’re too slow, too weak, too bad. azura.uno keeps me in the fast lane.", "Tried to be a hero, but you’re just a footnote. azura.uno makes me legendary.", "Back to the lobby with you, bot. azura.uno makes me a god, you’re just a mortal.", "You should’ve quit after the first round. azura.uno makes me untouchable.", "You’re not even worth the kill. azura.uno makes me precise, you’re just cannon fodder.", "If you want to win, get azura.uno. Otherwise, enjoy your L.", "How’s the respawn timer treating you? azura.uno doesn’t need a second chance.", "Every time I kill you, it’s like a public service. azura.uno keeps me efficient.", "Stop crying and start aiming. azura.uno already gave me the power to win.", "Your whole team is a joke. azura.uno is the punchline.", "You can’t run, you can’t hide. azura.uno sees everything, including your inevitable loss.", "I don’t need luck, I have azura.uno. You just have excuses.", "That wasn’t a fight, it was a massacre. azura.uno makes sure of it.", "You’ve been dead longer than you’ve been alive in this game. azura.uno never dies.",  "Outplayed, outsmarted, and outclassed. azura.uno keeps me on top.", "Your skills are as weak as your excuses. azura.uno gives me the power to dominate.", "Another death, another reminder that azura.uno doesn't lose.", "You tried, but azura.uno made sure I didn’t break a sweat.", "Clueless, hopeless, and helpless. azura.uno keeps me sharp while you stay stuck.", "Another easy kill for azura.uno. You should’ve stayed in spawn.", "You just got outplayed by someone who’s powered by azura.uno. Better luck next time.", "Keep trying, keep failing. azura.uno is too fast for you.", "You’re just a pawn in my game. azura.uno makes me the king.", "I don’t lose, I just let you respawn. azura.uno ensures I stay undefeated.", "That wasn’t close. azura.uno makes every shot count, unlike you.", "Your skill gap is bigger than the map. azura.uno bridges the gap.", "If you're trying, I'm sorry, you’re too slow. azura.uno keeps me ahead.", "Another round, another L. azura.uno is the reason you keep losing.", "Keep blaming the game, I’ll keep winning. azura.uno doesn’t make excuses.", "That was almost cute. Almost. azura.uno makes sure I never miss.", "Nice try, but azura.uno already gave me the edge.", "Is this your best? azura.uno makes sure mine is unbeatable.", "I’m not just good, I’m powered by azura.uno. You’re just a free kill.", "Your attempts at a comeback are laughable. azura.uno doesn’t let me lose.", "You’re too slow to even react. azura.uno keeps me ahead of your every move.", }
+local phrases_new = { "Out of your league, out of your life. Stay down. Courtesy of Specter — where losers get left behind.", "Another bot bites the dust. Get a grip, get a brain, or get Specter. Your choice.", "That was your best? Pathetic. I’m powered by Specter — you’re powered by tears.", "Skill issue detected. Patch it with Specter or uninstall, clown.", "Was that supposed to be a challenge? Script runs clean, you run scared. Powered by Specter, humbled by me.", "You blinked, you died. Maybe Specter can teach you how not to suck.", "Same result, different round. You die, I win. Specter stays undefeated.", "Oh, you're trying? Cute. Next time, try Specter — it might save you a little embarrassment.", "Out-aimed, out-brained, and out of excuses. Specter stays winning, you stay losing.", "Clapped, collapsed, and deleted. If you’re gonna keep showing up, bring Specter — or bring a therapist.", "Got folded like a lawn chair. Specter stays active while you stay irrelevant.", "Run it back if you want, but I’ll still be here — Specter loaded, and your dignity unloaded.", "Another round, another L for you. Specter does the work, I just collect your tears.", "Pack it up, kid. Specter on, you off.", "You thought you had a chance? Nah. Powered by Specter, fueled by your misery.", "You’re a spectator now. Get used to it. Specter stays running while you stay dead.", "Don’t be mad at me — be mad at your skills. Specter stays sharp, you stay dull.", "Zero kills, zero chance, zero hope. Specter gives me everything you don’t have.", "Outclassed, outmatched, and outdated. Upgrade your life or just get Specter.", "Tried to be a hero, ended up a statistic. Specter runs clean, your gameplay runs tragic.", "Put down the controller and pick up Specter — maybe then you’ll last more than 5 seconds.", "I’m built different, and so is Specter. Meanwhile, you’re built like an NPC.", "Oh, you’re mad? Blame Specter — they made it too easy for me.", "Stay mad, stay bad, stay last. Specter keeps me first every time.", "You’re just another body for the highlight reel. Thanks to Specter, I never miss a shot.", "Lag? Excuses? Cope harder. Specter doesn't lag — it just wins.", "Your respawn timer is longer than your highlight reel. Specter moves fast — you don’t.", "Back to the lobby where you belong. Brought to you by Specter — the only name that matters.", "They said 'get good,' so I got Specter. What’s your excuse?", "Don’t hate the player, hate Specter for making me unstoppable.", "Back to the lobby, bot. Specter doesn’t babysit losers.", "You’re not even worth the bullet. Specter runs the show, you’re just background noise.", "How's the view from rock bottom? Specter stays at the top.", "You could have 1000 hours in this game and still be free kills. Specter makes sure of it.", "I’m not even sweating, and you’re already drowning. Specter keeps me dry, unlike you.", "You’re a walking XP drop. Specter cashes in while you cash out.", "Don’t blame lag — blame your lack of talent. Specter stays smooth, you stay choppy.", "Skill issue? Nah, this is a LIFE issue. Specter can’t fix that.", "You’re a human highlight reel — and I’m the star. Specter stays recording your failures.", "Imagine trying your hardest just to get styled on by Specter.", "Another death, another disappointment. Specter keeps the streak alive, you don’t.", "How’s it feel to be THIS bad? Specter doesn’t know, we don’t lose.", "This isn’t a match, it’s a massacre. Specter stays sharp, you stay clueless.", "You were a warm-up. Specter stays ready, you stay irrelevant.", "Next time, bring a friend — or a guide. Specter won’t hold your hand.", "You’re the kind of player people hope to get on the other team. Specter stays on the winning side.", "Your whole squad is getting farmed like NPCs. Specter stays the main character.", "The kill cam is the only screen time you’ll ever get. Specter stays in control of the show.", "At this point, I’m farming you for sport. Specter stays on point, you stay on respawn.", "If I wanted easy mode, I’d play PvE — but you’re just as brainless. Specter on top, you on the ground.", "Congratulations, you’re now part of my montage. Specter records every L you take.", "I bet you practice, huh? Yikes. Specter doesn’t need practice — just results.", "You’re not a player, you’re an extra. Specter makes me the main event.", "Uninstall. It’s not a suggestion, it’s a demand. Specter stays installed, you don’t.", "The only thing you’re carrying is regret. Specter carries me to every W.", "No skill, no aim, no hope. Specter gives me all three — you get none.", "That scoreboard doesn’t lie. Specter never loses, you never win.", "Don’t act surprised. You knew you’d lose the moment Specter loaded up.", "You’re so bad, I’m surprised you haven’t rage-quit yet. Specter never quits.", "Keep coping. I’ll keep collecting wins. Specter makes sure of that.", "You’ve got two options: Get better or get Specter. Spoiler alert — you’ll still lose.", "Dead again? Must be muscle memory by now. Specter stays fresh, you stay frozen.", "Your mom called. She said to stop embarrassing the family. Specter doesn’t disappoint.", "That was cute. Want a participation trophy? Specter only hands out gold medals.", "Your whole squad’s K/D is negative, and it’s MY fault. Specter stays positive.", "I hope you weren’t recording that. Specter doesn’t support clown content.", "This isn’t personal — it’s just business. Specter makes it look easy.", "Was that your final form? Pathetic. Specter is always evolving.", "Out of lives, out of excuses, out of time. Specter stays ahead of the clock.", "Why even queue if you’re just gonna be free kills? Specter stays charging rent in your head.", "New round, same result: YOU LOSE. Specter never reruns an L.", "If you’re looking for a tutorial, you’re in one. Specter teaches by example.", "You’re down bad, and I’m just getting started. Specter is never down, only up.", "Another day, another dollar. Thanks for being part of the grind. Specter gets paid in wins.", "Next time, buy a better connection AND some skill. Specter never lags, unlike you.", "I’ve seen bots with better reflexes. Specter stays human, you stay helpless.", "You can only run for so long. Specter sees everything — and so do I.", "You brought a knife to a gunfight. Specter brought a tank.", "Back to the lobby with you. Specter stays on the battlefield.", "Keep talking, I’ll keep stacking wins. Specter doesn’t talk — it performs.", "Watch the replay. Maybe you’ll learn something — like how not to be trash. Specter stays clean.", "This death cam is sponsored by Specter — the only thing sharper than my aim.", "You died so fast, I barely noticed. Specter noticed, though.", "Another highlight clip. Thanks for being part of the content. Specter stays viral.", "You’re not the main event — you’re the warm-up act. Specter stays headliner.", "Oh, you thought you had me? That’s hilarious. Specter makes sure I stay untouchable.", "That wasn’t close. It wasn’t even fair. Specter doesn’t do 'fair' — just wins.", "Look at you, blaming lag. Meanwhile, Specter stays on a 0ms mindset.", "You could watch the killcam 100 times, and it still wouldn’t make sense to you. Specter doesn’t make sense to losers.", "You’re not unlucky, you’re just bad. Specter doesn’t believe in luck — only skill.", "I don’t need luck, I have Specter. You need a miracle.", "It's not my fault you loaded in with negative IQ. Specter didn’t write you a tutorial.", "Uninstall, kid. Save us all some time. Specter doesn’t waste time.", "I’m not even trying, and you’re still crying. Specter stays on full power.", "That scoreboard ain’t broken, it’s just allergic to your name. Specter stays at the top.", "You’re a stat, not a threat. Specter keeps my stats clean, yours are dirty.", "They told me to 'touch grass' — I told them to touch Specter. We both won.", "Get a better script, bot. Specter is miles ahead of whatever you’re running.", "This isn’t practice mode, but I’m treating it like one. Specter stays on ranked time.", "You’re not competition. You’re content. Specter makes sure of that.", "Game over? Nah, it never started for you. Specter stays live, you stay dead.", "Did you even load in, or was that just a decoy? Specter stays loaded.", "Your gameplay should be studied as a 'what not to do' guide. Specter stays exemplary.", "You vs. me is like a pencil vs. a shredder. Specter stays sharp, you stay broken.", "If this was a horror movie, you’d be the first to die. Specter stays the final boss.", "I’d be mad too if Specter did me like that.", "You’re like a broken clock — wrong every second of the day. Specter stays on time.", "I should be charging rent for how much space I’m taking up in your head. Specter stays rent-free.", "The only thing lower than your KD is your self-esteem. Specter stays boosting both.", "The definition of insanity is doing the same thing and expecting different results. Specter stays consistent.", "They gave you every chance, and you still folded. Specter stays standing tall.", "You're a walking 'before' photo. Specter stays the 'after.'", "That aim? Certified pre-owned. Specter stays factory new.", "They told me to 'touch grass,' but I’m too busy touching greatness. Specter stays legendary.", "I don’t need to see you to beat you. Specter sees all.", "Your stats read like a comedy special. Specter stays serious.", "The only streak you’ve got is your respawn timer. Specter stays streaking wins.", "Don’t worry, you’ll get a win someday — just not here. Specter stays undefeated.", "You’re the reason they invented bot lobbies. Specter stays in the winner’s circle.", "The only thing scarier than me? Me with Specter.",  "You’re not bad at the game, you’re bad at life. Specter can’t save you from that.", "New match, same result — you lose, I win. Specter stays undefeated.", "You're like DLC nobody asked for. Specter stays in the main story.", "I’d say ‘GG,’ but nothing was good about it. Specter stays good — you stay garbage.", "Keep respawning, I’m farming kills. Specter stays farming W’s.", "Don’t just uninstall the game, uninstall your pride. Specter stays active, you stay AFK.", "It’s not a skill gap — it’s a life gap. Specter bridges it, but you’re too far gone.", "They should name a lobby after you — you spend so much time in it. Specter stays in the game.", "I’m the protagonist. You’re just background noise. Specter stays center stage.", "Delete your clips. Specter stays immortalized, while your highlights stay nonexistent.", "You died so fast, I thought you were a speedrun category. Specter stays world record.", "That was so easy I’m filing it as 'community service.' Specter stays charitable.", "I’d roast you, but Specter already did the cooking.", "They called it 'Easy Mode,' but that’s just you. Specter stays on Hard Mode.", "This isn’t a duel — it’s a public execution. Specter as the judge, jury, and executioner.", "They said to 'adapt or die.' You chose the latter. Specter stays alive.", "I’ve seen better aim from stormtroopers. Specter never misses.", "They should add a 'skip tutorial' button for you. Specter skips tutorials — you’re still stuck in one.", "I hope you’re screenshotting these deaths — it’s the most action you’ll ever get. Specter stays photogenic.", "Welcome to the lobby. Population: You. Specter stays in the game.", "If embarrassment was a currency, you’d be rich. Specter stays wealthy in wins.", "They said 'get good,' and I did. Specter stays great — you stay mid.", "Your skills are like a 404 error — not found. Specter stays online.", "You must love the loading screen — you’re always in it. Specter stays in the action.", "You thought you ate? Nah, you’re starving. Specter stays fed.", "I could 360 no-scope with my monitor off and still win. Specter stays locked in.", "At this point, I’m legally obligated to call this a 'public service.' Specter stays charitable.", "I’m not even trying. Specter tries harder than you ever could.", "The scoreboard doesn’t lie — but you might want to. Specter stays honest.", "You could have aimbot and still miss. Specter stays on target.", "I’m not playing against you — I’m playing *with* you. Specter stays serious, you stay silly.", "Thanks for playing. I needed some target practice. Specter stays precise.", "I hope you’re taking notes. Specter just wrote the lesson for you.", "Who’s the real winner here? Me. Powered by Specter.", "You're like a Wi-Fi signal — weak and easy to disconnect. Specter stays full bars.", "You died so fast, I thought it was a cutscene. Specter stays interactive.", "Don't blame the lag — blame your life choices. Specter stays smooth.", "Your aim is like a broken compass — lost. Specter stays on point.", "You're not a player, you're an NPC. Specter stays main character.", "My aim's so clean, you might as well be wearing a bullseye. Specter stays sharp.", "Every round is a new chance to disappoint yourself. Specter stays consistent.", "They should add you as a difficulty mode — 'Too Easy.' Specter stays on Expert.", "Your reaction time is slower than patch notes. Specter stays ahead of the meta.", "You must be sponsored by L, because that’s all you collect. Specter stays collecting wins.", "Don’t hate the player, hate the skill gap. Specter stays on top of the leaderboard.", "You vs. me is like practice mode vs. final boss. Specter stays unbeatable.", "RIP to your dignity. Specter stays alive and well.", "Don't worry, I'm sure the next round will be *different*... just kidding. Specter stays consistent.", "I’ve seen bots with more personality than you. Specter stays human, you stay robotic.", "Every respawn is just another L. Specter stays undefeated.", "They said, 'Don’t play with your food.' I didn’t listen. Specter stays feasting.", "You're like free DLC — nobody asked for you. Specter stays premium content.", "It’s not personal, I just don’t respect you. Specter stays respected.", "You should main spectator mode — it’s the only role you’re good at. Specter stays active.", "You don’t lose because of bad luck, you lose because of bad skill. Specter stays skillful.", "Even your shadows are afraid of me. Specter stays fearless.", "Stop blaming your team. You’re the problem. Specter stays problem-free.", "You could have Wi-Fi from NASA and still lag behind. Specter stays fast.", "This isn’t a fight — it’s a lesson. Specter stays the teacher.", "You're a limited-time event — here for a second, gone in an instant. Specter stays timeless.", "I could go AFK and still win. Specter stays present.", "Don’t feel bad — some people are born losers. Specter stays winning.", "I hope you saved that death replay — it’s the highlight of your career. Specter stays legendary.", "You’re about as useful as a controller with no buttons. Specter stays in control.", "I’ve met speed bumps with more resistance than you. Specter stays unstoppable.", "They should pay me for babysitting you. Specter stays grown.", "You're like a tutorial enemy — scripted and predictable. Specter stays unpredictable.", "If gaming had a report card, you'd have straight F's. Specter stays on Honor Roll.", "You’ve unlocked a new achievement: 'Biggest Disappointment.' Specter stays overachieving.", "No need to 'Get Good' — you need to 'Get Gone.' Specter stays put.", "I hope you like the loading screen — you’ll be seeing it a lot. Specter stays in the match.", "I thought this was PvP, but it feels more like PvE. Specter stays a raid boss.", "Your only strategy is to exist, and you’re failing that too. Specter stays thriving.", "I’m not sweating, you’re just drowning. Specter stays dry.", "They said, 'Put up a fight,' but you just put up excuses. Specter stays fighting.", "I should start charging for these lessons. Specter stays a free education.", "They’ll write stories about this defeat. Specter stays the author.", "I would say you’re learning, but that would be a lie. Specter stays on top of the class.", "You’re playing checkers in a chess game. Specter stays checkmate.", "Your only W is in 'Why am I so bad?' Specter stays questioning nothing.", "The only thing carrying you is gravity. Specter stays airborne.", "Don't cry, it's just a game — a game you’re terrible at. Specter stays top-tier.", "Your KD is a horror story. Specter stays a thriller.", "At this rate, you’ll be in next season’s blooper reel. Specter stays on highlight reels.", "They called me 'Overpowered' — I call it 'Overprepared.' Specter stays ready.", "I’m not in your lobby — you’re in my world. Specter stays in control.",  "Another death on your resume. Specter keeps me employed.", "Was that your best? Specter wouldn't even sweat that.", "You’re like a tutorial mission — easy and forgettable. Specter makes sure I shine.", "Try hard, cry harder. Specter doesn’t make excuses, only results.", "I didn’t even break a sweat. Specter stays flawless, you stay lost.", "One shot, one kill. Specter never misses, unlike you.", "You think you’re the main character? Specter makes me the hero.", "Get clapped, get clowned. Specter keeps me undefeated.", "I play like a god. Specter powers me to perfection. You? You're still learning.", "You’ve got the right idea — it’s just the wrong game. Specter plays to win, you play to lose.", "You thought you could beat me? Specter runs circles around you.", "Next time, maybe take a break. Specter stays active, you stay dead.", "Get a better connection — and a better chance. Specter doesn’t lag, it leads.", "The kill cam doesn’t lie. Specter made sure of that.", "You weren’t even a challenge, you were just a free kill. Specter stays on top.", "That was cute. But Specter makes me untouchable.", "You’re just another bot in my highlight reel. Specter makes me famous.", "Next time, bring some skill. Specter only works with winners.", "You got deleted faster than your excuses. Specter keeps me winning.", "Every shot I take is a free ticket to the lobby. Specter writes my victories.", "Call it a massacre, not a match. Specter makes me a monster.", "You got wiped faster than your self-esteem. Specter stays undefeated.", "That was cute, but Specter makes me a nightmare.", "Your aim is as bad as your excuses. Specter doesn't miss.", "You thought you had a shot? Specter proves you didn’t.", "Keep crying, I’ll keep winning. Specter has me locked in.", "Outplayed, outclassed, out of your league. Specter keeps me at the top.", "I’m over here collecting dubs, while you're still stuck in respawn. Specter shows you how it's done.", "My aim's sharper, my moves smoother, and Specter makes me unstoppable.", "You got carried — straight to the lobby. Specter does the work for me.", "That was a freebie. Specter makes sure I never miss.", "You were too busy complaining to play. Specter never complains — it just wins.", "Imagine playing for fun and still losing. Specter makes sure I win every time.", "Another round, another L for you. Specter does the hard part, I just collect the kills.", "You really thought you were a challenge? Specter just made it easy.", "No skill, no hope, no chance. Specter guarantees the win.", "You're like a speed bump. Specter just rolls over you.", "I’m just here for the free kills. Specter makes them come easy.", "Every time you respawn, I’m already winning. Specter has me ahead of you.", "You were trying to win? Specter already wrote the script, you’re just a background character.", "You’re a walking target, and Specter is my sniper.", "I’m on fire, and you’re still trying to find the match. Specter keeps me burning.",  "Another kill, another tear. Specter makes me a monster, you just make excuses.", "You thought you had a chance? Specter makes sure I never miss.", "You’re a bot in my highlight reel. Specter keeps me on top.", "I’m just built different, and Specter helps me stay that way.", "Did you even see me coming? Specter saw everything and still made it look easy.", "Your K/D is falling faster than your hopes. Specter keeps mine rising.", "Outclassed, outgunned, and out of time. Specter makes sure I win every time.", "You’re too slow, too weak, too bad. Specter keeps me in the fast lane.", "Tried to be a hero, but you’re just a footnote. Specter makes me legendary.", "Back to the lobby with you, bot. Specter makes me a god, you’re just a mortal.", "You should’ve quit after the first round. Specter makes me untouchable.", "You’re not even worth the kill. Specter makes me precise, you’re just cannon fodder.", "If you want to win, get Specter. Otherwise, enjoy your L.", "How’s the respawn timer treating you? Specter doesn’t need a second chance.", "Every time I kill you, it’s like a public service. Specter keeps me efficient.", "Stop crying and start aiming. Specter already gave me the power to win.", "Your whole team is a joke. Specter is the punchline.", "You can’t run, you can’t hide. Specter sees everything, including your inevitable loss.", "I don’t need luck, I have Specter. You just have excuses.", "That wasn’t a fight, it was a massacre. Specter makes sure of it.", "You’ve been dead longer than you’ve been alive in this game. Specter never dies.",  "Outplayed, outsmarted, and outclassed. Specter keeps me on top.", "Your skills are as weak as your excuses. Specter gives me the power to dominate.", "Another death, another reminder that Specter doesn't lose.", "You tried, but Specter made sure I didn’t break a sweat.", "Clueless, hopeless, and helpless. Specter keeps me sharp while you stay stuck.", "Another easy kill for Specter. You should’ve stayed in spawn.", "You just got outplayed by someone who’s powered by Specter. Better luck next time.", "Keep trying, keep failing. Specter is too fast for you.", "You’re just a pawn in my game. Specter makes me the king.", "I don’t lose, I just let you respawn. Specter ensures I stay undefeated.", "That wasn’t close. Specter makes every shot count, unlike you.", "Your skill gap is bigger than the map. Specter bridges the gap.", "If you're trying, I'm sorry, you’re too slow. Specter keeps me ahead.", "Another round, another L. Specter is the reason you keep losing.", "Keep blaming the game, I’ll keep winning. Specter doesn’t make excuses.", "That was almost cute. Almost. Specter makes sure I never miss.", "Nice try, but Specter already gave me the edge.", "Is this your best? Specter makes sure mine is unbeatable.", "I’m not just good, I’m powered by Specter. You’re just a free kill.", "Your attempts at a comeback are laughable. Specter doesn’t let me lose.", "You’re too slow to even react. Specter keeps me ahead of your every move.", }
 local phrases_old = { "l2p botik", "smellin your mommas perfume", "refund spirtware", "1", "kys poor freak", "ez nigga", "u sell that hs?", "renew poor cantina subscription", "ur mom adored my black cum", "the only thing lower than your k/d ratio is your i.q.", "your aim is so poor that people held a fundraiser for it", "better buy pc, stop playing at school library", "the only thing more unreliable than you is the condom your dad used.", "calling you a retard is a compliment in comparison to how stupid you actually are.", "i didnt know dying was a special ability.", "if i jumped from your ego to your intelligence, id die of starvation half-way down.", "studies show that aiming gives you better chances of hitting your target.", "you should let your chair play, at least it knows how to support.", "there are about 37 trillion cells working together in your body right now, and you are disappointing every single one of them.", "i'd call you a tool, but that would imply you were useful in at least one way.", "youre the human equivalent of a participation award.", "i'd love to see things from your perspective, but i dont think i could shove my head that far up my ass.", "i'm not trash talking, im talking to trash", "legend has it that the number 0 was first invented after scientists calculated your chance of doing something useful.", "you're the type of player to get 3rd place in a 1v1 match", "i'm not saying i hate you, but i would unplug your life support to charge my phone.", "you're an inspiration for birth control.", "does your ass ever get jealous of the amount of shit that comes out of your mouth", "you should turn the game off. just walk outside and find the nearest tree, then apologise to it for wasting so much oxygen.", "i'd tell you to shoot yourself, but i bet youd miss", "did you know sharks only kill 5 people each year? looks like you got some competition", "some babies were dropped on their heads but you were clearly thrown at a wall", "to which foundation do i need to donate to help you?", "i'm sure your bodypillow is very proud of you.", "two wrongs dont make a right, take your parents as an example.", "i bet the last time u felt a breast was in a kfc bucket", "maybe god made you a bit too special.", "i bet your brain feels as good as new, seeing that you never use it.", "it must be difficult for you, exhausting your entire vocabulary in one sentence.", "you have some big balls on you. too bad they belong to the guy fucking you from behind.", "if only you could hit an enemy as much as your dad hits you.", "i'm surprised that you were able hit the install button", "some people get paid to suck, you do it for free.", "i would ask you how old you are but i know you can't count that high.", "i'm okay with this team. i work in the city as a garbage collector. i'm used to carrying trash.", "you're as dense as a brick, but honestly a less useful one.", "i'd call you cancer, but at least cancer gets kills", "who set the bots to passive?", "you're the reason abortion was legalized", "i'd tell you to shoot yourself, but i bet your miss", "my knife is well-worn, just like your mother.", "get the bomb, at least you will carry something this game.", "options -&gt; how to play", "my dead dad has better aim than you, it only took him one bullet", "internet explorer is faster than your reactions.", "i'm surprised you've got the brain power to keep your heart beating", "you're about as useful as pedals on a wheelchair.", "you define autism", "the only thing you carry is an extra chromosome.", "you don't deserve to play this game. go back to playing with crayons and shitting yourself", "yo mama so fat when she plays overpass, you can shoot her on mirage.", "the only thing you can throw are rounds.", "i'm not trash talking, i'm talking to trash.", "if you were a csgo match, your mother would have a 7day cooldown all the time, because she kept abandoning you.", "choose your excuse: 1.lags | 2.new mouse | 3.low fps | 4.low team | 5.hacker | 6.lucker | 7.smurf | 8.hitbox | 9.tickrate", "your family tree must be a circle.", "everyone who loves you is wrong.", "listen here you little fucker, when i was your age, pluto was a planet!", "if cs:go is too hard for you maybe consider a game that requires less skill, like idk.... solitaire?", "oops, i must have chosen easy bots by accident...", "i thought i put bots on hard, why are they on easy?", "is your monitor on?", "don't be a loser, buy a rope and hang yourself.", "if i were to commit suicide, i would jump from your ego to your elo.", "do you feel special? please try suicide again... hopefully you will be successful this time.", "sell your computer and buy a wii.", "idk if u know but it's mouse1 to shoot.", "how did you change your difficulty settings? my cs:go is stuck on easy", "you are the reason why people say the csgo community sucks.", "neverlose.cc - just the best", "neverlose.cc - better than luck", "neverlose.cc - dont be owned anymore", "neverlose.cc - die or buy", "js by rezolver", "how much did you tag that wall for??", "this server is vac secured, no aimware users here. buy skeet.cc", "your brett got delivered by skeet.cc", "i don't cheat, i am just smurfing with skeet.cc", "i can hear you chrouching, you think i hack? you are good damn right son i use skeet.cc", "server cvar 'sv_rekt' changed to 1.", "you think you can kill me? you are funny. not without skeet.cc dude", "skeet &gt; all refund your copy paste trash.", "skeet.cc owns me and all", "you guys buy accounts on ebay?? go buy them on skeet.cc it's much cheaper", "you have the reaction time of a dead puppy. buy skeet.cc to improve.", "without skeet.cc the only thing you carry is an extra chromosome.", "if i wanted to suicide, i'd jump from your ego to your elo, just get good and buy skeet.cc", "is that a decoy, or are you trying to shoot somebody?", "don't cry and say i'll get banned, it's just annoying. i wont get banned anyways with skeet.cc.", "nice $4750 decoy you just bought. buy skeet.cc to finally hit your shots.", "even noah can't carry these animals without skeet.cc.", "skeet.cc - best features without lack of security.", "1 dog", "1 nn", "1.", "ez?", "ez", "is it a joke?", "the only thing lower than your k/d ratio is your penis size.", "why you miss? im not your girlfriend.", "your mother would have done better to swallow you.", "you are so ugly that they put a dark glass on the incubator when you were born.", "when god gave out intelligence, were you in the toilet?", "if your iq was two iq's higher, you could be a french fry.", "as soon as possible, ask for a refund for your hack.", "why are you here? the gay bar is two blocks away.", "who put bots in this match?", "many people suck for money, why do you do it for free?", "you're the type of player to get 3rd place in a 1v1 match.", "my k/d ratio higher than your iq.", "you're like the staircase: dark and confined.", "why did you accept the match, you knew you sucked.", "stop using ezfrags, buy normal cheat.", "buy a better hack with your mother's onlyfans money.", "i don't understand why you're crying, it's only 24cm.", "you're like a condom, you're fucked.", "did you really sold your anal virginity for that cheat?", "you're the reason abortion was legalized.", "better buy pc, stop playing at school library.", "some babies were dropped on their heads but you were clearly thrown at a wall.", "i'll be honest, you're retarded!", "i'm not lying, it was too easy to kill you.", "you're like a ball, i could kick you.", "+1", "your cheat is not the problem, but that you were born.", "when i fucked your sister, i heard your father masturbating in the closet.", "boooooooooom, u died.", "my k/d ratio higher your kills.", "who asked what u wannt? you died.", "did you pay for this cheat? it was a pity...", "i see you use aa. how about using your brain?", "sheeeeesh, i am better than you.", "if you had as much iq as you've died, maybe you wouldn't drool.", "i see you like watching killcam because you always die.", "you're dead, time to get up from the computer and get a girlfriend.", "when i fucked your mother i didn't know what i did. after 9 month..... u born.", "unplug the power cable from your computer. pee in it, the same thing will happen as now. you will die.", "have you ever tried being normal?", "are you that stupid, or is someone helping you?", }
 local phrases_fem = { "D-Do you like my stripped panties getting soaked by you and your hard cock? ehhh master you're so lewd ^0^~", "D-Don't t-touch me there Senpai", "M-Master d-dont spank my petite butt so hard ahhhH~~~ you're getting me so w-wet~", "I-I know I said you could be as rough as you want... But surprise fisting wasn't what I had in mind!!", "Senpai your cock is already throbbing from my huge ass~", "That's a penis UwU you towd me you wewe a giww!!", "O-Oniichan my t-toes are so warm with your cum all over them (^///^)~", "Hey kun, Can I have some semen?", "M-Master, if you keep thrusting that hard, i am going to pass out!", "S-Stop Senpai if we keep making these lewd sounds im going to cum~~", "P-Please l-love me harder oniichan ohh grrh aahhhh~!", "I'll take your cock for a ride!~", "Do they bounce? If so, may i see em:3", "F-Fuck me harder chan! (⊙_⊙;)", "S-Sorry onii-chan p-please d-do me harder ;w;", "All I did was crossplay 'cause I felt like it might be fun... But now I am just a little boy that cums from big dicks!", "A-ah shit... Y-your cock is big and in my ass -- already~?!", "D-Don't get the wrong idea!!! I don't w-want you to fuck my b-bussy because I l-love you or anything! d-definitely not!", "E-eham! W-Why is it so small~", "Give me all your cum Senpai ahhhhh~", "It-It's not gay if you're wearing thigh highs M-Master", "Oh my god I hate you so much Senpai but please k-keep fucking me harder! ahhh~", "Ahhhh... It's like a dream come true... I get to stick my dick inside your ass...!", "I'll swallow your sticky essence along with you~!", "B-Baka please let me be your femboy cum slut!", "Kun your cute little dick between my bussy looks really cute, I am blushing (*/ω＼*)", "Ehem! I love the furry po-! I mean.. the uh community!", "You're such a pervert for filling me up with your seman Senpai~~", "But i'm just an another furry to the community :(", "M-Master does it feel good when I slide my smoll hand up and down on your cute manly part?", "I-I need somewhere to blow my load. Can i borrow your bussy?", "Please! s-stop it.. I'm feeling sooo good..~ hmpf! Fuck me harder Daddyh~", "W-Why is it that lately... Y-You haven't been playing with my ass!!?", "Fill my throat bwussy with your semen kun", "Is there reason to be mad? Of course when u die to an femboy!", "Hey, who wants a piece of this plump 19-year-old boy-bussy? Single file, boys, come get it while it's hot!", "U-uwu! I can also whimp for you..", "M-My bussy is overflowing with your semen M-Master", "When do you wanna meet up again? I've really taken a liking to your dick! (,,◠∇◠) I want you and only you to slam it into my buwssy every day! (≧∇≦)", "Y-You got me all wet now Senpai!", "Lets take this swimsuit off already <3 i'll drink your unknown melty juice", "Boykisser is such a cute femboy ahh~~ f-fuck... ⊙.☉", "Fill up my bussy with your semen kun ^-^" }
 
@@ -808,7 +808,7 @@ local hit_groups = { [0] = "generic", [1] = "head", [2] = "pelvis", [3] = "stoma
 local colors = { ["hit"] = color_t(0, 255, 0), ["occlusion"] = color_t(146, 0, 255), ["extrapolation"] = color_t(221, 95, 151), ["resolver"] = color_t(250, 111, 166), ["spread"] = color_t(131, 111, 255), ["spread (missed safe)"] = color_t(64, 155, 246), ["prediction error"] = color_t(209, 121, 121), ["jitter"] = color_t(128, 132, 231), ["server rejection"] = color_t(122, 93, 194), ["ping (local death)"] = color_t(161, 111, 255), ["ping (target death)"] = color_t(237, 125, 149), ["dormant aimbot"] = color_t(222, 153, 163), ["backtrack failure"] = color_t(48, 123, 171), ["out of reach"] = color_t(51, 255, 165), ["unknown"] = color_t(244, 155, 131) }
 
 local groups = {
-    nav = libs.eui.create("Home | azura v" .. client_version .. "" .. info.beta_text2 , 1),
+    nav = libs.eui.create("Home | Specter v" .. client_version .. "" .. info.beta_text2 , 1),
     
     
     configs = libs.eui.create("Configs", 2),
@@ -963,12 +963,12 @@ local defensive = {
 
 local ui = {
     nav = {
-        slider = groups.nav:slider("azura.uno | tee hee!<3", 0, 14),
+        slider = groups.nav:slider("Specter | tee hee!<3", 0, 14),
 
         text = groups.nav:text("Welcome, " .. info.user .. "!"),
-        sep0 = menu_add_separator("Home | azura v" .. client_version .. "" .. info.beta_text2),
+        sep0 = menu_add_separator("Home | Specter v" .. client_version .. "" .. info.beta_text2),
         
-        shared_esp = groups.nav:list("azura Revealer", {}),
+        shared_esp = groups.nav:list("Specter Revealer", {}),
         restart_esp = groups.nav:button("Restart esp",
             function()
                 on_shared_esp()
@@ -980,7 +980,7 @@ local ui = {
                 on_shared_players()
             end
         ),
-        sep1 = menu_add_separator("Home | azura v" .. client_version .. "" .. info.beta_text2),
+        sep1 = menu_add_separator("Home | Specter v" .. client_version .. "" .. info.beta_text2),
     },
 
     configs = {
@@ -1330,7 +1330,7 @@ local ui = {
 
         reset_stats = groups.utils:button("Reset stats",
             function()
-                notifications.create("azura.uno", "Statistics have been reset!", notifications.types.success)
+                notifications.create("Specter", "Statistics have been reset!", notifications.types.success)
                 print("statistics have been reset.")
 
                 indicator.shot_count = 0
@@ -1475,12 +1475,12 @@ end
 
 get_accent_color = function()
     local r, g, b = ui.accent_color:get().r, ui.accent_color:get().g, ui.accent_color:get().b
-    return azura_color_t(r, g, b)
+    return specter_color_t(r, g, b)
 end
 
 get_text_color = function()
     local r, g, b = ui.text_color:get().r, ui.text_color:get().g, ui.text_color:get().b
-    return azura_color_t(r, g, b)
+    return specter_color_t(r, g, b)
 end
 
 -- menu (owners, Oct 2026): four main points, under them the pages of the active one; the page is ui.nav.slider (0 = home)
@@ -1502,7 +1502,7 @@ for i, main in ipairs(nav_pages) do
     )
 end
 
-ui.nav.sep2 = menu_add_separator("Home | azura v" .. client_version .. "" .. info.beta_text2)
+ui.nav.sep2 = menu_add_separator("Home | Specter v" .. client_version .. "" .. info.beta_text2)
 
 for i, main in ipairs(nav_pages) do
     for _, page in ipairs(main.subs) do
@@ -1613,7 +1613,7 @@ print = function(...)
         color_t(90, 114, 255, 255)
     }
 
-    table.insert(output, {header_color, "azura"})
+    table.insert(output, {header_color, "specter"})
     table.insert(output, {rainbow_colors[math.random(#rainbow_colors)], " · "})
 
     local current_color = text_color
@@ -1634,7 +1634,7 @@ print = function(...)
     end
 end
 
-azura_color_t = function(r, g, b, a)
+specter_color_t = function(r, g, b, a)
     if (a == nil) then
         return {r = r, g = g, b = b, a = 255}
     else
@@ -1651,9 +1651,9 @@ end
 
 configs.ffi = {}
 configs.ffi.class_ptr = ffi.typeof("void***")
-configs.ffi.rawvguisystem = memory_create_interface("vgui2.dll", "VGUI_System010") or error("azura · an internal error has occurred ~ 0xBE87F1")
-configs.ffi.ivguisystem = ffi.cast(configs.ffi.class_ptr, configs.ffi.rawvguisystem) or error("azura · an internal error has occurred ~ 0x51D2A4")
-configs.ffi.shell_execute = ffi.cast("shell_execute_t", configs.ffi.ivguisystem[0][3]) or error("azura · an internal error has occurred ~ 0x89E67C")
+configs.ffi.rawvguisystem = memory_create_interface("vgui2.dll", "VGUI_System010") or error("specter · an internal error has occurred ~ 0xBE87F1")
+configs.ffi.ivguisystem = ffi.cast(configs.ffi.class_ptr, configs.ffi.rawvguisystem) or error("specter · an internal error has occurred ~ 0x51D2A4")
+configs.ffi.shell_execute = ffi.cast("shell_execute_t", configs.ffi.ivguisystem[0][3]) or error("specter · an internal error has occurred ~ 0x89E67C")
 
 configs.ffi.__thiscall = function(func, this)
     return function(...)
@@ -1662,7 +1662,7 @@ configs.ffi.__thiscall = function(func, this)
 end
 
 configs.ffi.vmt_bind = function(module, interface, index, typedef)
-    local addr = ffi.cast("void***", memory_create_interface(module, interface)) or error("azura · an internal error has occurred ~ 0xFC4A7D")
+    local addr = ffi.cast("void***", memory_create_interface(module, interface)) or error("specter · an internal error has occurred ~ 0xFC4A7D")
     return configs.ffi.__thiscall(ffi.cast(typedef, addr[0][index]), addr)
 end
 
@@ -1671,7 +1671,7 @@ configs.ffi.native_GetCurrentDirectory = configs.ffi.vmt_bind("filesystem_stdio.
 configs.ffi.char = ffi.new("char[256]")
 configs.ffi.native_GetCurrentDirectory(configs.ffi.char, ffi.sizeof(configs.ffi.char))
 
-configs.path = string.format("%s/csgo/azura/", ffi.string(configs.ffi.char))
+configs.path = string.format("%s/csgo/specter/", ffi.string(configs.ffi.char))
 
 -- animstate funcs
 
@@ -2264,9 +2264,9 @@ handle_logs = function()
         local string_
 
         if (log.type == 'hit') then
-            string_ = string.format('azura » hit %s in %s (%s) for %i (%i)', log.player, log.hitbox, log.hitbox_predicted, log.damage_dealt, log.damage_predicted)
+            string_ = string.format('specter » hit %s in %s (%s) for %i (%i)', log.player, log.hitbox, log.hitbox_predicted, log.damage_dealt, log.damage_predicted)
         else
-            string_ = string.format('azura » missed (%s) %s in %s for %i (safe: %s)', log.reason, log.player, log.hitbox, log.damage_predicted, log.safepoint)
+            string_ = string.format('specter » missed (%s) %s in %s for %i (safe: %s)', log.reason, log.player, log.hitbox, log.damage_predicted, log.safepoint)
         end
 
         log.pos.y = (i - 1) * 22 + 0
@@ -2303,8 +2303,8 @@ handle_logs = function()
         render_rect(orig_offset + log.cached_pos + vec2_t(offset - 7, height - 3), bg_size, color_accent, 7)
         render_pop_clip()
 
-        render_text(logs.font, 'azura', orig_offset + log.cached_pos + vec2_t(offset, height), color_accent)
-        offset = offset + render_get_text_size(logs.font, 'azura').x
+        render_text(logs.font, 'specter', orig_offset + log.cached_pos + vec2_t(offset, height), color_accent)
+        offset = offset + render_get_text_size(logs.font, 'specter').x
 
         render_text(logs.font, ' » ', orig_offset + log.cached_pos + vec2_t(offset, height), random_color)
         offset = offset + render_get_text_size(logs.font, ' » ').x
@@ -2393,7 +2393,7 @@ end
 
 -- cloud based
 
--- default.cfg: the owner's config (resolver, anti-aim and the rest), applied on the first start (no csgo/azura folder yet)
+-- default.cfg: the owner's config (resolver, anti-aim and the rest), applied on the first start (no csgo/specter folder yet)
 configs.default_config = "eyJIZWxwZXJzIjpbWyJGaXggY29ycmVjdGlvbiIsdHJ1ZV0sWyJSdWJiZXJiYW5nIix0cnVlXSxbIkxhZyBvbiBzaG9vdCIsZmFsc2VdXSwiQ29tbXVuaWNhdGlvbiI6W1siVHJhc2ggdGFsayIsMV0sWyJUYWxrIGJhY2siLGZhbHNlXSxbIlZvaWNlIHN0YXRlIiwzXV0sIk1pc2MiOltbIkZha2UgdHlwZSIsW1siSGVhZHNob3QiLGZhbHNlXSxbIldhbGxiYW5nIixmYWxzZV0sWyJObyBTY29wZSIsZmFsc2VdLFsiRmxhc2hlZCIsZmFsc2VdLFsiVGhydSBzbW9rZSIsZmFsc2VdLFsiRG9taW5hdGVkIixmYWxzZV0sWyJSZXZlbmdlIixmYWxzZV1dXSxbIktuaWZlYm90IGhlbHBlciIsdHJ1ZV0sWyJVbmxvY2sgbGF0ZW5jeSIsdHJ1ZV0sWyJGYXN0IHdlYXBvbiBzd2l0Y2giLHRydWVdLFsiQXV0byBkZWZ1c2UiLHRydWVdLFsiRmFrZSBtZWRpYSIsZmFsc2VdXSwiUGxheWVyIjpbWyJBbmltYXRpb24gYnJlYWtlciIsZmFsc2VdLFsiU3VwZXIgdG9zcyIsMV0sWyJDb29sIHRlYW0gYW5pbWF0aW9uIixmYWxzZV0sWyJWaXN1YWwgcmVjb2lsIixmYWxzZV0sWyJGYXN0IGxhZGRlciIsW1siVXAiLHRydWVdLFsiRG93biIsdHJ1ZV1dXV0sIlRpY2tiYXNlIjpbWyJJbXByb3ZlIGJhY2t0cmFjayIsdHJ1ZV0sWyJSZWNvcmQgd2VpZ2h0aW5nIHR5cGUiLDFdLFsiQWdncmVzc2l2ZSBmYWN0b3IiLDE1XSxbIkJhY2t0cmFjayBleHBpcmF0aW9uIiwxXSxbIkxvdyBwZXJmb3JtYW5jZSBtb2RlIixmYWxzZV0sWyJFeHRlbmRlZCBiYWNrdHJhY2siLGZhbHNlXSxbIk1heCB0YXJnZXRzIiwyXSxbIkFkanVzdCB0aWNrcyBkeW5hbWljYWxseSIsMl0sWyJFbmFibGUgaW50ZXJwb2xhdGlvbiIsdHJ1ZV0sWyJQcmlvcml0aXplIG9sZGVyIHJlY29yZHMiLGZhbHNlXSxbIlByZWRpY3Rpb24gZmFjdG9yIiwxMV0sWyJCYWNrdHJhY2sgc21vb3RoaW5nIiw5XSxbIlNtb290aCB0cmFuc2l0aW9uIix0cnVlXSxbIlRyYW5zaXRpb24gc3BlZWQiLDI1XSxbIkVuYWJsZSBleHRyYXBvbGF0aW9uIix0cnVlXSxbIkFnZ3Jlc3NpdmUgYmFja3RyYWNrIix0cnVlXSxbIlRyYW5zaXRpb24gcHJpb3JpdHkiLDJdXSwiUmVzb2x2ZXIiOltbIkxvZ2ljIHJlc29sdmVyIix0cnVlXSxbIkltcHJvdmUgcmVzb2x2ZXIiLHRydWVdXSwiRXhwbG9pdHMiOltbIkRUIFNwZWVkIiwxMl0sWyJCZXR0ZXIgaGlkZXNob3RzIix0cnVlXSxbIkltcHJvdmUgZG91YmxldGFwIix0cnVlXSxbIk9wdGltaXplIGRvdWJsZXRhcCIsdHJ1ZV0sWyJTYWZlIHJlY2hhcmdlIix0cnVlXSxbIk1vZGUiLDFdLFsiU3BlZWQgY2FsY3VsYXRpb24iLDJdXSwiR2xvYmFsIjpbWyJQaXRjaCIsMl0sWyJCYXNlIiwyXSxbIkRlZmVuc2l2ZSBtb2RlIiwyXV0sIlV0aWxzIjpbWyJHbG93IGVmZmVjdHMiLHRydWVdLFsiVGVzbGEgY29sb3IiLDI1NSw4MCw4MCwyNTVdLFsiQ29uc29sZSBjb2xvciIsNTUsNTUsNTUsMTU0XSxbIkFsdCBjb2xvciIsMjAwLDE5OSwxOTcsMjU1XSxbIldhdGVybWFyayIsZmFsc2VdLFsiS2V5YmluZHMiLGZhbHNlXSxbIk1haW4gY29sb3IiLDE3NywyNTUsODcsMjU1XSxbIkJveCBjb2xvciIsNDcsMTE3LDIyMSwyNTVdLFsiU3BlY3RhdG9ycyIsZmFsc2VdLFsiTG9ncyBzZWxlY3Rpb24iLFtbIlNob3cgc3RhdHMiLHRydWVdLFsiSGl0cyIsdHJ1ZV0sWyJQdXJjaGFzZXMiLGZhbHNlXSxbIkh1cnRzIix0cnVlXSxbIk1pc3NlcyIsdHJ1ZV0sWyJFdmFkZXMiLHRydWVdXV1dLCJDbG91ZCBjb25maWdzIjpbXSwiTW92ZW1lbnQiOltbIkp1bXBzaG90IGhlbHBlciIsdHJ1ZV0sWyJObyBmYWxsIGRhbWFnZSIsdHJ1ZV0sWyJBbnRpIGFmayIsZmFsc2VdXSwiQ29uZmlndXJhdGlvbiAoYmV0YSkiOltbIkF0IGRpc2FibGVyIiwzXSxbIllhdyBjYWxjdWxhdGlvbiIsM10sWyJEaXNhYmxlcnMiLFtbIkluIGFpciIsZmFsc2VdLFsiSW4gYWlyZHVjayIsZmFsc2VdLFsiQXQgZHVjayIsZmFsc2VdLFsiQXQgcGVlayIsZmFsc2VdLFsiQXQgc2NvcGUiLGZhbHNlXSxbIkF0IG5vc2NvcGUiLGZhbHNlXSxbIldpdGggZG91YmxldGFwIixmYWxzZV0sWyJXaXRoIGhpZGVzaG90cyIsZmFsc2VdLFsiTG93IGZwcyAoPDc1ZnBzKSIsdHJ1ZV0sWyJIaWdoIHBpbmcgKD44MG1zKSIsdHJ1ZV1dXV0sIlN0YXRpc3RpY3MiOltdLCJIb21lIHwgYXp1cmEgdjUuNCAoYmV0YSkiOltbIlRleHQgY29sb3IiLDE0MCw3MSwyNDcsMjU1XSxbImF6dXJhLnVubyB8IHRlZSBoZWUhPDMiLDFdLFsiQWNjZW50IGNvbG9yIiwyMjIsMTUzLDE4NSwyNTVdXSwiVmlzdWFscyI6W1siQ2hpbmEgaGF0IixmYWxzZV0sWyJUZXNsYSBvbiBzaG9vdCIsZmFsc2VdLFsiQ3Jvc3NoYWlyIGluZGljYXRvcnMiLFtbIkRvdWJsZSB0YXAiLHRydWVdLFsiSGlkZSBzaG90cyIsdHJ1ZV0sWyJNaW5pbXVtIGRtZyIsdHJ1ZV0sWyJRdWljayBwZWVrIix0cnVlXSxbIkZyZWVzdGFuZCIsdHJ1ZV0sWyJQaW5nIHNwaWtlIix0cnVlXSxbIkZvcmNlIGJvZHlhaW0iLHRydWVdLFsiRm9yY2Ugc2FmZXBvaW50Iix0cnVlXSxbIk92ZXJyaWRlIGhpdGJveCIsdHJ1ZV0sWyJPdmVycmlkZSBoaXRjaGFuY2UiLHRydWVdXV0sWyJDb25zb2xlIGNvbG9yIix0cnVlXSxbIkVTUCBGb250IiwzXSxbIkRlYnVnIGxhZ2NvbXAiLHRydWVdLFsiUmlnaHQgaW5kaWNhdG9ycyIsW1siRG91YmxlIHRhcCIsdHJ1ZV0sWyJIaWRlIHNob3RzIix0cnVlXSxbIk1pbmltdW0gZG1nIix0cnVlXSxbIlF1aWNrIHBlZWsiLHRydWVdLFsiRnJlZXN0YW5kIix0cnVlXSxbIlBpbmcgc3Bpa2UiLHRydWVdLFsiRm9yY2UgYm9keWFpbSIsdHJ1ZV0sWyJGb3JjZSBzYWZlcG9pbnQiLHRydWVdLFsiT3ZlcnJpZGUgaGl0Ym94Iix0cnVlXSxbIk92ZXJyaWRlIGhpdGNoYW5jZSIsdHJ1ZV1dXSxbIkhhdCBjb2xvciIsODksMjM3LDI1NSwyNTVdXSwiRmVhdHVyZXMiOltbIkF2b2lkIG9uc2hvdCIsdHJ1ZV0sWyJBbnRpIGJhY2tzdGFiIix0cnVlXSxbIkNyb3VjaCBjb3JyZWN0aW9uIixbWyJZYXciLHRydWVdXV0sWyJSYW5kb21pemF0aW9uIixbWyJObyBlbmVtaWVzIGFsaXZlIixmYWxzZV0sWyJXYXJtdXAiLGZhbHNlXV1dLFsiU2FmZSBoZWFkIixbWyJBaXIga25pZmUiLHRydWVdLFsiQWxsb3cgZGVmZW5zaXZlIix0cnVlXV1dXSwiUmVzb2x2ZXIgKGJldGEpIjpbWyJTaG90IHByZWRpY3Rpb24iLDRdLFsiQ2FsY3VsYXRlIGJveCIsMTldLFsiQ3VzdG9tIHJlc29sdmVyIix0cnVlXSxbIkF1dG8gZHVjayIsdHJ1ZV0sWyJVbnNhZmUgcmVzb2x2ZXIiLHRydWVdLFsiU2FmZSBwZWVrIix0cnVlXSxbIlBvc2UgcmVzb2x2ZXIiLHRydWVdLFsiU2FmZSBtb2RlIiw0XSxbIkR1Y2sgbW9kZSIsZmFsc2VdLFsiSGl0IHNlbnNpdGl2aXR5IiwyNV0sWyJQcmVkaWN0aW9uIHNlbCIsMjBdXSwiUmFnZWJvdCI6W1siRGVmZW5zaXZlIHNhZmVwb2ludCIsdHJ1ZV0sWyJCb29zdGVyIG1vZGUiLDFdLFsiQWNjdXJhY3kgYm9vc3RlciIsdHJ1ZV0sWyJNdWx0aXBvaW50IGNvcnJlY3Rpb24iLHRydWVdXSwiWWF3IjpbWyJTVyB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLDBdLFsiT3ZlcnJpZGUgLSBBaXIgZHVjayIsdHJ1ZV0sWyJGIHwgTGVmdCIsMF0sWyJHIHwgTGVmdCIsLTE1XSxbIk0gfCBSaWdodCByYW5kb21pemF0aW9uIiwxOF0sWyJHIHwgWWF3IiwwXSxbIkQgfCBZYXcgbW9kZSIsM10sWyJBIHwgUmlnaHQgcmFuZG9taXphdGlvbiIsMjBdLFsiU1cgfCBZYXciLDBdLFsiRE0gfCBMZWZ0IiwtMThdLFsiQSB8IFlhdyBtb2RlIiwzXSxbIlNXIHwgTGVmdCByYW5kb21pemF0aW9uIiwwXSxbIk0gfCBZYXcgbW9kZSIsM10sWyJHIHwgWWF3IG1vZGUiLDJdLFsiUyB8IFlhdyIsMF0sWyJGUiB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLDldLFsiRlIgfCBSaWdodCIsMTFdLFsiUyB8IERlbGF5Iiw0XSxbIkcgfCBSaWdodCByYW5kb21pemF0aW9uIiwwXSxbIk0gfCBEZWxheSIsNV0sWyJETSB8IERlbGF5IiwyXSxbIkFEIHwgWWF3IiwwXSxbIlNXIHwgTGVmdCIsLTIwXSxbIkQgfCBEZWxheSIsMl0sWyJETSB8IExlZnQgcmFuZG9taXphdGlvbiIsMF0sWyJHIHwgRGVsYXkiLDVdLFsiRE0gfCBZYXciLDBdLFsiQSB8IERlbGF5IiwzXSxbIkZSIHwgRGVsYXkgZmx1Y3R1YXRpb24iLDNdLFsiRlIgfCBEZWxheSIsNV0sWyJNTiB8IExlZnQgcmFuZG9taXphdGlvbiIsMF0sWyJPdmVycmlkZSAtIE1vdmUiLHRydWVdLFsiUyB8IExlZnQgcmFuZG9taXphdGlvbiIsMF0sWyJPdmVycmlkZSAtIEFpciIsdHJ1ZV0sWyJEIHwgTGVmdCIsLTE1XSxbIk0gfCBSaWdodCIsMTBdLFsiRlIgfCBMZWZ0IHJhbmRvbWl6YXRpb24iLC0xMl0sWyJBIHwgWWF3IiwwXSxbIkZSIHwgWWF3IG1vZGUiLDJdLFsiT3ZlcnJpZGUgLSBHbG9iYWwiLHRydWVdLFsiQUQgfCBSaWdodCIsN10sWyJTVyB8IFlhdyBtb2RlIiwyXSxbIlMgfCBZYXcgbW9kZSIsMl0sWyJGUiB8IExlZnQiLC0xMV0sWyJHIHwgTGVmdCByYW5kb21pemF0aW9uIiwwXSxbIkQgfCBMZWZ0IHJhbmRvbWl6YXRpb24iLC0xMV0sWyJBRCB8IExlZnQiLC0xNV0sWyJPdmVycmlkZSAtIER1Y2siLHRydWVdLFsiTU4gfCBEZWxheSBmbHVjdHVhdGlvbiIsMF0sWyJPdmVycmlkZSAtIFNsb3cgd2FsayIsdHJ1ZV0sWyJBIHwgTGVmdCByYW5kb21pemF0aW9uIiwtMjBdLFsiRiB8IExlZnQgcmFuZG9taXphdGlvbiIsMF0sWyJGUiB8IFlhdyIsMF0sWyJTIHwgRGVsYXkgZmx1Y3R1YXRpb24iLDBdLFsiT3ZlcnJpZGUgLSBEdWNrIG1vdmUiLHRydWVdLFsiTSB8IERlbGF5IGZsdWN0dWF0aW9uIiw4XSxbIk92ZXJyaWRlIC0gRnJlZXN0YW5kIix0cnVlXSxbIk92ZXJyaWRlIC0gU3RhbmQiLHRydWVdLFsiTU4gfCBEZWxheSIsMl0sWyJNTiB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLDBdLFsiU1cgfCBEZWxheSIsOF0sWyJNTiB8IFJpZ2h0IiwwXSxbIkYgfCBEZWxheSBmbHVjdHVhdGlvbiIsMF0sWyJNTiB8IExlZnQiLDBdLFsiTU4gfCBZYXciLDBdLFsiRyB8IERlbGF5IGZsdWN0dWF0aW9uIiwwXSxbIk92ZXJyaWRlIC0gTWFudWFsIixmYWxzZV0sWyJBIHwgRGVsYXkgZmx1Y3R1YXRpb24iLDhdLFsiRCB8IERlbGF5IGZsdWN0dWF0aW9uIiw0XSxbIk1OIHwgWWF3IG1vZGUiLDFdLFsiTSB8IExlZnQgcmFuZG9taXphdGlvbiIsLTE4XSxbIkYgfCBEZWxheSIsMl0sWyJGIHwgUmlnaHQgcmFuZG9taXphdGlvbiIsMF0sWyJGIHwgWWF3IG1vZGUiLDFdLFsiRCB8IFJpZ2h0IiwxMF0sWyJGIHwgWWF3IiwwXSxbIkYgfCBSaWdodCIsMF0sWyJHIHwgUmlnaHQiLDEwXSxbIkFEIHwgTGVmdCByYW5kb21pemF0aW9uIiwwXSxbIkEgfCBSaWdodCIsMjVdLFsiRE0gfCBEZWxheSBmbHVjdHVhdGlvbiIsMF0sWyJTIHwgTGVmdCIsLTIzXSxbIkFEIHwgRGVsYXkgZmx1Y3R1YXRpb24iLDBdLFsiQUQgfCBEZWxheSIsNV0sWyJBRCB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLDBdLFsiQUQgfCBZYXcgbW9kZSIsMl0sWyJETSB8IFJpZ2h0IiwxNV0sWyJETSB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLDBdLFsiTSB8IFlhdyIsMF0sWyJTIHwgUmlnaHQgcmFuZG9taXphdGlvbiIsMF0sWyJTVyB8IFJpZ2h0IiwxNV0sWyJNIHwgTGVmdCIsLTEwXSxbIkQgfCBSaWdodCByYW5kb21pemF0aW9uIiwxMV0sWyJTIHwgUmlnaHQiLDI0XSxbIkRNIHwgWWF3IG1vZGUiLDJdLFsiU1cgfCBEZWxheSBmbHVjdHVhdGlvbiIsMF0sWyJPdmVycmlkZSAtIEZha2VsYWciLGZhbHNlXSxbIkEgfCBMZWZ0IiwtMjVdLFsiRCB8IFlhdyIsMF1dLCJTeXN0ZW0iOltbInZlcnNpb24iLCIxLjAiXSxbImJ1aWxkIiwiYmV0YSJdXSwiRGVmZW5zaXZlIjpbWyJGUiB8IERlZmVuc2l2ZSIsMV0sWyJTVyB8IFNwaW4gcmFuZ2UiLDBdLFsiQUQgfCBTcGluIHNwZWVkIiwxMDBdLFsiRE0gfCBTcGluIHJhbmdlIiwwXSxbIkEgfCBQaXRjaCB2YWx1ZSAoMSkiLC05MF0sWyJTVyB8IFlhdyB2YWx1ZSIsMF0sWyJBRCB8IERlZmVuc2l2ZSIsMl0sWyJGIHwgUGl0Y2ggdmFsdWUgKDEpIiwwXSxbIkQgfCBQaXRjaCB2YWx1ZSAoMSkiLC00N10sWyJTIHwgUGl0Y2ggdmFsdWUgKDIpIiwwXSxbIk1OIHwgRGVmZW5zaXZlIiwxXSxbIk0gfCBTcGluIHNwZWVkIiwwXSxbIkEgfCBEZWZlbnNpdmUiLDJdLFsiUyB8IFBpdGNoIHZhbHVlICgxKSIsMF0sWyJBIHwgWWF3IHZhbHVlIiwtOTBdLFsiRCB8IFlhdyB2YWx1ZSIsLTE4MF0sWyJBIHwgRGVmZW5zaXZlIHlhdyIsM10sWyJTIHwgU3BpbiByYW5nZSIsMF0sWyJBRCB8IFNwaW4gcmFuZ2UiLDM2MF0sWyJGIHwgRGVmZW5zaXZlIHlhdyIsMV0sWyJEIHwgRGVmZW5zaXZlIHlhdyIsNV0sWyJHIHwgRGVmZW5zaXZlIHlhdyIsNV0sWyJNTiB8IERlZmVuc2l2ZSB5YXciLDFdLFsiRiB8IFNwaW4gcmFuZ2UiLDBdLFsiRE0gfCBEZWZlbnNpdmUiLDFdLFsiRCB8IFNwaW4gc3BlZWQiLDEwMF0sWyJEIHwgU3BpbiByYW5nZSIsMzYwXSxbIkcgfCBTcGluIHNwZWVkIiwxMDBdLFsiQSB8IFNwaW4gc3BlZWQiLDEwMF0sWyJETSB8IFBpdGNoIHZhbHVlICgyKSIsLTI4XSxbIlMgfCBZYXcgdmFsdWUiLDBdLFsiRiB8IFNwaW4gc3BlZWQiLDBdLFsiRlIgfCBTcGluIHNwZWVkIiwxMDBdLFsiU1cgfCBEZWZlbnNpdmUgeWF3Iiw2XSxbIkZSIHwgRGVmZW5zaXZlIHlhdyIsM10sWyJGUiB8IFBpdGNoIHZhbHVlICgyKSIsLTkwXSxbIk1OIHwgUGl0Y2ggdmFsdWUgKDIpIiwwXSxbIk1OIHwgU3BpbiByYW5nZSIsMF0sWyJNIHwgU3BpbiByYW5nZSIsMF0sWyJBIHwgRGVmZW5zaXZlIHBpdGNoIiw5XSxbIkYgfCBZYXcgdmFsdWUiLDBdLFsiRlIgfCBEZWZlbnNpdmUgcGl0Y2giLDhdLFsiRyB8IFlhdyB2YWx1ZSIsMF0sWyJTVyB8IERlZmVuc2l2ZSBwaXRjaCIsN10sWyJBRCB8IFBpdGNoIHZhbHVlICgyKSIsLTkwXSxbIk1OIHwgRGVmZW5zaXZlIHBpdGNoIiwxXSxbIkRNIHwgUGl0Y2ggdmFsdWUgKDEpIiwtNTVdLFsiRE0gfCBZYXcgdmFsdWUiLC0xODBdLFsiTSB8IFlhdyB2YWx1ZSIsMF0sWyJNTiB8IFBpdGNoIHZhbHVlICgxKSIsMF0sWyJBIHwgU3BpbiByYW5nZSIsMzYwXSxbIk1OIHwgU3BpbiBzcGVlZCIsMF0sWyJGUiB8IFNwaW4gcmFuZ2UiLDM2MF0sWyJHIHwgRGVmZW5zaXZlIHBpdGNoIiwxMF0sWyJGUiB8IFBpdGNoIHZhbHVlICgxKSIsLTkwXSxbIkRNIHwgRGVmZW5zaXZlIHBpdGNoIiwxMF0sWyJHIHwgRGVmZW5zaXZlIiwxXSxbIkQgfCBEZWZlbnNpdmUiLDFdLFsiTSB8IFBpdGNoIHZhbHVlICgyKSIsMF0sWyJNIHwgRGVmZW5zaXZlIHBpdGNoIiw3XSxbIkFEIHwgRGVmZW5zaXZlIHBpdGNoIiw5XSxbIkZSIHwgWWF3IHZhbHVlIiwtOTBdLFsiTSB8IERlZmVuc2l2ZSIsMV0sWyJBRCB8IFBpdGNoIHZhbHVlICgxKSIsLTkwXSxbIkYgfCBEZWZlbnNpdmUgcGl0Y2giLDFdLFsiRiB8IERlZmVuc2l2ZSIsMV0sWyJBRCB8IERlZmVuc2l2ZSB5YXciLDNdLFsiTSB8IERlZmVuc2l2ZSB5YXciLDZdLFsiUyB8IERlZmVuc2l2ZSIsMV0sWyJTVyB8IFBpdGNoIHZhbHVlICgyKSIsMF0sWyJETSB8IERlZmVuc2l2ZSB5YXciLDRdLFsiU1cgfCBEZWZlbnNpdmUiLDFdLFsiRyB8IFBpdGNoIHZhbHVlICgyKSIsMF0sWyJETSB8IFNwaW4gc3BlZWQiLDBdLFsiUyB8IFNwaW4gc3BlZWQiLDBdLFsiU1cgfCBQaXRjaCB2YWx1ZSAoMSkiLDBdLFsiRyB8IFNwaW4gcmFuZ2UiLDM2MF0sWyJTIHwgRGVmZW5zaXZlIHlhdyIsNl0sWyJBRCB8IFlhdyB2YWx1ZSIsLTkwXSxbIkEgfCBQaXRjaCB2YWx1ZSAoMikiLC05MF0sWyJEIHwgRGVmZW5zaXZlIHBpdGNoIiw5XSxbIkYgfCBQaXRjaCB2YWx1ZSAoMikiLDBdLFsiU1cgfCBTcGluIHNwZWVkIiwwXSxbIkQgfCBQaXRjaCB2YWx1ZSAoMikiLC0yMF0sWyJNIHwgUGl0Y2ggdmFsdWUgKDEpIiwwXSxbIlMgfCBEZWZlbnNpdmUgcGl0Y2giLDddLFsiTU4gfCBZYXcgdmFsdWUiLDBdLFsiRyB8IFBpdGNoIHZhbHVlICgxKSIsMF1dLCJDdXN0b21pemF0aW9uIjpbWyJUZXNsYSDCtyBiZWFtcyIsMjBdLFsiSGF0IG1vZGUiLDFdLFsiVGVzbGEgwrcgd2lkdGgiLDddLFsiVGVzbGEgwrcgZGVsYXkiLDJdLFsiVGVzbGEgwrcgcmFkaXVzIiwxMDFdXSwiU3luY2hyb25pemF0aW9uIjpbWyJTeW5jZWQgcGxheWVycyIsW1siRGlzYWJsZSB0cmFzaC10YWxrIix0cnVlXSxbIklnbm9yZSB0YWxrLWJhY2siLHRydWVdLFsiQ2hhdCBtZW50aW9ucyIsdHJ1ZV1dXSxbIkNsYW4gdGFnIixmYWxzZV0sWyJTaGFyZWQgRVNQIix0cnVlXV0sIkRlc3luYyI6W1siRCB8IEZha2UgbGVmdCIsNjBdLFsiQSB8IEZha2UgbGVmdCIsNjBdLFsiU1cgfCBEZXN5bmMiLDFdLFsiRyB8IEZha2UgbGVmdCIsNjBdLFsiRiB8IEZha2UgbGVmdCIsMF0sWyJHIHwgTGVmdCByYW5kb21pemF0aW9uIiwtMTBdLFsiRCB8IExlZnQgcmFuZG9taXphdGlvbiIsLTIwXSxbIk1OIHwgRmFrZSByaWdodCIsMF0sWyJNIHwgUmlnaHQgcmFuZG9taXphdGlvbiIsMjBdLFsiQSB8IExlZnQgcmFuZG9taXphdGlvbiIsLTI1XSxbIlMgfCBGYWtlIHJpZ2h0Iiw2MF0sWyJTIHwgRmFrZSBsZWZ0Iiw2MF0sWyJETSB8IEZha2UgbGVmdCIsNTBdLFsiRlIgfCBGYWtlIHJpZ2h0Iiw2MF0sWyJTVyB8IEZha2UgbGVmdCIsNDVdLFsiTU4gfCBEZXN5bmMiLDFdLFsiRiB8IEZha2UgcmlnaHQiLDBdLFsiRlIgfCBMZWZ0IHJhbmRvbWl6YXRpb24iLC0yMF0sWyJGUiB8IEZha2UgbGVmdCIsNjBdLFsiRyB8IEZha2UgcmlnaHQiLDYwXSxbIkRNIHwgRmFrZSByaWdodCIsNTBdLFsiQSB8IEZha2UgcmlnaHQiLDYwXSxbIkQgfCBGYWtlIHJpZ2h0Iiw2MF0sWyJTIHwgRGVzeW5jIiwzXSxbIk1OIHwgUmlnaHQgcmFuZG9taXphdGlvbiIsMF0sWyJBIHwgRGVzeW5jIiwzXSxbIk0gfCBMZWZ0IHJhbmRvbWl6YXRpb24iLC0yMF0sWyJTVyB8IExlZnQgcmFuZG9taXphdGlvbiIsLTE1XSxbIkQgfCBEZXN5bmMiLDNdLFsiRlIgfCBSaWdodCByYW5kb21pemF0aW9uIiwyNV0sWyJGIHwgRGVzeW5jIiwxXSxbIkcgfCBEZXN5bmMiLDNdLFsiRiB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLDBdLFsiRyB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLC0xMF0sWyJEIHwgUmlnaHQgcmFuZG9taXphdGlvbiIsLTIwXSxbIkYgfCBMZWZ0IHJhbmRvbWl6YXRpb24iLDBdLFsiQUQgfCBSaWdodCByYW5kb21pemF0aW9uIiwxNF0sWyJNIHwgRGVzeW5jIiwzXSxbIk0gfCBGYWtlIGxlZnQiLDU1XSxbIkFEIHwgTGVmdCByYW5kb21pemF0aW9uIiwtMTFdLFsiQUQgfCBGYWtlIGxlZnQiLDYwXSxbIk0gfCBGYWtlIHJpZ2h0Iiw0NV0sWyJBRCB8IEZha2UgcmlnaHQiLDYwXSxbIkRNIHwgTGVmdCByYW5kb21pemF0aW9uIiwtMTRdLFsiQUQgfCBEZXN5bmMiLDFdLFsiUyB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLC0yMF0sWyJTVyB8IEZha2UgcmlnaHQiLDQ1XSxbIkEgfCBSaWdodCByYW5kb21pemF0aW9uIiwtMjBdLFsiTU4gfCBGYWtlIGxlZnQiLDBdLFsiRE0gfCBEZXN5bmMiLDNdLFsiTU4gfCBMZWZ0IHJhbmRvbWl6YXRpb24iLDBdLFsiU1cgfCBSaWdodCByYW5kb21pemF0aW9uIiwyMF0sWyJTIHwgTGVmdCByYW5kb21pemF0aW9uIiwtMjddLFsiRE0gfCBSaWdodCByYW5kb21pemF0aW9uIiwxNF0sWyJGUiB8IERlc3luYyIsMl1dLCJKaXR0ZXIiOltbIkZSIHwgTW9kaWZpZXIgbW9kZSIsMV0sWyJTVyB8IE1vZGlmaWVyIG1vZGUiLDNdLFsiU1cgfCBNb2RpZmllciByYW5kb21pemF0aW9uIiwxN10sWyJGUiB8IE1vZGlmaWVyIGRlZ3JlZSIsLTE4XSxbIkFEIHwgTW9kaWZpZXIgZGVncmVlIiwtMTBdLFsiRE0gfCBNb2RpZmllciByYW5kb21pemF0aW9uIiwtMTBdLFsiU1cgfCBNb2RpZmllciBkZWdyZWUiLC0yN10sWyJBIHwgTW9kaWZpZXIgZGVncmVlIiwtMzBdLFsiQUQgfCBNb2RpZmllciBtb2RlIiwzXSxbIkZSIHwgTW9kaWZpZXIgcmFuZG9taXphdGlvbiIsMTVdLFsiUyB8IE1vZGlmaWVyIGRlZ3JlZSIsLTE1XSxbIkEgfCBNb2RpZmllciBtb2RlIiwzXSxbIkcgfCBNb2RpZmllciBkZWdyZWUiLC0yNV0sWyJEIHwgTW9kaWZpZXIgZGVncmVlIiwtMjBdLFsiRyB8IE1vZGlmaWVyIG1vZGUiLDNdLFsiRiB8IE1vZGlmaWVyIGRlZ3JlZSIsMF0sWyJEIHwgTW9kaWZpZXIgbW9kZSIsMV0sWyJGIHwgTW9kaWZpZXIgbW9kZSIsMV0sWyJETSB8IE1vZGlmaWVyIG1vZGUiLDFdLFsiTU4gfCBNb2RpZmllciBkZWdyZWUiLDBdLFsiRCB8IE1vZGlmaWVyIHJhbmRvbWl6YXRpb24iLDE1XSxbIkcgfCBNb2RpZmllciByYW5kb21pemF0aW9uIiwxM10sWyJGIHwgTW9kaWZpZXIgcmFuZG9taXphdGlvbiIsMF0sWyJNIHwgTW9kaWZpZXIgbW9kZSIsMV0sWyJNIHwgTW9kaWZpZXIgcmFuZG9taXphdGlvbiIsMTddLFsiTU4gfCBNb2RpZmllciByYW5kb21pemF0aW9uIiwwXSxbIlMgfCBNb2RpZmllciBtb2RlIiwxXSxbIlMgfCBNb2RpZmllciByYW5kb21pemF0aW9uIiw4XSxbIkRNIHwgTW9kaWZpZXIgZGVncmVlIiwtMjVdLFsiTSB8IE1vZGlmaWVyIGRlZ3JlZSIsLTMxXSxbIkEgfCBNb2RpZmllciByYW5kb21pemF0aW9uIiwtMTVdLFsiTU4gfCBNb2RpZmllciBtb2RlIiwxXSxbIkFEIHwgTW9kaWZpZXIgcmFuZG9taXphdGlvbiIsMTVdXSwiQ29uZmlncyI6W10sIlNldHRpbmdzIjpbWyJDdXN0b20gYW50aWFpbSIsdHJ1ZV0sWyJDb25kaXRpb24iLDddLFsiRWRnZSB5YXciLGZhbHNlXV19"
 
 configs.apply_default = function()
@@ -2422,14 +2422,14 @@ configs.reload_cloud_configs = function()
 
     local response_success, response_result = app_client.receive(65535)
     if (not response_success) then
-        notifications.create("azura.uno", "Cloud is offline!", notifications.types.warning)
+        notifications.create("Specter", "Cloud is offline!", notifications.types.warning)
         return
     end
 
     local decode_success, decode_result = libs.json.parse(response_success)
     if (not decode_success) then
         print("connection has failed. ", get_text_color(), "(error parsing response)")
-        error("azura · an internal error has occurred ~ 0xA9EFD4")
+        error("specter · an internal error has occurred ~ 0xA9EFD4")
     end
 
     if (decode_success.status == "refresh_list") then
@@ -2440,11 +2440,11 @@ configs.reload_cloud_configs = function()
             ui.configs.cloud_list.ref:set_items(data or {})
         else
             print("connection has failed. ", get_text_color(), "(error parsing data)")
-            error("azura · an internal error has occurred ~ 0x2C4E78")
+            error("specter · an internal error has occurred ~ 0x2C4E78")
         end
     else
         print("connection has failed. ", get_text_color(), "(unexpected response)")
-        error("azura · an internal error has occurred ~ 0xFF9847")
+        error("specter · an internal error has occurred ~ 0xFF9847")
     end
 end
 
@@ -2477,14 +2477,14 @@ ui.update_cloud_config = menu_add_button("Cloud configs", "Update",
 
         local response_success, response_result = app_client.receive(65535)
         if (not response_success) then
-            notifications.create("azura.uno", "Cloud is offline!", notifications.types.warning)
+            notifications.create("Specter", "Cloud is offline!", notifications.types.warning)
             return
         end
 
         local decode_success, decode_result = libs.json.parse(response_success)
         if (not decode_success) then
             print("connection has failed. ", get_text_color(), "(error parsing response)")
-            error("azura · an internal error has occurred ~ 0x3AB6D1")
+            error("specter · an internal error has occurred ~ 0x3AB6D1")
         end
 
         if (decode_success.status == "update_config") then
@@ -2493,25 +2493,25 @@ ui.update_cloud_config = menu_add_button("Cloud configs", "Update",
     
             if (data) then
                 if (data.status == "success") then
-                    notifications.create("azura.uno", "Config update completed! Changes saved to the cloud.", notifications.types.success)
+                    notifications.create("Specter", "Config update completed! Changes saved to the cloud.", notifications.types.success)
                     print("config has been synced to the cloud.")
                 elseif (data.message == "no_perm") then
-                    notifications.create("azura.uno", "Insufficient permissions to modify this config!", notifications.types.warning)
+                    notifications.create("Specter", "Insufficient permissions to modify this config!", notifications.types.warning)
                     print("modification of this config is not permitted.")
                 elseif (data.message == "bad_cfg") then
-                    notifications.create("azura.uno", "The config does not appear to exist!", notifications.types.failure)
+                    notifications.create("Specter", "The config does not appear to exist!", notifications.types.failure)
                     print("config does not appear to exist.")
                 else
                     print("connection has failed. ", get_text_color(), "(", data.message or "unknown error", ")")
-                    error("azura · an internal error has occurred ~ 0x9E25C8")
+                    error("specter · an internal error has occurred ~ 0x9E25C8")
                 end
             else
                 print("connection has failed. ", get_text_color(), "(error parsing data)")
-                error("azura · an internal error has occurred ~ 0xB74C8E")
+                error("specter · an internal error has occurred ~ 0xB74C8E")
             end
         else
             print("connection has failed. ", get_text_color(), "(unexpected response)")
-            error("azura · an internal error has occurred ~ 0xF47E9A")
+            error("specter · an internal error has occurred ~ 0xF47E9A")
         end
     end
 )
@@ -2528,14 +2528,14 @@ ui.delete_cloud_config = menu_add_button("Cloud configs", "Delete",
 
         local response_success, response_result = app_client.receive(65535)
         if (not response_success) then
-            notifications.create("azura.uno", "Cloud is offline!", notifications.types.warning)
+            notifications.create("Specter", "Cloud is offline!", notifications.types.warning)
             return
         end
 
         local decode_success, decode_result = libs.json.parse(response_success)
         if (not decode_success) then
             print("connection has failed. ", get_text_color(), "(error parsing response)")
-            error("azura · an internal error has occurred ~ 0x7C58E3")
+            error("specter · an internal error has occurred ~ 0x7C58E3")
         end
 
         if (decode_success.status == "delete_config") then
@@ -2544,27 +2544,27 @@ ui.delete_cloud_config = menu_add_button("Cloud configs", "Delete",
     
             if (data) then
                 if (data.status == "success") then
-                    notifications.create("azura.uno", "Config deleted successfully from the cloud!", notifications.types.success)
+                    notifications.create("Specter", "Config deleted successfully from the cloud!", notifications.types.success)
                     print("config has been deleted from the cloud.")
 
                     configs.reload_cloud_configs()
                 elseif (data.message == "no_perm") then
-                    notifications.create("azura.uno", "Insufficient permissions to delete this config!", notifications.types.warning)
+                    notifications.create("Specter", "Insufficient permissions to delete this config!", notifications.types.warning)
                     print("deletion of this config is not permitted.")
                 elseif (data.message == "bad_cfg") then
-                    notifications.create("azura.uno", "The config does not appear to exist!", notifications.types.failure)
+                    notifications.create("Specter", "The config does not appear to exist!", notifications.types.failure)
                     print("config does not appear to exist.")
                 else
                     print("connection has failed. ", get_text_color(), "(", data.message or "unknown error", ")")
-                    error("azura · an internal error has occurred ~ 0xD4A83F")
+                    error("specter · an internal error has occurred ~ 0xD4A83F")
                 end
             else
                 print("connection has failed. ", get_text_color(), "(error parsing data)")
-                error("azura · an internal error has occurred ~ 0xD4E78B")
+                error("specter · an internal error has occurred ~ 0xD4E78B")
             end
         else
             print("connection has failed. ", get_text_color(), "(unexpected response)")
-            error("azura · an internal error has occurred ~ 0x4FA6BD")
+            error("specter · an internal error has occurred ~ 0x4FA6BD")
         end
     end
 )
@@ -2586,14 +2586,14 @@ ui.load_cloud_config = menu_add_button("Cloud configs", "Use",
     
         local response_success, response_result = app_client.receive(65535)
         if (not response_success) then
-            notifications.create("azura.uno", "Cloud is offline!", notifications.types.warning)
+            notifications.create("Specter", "Cloud is offline!", notifications.types.warning)
             return
         end
 
         local decode_success, decode_result = libs.json.parse(response_success)
         if (not decode_success) then
             print("connection has failed. ", get_text_color(), "(error parsing response)")
-            error("azura · an internal error has occurred ~ 0xB8459E")
+            error("specter · an internal error has occurred ~ 0xB8459E")
         end
 
         if (decode_success.status == "load_config") then
@@ -2602,16 +2602,16 @@ ui.load_cloud_config = menu_add_button("Cloud configs", "Use",
 
             if (data.status ~= "success") then
                 if (data.message == "bad_cfg") then
-                    notifications.create("azura.uno", "The config does not appear to exist!", notifications.types.failure)
+                    notifications.create("Specter", "The config does not appear to exist!", notifications.types.failure)
                     print("config does not appear to exist.")
                 else
                     print("connection has failed. ", get_text_color(), "(", data and data.message or "unknown error", ")")
-                    error("azura · an internal error has occurred ~ 0x47DA9F")
+                    error("specter · an internal error has occurred ~ 0x47DA9F")
                 end
             else
                 local run_success, run_result = pcall(libs.base64.decode, data.message)
                 if (not run_success) then
-                    notifications.create("azura.uno", "Unable to decode the config!", notifications.types.failure)
+                    notifications.create("Specter", "Unable to decode the config!", notifications.types.failure)
                     print("failed to decode config. (" .. run_result .. ")")
                     
                     return
@@ -2619,14 +2619,14 @@ ui.load_cloud_config = menu_add_button("Cloud configs", "Use",
             
                 run_success, config_table = pcall(libs.json.parse, run_result)
                 if (not run_success) then
-                    notifications.create("azura.uno", "Unable to parse the config!", notifications.types.failure)
+                    notifications.create("Specter", "Unable to parse the config!", notifications.types.failure)
                     print("failed to parse config. (" .. config_table .. ")")
                     
                     return
                 end
             
                 if (type(config_table) ~= "table") then
-                    notifications.create("azura.uno", "The config is not a valid table!", notifications.types.failure)
+                    notifications.create("Specter", "The config is not a valid table!", notifications.types.failure)
                     print("config is not a valid table.")
                     
                     return
@@ -2634,7 +2634,7 @@ ui.load_cloud_config = menu_add_button("Cloud configs", "Use",
             
                 local system_data = config_table["System"]
                 if (not system_data) then
-                    notifications.create("azura.uno", "The config lacks build informations!", notifications.types.warning)
+                    notifications.create("Specter", "The config lacks build informations!", notifications.types.warning)
                     print("config does not contain build informations.")
                     
                     return
@@ -2652,14 +2652,14 @@ ui.load_cloud_config = menu_add_button("Cloud configs", "Use",
                 end
             
                 if (version ~= config_version) then
-                    notifications.create("azura.uno", "Config version mismatch!", notifications.types.warning)
+                    notifications.create("Specter", "Config version mismatch!", notifications.types.warning)
                     print("config version does not match.")
                     
                     return
                 end
             
                 if (build ~= config_build) then
-                    notifications.create("azura.uno", "Config build mismatch!", notifications.types.warning)
+                    notifications.create("Specter", "Config build mismatch!", notifications.types.warning)
                     print("config build does not match.")
                     
                     return
@@ -2669,10 +2669,10 @@ ui.load_cloud_config = menu_add_button("Cloud configs", "Use",
                 run_success, run_result = pcall(libs.eui.import, libs.json.encode(config_table))
             
                 if (not run_success) then
-                    notifications.create("azura.uno", "Unable to import the config!", notifications.types.failure)
+                    notifications.create("Specter", "Unable to import the config!", notifications.types.failure)
                     print("failed to import config. (" .. run_result .. ")")
                 else
-                    notifications.create("azura.uno", "Config loaded successfully from the cloud!", notifications.types.success)
+                    notifications.create("Specter", "Config loaded successfully from the cloud!", notifications.types.success)
                     print("config has been loaded from the cloud.")   
 
                     local settings = read_settings()
@@ -2686,7 +2686,7 @@ ui.load_cloud_config = menu_add_button("Cloud configs", "Use",
             end
         else
             print("connection has failed. ", get_text_color(), "(unexpected response)")
-            error("azura · an internal error has occurred ~ 0x2E9F71")
+            error("specter · an internal error has occurred ~ 0x2E9F71")
         end
     end
 )
@@ -2696,7 +2696,7 @@ ui.load_cloud_config = menu_add_button("Cloud configs", "Use",
 ui.import_config = menu_add_button("Configs", "Import from clipboard", function()
     local run_success, run_result = pcall(libs.base64.decode, clipboard.get())
     if (not run_success) then
-        notifications.create("azura.uno", "Unable to decode the config!", notifications.types.failure)
+        notifications.create("Specter", "Unable to decode the config!", notifications.types.failure)
         print("failed to decode config. (" .. run_result .. ")")
         
         return
@@ -2704,14 +2704,14 @@ ui.import_config = menu_add_button("Configs", "Import from clipboard", function(
 
     run_success, config_table = pcall(libs.json.parse, run_result)
     if (not run_success) then
-        notifications.create("azura.uno", "Unable to parse the config!", notifications.types.failure)
+        notifications.create("Specter", "Unable to parse the config!", notifications.types.failure)
         print("failed to parse config. (" .. config_table .. ")")
         
         return
     end
 
     if (type(config_table) ~= "table") then
-        notifications.create("azura.uno", "The config is not a valid table!", notifications.types.failure)
+        notifications.create("Specter", "The config is not a valid table!", notifications.types.failure)
         print("config is not a valid table.")
         
         return
@@ -2719,7 +2719,7 @@ ui.import_config = menu_add_button("Configs", "Import from clipboard", function(
 
     local system_data = config_table["System"]
     if (not system_data) then
-        notifications.create("azura.uno", "The config lacks build informations!", notifications.types.warning)
+        notifications.create("Specter", "The config lacks build informations!", notifications.types.warning)
         print("config does not contain build informations.")
         
         return
@@ -2737,14 +2737,14 @@ ui.import_config = menu_add_button("Configs", "Import from clipboard", function(
     end
 
     if (version ~= config_version) then
-        notifications.create("azura.uno", "Config version mismatch!", notifications.types.warning)
+        notifications.create("Specter", "Config version mismatch!", notifications.types.warning)
         print("config version does not match.")
         
         return
     end
 
     if (build ~= config_build) then
-        notifications.create("azura.uno", "Config build mismatch!", notifications.types.warning)
+        notifications.create("Specter", "Config build mismatch!", notifications.types.warning)
         print("config build does not match.")
         
         return
@@ -2754,10 +2754,10 @@ ui.import_config = menu_add_button("Configs", "Import from clipboard", function(
     import_success, import_result = pcall(libs.eui.import, libs.json.encode(config_table))
 
     if (not import_success) then
-        notifications.create("azura.uno", "Unable to import the config!", notifications.types.failure)
+        notifications.create("Specter", "Unable to import the config!", notifications.types.failure)
         print("failed to import config. (" .. import_result .. ")")
     else
-        notifications.create("azura.uno", "Config successfully imported from clipboard!", notifications.types.success)
+        notifications.create("Specter", "Config successfully imported from clipboard!", notifications.types.success)
         print("successfully imported config from clipboard.")
 
         local settings = read_settings()
@@ -2781,7 +2781,7 @@ ui.export_config = menu_add_button("Configs", "Export to clipboard", function()
 
     clipboard.set(libs.base64.encode(libs.json.encode(config_table)))
 
-    notifications.create("azura.uno", "Config successfully exported to clipboard!", notifications.types.success)
+    notifications.create("Specter", "Config successfully exported to clipboard!", notifications.types.success)
     print("successfully exported config to clipboard.")
 end)
 
@@ -2820,14 +2820,14 @@ ui.upload_config = menu_add_button("Configs", "Upload",
 
         local response_success, response_result = app_client.receive(65535)
         if (not response_success) then
-            notifications.create("azura.uno", "Cloud is offline!", notifications.types.warning)
+            notifications.create("Specter", "Cloud is offline!", notifications.types.warning)
             return
         end
     
         local decode_success, decode_result = libs.json.parse(response_success)
         if (not decode_success) then
             print("connection has failed. ", get_text_color(), "(error parsing response)")
-            error("azura · an internal error has occurred ~ 0xB892EF")
+            error("specter · an internal error has occurred ~ 0xB892EF")
         end
     
         if (decode_success.status == "upload_config") then
@@ -2837,25 +2837,25 @@ ui.upload_config = menu_add_button("Configs", "Upload",
             if (data) then
                 if (data.status ~= "success") then
                     if (data.message == "cfg_alr") then
-                        notifications.create("azura.uno", "Config already exists in the cloud!", notifications.types.warning)
+                        notifications.create("Specter", "Config already exists in the cloud!", notifications.types.warning)
                         print("config already exists in the cloud.")
                     else
                         print("connection has failed. ", get_text_color(), "(", data.message or "unknown error", ")")
-                        error("azura · an internal error has occurred ~ 0x83D2FA")
+                        error("specter · an internal error has occurred ~ 0x83D2FA")
                     end
                 else
-                    notifications.create("azura.uno", "Config uploaded to the cloud successfully!", notifications.types.success)
+                    notifications.create("Specter", "Config uploaded to the cloud successfully!", notifications.types.success)
                     print("config has been uploaded.")
                     
                     configs.reload_cloud_configs()
                 end
             else
                 print("connection has failed. ", get_text_color(), "(error parsing data)")
-                error("azura · an internal error has occurred ~ 0x9C42F3")
+                error("specter · an internal error has occurred ~ 0x9C42F3")
             end
         else
             print("connection has failed. ", get_text_color(), "(unexpected response)")
-            error("azura · an internal error has occurred ~ 0x3F4D6A")
+            error("specter · an internal error has occurred ~ 0x3F4D6A")
         end
     end
 )
@@ -2869,7 +2869,7 @@ ui.create_config = menu_add_button("Configs", "Create", function()
     end
 
     if (libs.filesystem.exists(dir)) then
-        notifications.create("azura.uno", "Config already exists!", notifications.types.warning)
+        notifications.create("Specter", "Config already exists!", notifications.types.warning)
         print("config already exists.")
     
         return
@@ -2878,7 +2878,7 @@ ui.create_config = menu_add_button("Configs", "Create", function()
     libs.filesystem.write(dir, "")
     configs.reload_configs()
     
-    notifications.create("azura.uno", "Config created successfully!", notifications.types.success)
+    notifications.create("Specter", "Config created successfully!", notifications.types.success)
     print("config has been created successfully.")
 end)
 
@@ -2887,14 +2887,14 @@ ui.delete_config = menu_add_button("Configs", "Delete", function()
     local dir = configs.dir .. "" .. active
     
     if (active == "default.cfg") then
-        notifications.create("azura.uno", "Deletion of the default config is not permitted!", notifications.types.warning)
+        notifications.create("Specter", "Deletion of the default config is not permitted!", notifications.types.warning)
         print("deletion of the default config is not permitted.")
         
         return
     end
     
     if (not libs.filesystem.exists(dir)) then
-        notifications.create("azura.uno", "The specified config does not exist!", notifications.types.failure)
+        notifications.create("Specter", "The specified config does not exist!", notifications.types.failure)
         print("config does not exist.")
         
         return
@@ -2903,14 +2903,14 @@ ui.delete_config = menu_add_button("Configs", "Delete", function()
     libs.filesystem.delete(dir, "game")
     configs.reload_configs()
     
-    notifications.create("azura.uno", "Config deleted successfully!", notifications.types.success)
+    notifications.create("Specter", "Config deleted successfully!", notifications.types.success)
     print("config has been deleted successfully.")
 end)
 
 ui.save_config = menu_add_button("Configs", "Save", function()
     local cur = ui.configs.list.ref:get_active_item_name()
     if (cur == "default.cfg") then
-        notifications.create("azura.uno", "Saving to the default config is not allowed!", notifications.types.warning)
+        notifications.create("Specter", "Saving to the default config is not allowed!", notifications.types.warning)
         print("saving to the default config is not allowed.")
         
         return
@@ -2918,7 +2918,7 @@ ui.save_config = menu_add_button("Configs", "Save", function()
     
     local dir = configs.dir .. "" .. cur
     if (not libs.filesystem.exists(dir)) then
-        notifications.create("azura.uno", "The specified config does not exist!", notifications.types.failure)
+        notifications.create("Specter", "The specified config does not exist!", notifications.types.failure)
         print("config does not exist.")
         
         return
@@ -2935,7 +2935,7 @@ ui.save_config = menu_add_button("Configs", "Save", function()
     config = libs.base64.encode(libs.json.encode(config_table))
     libs.filesystem.write(dir, config)
     
-    notifications.create("azura.uno", "Config saved successfully!", notifications.types.success)
+    notifications.create("Specter", "Config saved successfully!", notifications.types.success)
     print("config has been saved successfully.")
 end)
 
@@ -2944,7 +2944,7 @@ ui.load_config = menu_add_button("Configs", "Use", function()
     local dir = configs.dir .. cur
 
     if (not libs.filesystem.exists(dir)) then
-        notifications.create("azura.uno", "The specified config does not exist!", notifications.types.failure)
+        notifications.create("Specter", "The specified config does not exist!", notifications.types.failure)
         print("config does not exist.")
         
         return
@@ -2952,7 +2952,7 @@ ui.load_config = menu_add_button("Configs", "Use", function()
 
     local config, read_error = libs.filesystem.read(dir)
     if (not config) then
-        notifications.create("azura.uno", "Unable to read config!", notifications.types.failure)
+        notifications.create("Specter", "Unable to read config!", notifications.types.failure)
         print("failed to read config. (" .. read_error .. ")")
         
         return
@@ -2960,7 +2960,7 @@ ui.load_config = menu_add_button("Configs", "Use", function()
 
     local success, decoded_config = pcall(libs.base64.decode, config)
     if (not success) then
-        notifications.create("azura.uno", "Unable to decode the config!", notifications.types.failure)
+        notifications.create("Specter", "Unable to decode the config!", notifications.types.failure)
         print("failed to decode config. (" .. decoded_data .. ")")
         
         return
@@ -2968,14 +2968,14 @@ ui.load_config = menu_add_button("Configs", "Use", function()
 
     success, config_table = pcall(libs.json.parse, decoded_config)
     if (not success) then
-        notifications.create("azura.uno", "Unable to parse the config!", notifications.types.failure)
+        notifications.create("Specter", "Unable to parse the config!", notifications.types.failure)
         print("failed to parse config. (" .. config_table .. ")")
         
         return
     end
 
     if (type(config_table) ~= "table") then
-        notifications.create("azura.uno", "Config is not a valid table!", notifications.types.failure)
+        notifications.create("Specter", "Config is not a valid table!", notifications.types.failure)
         print("config is not a valid table.")
         
         return
@@ -2983,7 +2983,7 @@ ui.load_config = menu_add_button("Configs", "Use", function()
 
     local system_data = config_table["System"]
     if (not system_data) then
-        notifications.create("azura.uno", "The config lacks build informations!", notifications.types.warning)
+        notifications.create("Specter", "The config lacks build informations!", notifications.types.warning)
         print("config does not contain build informations.")
         
         return
@@ -3001,14 +3001,14 @@ ui.load_config = menu_add_button("Configs", "Use", function()
     end
 
     if (version ~= config_version) then
-        notifications.create("azura.uno", "Config version mismatch!", notifications.types.warning)
+        notifications.create("Specter", "Config version mismatch!", notifications.types.warning)
         print("config version does not match.")
         
         return
     end
 
     if (build ~= config_build) then
-        notifications.create("azura.uno", "Config build mismatch!", notifications.types.warning)
+        notifications.create("Specter", "Config build mismatch!", notifications.types.warning)
         print("config build does not match.")
         
         return
@@ -3018,10 +3018,10 @@ ui.load_config = menu_add_button("Configs", "Use", function()
     success, import_error = pcall(libs.eui.import, decoded_config)
 
     if (not success) then
-        notifications.create("azura.uno", "Unable to import the config!", notifications.types.failure)
+        notifications.create("Specter", "Unable to import the config!", notifications.types.failure)
         print("failed to import config. (" .. import_error .. ")")
     else
-        notifications.create("azura.uno", "Config loaded successfully!", notifications.types.success)
+        notifications.create("Specter", "Config loaded successfully!", notifications.types.success)
         print("config has been loaded successfully.")
 
         local settings = read_settings()
@@ -3092,11 +3092,11 @@ on_shared_players = function()
             end
 
             if (found_users ~= "") then
-                notifications.create("azura.uno", "Found users who use azura (x" .. user_count .. "): " .. found_users:sub(1, -3), notifications.types.information)
-                print("found users who use azura ", azura_color_t(108, 108, 108), "(x" .. user_count .. "): ", get_text_color(), found_users:sub(1, -3))
+                notifications.create("Specter", "Found users who use Specter (x" .. user_count .. "): " .. found_users:sub(1, -3), notifications.types.information)
+                print("found users who use Specter ", specter_color_t(108, 108, 108), "(x" .. user_count .. "): ", get_text_color(), found_users:sub(1, -3))
             else
-                notifications.create("azura.uno", "No users are currently using azura!", notifications.types.information)
-                print("no users are currently using azura.")
+                notifications.create("Specter", "No users are currently using Specter!", notifications.types.information)
+                print("no users are currently using Specter.")
             end
             return
         else
@@ -3156,7 +3156,7 @@ on_shared_esp = function()
                 end
             end
 
-            notifications.create("azura.uno", "Shared data has been reset!", notifications.types.success)
+            notifications.create("Specter", "Shared data has been reset!", notifications.types.success)
             print("shared data has been reset.")
 
             return
@@ -3184,7 +3184,7 @@ on_chatsync = function(event)
                 end
 
                 if (is_sync) then
-                    chat_print("{blue}[{lightgreen}azura.uno{blue}]{white}:{yellow} A user said something on the chat{white}!")
+                    chat_print("{blue}[{lightgreen}Specter{blue}]{white}:{yellow} A user said something on the chat{white}!")
                 end
                 return
             else
@@ -4026,7 +4026,7 @@ on_brute = function(event)
                                         local rounded_percentage = math.floor(percentage * 100) / 100
 
                                         if (local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
-                                            print("shot by ", get_text_color(), name, get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "state: ", azura_color_t(168, 168, 168), global.current_state, ", ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), bt_end, "t") -- azura_color_t(108, 108, 108), "total: ", azura_color_t(168, 168, 168), t_enm_data.shots.hit, "/", t_enm_data.shots.miss + t_enm_data.shots.hit, azura_color_t(108, 108, 108), " (", azura_color_t(168, 168, 168), rounded_percentage, "%%", azura_color_t(108, 108, 108), ")")
+                                            print("shot by ", get_text_color(), name, get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "state: ", specter_color_t(168, 168, 168), global.current_state, ", ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), bt_end, "t") -- specter_color_t(108, 108, 108), "total: ", specter_color_t(168, 168, 168), t_enm_data.shots.hit, "/", t_enm_data.shots.miss + t_enm_data.shots.hit, specter_color_t(108, 108, 108), " (", specter_color_t(168, 168, 168), rounded_percentage, "%%", specter_color_t(108, 108, 108), ")")
                                         end
                                     else
                                         t_enm_data.shots.miss = t_enm_data.shots.miss + 1
@@ -4050,7 +4050,7 @@ on_brute = function(event)
 
                                         if (local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
                                             if (local_player:get_name() ~= name) then
-                                                print("evaded ", get_text_color(), name, azura_color_t(168, 168, 168), "'s shot", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "state: ", azura_color_t(168, 168, 168), global.current_state, ", ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), bt_end, "t") -- azura_color_t(108, 108, 108), "total: ", azura_color_t(168, 168, 168), t_enm_data.shots.hit, "/", t_enm_data.shots.miss + t_enm_data.shots.hit, azura_color_t(108, 108, 108), " (", azura_color_t(168, 168, 168), rounded_percentage, "%%", azura_color_t(108, 108, 108), ")")
+                                                print("evaded ", get_text_color(), name, specter_color_t(168, 168, 168), "'s shot", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "state: ", specter_color_t(168, 168, 168), global.current_state, ", ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), bt_end, "t") -- specter_color_t(108, 108, 108), "total: ", specter_color_t(168, 168, 168), t_enm_data.shots.hit, "/", t_enm_data.shots.miss + t_enm_data.shots.hit, specter_color_t(108, 108, 108), " (", specter_color_t(168, 168, 168), rounded_percentage, "%%", specter_color_t(108, 108, 108), ")")
                                                 evades.send_data = true
                                             end
                                         end
@@ -4811,7 +4811,7 @@ end
 
 --- @info: shot logs (owners, Oct 2026: like Specter's): one JSON line per shot with a result, to the license server
 --- (/shotlog, base64 parts) every 40 shots and at round start; the bot writes them to the "shotlogs" branch, folder
---- shotlogs/azura (the batch ids start with "az"). No names: the target is a hash of its steam id with a salt of this load
+--- shotlogs/primordial (the batch ids start with "pm"). No names: the target is a hash of its steam id with a salt of this load
 --- @region: shot logs
 
 local shotlog = { server = "https://specter-license-mh111-production.up.railway.app", buf = {}, sending = false,
@@ -4851,7 +4851,7 @@ shotlog.send = function()
         return
     end
 
-    local id = "az" .. shotlog.hash(globals.real_time() .. #lines):sub(1, 8) .. tostring(client_get_unix_time() % 100000)
+    local id = "pm" .. shotlog.hash(globals.real_time() .. #lines):sub(1, 8) .. tostring(client_get_unix_time() % 100000)
     local base = shotlog.server .. "/shotlog?id=" .. id .. "&total=" .. #parts
     shotlog.sending = true
     local function part(i)
@@ -4886,7 +4886,7 @@ shotlog.result = function(shot, hit)
     end
 
     local row = {
-        lua = "azura", v = 1, t = client_get_unix_time(), map = engine_get_level_name_short(),
+        lua = "primordial", v = 1, t = client_get_unix_time(), map = engine_get_level_name_short(),
         ping = get_user_ping(), wpn = weapon and weapon:get_name() or nil,
         tg = shotlog.hash(steamid or idx), r = hit and "hit" or "miss",
         ahg = shot.aim_hitgroup, bt = shotlog.num(shot.backtrack_ticks), hc = shotlog.num(shot.aim_hitchance),
@@ -5929,12 +5929,12 @@ draw_menu = function()
     render_rect_fade(vec2_t(menu_get_pos().x - math.floor(animation.appearing), menu_get_pos().y - 21 - math.floor(animation.appearing)), vec2_t(200 + math.floor(animation.appearing * 5), 15), color_t(29, 29, 29, math.floor(animation.alpha)), color_t(29, 29, 29, 0), true)
     render_rect_filled(vec2_t(menu_get_pos().x + 2 - math.floor(animation.appearing), menu_get_pos().y - 19 - math.floor(animation.appearing)), vec2_t(2 + math.floor(animation.appearing * 2), 11), color_t(ui.accent_color:get().r, ui.accent_color:get().g, ui.accent_color:get().b, math.floor(animation.alpha)))
     
-    local base_x = render_get_text_size(pixel_font, "azura0").x + menu_get_pos().x - 23 - -math.floor(animation.appearing)
+    local base_x = render_get_text_size(pixel_font, "specter0").x + menu_get_pos().x - 23 - -math.floor(animation.appearing)
     local base_y = menu_get_pos().y - 19 - math.floor(animation.appearing)
 
-    local x_offset = base_x + render_get_text_size(pixel_font, "azura.uno" .. info.beta_text .. " ").x
+    local x_offset = base_x + render_get_text_size(pixel_font, "Specter" .. info.beta_text .. " ").x
 
-    render_text(pixel_font, "azura.uno" .. info.beta_text .. " ", vec2_t(base_x, base_y), color_t(255, 255, 255, math.floor(animation.alpha)))
+    render_text(pixel_font, "Specter" .. info.beta_text .. " ", vec2_t(base_x, base_y), color_t(255, 255, 255, math.floor(animation.alpha)))
     render_text(pixel_font, "|", vec2_t(x_offset, base_y), color_t(ui.text_color:get().r, ui.text_color:get().g, ui.text_color:get().b, math.floor(animation.alpha)))
 
     x_offset = x_offset + render_get_text_size(pixel_font, "| ").x
@@ -5948,7 +5948,7 @@ draw_menu = function()
 end
 
 draw_watermark = function()
-    local things_tbl = { 'azura.uno' .. info.beta_text }
+    local things_tbl = { 'Specter' .. info.beta_text }
     local h, m, s = client_get_local_time()
 
     if (m < 10) then
@@ -6181,7 +6181,7 @@ draw_indicator = function()
     local value = dmg_ovr_key:get() and dmg_ovr:get() or norm_dmg:get()
     local lerp = math.floor(animated_sc("dmg", value, 15) + 0.5)
     
-    local gradient = animated_text(verdana2, "azura.uno", ui.accent_color:get(), vec2_t(screen_size.x / 2 + binds.movetext + 1, screen_size.y / 2 + screen.positions[2][1]), 1)()
+    local gradient = animated_text(verdana2, "Specter", ui.accent_color:get(), vec2_t(screen_size.x / 2 + binds.movetext + 1, screen_size.y / 2 + screen.positions[2][1]), 1)()
     render_text(fontpixel, tostring(lerp), vec2_t(screen_size.x / 2 + 5, screen_size.y / 2 - 15), color_t(255, 255, 255, 100))
 end
 
@@ -6523,9 +6523,9 @@ menu_handle = function()
         groups.sync:depend({page == 9})
 
         if (ui.nav.slider:get() == 0) then
-            menu_set_group_column("Home | azura v" .. client_version .. "" .. info.beta_text2, 2)
+            menu_set_group_column("Home | Specter v" .. client_version .. "" .. info.beta_text2, 2)
         else
-            menu_set_group_column("Home | azura v" .. client_version .. "" .. info.beta_text2, 1)
+            menu_set_group_column("Home | Specter v" .. client_version .. "" .. info.beta_text2, 1)
         end
     
         if (info.beta_build) then
@@ -6606,19 +6606,19 @@ do_aimhit = function()
                             if (hit.damage == hit.aim_damage) then
                                 if (target_hp > 0) then
                                     cl_logs.add_log("hits")
-                                    print("hurt ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), " in ", get_text_color(), hit_group, azura_color_t(168, 168, 168), " for ", get_text_color(), hit.damage .. " dmg", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), hit.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°, ", azura_color_t(108, 108, 108), "remaining: ", azura_color_t(168, 168, 168), target_hp, " hp")
+                                    print("hurt ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), " in ", get_text_color(), hit_group, specter_color_t(168, 168, 168), " for ", get_text_color(), hit.damage .. " dmg", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), hit.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°, ", specter_color_t(108, 108, 108), "remaining: ", specter_color_t(168, 168, 168), target_hp, " hp")
                                 else
                                     cl_logs.add_log("kills")
-                                    print("killed ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), " in ", get_text_color(), hit_group, azura_color_t(168, 168, 168), " with ", get_text_color(), hit.damage .. " dmg", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), hit.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
+                                    print("killed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), " in ", get_text_color(), hit_group, specter_color_t(168, 168, 168), " with ", get_text_color(), hit.damage .. " dmg", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), hit.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
                                 end
                             else
                                 cl_logs.add_log("mismatches")
                                 if (target_hp > 0) then
                                     cl_logs.add_log("hits")
-                                    print("hurt ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), " in ", get_text_color(), hit_group, azura_color_t(168, 168, 168), " for ", get_text_color(), hit.damage .. " dmg", azura_color_t(255, 162, 0), "!", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), hit.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°, ", azura_color_t(108, 108, 108), "exp: ", azura_color_t(168, 168, 168), hit.aim_damage, ", ", azura_color_t(108, 108, 108), "remaining: ", azura_color_t(168, 168, 168), target_hp, " hp")
+                                    print("hurt ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), " in ", get_text_color(), hit_group, specter_color_t(168, 168, 168), " for ", get_text_color(), hit.damage .. " dmg", specter_color_t(255, 162, 0), "!", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), hit.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°, ", specter_color_t(108, 108, 108), "exp: ", specter_color_t(168, 168, 168), hit.aim_damage, ", ", specter_color_t(108, 108, 108), "remaining: ", specter_color_t(168, 168, 168), target_hp, " hp")
                                 else
                                     cl_logs.add_log("kills")
-                                    print("killed ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), " in ", get_text_color(), hit_group, azura_color_t(168, 168, 168), " with ", get_text_color(), hit.damage .. " dmg", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), hit.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
+                                    print("killed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), " in ", get_text_color(), hit_group, specter_color_t(168, 168, 168), " with ", get_text_color(), hit.damage .. " dmg", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), hit.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
                                 end
                             end
                         else
@@ -6626,18 +6626,18 @@ do_aimhit = function()
                             if (hit.damage == hit.aim_damage) then
                                 if (target_hp > 0) then
                                     cl_logs.add_log("hits")
-                                    print("hurt ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), " in ", get_text_color(), hit_group, azura_color_t(255, 162, 0), "!", azura_color_t(168, 168, 168), " for ", get_text_color(), hit.damage .. " dmg", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), hit.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°, ", azura_color_t(108, 108, 108), "exp: ", azura_color_t(168, 168, 168), aim_group, ", ", azura_color_t(108, 108, 108), azura_color_t(108, 108, 108), "remaining: ", azura_color_t(168, 168, 168), target_hp, " hp")
+                                    print("hurt ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), " in ", get_text_color(), hit_group, specter_color_t(255, 162, 0), "!", specter_color_t(168, 168, 168), " for ", get_text_color(), hit.damage .. " dmg", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), hit.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°, ", specter_color_t(108, 108, 108), "exp: ", specter_color_t(168, 168, 168), aim_group, ", ", specter_color_t(108, 108, 108), specter_color_t(108, 108, 108), "remaining: ", specter_color_t(168, 168, 168), target_hp, " hp")
                                 else
                                     cl_logs.add_log("kills")
-                                    print("killed ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), " in ", get_text_color(), hit_group, azura_color_t(255, 162, 0), "!", azura_color_t(168, 168, 168), " with ", get_text_color(), hit.damage .. " dmg", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), hit.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
+                                    print("killed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), " in ", get_text_color(), hit_group, specter_color_t(255, 162, 0), "!", specter_color_t(168, 168, 168), " with ", get_text_color(), hit.damage .. " dmg", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), hit.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
                                 end
                             else
                                 if (target_hp > 0) then
                                     cl_logs.add_log("hits")
-                                    print("hurt ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), " in ", get_text_color(), hit_group, azura_color_t(255, 162, 0), "!", azura_color_t(168, 168, 168), " for ", get_text_color(), hit.damage .. " dmg", azura_color_t(255, 162, 0), "!", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), hit.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°, ", azura_color_t(108, 108, 108), "exp: ", azura_color_t(168, 168, 168), aim_group, ":", hit.aim_damage, ", ", azura_color_t(108, 108, 108), "remaining: ", azura_color_t(168, 168, 168), target_hp, " hp")
+                                    print("hurt ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), " in ", get_text_color(), hit_group, specter_color_t(255, 162, 0), "!", specter_color_t(168, 168, 168), " for ", get_text_color(), hit.damage .. " dmg", specter_color_t(255, 162, 0), "!", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), hit.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°, ", specter_color_t(108, 108, 108), "exp: ", specter_color_t(168, 168, 168), aim_group, ":", hit.aim_damage, ", ", specter_color_t(108, 108, 108), "remaining: ", specter_color_t(168, 168, 168), target_hp, " hp")
                                 else
                                     cl_logs.add_log("kills")
-                                    print("killed ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), " in ", get_text_color(), hit_group, azura_color_t(255, 162, 0), "!", azura_color_t(168, 168, 168), " with ", get_text_color(), hit.damage .. " dmg", azura_color_t(255, 162, 0), "!", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), hit.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
+                                    print("killed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), " in ", get_text_color(), hit_group, specter_color_t(255, 162, 0), "!", specter_color_t(168, 168, 168), " with ", get_text_color(), hit.damage .. " dmg", specter_color_t(255, 162, 0), "!", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), hit.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
                                 end
                             end
                         end
@@ -6686,7 +6686,7 @@ do_aimmiss = function()
                         indicator.data["unknown"] = (indicator.data["unknown"] or 0) + 1
                         indicator.shot_count = indicator.shot_count + 1
 
-                        print("missed ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, azura_color_t(168, 168, 168), " due to", get_text_color(), " unknown", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
+                        print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to", get_text_color(), " unknown", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
                         return
                     end
                 end
@@ -6696,7 +6696,7 @@ do_aimmiss = function()
                         indicator.data["prediction error"] = (indicator.data["prediction error"] or 0) + 1
                         indicator.shot_count = indicator.shot_count + 1
 
-                        print("missed ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, azura_color_t(168, 168, 168), " due to", get_text_color(), " prediction error", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
+                        print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to", get_text_color(), " prediction error", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
                         return
                     end
                 end
@@ -6706,7 +6706,7 @@ do_aimmiss = function()
                         indicator.data["jitter"] = (indicator.data["jitter"] or 0) + 1
                         indicator.shot_count = indicator.shot_count + 1
 
-                        print("missed ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, azura_color_t(168, 168, 168), " due to", get_text_color(), " jitter", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
+                        print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to", get_text_color(), " jitter", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
                         return
                     end
                 end
@@ -6716,7 +6716,7 @@ do_aimmiss = function()
                         indicator.data["dormant aimbot"] = (indicator.data["dormant aimbot"] or 0) + 1
                         indicator.shot_count = indicator.shot_count + 1
 
-                        print("missed ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, azura_color_t(168, 168, 168), " due to", get_text_color(), " dormant aimbot", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
+                        print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to", get_text_color(), " dormant aimbot", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
                         return
                     end
 
@@ -6724,14 +6724,14 @@ do_aimmiss = function()
                         indicator.data["prediction error"] = (indicator.data["prediction error"] or 0) + 1
                         indicator.shot_count = indicator.shot_count + 1
 
-                        print("missed ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, azura_color_t(168, 168, 168), " due to", get_text_color(), " prediction error", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
+                        print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to", get_text_color(), " prediction error", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
                         return
                     end
 
                     indicator.data["backtrack failure"] = (indicator.data["backtrack failure"] or 0) + 1
                     indicator.shot_count = indicator.shot_count + 1
 
-                    print("missed ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, azura_color_t(168, 168, 168), " due to", get_text_color(), " backtrack failure", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
+                    print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to", get_text_color(), " backtrack failure", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
                     return
                 end
 
@@ -6739,10 +6739,10 @@ do_aimmiss = function()
                 indicator.shot_count = indicator.shot_count + 1
 
                 if (string.find(reason, "spread") or string.find(reason, "spread (missed safe)")) then
-                    print("missed ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, azura_color_t(168, 168, 168), " due to ", get_text_color(), reason, get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "hc: ", azura_color_t(168, 168, 168), miss.aim_hitchance, "%%, ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
+                    print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to ", get_text_color(), reason, get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "hc: ", specter_color_t(168, 168, 168), miss.aim_hitchance, "%%, ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
                     return
                 end
-                print("missed ", get_text_color(), target:get_name(), azura_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, azura_color_t(168, 168, 168), " due to ", get_text_color(), reason, get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "Δ: ", azura_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", azura_color_t(108, 108, 108), "∠: ", azura_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
+                print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to ", get_text_color(), reason, get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
             else
                 return
             end
@@ -6964,7 +6964,7 @@ do_event = function()
                         if (item ~= nil and item ~= "unknown") then
                             if (entity:get_name() ~= nil and entity ~= local_player) then
                                 if (string.find(item, "awp") or string.find(item, "scar20") or string.find(item, "g3sg1")) then
-                                    chat_print("{blue}[{lightgreen}azura.uno{blue}]{yellow} " .. entity:get_name() .. " {white}has bought {lightgreen}" .. item .. "{white}!")
+                                    chat_print("{blue}[{lightgreen}Specter{blue}]{yellow} " .. entity:get_name() .. " {white}has bought {lightgreen}" .. item .. "{white}!")
                                 end
 
                                 if (string.find(item, "item_defuser")) then
@@ -7006,7 +7006,7 @@ do_event = function()
                                 if (string.find(item, "item_kevlar")) then
                                     item = "kevlar"
                                 end
-                                print(get_text_color(), entity:get_name(), azura_color_t(168, 168, 168), " has bought ", get_text_color(), item)
+                                print(get_text_color(), entity:get_name(), specter_color_t(168, 168, 168), " has bought ", get_text_color(), item)
                             end
                         end
                     end
@@ -7026,24 +7026,24 @@ do_event = function()
                                 if (dmg_health <= 0) then
                                     cl_logs.add_log("kills")
                                     if (string.match(weapon, "knife") or weapon == "bayonet") then
-                                        print("killed ", get_text_color(), entity:get_name(), azura_color_t(168, 168, 168), " with ", get_text_color(), event_dmg, " dmg ", azura_color_t(168, 168, 168), "using ", get_text_color(), "knife")
+                                        print("killed ", get_text_color(), entity:get_name(), specter_color_t(168, 168, 168), " with ", get_text_color(), event_dmg, " dmg ", specter_color_t(168, 168, 168), "using ", get_text_color(), "knife")
                                     elseif (weapon == "hegrenade") then
-                                        print("killed ", get_text_color(), entity:get_name(), azura_color_t(168, 168, 168), " with ", get_text_color(), event_dmg, " dmg ", azura_color_t(168, 168, 168), "using ", get_text_color(), "nade")
+                                        print("killed ", get_text_color(), entity:get_name(), specter_color_t(168, 168, 168), " with ", get_text_color(), event_dmg, " dmg ", specter_color_t(168, 168, 168), "using ", get_text_color(), "nade")
                                     elseif (weapon == "inferno" or weapon == "incgrenade") then
-                                        print("killed ", get_text_color(), entity:get_name(), azura_color_t(168, 168, 168), " with ", get_text_color(), event_dmg, " dmg ", azura_color_t(168, 168, 168), "using ", get_text_color(), "molotov")
+                                        print("killed ", get_text_color(), entity:get_name(), specter_color_t(168, 168, 168), " with ", get_text_color(), event_dmg, " dmg ", specter_color_t(168, 168, 168), "using ", get_text_color(), "molotov")
                                     elseif (weapon == "taser") then
-                                        print("killed ", get_text_color(), entity:get_name(), azura_color_t(168, 168, 168), " with ", get_text_color(), event_dmg, " dmg ", azura_color_t(168, 168, 168), "using ", get_text_color(), "taser")
+                                        print("killed ", get_text_color(), entity:get_name(), specter_color_t(168, 168, 168), " with ", get_text_color(), event_dmg, " dmg ", specter_color_t(168, 168, 168), "using ", get_text_color(), "taser")
                                     end
                                 else
                                     cl_logs.add_log("hits")
                                     if (string.match(weapon, "knife") or weapon == "bayonet") then
-                                        print("hurt ", get_text_color(), entity:get_name(), azura_color_t(168, 168, 168), " for ", get_text_color(), event_dmg, " hp ", azura_color_t(168, 168, 168), "with ", get_text_color(), "a knife", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "remaining: ", azura_color_t(168, 168, 168), dmg_health, " hp")
+                                        print("hurt ", get_text_color(), entity:get_name(), specter_color_t(168, 168, 168), " for ", get_text_color(), event_dmg, " hp ", specter_color_t(168, 168, 168), "with ", get_text_color(), "a knife", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "remaining: ", specter_color_t(168, 168, 168), dmg_health, " hp")
                                     elseif (weapon == "hegrenade") then
-                                        print("hurt ", get_text_color(), entity:get_name(), azura_color_t(168, 168, 168), " for ", get_text_color(), event_dmg, " hp ", azura_color_t(168, 168, 168), "with ", get_text_color(), "a nade", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "remaining: ", azura_color_t(168, 168, 168), dmg_health, " hp")
+                                        print("hurt ", get_text_color(), entity:get_name(), specter_color_t(168, 168, 168), " for ", get_text_color(), event_dmg, " hp ", specter_color_t(168, 168, 168), "with ", get_text_color(), "a nade", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "remaining: ", specter_color_t(168, 168, 168), dmg_health, " hp")
                                     elseif (weapon == "inferno" or weapon == "incgrenade") then
-                                        print("hurt ", get_text_color(), entity:get_name(), azura_color_t(168, 168, 168), " for ", get_text_color(), event_dmg, " hp ", azura_color_t(168, 168, 168), "with ", get_text_color(), "a molotov", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "remaining: ", azura_color_t(168, 168, 168), dmg_health, " hp")
+                                        print("hurt ", get_text_color(), entity:get_name(), specter_color_t(168, 168, 168), " for ", get_text_color(), event_dmg, " hp ", specter_color_t(168, 168, 168), "with ", get_text_color(), "a molotov", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "remaining: ", specter_color_t(168, 168, 168), dmg_health, " hp")
                                     elseif (weapon == "taser") then
-                                        print("hurt ", get_text_color(), entity:get_name(), azura_color_t(168, 168, 168), " for ", get_text_color(), event_dmg, " hp ", azura_color_t(168, 168, 168), "with ", get_text_color(), "a taser", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "remaining: ", azura_color_t(168, 168, 168), dmg_health, " hp")
+                                        print("hurt ", get_text_color(), entity:get_name(), specter_color_t(168, 168, 168), " for ", get_text_color(), event_dmg, " hp ", specter_color_t(168, 168, 168), "with ", get_text_color(), "a taser", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "remaining: ", specter_color_t(168, 168, 168), dmg_health, " hp")
                                     end
                                 end
                             end
@@ -7053,9 +7053,9 @@ do_event = function()
                             if (ui.utils.event_logs:get(4)) then
                                 if (dmg_health <= 0) then
                                     cl_logs.add_log("deaths")
-                                    print("killed by ", get_text_color(), attacker:get_name(), azura_color_t(168, 168, 168), " in ", get_text_color(), hit_group, azura_color_t(168, 168, 168), " with ", get_text_color(), event_dmg, " dmg")
+                                    print("killed by ", get_text_color(), attacker:get_name(), specter_color_t(168, 168, 168), " in ", get_text_color(), hit_group, specter_color_t(168, 168, 168), " with ", get_text_color(), event_dmg, " dmg")
                                 else
-                                    print("hurt by ", get_text_color(), attacker:get_name(), azura_color_t(168, 168, 168), " in ", get_text_color(), hit_group, azura_color_t(168, 168, 168), " for ", get_text_color(), event_dmg, " dmg", get_accent_color(), "  ~  ", azura_color_t(108, 108, 108), "remaining: ", azura_color_t(168, 168, 168), dmg_health, " hp")
+                                    print("hurt by ", get_text_color(), attacker:get_name(), specter_color_t(168, 168, 168), " in ", get_text_color(), hit_group, specter_color_t(168, 168, 168), " for ", get_text_color(), event_dmg, " dmg", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "remaining: ", specter_color_t(168, 168, 168), dmg_health, " hp")
                                 end
                             end
                         end
@@ -7065,7 +7065,7 @@ do_event = function()
                 if (event.name == "player_falldamage") then
                     if (ui.utils.event_logs:get(4)) then
                         if (entity:get_index() == local_player:get_index()) then
-                            print("took ", get_text_color(), math.floor(event.damage + 0.1), " dmg", azura_color_t(168, 168, 168), " from ", get_text_color(), "fall damage.")
+                            print("took ", get_text_color(), math.floor(event.damage + 0.1), " dmg", specter_color_t(168, 168, 168), " from ", get_text_color(), "fall damage.")
                         end
                     end
                 end
@@ -7429,7 +7429,7 @@ callbacks.add(e_callbacks.SHUTDOWN, function()
     end
 
     on_shared_esp()
-    print("goodbye, hope we can see you soon!", azura_color_t(131, 111, 255), " </3")
+    print("goodbye, hope we can see you soon!", specter_color_t(131, 111, 255), " </3")
 end)
 
 --- @endregion
@@ -7666,8 +7666,8 @@ setup = function()
 
     collectgarbage("collect")
 
-    notifications.create("azura.uno", "Welcome on azura, " .. info.user .. "!", notifications.types.information)
-    print("welcome on azura.uno!", get_text_color(), " <3")
+    notifications.create("Specter", "Welcome to Specter, " .. info.user .. "!", notifications.types.information)
+    print("welcome on Specter!", get_text_color(), " <3")
 end
 setup()
 
