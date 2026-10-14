@@ -175,6 +175,16 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   * Fakelag variance (no DT / HS): choke 10-15, a new one each cycle.
   * "Apply advanced preset" (Settings): every state 1-8 on these modes (`builder.apply_preset`, X-Way stand / duck / air,
     Distort move, Random hold slow walk, Random desync 58, Smart defensive). Untested in game: the owners judge it there.
+- Direct control (owners, Oct 2026: "teljesen saját antiaimot ... csak a luaba", "csak a devbe"): Settings "Direct control
+  (dev)" (default on, only `info.plan == "dev"`, i.e. no key; nightly / beta keep the old menu writes). The AA code is
+  unchanged: during the ANTIAIM callback `builder.direct_begin` swaps the `DIRECT_REFS` menu refs for recorders and the
+  ctx for a proxy, `direct_restore` puts them back, then `direct_apply` sends the result itself: the real menu is held
+  neutral (yaw add 0, no jitter / rotate, pitch off, desync side left at 100 %), `ctx:set_yaw` (base + 180 + add + own
+  spin / `adv.native_jitter` = Offset / Center / 3Way / 5Way per packet), `set_pitch`, `set_desync` (left negative,
+  invert held off so they never cancel). An own `set_yaw` / `set_pitch` / `set_invert_desync` of the old code wins.
+  Peek fake / peek real desync stay on the menu (no ctx equivalent). Untested in game.
+- Circles: Primordial's `render_circle_filled` / `render_circle` take an int radius (a fraction stopped the PAINT
+  callback in `sky`); the script wraps both and rounds the radius.
 - Menu (owners, Oct 2026, chose the "buttons" mock-up): four main buttons (Config, Ragebot, Anti-Aim, Misc), under them
   the "› " page buttons of the active one (`nav_pages`; the page is still `ui.nav.slider`: 1-9 kept, 10-14 new: Aimbot,
   Tickbase, Yaw / Jitter, Desync, Defensive). The builder's items use `aa_page` (any anti-aim page), the Settings group
