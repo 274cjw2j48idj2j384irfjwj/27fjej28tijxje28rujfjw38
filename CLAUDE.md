@@ -71,7 +71,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   it has its logo: a post from before the logo is posted again), deleting the bot's older posts of that panel there
   (`post_panel`, by title; a member's message stays). Every panel says the primordial lua is coming (owners, Oct 2026: "a pricesnal meg mindenhol
   írd ki hogy primordial lua soon"): a "Specter for Primordial — Coming Soon" field and "primordial soon" on prices, a line on
-  how-to, "primordial lua soon" in the footers. The #updates changelog carries the logo too, but every version is a
+  how-to, "primordial lua soon" in the footers. The category "🔜 Specter·Primordial" (owners, Oct 2026: "csináld hozzá discord
+  chaneleket"): #primordial-news (read-only, the `primordial` panel = the "coming soon / sneak peeks" announcement),
+  #sneak-peeks (read-only), #primordial-chat (members). /setup_channels makes them on a running server and then posts
+  the panels of the new channels at once (`sync_panels`). The #updates changelog carries the logo too, but every version is a
   new post and the old ones stay (owners: the history stays there). A new
   specter_loader.lua of `CLOUD_BRANCH` goes to #loader-download the same way every `RELEASE_MINUTES` (`sync_loader`, the
   post's SHA-256 field says which one is out; only `is_customer_loader`). /post_* and /post_loader replace the old post too
