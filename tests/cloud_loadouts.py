@@ -120,7 +120,9 @@ def run():
     w.ui.set(lb, 1)
     check(w["items"][item(w, "\nloadout_name")[0]].value == "Distort hvh", "selecting a cloud row puts its name in the box")
     w.ui.set(item(w, "Load\nloadout")[0], True)
-    check(any("Cloud loadout \"Distort hvh\" by peter loaded" in str(m) for m in w.logs.values()), "Load imports the cloud loadout")
+    # a console line is several color_log calls (one per colour, "\0" = the line goes on): join them like the console
+    console = "".join(str(m) for m in w.logs.values()).replace("\0", "")
+    check("Cloud loadout \"Distort hvh\" by peter loaded" in console, "Load imports the cloud loadout")
     check(not list(w.errors.values()) or all("math_floor" in e or "compare number" in e for e in w.errors.values()),
           "no script errors: " + str(list(w.errors.values()))[:200])
 
