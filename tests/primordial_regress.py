@@ -224,5 +224,82 @@ for i, vals in rows:
 check(same and get("Settings", "Anti brute mode") == 2 and get("Features", "Fakelag variance") is True,
       "default.cfg: the advanced anti-aim, the same values as the preset button")
 
+# direct control (dev build): the anti-aim code writes into recorders, the lua sends yaw / pitch / desync itself
+DIRECT = chunk("-- the Primordial jitter types (yaw add", "run_antiaim = function(ctx, cmd, unpredicted)")
+dr = L.LuaRuntime(unpack_returned_tuples=True)
+dr.execute("""builder = {} globals = { tick_count = function() return 0 end }
+info = { plan = "dev" }
+local function item(v) return { v = v, get = function(self) return self.v end, set = function(self, x) self.v = x end } end
+ui = { antiaim = { builder = { enable = item(true), direct = item(true) } } }
+REAL = {}
+refs = {}
+for _, f in ipairs({ "pitch", "yawbase", "yawadd", "rotate", "rotaterange", "rotatespeed", "jittermode", "jittertype",
+    "jitterrange", "desyncside", "leftamount", "rightamount" }) do refs[f] = item(0); REAL[f] = refs[f] end
+engine_get_view_angles = function() return { y = 30 } end
+entity_list_get_players = function() return {} end
+""" + ADV + DIRECT + """
+function CTX()
+    local c = { calls = {} }
+    for _, m in ipairs({ "set_yaw", "set_pitch", "set_desync", "set_invert_desync", "set_fakelag" }) do
+        c[m] = function(self, v) self.calls[m] = v end
+    end
+    return c
+end""")
+D = dr.eval("""function(code) return assert(loadstring(code))() end""")
+r = D("""
+builder.fresh = true
+builder.direct_begin()
+local swapped = refs.yawadd ~= REAL.yawadd
+local ctx = CTX()
+local dctx = builder.direct_ctx(ctx)
+refs.yawbase:set(2) refs.yawadd:set(15) refs.pitch:set(2) refs.jittermode:set(1)
+refs.desyncside:set(2) refs.leftamount:set(80) refs.rightamount:set(60)
+dctx:set_fakelag(true)
+builder.direct_restore()
+local restored = refs.yawadd == REAL.yawadd
+builder.direct_apply(ctx, { get_eye_position = function() return { x = 0, y = 0 } end })
+local c = ctx.calls
+return swapped, restored, c.set_yaw, c.set_pitch, c.set_desync, c.set_invert_desync, c.set_fakelag, REAL.yawadd.v, REAL.desyncside.v, REAL.leftamount.v
+""")
+check(r[0] and r[1] and r[2] == -135 and r[3] == 89 and abs(r[4] + 0.8) < 1e-9 and r[5] is False and r[6] is True
+      and r[7] == 0 and r[8] == 2 and r[9] == 100,
+      "direct control: recorders swapped in and back, yaw = view 30 + 180 + 15, pitch down, desync left 80 %% (%s)" % (r,))
+r = D("""
+builder.direct_begin()
+local ctx = CTX()
+local dctx = builder.direct_ctx(ctx)
+refs.desyncside:set(2) refs.leftamount:set(80) refs.rightamount:set(60)
+dctx:set_invert_desync(true)
+dctx:set_yaw(200)
+dctx:set_pitch(-45)
+builder.direct_restore()
+builder.direct_apply(ctx, {})
+return ctx.calls.set_yaw, ctx.calls.set_pitch, ctx.calls.set_desync
+""")
+check(r[0] == -160 and r[1] == -45 and abs(r[2] - 0.6) < 1e-9,
+      "direct control: an own set_yaw / set_pitch wins, the random side flips the desync to the right 60 %% (%s)" % (r,))
+r = D("""
+builder.direct_begin()
+local ctx = CTX()
+refs.desyncside:set(5) refs.yawbase:set(1)
+builder.direct_restore()
+builder.direct_apply(ctx, {})
+return ctx.calls.set_desync == nil, ctx.calls.set_yaw == nil, REAL.desyncside.v
+""")
+check(r[0] and r[1] and r[2] == 5, "direct control: peek fake stays Primordial's, yaw base 1 (round end) sends no yaw (%s)" % (r,))
+r = D("""
+local st, a = {}, {}
+for n = 1, 6 do a[#a + 1] = builder.adv.native_jitter(st, 3, 30, true) end
+local st2, b = {}, {}
+for n = 1, 5 do b[#b + 1] = builder.adv.native_jitter(st2, 4, 40, true) end
+local st3 = {}
+local c1 = builder.adv.native_jitter(st3, 2, 30, true)
+local c2 = builder.adv.native_jitter(st3, 2, 30, false)
+return table.concat(a, ","), table.concat(b, ","), c1 == c2
+""")
+check(r[0] == "0,30,-30,0,30,-30" and r[1] == "-20,0,20,40,-40" and r[2],
+      "direct control jitter: 3Way / 5Way steps once per packet (%s)" % (r,))
+check("render_circle_filled = function(pos, radius" in SRC, "circle radii are rounded (Primordial wants an int)")
+
 print("\n%d failed" % len(FAILS) if FAILS else "\nall passed")
 sys.exit(1 if FAILS else 0)

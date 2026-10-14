@@ -35,6 +35,18 @@ menu_get_size, menu_find, menu_list, menu_add_slider, menu_add_checkbox, menu_te
 player_resource_get_prop, player_resource_set_prop = player_resource.get_prop, player_resource.set_prop
 ragebot_get_active_cfg, ragebot_get_autopeek_pos = ragebot.get_active_cfg, ragebot.get_autopeek_pos
 render_get_text_size, render_push_clip, render_load_image, render_rect_filled, render_line, render_pop_clip, render_rect_fade, render_circle_filled, render_weapon_icon, render_rect, render_texture, render_get_screen_size, render_load_image_buffer, render_create_font, render_weapon_icon_size, render_pop_alpha_modifier, render_circle, render_text, render_get_default_font, render_polygon, render_polyline, render_triangle, render_push_alpha_modifier, render_triangle_filled, render_progress_circle, render_world_to_screen = render.get_text_size, render.push_clip, render.load_image, render.rect_filled, render.line, render.pop_clip, render.rect_fade, render.circle_filled, render.weapon_icon, render.rect, render.texture, render.get_screen_size, render.load_image_buffer, render.create_font, render.weapon_icon_size, render.pop_alpha_modifier, render.circle, render.text, render.get_default_font, render.polygon, render.polyline, render.triangle, render.push_alpha_modifier, render.triangle_filled, render.progress_circle, render.world_to_screen
+
+-- Primordial's circle calls take the radius as an int: a fraction (the watermark's moon / sun, 4.5 * night ...) is
+-- "not a numeric type" and stops the PAINT callback, so every radius is rounded here
+do
+    local circle_filled, circle = render_circle_filled, render_circle
+    render_circle_filled = function(pos, radius, ...)
+        return circle_filled(pos, math.max(0, math.floor((tonumber(radius) or 0) + 0.5)), ...)
+    end
+    render_circle = function(pos, radius, ...)
+        return circle(pos, math.max(0, math.floor((tonumber(radius) or 0) + 0.5)), ...)
+    end
+end
 trace_line, trace_bullet, trace_hull = trace.line, trace.bullet, trace.hull
 ipairs, assert, pairs, next, tostring, tonumber, setmetatable, unpack, type, getmetatable, pcall, error = ipairs, assert, pairs, next, tostring, tonumber, setmetatable, unpack, type, getmetatable, pcall, error
 
@@ -1416,6 +1428,7 @@ local ui = {
 }
 
 ui.antiaim.builder.ab_mode = groups.settings:selection("Anti brute mode", {"Shift", "Phases"})
+ui.antiaim.builder.direct = groups.settings:checkbox("Direct control (dev)", true)
 ui.utils.aa_stats = groups.utils:checkbox("AA stats", true)
 ui.utils.aa_stats_reset = groups.utils:button("Reset AA stats", function()
     builder.aa_stats = {}
@@ -5443,6 +5456,184 @@ builder.apply_preset = function()
     notifications.create("Specter", "Advanced anti-aim preset applied to every state.", notifications.types.success)
 end
 
+-- the Primordial jitter types (yaw add on top of the yaw), the lua's version for direct control: 1 Offset (0 / range),
+-- 2 Center (-range/2 / +range/2), 3 3Way (-range, 0, range), 4 5Way (-range .. range in 5 steps); the next step per packet
+builder.adv.native_jitter = function(st, kind, range, fresh)
+    if (fresh) then
+        st.step = (st.step or 0) + 1
+    end
+    local step = st.step or 0
+    if (kind == 1) then
+        return step % 2 == 0 and 0 or range
+    elseif (kind == 2) then
+        return step % 2 == 0 and -range / 2 or range / 2
+    elseif (kind == 3) then
+        return (step % 3 - 1) * range
+    end
+    return (step % 5 - 2) * range / 2
+end
+
+-- direct control (owners, Oct 2026: "teljesen saját antiaimot ... ami csak a luaba van", "csak a devbe"): the anti-aim code
+-- above stays as it is, but in the dev build (no key) with "Direct control" on what it writes into Primordial's anti-aim
+-- menu is collected instead (`refs` swapped for recorders, ctx:set_* recorded), and at the end of the tick the lua sends
+-- the angles itself: ctx:set_yaw (the base it computes + 180 + yaw add + its jitter / spin), ctx:set_pitch,
+-- ctx:set_desync (-1 .. 1, left negative, like the workshop luas; the invert stays off so the two can not cancel out).
+-- Primordial's own yaw add / jitter / spin / pitch are kept neutral, its desync on (left, 100 %) so set_desync has one to
+-- steer; peek fake / peek real stay Primordial's (the lua can not see its peek logic)
+builder.DIRECT_REFS = { "pitch", "yawbase", "yawadd", "rotate", "rotaterange", "rotatespeed", "jittermode", "jittertype",
+    "jitterrange", "desyncside", "leftamount", "rightamount" }
+builder.direct = { out = {}, real = {}, jit = {}, spin = 0, jside = 1, pjit = 1, side = 2 }
+
+builder.direct_on = function()
+    return info.plan == "dev" and ui.antiaim.builder.enable:get() and ui.antiaim.builder.direct:get()
+end
+
+-- the refs the anti-aim code writes become recorders until direct_restore
+builder.direct_begin = function()
+    local d = builder.direct
+    d.out = {}
+    for _, f in ipairs(builder.DIRECT_REFS) do
+        local real = d.real[f] or refs[f]
+        d.real[f] = real
+        refs[f] = {
+            set = function(_, v)
+                d.out[f] = v
+            end,
+            get = function()
+                if (d.out[f] ~= nil) then
+                    return d.out[f]
+                end
+                return real:get()
+            end,
+        }
+    end
+end
+
+builder.direct_restore = function()
+    for f, real in pairs(builder.direct.real) do
+        refs[f] = real
+    end
+end
+
+-- the ctx the anti-aim code gets: the angle / desync calls are recorded, everything else goes to the real one
+builder.direct_ctx = function(ctx)
+    local o = builder.direct.out
+    return setmetatable({
+        set_yaw = function(_, v) o.abs_yaw = v end,
+        set_pitch = function(_, v) o.abs_pitch = v end,
+        set_invert_desync = function(_, v) o.invert = v end,
+        set_desync = function(_, v) o.desync = v end,
+    }, {
+        __index = function(_, k)
+            local f = ctx[k]
+            if (type(f) == "function") then
+                return function(_, ...)
+                    return f(ctx, ...)
+                end
+            end
+            return f
+        end,
+    })
+end
+
+-- the yaw the anti-aim looks away from: 2 the view, 3 the enemy nearest the crosshair, 4 the nearest enemy (the base
+-- items of the builder + 1); nil = no yaw at all (1, the round end)
+builder.direct_base = function(local_player, mode)
+    if (mode == nil or mode <= 1) then
+        return nil
+    end
+    local view = engine_get_view_angles()
+    if (mode == 2) then
+        return view.y
+    end
+    local eye = local_player:get_eye_position()
+    local best, best_val
+    for _, enemy in pairs(entity_list_get_players(true) or {}) do
+        if (enemy:is_alive() and not enemy:is_dormant()) then
+            local o = enemy:get_render_origin()
+            local yaw = math.deg(math.atan2(o.y - eye.y, o.x - eye.x))
+            local val = mode == 3 and math.abs(builder.adv.norm(yaw - view.y)) or ((o.x - eye.x) ^ 2 + (o.y - eye.y) ^ 2)
+            if (best_val == nil or val < best_val) then
+                best, best_val = yaw, val
+            end
+        end
+    end
+    return best or view.y
+end
+
+-- what the anti-aim code decided this tick, sent with the real ctx
+builder.direct_apply = function(ctx, local_player)
+    local d = builder.direct
+    local o, R = d.out, d.real
+    R.yawadd:set(0)
+    R.jittermode:set(1)
+    R.rotate:set(false)
+    R.pitch:set(1)
+
+    -- yaw
+    if (o.abs_yaw ~= nil) then
+        ctx:set_yaw(builder.adv.norm(o.abs_yaw))
+    else
+        local base = builder.direct_base(local_player, o.yawbase or d.yawbase)
+        d.yawbase = o.yawbase or d.yawbase
+        if (base ~= nil) then
+            local yaw = base + 180 + (o.yawadd or 0)
+            if (o.rotate) then
+                local range = math.max(1, o.rotaterange or 360)
+                d.spin = (d.spin + math.max(1, o.rotatespeed or 50) / 10) % range
+                yaw = base + 180 + d.spin - range / 2
+            elseif (o.jittermode == 2) then
+                yaw = yaw + builder.adv.native_jitter(d.jit, o.jittertype or 1, o.jitterrange or 0, builder.fresh)
+            end
+            ctx:set_yaw(builder.adv.norm(yaw))
+        end
+    end
+
+    -- pitch: 1 Off, 2 Down, 3 Up, 4 Zero, 5 Jitter (up / down per packet)
+    if (o.abs_pitch ~= nil) then
+        ctx:set_pitch(o.abs_pitch)
+    else
+        local p = o.pitch or 1
+        if (p == 5 and builder.fresh) then
+            d.pjit = -d.pjit
+        end
+        local value = ({ [2] = 89, [3] = -89, [4] = 0, [5] = 89 * d.pjit })[p]
+        if (value ~= nil) then
+            ctx:set_pitch(value)
+        end
+    end
+
+    -- desync: Primordial's side list 1 none, 2 left, 3 right, 4 jitter, 5 peek fake, 6 peek real
+    if (o.desyncside ~= nil) then
+        d.side = o.desyncside
+    end
+    local la = math.max(0, math.min(100, o.leftamount or R.leftamount:get()))
+    local ra = math.max(0, math.min(100, o.rightamount or R.rightamount:get()))
+    if (d.side == 5 or d.side == 6) then
+        R.desyncside:set(d.side)
+        R.leftamount:set(la)
+        R.rightamount:set(ra)
+    elseif (d.side <= 1) then
+        R.desyncside:set(d.side)
+    else
+        local left = d.side == 2
+        if (d.side == 4) then
+            if (builder.fresh) then
+                d.jside = -d.jside
+            end
+            left = d.jside > 0
+        end
+        if (o.invert) then
+            left = not left
+        end
+        R.desyncside:set(2)
+        R.leftamount:set(100)
+        R.rightamount:set(100)
+        ctx:set_invert_desync(false)
+        ctx:set_desync((left and -la or ra) / 100)
+    end
+end
+
 run_antiaim = function(ctx, cmd, unpredicted)
     if (ui.antiaim.builder.enable:get()) then
         refs.overridemove:set(false)
@@ -7236,6 +7427,7 @@ menu_handle = function()
         ui.antiaim.builder.enable:depend({aa_page})
         ui.antiaim.builder.condition:depend({aa_page}, {ui.antiaim.builder.enable, true})
         ui.antiaim.builder.ab_mode:depend({aa_page}, {ui.antiaim.builder.enable, true}, {ui.antiaim.builder.anti_brute, true})
+        ui.antiaim.builder.direct:depend({aa_page}, {ui.antiaim.builder.enable, true}, {info.plan == "dev"})
         ui.antiaim.builder.preset:depend({aa_page}, {ui.antiaim.builder.enable, true})
         ui.antiaim.features.fl_variance:depend({aa_page}, {ui.antiaim.builder.enable, true})
     
@@ -7558,9 +7750,27 @@ do_antiaim = function()
             local on_land = bit.band(entity_list_get_local_player():get_prop("m_fFlags"), bit.lshift(1, 0)) ~= 0
             local state = get_state(get_velocity())
         
-            run_antiaim(ctx, cmd, unpredicted)
-            run_exploit(ctx, cmd, unpredicted)
-            run_edgeyaw(ctx, cmd, unpredicted)
+            if (builder.direct_on()) then
+                -- direct control: the anti-aim code writes into recorders, then the lua sends the angles itself
+                builder.direct_begin()
+                local dctx = builder.direct_ctx(ctx)
+                local ok, err = pcall(function()
+                    run_antiaim(dctx, cmd, unpredicted)
+                    run_exploit(dctx, cmd, unpredicted)
+                    run_edgeyaw(dctx, cmd, unpredicted)
+                end)
+                builder.direct_restore()
+                if (ok) then
+                    ok, err = pcall(builder.direct_apply, ctx, entity_list_get_local_player())
+                end
+                if (not ok) then
+                    error(err, 0)
+                end
+            else
+                run_antiaim(ctx, cmd, unpredicted)
+                run_exploit(ctx, cmd, unpredicted)
+                run_edgeyaw(ctx, cmd, unpredicted)
+            end
 
             if (ui.exploits.lag_on_shoot:get()) then
                 if (send_lag_packet) then
