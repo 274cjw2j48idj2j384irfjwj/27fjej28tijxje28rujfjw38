@@ -25,6 +25,7 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   gamesense textboxes take no Ctrl+V: the "Paste key" button reads the clipboard (`gamesense/clipboard`, else the same
   vgui2 VGUI_System010 calls through ffi with pcall), `spec_key <key>` in the console also sets it. Once the script runs the whole login
   menu is hidden (the script's menu is in the same tabs; `spec_logout` in the console). `python3 tests/loader_menu.py`
+- `specter_primordial_loader.lua` — the Primordial loader (see specter_primordial.lua below)
 - `specter_dev_loader.lua` — DEV loader for the owners: no login / key / HWID / server. Put it into the gamesense lua folder once; it
   downloads the newest `specter_dev.lua` from GitHub raw on every load (SOURCES list: main first, then the `dev` branch), saves it
   as `specter_dev_cache.lua` and falls back to that copy offline. `python3 tests/dev_loader.py` tests it. `specter_dev.lua` itself stays
@@ -142,6 +143,23 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   Glass / Neon, Watermark info incl. Icons), a "Hotkeys" header pill + one pill per bind (Keybinds style Pills icons /
   classic, Show bind mode), spectators in the same pills with avatars. Dragged with the old `libs.etr` drags (M2 centers);
   the watermark starts top right. `get_user_ping` = 1000 x (out + in) latency (the incoming part was not x1000).
+- User detection (owners, Oct 2026: "ugyan úgy ... a scoreboardon egy hold jel", through our own server): `presence` (in
+  the old lua network region): every 30 s `GET /presence?t=<version>&q=<hashes>[&me=<hash>]` (hash = 2x32 bit of
+  "specter|" .. steam id; `me` only with Shared ESP on). server.js keeps it IN MEMORY (`PRESENCE_TTL` 75 s, not Redis: Upstash
+  counts every command), answers `{on: {hash: version}}`. Found players: the moon on the scoreboard (the old panorama JS
+  `libs.tools.js`, image `file://{images}/icons/specter_moon.png`, downloaded once from `GET /moon.png` into
+  csgo/materials/panorama/images/icons/), a row "name ~ version" in Specter Revealer, a notification once per name,
+  `esp.sync_user` (talk back / chat mention). The dead azura sync socket is gone.
+- Loader + versions (owners, Oct 2026: "beta és nightly ... a bétaba nincs resolver, a ragebot Helper maradhat"):
+  `specter_primordial_loader.lua` (key text input + Login, the key saved in csgo/specter/key.txt and used at the next
+  start, HWID = hash of the C: volume serial + computer name, steam http + filesystem libs copied from the script):
+  `/verify` -> `/script` like the gamesense loader; only `pm_nightly` / `pm_beta` keys (server `VALID_PLANS`, bot
+  `PM_PLANS` / `KEY_PLANS`, role "Primordial"). The server prefix sets BUILD_VERSION -> `info.plan` ("nightly" / "beta",
+  "dev" without a key): beta has no Resolver page (nav sub removed, groups hidden) and no lua resolver (`lets_resolve`
+  off = Primordial's own resolver, no HITSCAN safe point); Helpers stay. With a key no shot logs are sent. Upload:
+  `/primordial_upload [file] [branch]`, and `sync_primordial` puts specter_primordial.lua of CLOUD_BRANCH on the server
+  for both plans (no post anywhere: the Primordial lua is not out yet; main never reaches the server). The script has no
+  auth gate (it is also the #staff dev build): a beta key holder who dumps it gets the whole script.
 - Primordial API: docs.primordial.dev is blocked from the cloud container; the leaked workshop luas
   (github.com/DuckOpenSourceFoundation/femordial-workshop-luas) show the calls. ANTIAIM ctx: set_yaw, set_pitch,
   set_desync (-1..1), set_invert_desync, set_fakelag, set_body_lean; desync side items: none, left, right, jitter, peek

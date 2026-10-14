@@ -112,5 +112,26 @@ for page, (main, want) in sorted(EXPECT.items()):
     check(groups_shown == want and buttons == SUBS[main],
           "menu page %2d (%s): groups %s, pages %s" % (page, main, sorted(groups_shown), sorted(buttons)))
 
+# the loader's beta version (BUILD_VERSION pm_beta): no Resolver page and no resolver groups, the helpers stay
+beta = L.LuaRuntime()
+beta.execute(MENU_MOCK.replace('info = { beta_build = true', 'info = { plan = "beta", beta_build = true'))
+beta.execute(NAV + MENU_HANDLE)
+for page, want in ((3, set()), (10, {"ragebot"}), (5, {"exploits", "helpers"})):
+    beta.execute("PAGE = %d; SHOWN = {}; menu_handle()" % page)
+    shown = {k.split(":", 1)[1] for k, v in dict(beta.globals().SHOWN).items() if v}
+    groups_shown = shown & {"resolver", "resolver_beta", "reso_cfg", "ragebot", "exploits", "helpers"}
+    buttons = {b[2:] for b in shown if b.startswith("› ")}
+    check(groups_shown == want and (page == 3 or buttons == {"Aimbot", "Tickbase", "Exploits"}),
+          "beta page %2d: groups %s, pages %s" % (page, sorted(groups_shown), sorted(buttons)))
+check('info.plan ~= "dev"' in SRC.split("shotlog.result = function")[1][:300], "beta / nightly (a key) send no shot logs")
+
+# the loader (specter_primordial_loader.lua): compiles, asks the server for a pm_* plan, and runs the script it downloads
+LOADER = open(os.path.join(ROOT, "specter_primordial_loader.lua"), encoding="utf-8").read()
+ok, err = compiles(LOADER)
+check(ok, "loader compiles under LuaJIT" + ("" if ok else ": " + str(err)))
+check("/verify?key=" in LOADER and "/script?key=" in LOADER and 'plan:find("^pm_")' in LOADER,
+      "loader: verify -> script, only pm_ keys")
+check("[resolver:begin]" not in LOADER and "shotlog" not in LOADER, "loader carries no script code")
+
 print("\n%d failed" % len(FAILS) if FAILS else "\nall passed")
 sys.exit(1 if FAILS else 0)
