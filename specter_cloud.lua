@@ -11417,13 +11417,6 @@ LPH_NO_VIRTUALIZE(function ()
                 :record("miscellaneous", "killsay")
                 :save()
 
-            config.miscellaneous.sponsor_killsay = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Sponsor Kill Say")
-                :record("miscellaneous", "sponsor_killsay")
-                :save()
-
-            config.miscellaneous.roast_killsay = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Roast Kill Say")
-                :record("miscellaneous", "roast_killsay")
-                :save()
 
             config.miscellaneous.custom_output = menu.new_item(ui.new_checkbox, "AA", "Other", "Custom Output")
                 :record("miscellaneous", "custom_output")
@@ -11901,32 +11894,11 @@ LPH_NO_VIRTUALIZE(function ()
                 local counter = 0
                 local said = {}   -- per kill say list: how many of its lines went out
 
+                -- Kill Say (owners, Oct 2026: one kill say, no separate sponsor / roast lists): HvH / family / life roasts with
+                -- the victim's name, no slurs and nothing about self harm (a report gets the account banned); the lines about
+                -- the cheat / lua end with the Discord invite
+                local DISCORD = 'discord.gg/dxM89UUnVN'
                 local killsay_messages = {
-                    '{name} got absolutely destroyed / sit down',
-                    'gg {name} / maybe next time',
-                    '{name} just got specter\'d / was that your best?',
-                    'nice try {name} / but not good enough',
-                    '{name} deleted / too easy',
-                    'bye bye {name} / back to lobby',
-                    '{name} thought he was good / LMFAO',
-                    'where you going {name}? / oh wait you\'re dead',
-                    '{name} = free kill / thanks for the frag',
-                    'imagine dying that fast {name}',
-                    '{name} just got sent to the shadow realm',
-                    'sorry {name} / actually no i\'m not',
-                    '{name} ragdolled beautifully / 10/10',
-                    'nt {name} / jk that was terrible',
-                    '{name} down / who\'s next?',
-                    'get rekt {name} / specter on top',
-                    '{name} caught a headshot / and a reality check',
-                    'that was embarrassing {name} / just saying',
-                    '1 tap on {name} / too clean',
-                    '{name} uninstall maybe? / just a suggestion'
-                }
-
-                -- Roast Kill Say (owners, Oct 2026: "olyan killsayeket ami megérinti az embereket", like "your mom waited 9
-                -- months ..."): family / life roasts, no slurs and nothing about self harm (a report gets the account banned)
-                local roast_messages = {
                     'your mom waited 9 months / and all she got was {name}',
                     '{name}, your mom carried you for 9 months / and that\'s still the longest anyone carried you',
                     '{name}, your dad went out for milk / right after he watched you play',
@@ -11955,21 +11927,21 @@ LPH_NO_VIRTUALIZE(function ()
                     'your dad still waits for you to make him proud {name} / he\'s getting old',
                     '{name}, you were a surprise / and nobody was happy about it',
                     'the whole lobby just learned why your dad never came back {name}',
-                    '{name}, your resolver guesses like it\'s playing roulette',
+                    '{name}, your resolver guesses like it\'s playing roulette / ours does not: ' .. DISCORD,
                     '{name}, you don\'t have a main / you have a coping mechanism',
                     'your rank isn\'t a rank {name} / it\'s a diagnosis',
                     '{name}, you bought that config / and it still refunded you',
-                    '{name}, your anti aim is just a suggestion',
-                    'you paid for that cheat {name} / it should be paying you to stop',
-                    '{name}, your config came with a virus / and the virus plays better',
-                    '{name}, your desync is so obvious / even the server feels sorry for you',
+                    '{name}, your anti aim is just a suggestion / get a real one at ' .. DISCORD,
+                    'you paid for that cheat {name} / it should be paying you to stop / or get Specter: ' .. DISCORD,
+                    '{name}, your config came with a virus / and the virus plays better / clean configs at ' .. DISCORD,
+                    '{name}, your desync is so obvious / even the server feels sorry for you / fix it at ' .. DISCORD,
                     'your gaming chair is the only thing in your life with support {name}',
                     '{name}, your teammates mute you / and the game sounds better',
                     '{name}, you are the free trial of a player',
                     'you don\'t lose rounds {name} / rounds lose interest in you',
-                    'refund that paste {name} / then refund yourself',
-                    '{name}, your lua is from youtube / and so is your skill',
-                    '{name}, your doubletap shoots twice / and misses twice',
+                    'refund that paste {name} / then refund yourself / then join ' .. DISCORD,
+                    '{name}, your lua is from youtube / and so is your skill / there is a working one at ' .. DISCORD,
+                    '{name}, your doubletap shoots twice / and misses twice / one that hits: ' .. DISCORD,
                     'your fakelag is the only fake thing about you {name} / the rest is just bad',
                     '{name}, your jitter is shaking from fear',
                     'even the spectators left your POV {name}',
@@ -11978,43 +11950,16 @@ LPH_NO_VIRTUALIZE(function ()
                     '{name}, you don\'t need a coach / you need a miracle',
                     '{name}, the respawn timer is the highlight of your game',
                     '{name}, your cheat has a better personality than you',
-                    'imagine losing hvh {name} / with a cheat that does everything for you',
+                    'imagine losing hvh {name} / with a cheat that does everything for you / a lua that works: ' .. DISCORD,
                     'your ex left for a reason {name} / we just saw it',
                     '{name}, you\'re the plot twist nobody asked for',
-                    '{name}, your whole life is on the default config',
+                    '{name}, your whole life is on the default config / better ones at ' .. DISCORD,
                     '{name}, your story is just you dying in different maps',
                     'your nametag is louder than your gameplay {name}',
                     '{name}, your inventory is worth more than you',
                 }
 
-                local DISCORD = 'discord.gg/dxM89UUnVN'
-                local sponsor_messages = {
-                    '{name} got tapped by Specter / sit down',
-                    '1 {name} / sponsored by Specter - ' .. DISCORD,
-                    'imagine dying to Specter {name}',
-                    '{name} uninstall / or get Specter at ' .. DISCORD,
-                    'skill issue {name} / Specter said goodnight',
-                    'want to stop dying {name}? / ' .. DISCORD,
-                    '{name} is a free kill for Specter / thanks for the frag',
-                    'Specter > your cheat {name} / ' .. DISCORD,
-                    'L {name} / Specter on top',
-                    '{name} needs Specter / ' .. DISCORD,
-                    'ratio + L + no Specter {name}',
-                    'still no Specter {name}? / ' .. DISCORD,
-                    '{name} spectating again / Specter keeps playing',
-                    'tired of the spectator view {name}? / Specter - ' .. DISCORD,
-                    'was that a hvh or a Specter tutorial {name}?',
-                    '{name} buy a real cheat / Specter - ' .. DISCORD,
-                    '{name} you just paid the Specter tax',
-                    'refund your paste {name} / Specter - ' .. DISCORD,
-                    'owned by Specter / next',
-                    'Specter does this every round {name} / ' .. DISCORD,
-                    'iq check failed {name} / Specter passed it',
-                    'free lesson from Specter {name} / full course at ' .. DISCORD,
-                    'dont rage quit {name} / Specter is not done with you',
-                    '{name} vs Specter / not even close / ' .. DISCORD,
-                    'sit {name} / join the winning side - ' .. DISCORD,
-                }
+
 
                 local list = {
                     ['head'] = {
@@ -12152,9 +12097,7 @@ LPH_NO_VIRTUALIZE(function ()
 
                 function miscellaneous.trashtalk:on_kill(event)
                     local M = config.miscellaneous
-                    local sponsor = M.sponsor_killsay:get()
-                    local roast = not sponsor and M.roast_killsay:get()
-                    local killsay = sponsor or roast or M.killsay:get()
+                    local killsay = M.killsay:get()
                     if not M.trashtalk:get() and not killsay then
                         return
                     end
@@ -12163,7 +12106,7 @@ LPH_NO_VIRTUALIZE(function ()
                     local victim_name = victim_ent and entity.get_player_name(victim_ent) or nil
 
                     if killsay and victim_name then
-                        self.run_killsay(sponsor and sponsor_messages or (roast and roast_messages) or killsay_messages, victim_name)
+                        self.run_killsay(killsay_messages, victim_name)
                         return
                     end
 
@@ -14597,8 +14540,6 @@ LPH_NO_VIRTUALIZE(function ()
                 if M.cheat_tweaks:get() then M.cheat_tweaks_list:display() end
                 M.trashtalk:display()
                 M.killsay:display()
-                M.sponsor_killsay:display()
-                M.roast_killsay:display()
                 M.hdr_utility:display()
                 M.console_filter:display()
                 M.aspect_mode:display()
