@@ -1079,6 +1079,7 @@ local ui = {
     ragebot = {
         logic_reso = groups.resolver:checkbox("Logic resolver"),
         nexzu_reso = groups.resolver:checkbox("Improve resolver"),
+        smart_baim = groups.resolver:checkbox("Smart body aim", true),
         
         pose_reso = groups.resolver_beta:checkbox("Pose resolver"),
         resolver = {
@@ -4789,9 +4790,9 @@ resolver.on_result = function(target, hit_ok, resolver_miss)
     reso.rel = nil
 end
 
--- safe points / head for the aimbot's target. Always (whichever resolver is on, also none): a jittering target gets safe
--- points on the head and the chest, a target we missed for "resolver" / "jitter" is shot in the body until the next hit.
--- The resolver options add their safe points on top
+-- safe points / smart body aim for the aimbot's target. Always (whichever resolver is on, also none): a jittering target
+-- gets safe points on the head and the chest, a target we missed for "resolver" / "jitter" one on the head until the next
+-- hit. The resolver options add their safe points on top
 resolver.hitscan = function(ctx)
     local ent = ctx.player
     if (ent == nil) then
@@ -4815,12 +4816,18 @@ resolver.hitscan = function(ctx)
         end
     end
 
-    -- after a resolver / jitter miss: no head until the next hit (shot logs, Oct 2026, 231 shots: the next head shot after a
-    -- jitter miss missed for "jitter" again 7 of 19 times, a body shot hit 5 of 5; the head safe point did not lower the
-    -- jitter misses, 4.4 vs 3.8 per 30 shots). A body hit resets the misses, so the shot after it goes for the head again
-    local body = misses >= 1
+    -- Smart body aim (owners, Oct 2026: "ha nem 100% biztos a fejbe inkább safepointos vagy testre lő ... de ha 100 a kövi
+    -- hitnél akkor ne test legyen"): the head is sure when the target does not jitter and we have not missed it for
+    -- resolver / jitter since the last hit. Not sure: the body when a body hit kills (the weaker of chest / stomach is
+    -- above its HP), else the head stays, with the safe point above. Shot logs, Oct 2026: 26 of 29 jitter misses were head
+    -- shots (body 3 of 87), the next head shot after a jitter miss missed again 7 of 19 times
+    local body = false
+    if (ui.ragebot.smart_baim:get() and (jitter or misses >= 1)) then
+        local hp = ent:get_prop("m_iHealth") or 100
+        body = hp > 0 and hp <= math.min(damage:calculate(ent, "chest"), damage:calculate(ent, "stomach"))
+    end
 
-    -- what the shot logs carry: 3 = head off after a miss, 2 = a safe point for a jittering target, 1 = for another reason
+    -- what the shot logs carry: 3 = body (smart body aim), 2 = a safe point for a jittering target, 1 = for another reason
     resolver.safe = resolver.safe or {}
     resolver.safe[idx] = body and 3 or safe and (jitter and 2 or 1) or nil
     if (body) then

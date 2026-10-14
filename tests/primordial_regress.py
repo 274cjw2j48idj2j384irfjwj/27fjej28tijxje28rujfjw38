@@ -306,18 +306,20 @@ check("render_circle_filled = function(pos, radius" in SRC, "circle radii are ro
 # through the jitter detector whichever resolver is on (also none); a jittering target gets head + chest safe points, any
 # target after a resolver / jitter miss the head one. A mouse turn and a spin are not jitter, centre / 3-way / random are
 RES = chunk("local RES_JIT_N = 12", "resolver.update = function(local_player, ent)") + \
-      chunk("-- safe points / head for the aimbot's target.", "resolver.reset = function()")
+      chunk("-- safe points / smart body aim for the aimbot's target.", "resolver.reset = function()")
 jr = L.LuaRuntime(unpack_returned_tuples=True)
 jr.execute("""RES_FS_TICKS = 16 SIM = 0
 resolver = { data = {}, misses = {}, active = false }
 local function item(v) return { get = function() return v end } end
-ui = { ragebot = { logic_reso = item(false), resolver = { shot_pred = item(4) } } }
+ui = { ragebot = { logic_reso = item(false), smart_baim = item(true), resolver = { shot_pred = item(4) } } }
+HP = 100
+damage = { calculate = function(_, _, box) return box == "chest" and 70 or 87 end }
 res_custom = function() return false end
 res_clamp = function(v, a, b) return math.max(a, math.min(b, v)) end
 res_norm = function(v) return (v + 180) % 360 - 180 end
 time_to_ticks = function(t) return math.floor(t * 64 + 0.5) end
 e_hitscan_groups = { HEAD = 0, CHEST = 1, STOMACH = 2 }
-ENT = { get_index = function() return 3 end, get_prop = function() return SIM end }
+ENT = { get_index = function() return 3 end, get_prop = function(_, n) if n == "m_iHealth" then return HP end return SIM end }
 function HS()
     local c = { safe = {}, groups = {} }
     c.player = ENT
@@ -369,18 +371,26 @@ check(r == (True, False), "jitter detector: a target stays a jitter target for 1
 r = J("""
 RUN(SEQ(20, function() return 10 end))
 local h0, c0 = HS()
+local sure_head = LAST.groups[0] == nil
 resolver.misses[3] = 1
 local h1, c1 = HS()
-local nohead = LAST.groups[0] == false and LAST.groups[1] == true and LAST.groups[2] == true and resolver.safe[3] == 3
+local head_100 = LAST.groups[0] == nil                       -- 100 hp: a body hit (70) does not kill, the head stays
+HP = 60
+HS()
+local body_60 = LAST.groups[0] == false and LAST.groups[1] == true and LAST.groups[2] == true and resolver.safe[3] == 3
 resolver.misses[3] = 0
+HP = 100
 RUN(SEQ(20, function(i) return i % 2 == 0 and 30 or -30 end))
 local h2, c2 = HS()
-local head_back = LAST.groups[0] == nil
-return h0, c0, h1, c1, h2, c2, resolver.safe[3], nohead, head_back
+local jit_head_100 = LAST.groups[0] == nil and resolver.safe[3] == 2
+HP = 50
+HS()
+local jit_body_50 = LAST.groups[0] == false
+return h0, c0, sure_head, h1, c1, head_100, body_60, h2, c2, jit_head_100, jit_body_50
 """)
-check(r == (False, False, True, False, True, True, 2, True, True),
-      "jitter misses: with every resolver off, body (no head) after a miss until a hit, safe head + chest on a jitter "
-      "target (%s)" % (r,))
+check(r == (False, False, True, True, False, True, True, True, True, True, True),
+      "jitter / smart body aim, every resolver off: a sure head stays, after a miss / on a jitter target the head is a safe "
+      "point, the body only when a body hit kills (%s)" % (r,))
 
 print("\n%d failed" % len(FAILS) if FAILS else "\nall passed")
 sys.exit(1 if FAILS else 0)
