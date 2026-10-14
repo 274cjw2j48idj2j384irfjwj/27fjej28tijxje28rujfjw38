@@ -26,6 +26,14 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   vgui2 VGUI_System010 calls through ffi with pcall), `spec_key <key>` in the console also sets it. Once the script runs the whole login
   menu is hidden (the script's menu is in the same tabs; `spec_logout` in the console). `python3 tests/loader_menu.py`
 - `specter_primordial_loader.lua` — the Primordial loader (see specter_primordial.lua below)
+- `specter_primordial_dev_loader.lua` — the owners' Primordial DEV loader (owners, Oct 2026: "külön dev build amit mindig
+  feltölt nekünk"): no key; downloads the newest main build from the license server (`GET /dev/script?token=`), saves it
+  as csgo/specter/specter_primordial_dev_cache.lua, runs the saved copy when the server does not answer. The repo is PRIVATE
+  (raw.githubusercontent gives 404 without a token, so the gamesense dev loader's GitHub sources do not work either). The
+  bot (`sync_primordial_dev`, every RELEASE_MINUTES) uploads main's specter_primordial.lua as plan `pm_dev`; the token is
+  sha256("specter-dev|" + ADMIN_SECRET)[:32] on both sides (`dev_token`, off with the default secret), the repo file has
+  `%%DEV_TOKEN%%` and the bot writes the token in when it posts the loader to #staff (`release_body`; it is in the default
+  RELEASE_FILES). `python3 tests/primordial_regress.py` runs it with fake http / files
 - `specter_dev_loader.lua` — DEV loader for the owners: no login / key / HWID / server. Put it into the gamesense lua folder once; it
   downloads the newest `specter_dev.lua` from GitHub raw on every load (SOURCES list: main first, then the `dev` branch), saves it
   as `specter_dev_cache.lua` and falls back to that copy offline. `python3 tests/dev_loader.py` tests it. `specter_dev.lua` itself stays
