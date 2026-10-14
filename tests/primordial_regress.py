@@ -301,5 +301,45 @@ check(r[0] == "0,30,-30,0,30,-30" and r[1] == "-20,0,20,40,-40" and r[2],
       "direct control jitter: 3Way / 5Way steps once per packet (%s)" % (r,))
 check("render_circle_filled = function(pos, radius" in SRC, "circle radii are rounded (Primordial wants an int)")
 
+
+# jitter misses (shot logs, Oct 2026): every enemy's eye yaw history is kept while the resolver is on, a jittering target
+# (3+ of its last 8 records jumped) and any target after its first resolver miss get the head safe point (Logic resolver)
+RES = chunk("resolver.track = function(ent, eye)", "resolver.update = function(local_player, ent)") + \
+      chunk("resolver.hitscan = function(ctx)", "resolver.reset = function()")
+jr = L.LuaRuntime(unpack_returned_tuples=True)
+jr.execute("""RES_FS_TICKS = 16 SIM = 0
+resolver = { data = {}, misses = {}, active = true }
+local function item(v) return { get = function() return v end } end
+ui = { ragebot = { logic_reso = item(true), resolver = {} } }
+res_custom = function() return false end
+res_clamp = function(v, a, b) return math.max(a, math.min(b, v)) end
+res_sign = function(v) return v < 0 and -1 or 1 end
+res_norm = function(v) return (v + 180) % 360 - 180 end
+time_to_ticks = function(t) return math.floor(t * 64 + 0.5) end
+e_hitscan_groups = { HEAD = 0 }
+ENT = { get_index = function() return 3 end, get_prop = function() return SIM end }
+function HS()
+    local c = {}
+    c.player = ENT
+    c.set_safepoint_state = function(self, on) self.safe = on end
+    resolver.hitscan(c)
+    return c.safe == true
+end
+""" + RES)
+J = jr.eval("function(code) return assert(loadstring(code))() end")
+r = J("""
+local still = {}
+for i = 1, 8 do SIM = i / 64 resolver.track(ENT, 10) end
+still[1] = HS()
+resolver.misses[3] = 1
+still[2] = HS()
+resolver.misses[3] = 0
+resolver.data = {}
+for i = 1, 8 do SIM = i / 64 resolver.track(ENT, i % 2 == 0 and 40 or -40) end
+return still[1], still[2], HS(), resolver.safe[3]
+""")
+check(r[0] is False and r[1] is True and r[2] is True and r[3] == 2,
+      "jitter misses: head safe point on a jittering target and after the first resolver miss, not on a still one (%s)" % (r,))
+
 print("\n%d failed" % len(FAILS) if FAILS else "\nall passed")
 sys.exit(1 if FAILS else 0)
