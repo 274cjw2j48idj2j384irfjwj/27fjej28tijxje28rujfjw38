@@ -27,6 +27,7 @@ ENV VARS (set in Discord bot host or .env):
                         neither @everyone nor a member / customer / plan role can read it
   RELEASE_FILES       — files posted there when a new commit changes them (default: specter_dev.lua, specter_primordial.lua)
   RELEASE_MINUTES     — how often GitHub is checked (default: 5, 0 = only /release_check)
+  PRIMORDIAL_UPDATES  — 1: the Primordial changelog goes to #updates too (with the Primordial logo); default 0 until it is out
   AUTO_UPLOAD         — 1 (default): a new specter_cloud.lua of CLOUD_BRANCH goes to the license server by itself (every
                         plan; the loader downloads it from there), 0: only /script_upload
   UPDATES_CHANNEL     — public channel (name or id) the changelog of a new cloud script is posted in (default: updates)
@@ -83,6 +84,8 @@ VALID_PLANS     = ["beta", "nightly", "specter", "debug"]
 PM_PLANS        = ["pm_nightly", "pm_beta"]
 KEY_PLANS       = VALID_PLANS + PM_PLANS
 PRIMORDIAL_FILE = "specter_primordial.lua"
+# the Primordial changelog in #updates (with its logo, like the gamesense one): off until the Primordial lua is out
+PRIMORDIAL_UPDATES = _env("PRIMORDIAL_UPDATES", "0").lower() in ("1", "true", "yes", "on")
 VALID_DURATIONS = ["lifetime", "1d", "7d", "14d", "30d", "90d"]
 
 # what the Staff role may do on the server: moderation, not the server / roles / channels (those stay the owner's)
@@ -171,6 +174,29 @@ def logo(embed: discord.Embed, banner: bool = False) -> list[discord.File]:
         return []
     (embed.set_image if banner else embed.set_thumbnail)(url=f"attachment://{name}")
     return [discord.File(path, filename=name)]
+
+
+# which lua a post is about (owners, Oct 2026: "rakjon elé egy Primo logót vagy egy GS logot"): its name and logo in the
+# embed's author line, above the title. assets/gs_icon.png / assets/primordial_icon.png (a square PNG; swap them for the real logos)
+LUA_BADGES = {
+    "gamesense":  ("Specter for Gamesense",  "gs_icon.png"),
+    "primordial": ("Specter for Primordial", "primordial_icon.png"),
+}
+
+
+def lua_of(path: str) -> str:
+    return "primordial" if "primordial" in path else "gamesense"
+
+
+def lua_badge(embed: discord.Embed, lua: str) -> list[discord.File]:
+    """The lua's name + logo above the title -> the file to send with the message (none when the PNG is missing)."""
+    name, file = LUA_BADGES[lua]
+    path = os.path.join(ASSETS, file)
+    if not os.path.isfile(path):
+        embed.set_author(name=name)
+        return []
+    embed.set_author(name=name, icon_url=f"attachment://{file}")
+    return [discord.File(path, filename=file)]
 BUY_CONTACT = _env("BUY_CONTACT", "@owner")
 
 # ── Channel structure ────────────────────────────────────────────────
@@ -1631,8 +1657,9 @@ async def check_releases(force: bool = False) -> list[str]:
                 if seen.get(path) == ver["hash"] and not force:
                     continue
                 try:
-                    msg = await ch.send(embed=release_embed(path, ver),
-                                        file=discord.File(io.BytesIO(ver["body"]), filename=path.rsplit("/", 1)[-1]))
+                    embed = release_embed(path, ver)
+                    msg = await ch.send(embed=embed, files=[discord.File(io.BytesIO(ver["body"]), filename=path.rsplit("/", 1)[-1])]
+                                        + lua_badge(embed, lua_of(path)))
                 except discord.HTTPException as e:
                     report.append(f"`{path}`: could not post in {ch.mention}: {e}")
                     continue
@@ -1690,7 +1717,7 @@ async def sync_cloud(force: bool = False) -> list[str]:
                     report.append(f"{guild.name}: no #{UPDATES_CHANNEL} channel (UPDATES_CHANNEL), changelog not posted")
                     continue
                 try:
-                    await ch.send(embed=embed, files=logo(embed))       # a new post each version, the old ones stay
+                    await ch.send(embed=embed, files=lua_badge(embed, "gamesense") + logo(embed))  # a new post each version, the old ones stay
                     report.append(f"changelog posted in {ch.mention}")
                 except discord.HTTPException as e:
                     report.append(f"could not post in {ch.mention}: {e}")
@@ -1768,9 +1795,10 @@ async def sync_shotlogs() -> list[str]:
 
 async def sync_primordial(force: bool = False) -> list[str]:
     """A new specter_primordial.lua of CLOUD_BRANCH -> the license server for pm_nightly and pm_beta (the Primordial loader
-    downloads it at every login). Nothing is posted: the Primordial lua is not out yet; main never reaches the server."""
+    downloads it at every login); main never reaches the server. With PRIMORDIAL_UPDATES its changelog (the release merge's
+    message, like the gamesense one) goes to #updates with the Primordial logo, once per version."""
     try:
-        ver = await newest_version(PRIMORDIAL_FILE, CLOUD_BRANCH)
+        ver = await newest_version(PRIMORDIAL_FILE, CLOUD_BRANCH, head=True)
     except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError) as e:
         return [f"`{PRIMORDIAL_FILE}`: {e}"]
     try:
@@ -1780,13 +1808,32 @@ async def sync_primordial(force: bool = False) -> list[str]:
     if not is_primordial_script(builds["pm_nightly"]):
         return [f"`{PRIMORDIAL_FILE}` of `{CLOUD_BRANCH}`: not the primordial script, not uploaded"]
     have = await server_script_hashes()
-    lines = []
+    lines, done = [], []
     for p in PM_PLANS:
         if force or have is None or have.get(p) != hashlib.sha256(builds[p].encode("utf-8")).hexdigest():
-            lines += (await upload_script(builds[p], [p]))[0]
+            got_lines, got = await upload_script(builds[p], [p])
+            lines += got_lines
+            done += got
     if not lines:
         return []
-    return [f"primordial script `{ver['hash'][:7]}` to the server: " + " ".join(lines)]
+    report = [f"primordial script `{ver['hash'][:7]}` to the server: " + " ".join(lines)]
+    full = hashlib.sha256(builds["pm_nightly"].encode("utf-8")).hexdigest()
+    if PRIMORDIAL_UPDATES and done and _cloud_told.get("primordial") != full:
+        _cloud_told["primordial"] = full
+        points = commit_points(ver["commit"]["commit"].get("message", "")) if ver["commit"] else ""
+        for guild in client.guilds:
+            ch = named_channel(guild, UPDATES_CHANNEL)
+            if ch is None:
+                continue
+            embed = discord.Embed(title="\u2601\ufe0f Specter updated", color=0xB4A0FF, timestamp=discord.utils.utcnow(),
+                                  description=points or "A new version of the script is out.")
+            embed.set_footer(text="You get it at your next login (the loader downloads it)")
+            try:
+                await ch.send(embed=embed, files=lua_badge(embed, "primordial") + logo(embed))
+                report.append(f"primordial changelog posted in {ch.mention}")
+            except discord.HTTPException as e:
+                report.append(f"could not post in {ch.mention}: {e}")
+    return report
 
 
 async def release_loop():
