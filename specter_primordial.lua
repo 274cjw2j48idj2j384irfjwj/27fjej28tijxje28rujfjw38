@@ -1416,6 +1416,11 @@ local ui = {
 }
 
 ui.antiaim.builder.ab_mode = groups.settings:selection("Anti brute mode", {"Shift", "Phases"})
+ui.utils.aa_stats = groups.utils:checkbox("AA stats", true)
+ui.utils.aa_stats_reset = groups.utils:button("Reset AA stats", function()
+    builder.aa_stats = {}
+    notifications.create("Specter", "Anti-aim stats have been reset!", notifications.types.success)
+end)
 ui.antiaim.features.fl_variance = groups.features:checkbox("Fakelag variance")
 ui.antiaim.builder.preset = groups.settings:button("Apply advanced preset", function()
     builder.apply_preset()
@@ -4805,6 +4810,27 @@ shotlog.num = function(v, digits)
     return math.floor(v * m + 0.5) / m
 end
 
+-- an anti-aim result (kind "aa"): which state / modes were on when an enemy hit us or a bullet passed the head. The
+-- dev build only (with a key nothing is sent)
+shotlog.aa = function(kind, snap, hitgroup, damage)
+    if (info.plan ~= "dev") then
+        return
+    end
+    local row = {
+        lua = "primordial", v = 1, kind = "aa", r = kind, t = client_get_unix_time(),
+        map = engine_get_level_name and engine_get_level_name() or nil, ping = get_user_ping(),
+        st = snap.name, ym = snap.ym, jm = snap.jm, ds = snap.ds, def = snap.def or nil, ab = snap.ab or nil,
+        hg = hitgroup, dmg = shotlog.num(damage),
+    }
+    local ok, line = pcall(libs.json.encode, row)
+    if (ok and type(line) == "string") then
+        shotlog.buf[#shotlog.buf + 1] = line
+    end
+    if (#shotlog.buf >= 40) then
+        shotlog.send()
+    end
+end
+
 shotlog.send = function()
     if (shotlog.sending or #shotlog.buf == 0) then
         return
@@ -5288,6 +5314,63 @@ end
 builder.desync_side = function(anti_aim)
     local d = anti_aim.desync:get()
     return d == 5 and 2 or d + 1
+end
+
+-- AA stats (owners, Oct 2026: "melyikkel hányszor találnak el"): per anti-aim state how often an enemy hit us and how
+-- often a bullet passed the head without a hit, with the modes that were on; shown by draw_aa_stats, and from the dev
+-- build one shot log line each (kind "aa") so the config is tuned by real games
+builder.aa_stats = {}
+builder.AA_NAMES = {
+    yaw = { "Static", "Classic", "Advanced", "X-Way", "Distort", "Random hold" },
+    jitter = { "None", "Offset", "Center", "3Way", "5Way", "Random", "Switch random" },
+    desync = { "Left", "Right", "Jitter", "Peek fake", "Random" },
+}
+
+-- the anti-aim as it is now: the state and the modes of the builder entry it uses
+builder.aa_snapshot = function()
+    local n = global.current_state_number
+    if (states[n] == nil) then
+        n = 1
+    end
+    local cs = ui.antiaim.builder[n].override:get() and n or 1
+    local aa = ui.antiaim.builder[cs]
+    return {
+        n = n,
+        name = states[n],
+        ym = builder.AA_NAMES.yaw[aa.yaw_mode:get()] or "?",
+        jm = builder.AA_NAMES.jitter[aa.yaw_modifier:get()] or "?",
+        ds = builder.AA_NAMES.desync[aa.desync:get()] or "?",
+        def = builder.old_defensive == true,
+        ab = builder.ab_active(),
+    }
+end
+
+-- one result: "hit" (an enemy hurt us; hitgroup / damage / attacker) or "evaded" (a bullet passed the head, no hit)
+builder.aa_record = function(kind, hitgroup, damage, attacker)
+    if (not ui.antiaim.builder.enable:get()) then
+        return
+    end
+    local snap = builder.aa_snapshot()
+    local key = snap.name .. " · " .. snap.ym
+    local row = builder.aa_stats[key]
+    if (row == nil) then
+        row = { n = snap.n, label = key, hit = 0, head = 0, evaded = 0 }
+        builder.aa_stats[key] = row
+    end
+    if (kind == "hit") then
+        row.hit = row.hit + 1
+        if (hitgroup == 1) then
+            row.head = row.head + 1
+        end
+        if (ui.utils.aa_stats:get()) then
+            print("hit in ", get_text_color(), key, specter_color_t(168, 168, 168), " · ", get_text_color(),
+                tostring(client_get_hitgroup_name(hitgroup) or "?"), specter_color_t(168, 168, 168), " · ", get_text_color(),
+                tostring(damage or 0), specter_color_t(168, 168, 168), " dmg by ", get_text_color(), tostring(attacker or "?"))
+        end
+    else
+        row.evaded = row.evaded + 1
+    end
+    pcall(shotlog.aa, kind, snap, hitgroup, damage)
 end
 
 -- "Apply advanced preset": every state on the advanced modes, the same values as the anti-aim of default.cfg (owners:
@@ -5792,6 +5875,9 @@ on_miss = function(event)
                                         if (builder.closest_point_on_ray(localorigin, bullet_impact, eye_pos):dist(eye_pos) < 50) then
                                             builder.misses = builder.misses < #builder.anti_bruteforce and builder.misses + 1 or 0
                                             builder.anti_brute_trigger()
+                                            if (globals.tick_count() - hurt_tick > 8) then
+                                                builder.aa_record("evaded")
+                                            end
                                         end
 
                                         misstable = {}
@@ -6763,6 +6849,76 @@ notifications.render = function()
         hud.box(x + 8, ny + n.h - 3, math.floor((W - 16) * part), 2, 1, c[1], c[2], c[3], 200 * a)
 
         y = y + (n.h + 8) * a
+    end
+end
+
+-- AA stats panel: one pill per state / yaw mode that was shot at, hits and evaded bullets and the hit rate
+hud.aa_drag = libs.etr.new('aa_stats', vec2_t(50, screen_size.y / 2 + 160), vec2_t(0, 0))
+hud.aa_h, hud.aa_w = 0, 0
+
+draw_aa_stats = function()
+    local ft = globals.frame_time()
+    local accent = ui.accent_color:get()
+    local list = {}
+    for _, row in pairs(builder.aa_stats) do
+        list[#list + 1] = row
+    end
+    table.sort(list, function(p, q)
+        if (p.n ~= q.n) then
+            return p.n < q.n
+        end
+        return p.label < q.label
+    end)
+    if (#list == 0 and not menu_is_open()) then
+        return
+    end
+
+    local HEAD, RH, GAP = 28, 26, 5
+    local need = 220
+    for _, row in ipairs(list) do
+        local shots = row.hit + row.evaded
+        row.rate = shots > 0 and math.floor(row.hit / shots * 100 + 0.5) or 0
+        row.right = string.format("%d hit · %d evaded · %d%%", row.hit, row.evaded, row.rate)
+        need = math.max(need, 22 + render_get_text_size(hud.bold, row.label).x + 18 + render_get_text_size(hud.font, row.right).x + 12)
+    end
+    hud.aa_w = hud.aa_w == 0 and need or hud.lerp(hud.aa_w, need, ft * 12)
+    local total = HEAD + (#list == 0 and 26 or #list * (RH + GAP))
+    hud.aa_h = hud.aa_h == 0 and total or hud.lerp(hud.aa_h, total, ft * 14)
+    local w = math.floor(hud.aa_w + 0.5)
+
+    hud.aa_drag.size = vec2_t(w, math.floor(hud.aa_h + 0.5))
+    hud.aa_drag:update()
+    local x, y = math.floor(hud.aa_drag.pos.x + 0.5), math.floor(hud.aa_drag.pos.y + 0.5)
+
+    hud.header(x, y, w, 1, "AA stats", accent, true, function(cx, cy, c)
+        render_line(vec2_t(cx - 5, cy - 6), vec2_t(cx + 5, cy - 6), c)
+        render_line(vec2_t(cx + 5, cy - 6), vec2_t(cx + 5, cy + 1), c)
+        render_line(vec2_t(cx + 5, cy + 1), vec2_t(cx, cy + 7), c)
+        render_line(vec2_t(cx, cy + 7), vec2_t(cx - 5, cy + 1), c)
+        render_line(vec2_t(cx - 5, cy + 1), vec2_t(cx - 5, cy - 6), c)
+    end)
+
+    local ry = y + HEAD + GAP
+    for _, row in ipairs(list) do
+        local cyr = ry + math.floor(RH / 2)
+        hud.box(x, ry, w, RH, 7, hud.PILL[1], hud.PILL[2], hud.PILL[3], 200)
+        hud.outline(x, ry, w, RH, 7, 255, 255, 255, 20)
+        -- the dot: green under 25 % hit, yellow under 50 %, red above
+        local r, g, b = 120, 220, 140
+        if (row.rate >= 50) then
+            r, g, b = 255, 110, 110
+        elseif (row.rate >= 25) then
+            r, g, b = 255, 200, 100
+        end
+        render_circle_filled(vec2_t(x + 12, cyr), 3, hud.col(r, g, b, 255))
+        local th = render_get_text_size(hud.bold, row.label).y
+        render_text(hud.bold, row.label, vec2_t(x + 22, cyr - math.floor(th / 2)), hud.col(hud.W[1], hud.W[2], hud.W[3], 255))
+        local rs = render_get_text_size(hud.font, row.right)
+        render_text(hud.font, row.right, vec2_t(x + w - 12 - rs.x, cyr - math.floor(rs.y / 2)), hud.col(hud.DIM[1], hud.DIM[2], hud.DIM[3], 255))
+        ry = ry + RH + GAP
+    end
+    if (#list == 0) then
+        render_text(hud.font, "nobody shot at you yet", vec2_t(x + math.floor(w / 2), y + HEAD + 14), hud.col(130, 130, 140, 200), true)
     end
 end
 
@@ -7761,6 +7917,10 @@ do_event = function()
                 if (local_player == entity) and not (local_player == entity_list_get_player_from_userid(event.attacker)) then
                     hurt_tick = globals.tick_count()
                     builder.anti_brute_trigger()
+                    local attacker = entity_list_get_player_from_userid(event.attacker)
+                    if (attacker ~= nil and attacker:is_enemy()) then
+                        builder.aa_record("hit", event.hitgroup, event.dmg_health, attacker:get_name())
+                    end
                 end
             end
 
@@ -7862,6 +8022,9 @@ do_paint = function()
         if (ui.utils.watermark:get()) then
             draw_watermark()
             draw_menu()
+        end
+        if (ui.utils.aa_stats:get() and engine_is_in_game()) then
+            draw_aa_stats()
         end
 
         game_handle()

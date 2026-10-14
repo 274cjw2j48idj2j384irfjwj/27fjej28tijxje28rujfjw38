@@ -132,6 +132,12 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   jitter, Random desync 60, Smart defensive (Random up/down or Sway pitch, Random side / Distort / Jitter flick yaw),
   Phases anti brute, Fakelag variance; Fakelag / Manual / Freestand as the owner had them. "Apply advanced preset" sets the
   same values (the regress checks they match).
+- AA stats (owners, Oct 2026: "melyikkel hányszor találnak el"): `builder.aa_record` counts per "state · yaw mode" (the
+  builder entry in use, `aa_snapshot`) the hits an enemy made on us (player_hurt, attacker an enemy) and the bullets that
+  passed the head (on_miss < 50 units, not counted when we were hurt in the last 8 ticks). Utils "AA stats" (default on):
+  the `draw_aa_stats` panel (hotkeys look, draggable, a green / yellow / red dot by hit rate < 25 / < 50 / more), a console
+  line per hit, "Reset AA stats". The dev build also sends one shot log line per result (`shotlog.aa`, kind "aa": state,
+  yaw / jitter / desync mode, defensive on, anti brute phase on, hitgroup, damage) to shotlogs/primordial/: tune by those.
 - Resolver (owners, Oct 2026: "fixald teljesen"; their old stats: 1262 hits / 443 misses): Primordial's own "Resolve
   Antiaim" does the resolving (its records and animation fix; no workshop lua writes an enemy's feet yaw, there is no
   resolver hook). The block counts resolver misses per player (`resolver.misses`, a hit resets it) and puts a head safe
