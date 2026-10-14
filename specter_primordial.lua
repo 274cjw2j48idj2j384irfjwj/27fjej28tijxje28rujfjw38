@@ -8298,17 +8298,21 @@ do_paint = function()
                 end
             end
 
-            if (globals.tick_count() - delay.last_tick > delay.tick_delay) then
+            -- voice mute / unmute: only when it is set, and through pcall: the panorama GameStateAPI is nil at times
+            -- (an index of it stopped the whole PAINT callback)
+            local voice = ui.player.voice_state:get()
+            if (voice >= 2 and globals.tick_count() - delay.last_tick > delay.tick_delay) then
                 local players = entity_list_get_players()
-                if (players ~= nil) then
+                local api = libs.tools.js2 and libs.tools.js2.GameStateAPI
+                if (players ~= nil and api ~= nil) then
                     delay.last_tick = globals.tick_count()
                     for _, player in pairs(players) do
-                        local xuid = libs.tools.js2.GameStateAPI.GetPlayerXuidStringFromEntIndex(player:get_index())
-                        if (ui.player.voice_state:get() == 2 and libs.tools.js2.GameStateAPI.IsSelectedPlayerMuted(xuid) == false) then 
-                            libs.tools.js2.GameStateAPI.ToggleMute(xuid)
-                        elseif (ui.player.voice_state:get() == 3 and libs.tools.js2.GameStateAPI.IsSelectedPlayerMuted(xuid) == true) then
-                            libs.tools.js2.GameStateAPI.ToggleMute(xuid)
-                        end
+                        pcall(function()
+                            local xuid = api.GetPlayerXuidStringFromEntIndex(player:get_index())
+                            if (xuid and (voice == 2) == (api.IsSelectedPlayerMuted(xuid) == false)) then
+                                api.ToggleMute(xuid)
+                            end
+                        end)
                     end
                 end
             end
