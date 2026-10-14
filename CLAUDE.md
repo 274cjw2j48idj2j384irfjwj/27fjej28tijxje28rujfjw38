@@ -347,6 +347,12 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - Load smoke test: `python3 tests/load_smoke.py [--dev-file] [--plan=nightly|beta|specter]`. Run it after every change that touches
   load-time code, the loaders, the auth gate or the resolver.
 
+## Console
+- (owners, Oct 2026: "a GS luaba is ... a consolet ilyen színűre ahogy ebbe a luaba van") the console looks like the Primordial
+  lua's: `specter` in the watermark colour, ` · ` in a random colour of the purple / blue gradient (`c_logger.dot`), the text
+  grey (168) and every formatted value of `c_logger.log(format, ...)` white (`log_error`: the text red). No timestamp any more.
+  The hitlog / event lines (`console`, `c_logger.event`) start the same way; the ffi / layer notes go through `log_error`.
+
 ## Ragebot
 - Improved Multi-point "Auto" only lowers the scale (moving > 100, air, 2 misses); it no longer ADDS chest / stomach multipoints.
 - Resolver Safety (`config.ragebot.safety*`, shown on the Resolver page): per enemy player list "Override prefer body aim" / "Override safe point" from the resolver

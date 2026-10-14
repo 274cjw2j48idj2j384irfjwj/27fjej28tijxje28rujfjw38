@@ -166,7 +166,7 @@ do
         for i = 1, #perf.slots do perf.slots[i].n, perf.slots[i].us = 0, 0 end
         perf.t0, perf.f0, perf.k0 = globals.realtime(), globals.framecount(), globals.tickcount()
         perf.on = true
-        client.color_log(180, 160, 255, "specter  \0")
+        client.color_log(180, 160, 255, "specter \194\183 \0")
         client.color_log(255, 255, 255, string.format("measuring for %d s: play normally (move, shoot, peek)", seconds))
         client.delay_call(seconds, function()
             perf.on = false
@@ -179,7 +179,7 @@ do
                 if sl.n > 0 then rows[#rows + 1] = sl end
             end
             table.sort(rows, function(a, b) return a.us > b.us end)
-            client.color_log(180, 160, 255, "specter  \0")
+            client.color_log(180, 160, 255, "specter \194\183 \0")
             client.color_log(255, 255, 255, string.format("%.0f fps, %.0f tick/s over %.1f s; script time per second, per callback:", fps, tps, dur))
             local out = { kind = "perf", t = client.unix_time(), dur = dur, fps = fps, tps = tps, cb = {} }
             local total = 0
@@ -241,7 +241,7 @@ set_cb("paint", function()
         run("entity.hitbox_position", 300, function() entity.hitbox_position(me, 0) end)
         if x then run("client.trace_line", 500, function() client.trace_line(me, x, y, z + 50, x, y, z - 200) end) end
     end
-    client.color_log(180, 160, 255, "specter  \0")
+    client.color_log(180, 160, 255, "specter \194\183 \0")
     client.color_log(255, 255, 255, "api call cost (microseconds per call):")
     local out = { kind = "bench", t = client.unix_time(), api = {} }
     for i = 1, #res do
@@ -640,18 +640,60 @@ LPH_NO_VIRTUALIZE(function ()
         end
 
         c_logger = {} do
-            c_logger.log = (function (format, ...)
-                client.color_log(180, 160, 255, 'specter  \1\0')
-                client.color_log(61, 212, 197, ('[%02d:%02d:%02d] \1\0'):format(client.system_time()))
-                client.color_log(255, 255, 255, format:format(...))
-            end)
+            -- the console look of the Primordial lua (owners, Oct 2026): "specter" in the watermark colour, a " · " in a
+            -- colour of the purple / blue gradient, the text grey and the values of the line white (an error: the text red)
+            local DOTS = {
+                { 255, 113, 237 }, { 239, 126, 249 }, { 222, 138, 255 }, { 204, 148, 255 }, { 187, 157, 255 },
+                { 171, 165, 255 }, { 156, 172, 255 }, { 144, 178, 255 }, { 134, 184, 255 }, { 128, 188, 255 },
+                { 168, 0, 255 }, { 151, 25, 255 }, { 134, 50, 255 }, { 116, 76, 255 }, { 99, 101, 255 },
+            }
 
-            c_logger.log_error = (function (format, ...)
-                client.color_log(180, 160, 255, 'specter  \1\0')
-                client.color_log(61, 212, 197, ('[%02d:%02d:%02d] \1\0'):format(client.system_time()))
-                client.color_log(255, 0, 255, format:format(...))
-            end)
+            c_logger.dot = function()
+                local d = DOTS[client.random_int(1, #DOTS)]
+                return d[1], d[2], d[3]
+            end
 
+            c_logger.accent = function()
+                local ok, r, g, b = pcall(function() return config.visuals.watermark_color:get() end)
+                if ok and type(r) == "number" then return r, g, b end
+                return 180, 160, 255
+            end
+
+            local function line(tr, tg, tb, format, ...)
+                local args, n, pos, out = { ... }, 0, 1, {}
+                local r, g, b = c_logger.accent()
+                out[1] = { 'specter', r, g, b }
+                local dr, dg, db = c_logger.dot()
+                out[2] = { ' \194\183 ', dr, dg, db }
+                format = tostring(format)
+                while true do
+                    local s, e = format:find('%%[%-%+ #0]*%d*%.?%d*[%a%%]', pos)
+                    if not s then break end
+                    if s > pos then out[#out + 1] = { format:sub(pos, s - 1), tr, tg, tb } end
+                    local spec = format:sub(s, e)
+                    if spec == '%%' then
+                        out[#out + 1] = { '%', tr, tg, tb }
+                    else
+                        n = n + 1
+                        local ok, v = pcall(string.format, spec, args[n])
+                        out[#out + 1] = { ok and v or tostring(args[n]), 255, 255, 255 }
+                    end
+                    pos = e + 1
+                end
+                if pos <= #format then out[#out + 1] = { format:sub(pos), tr, tg, tb } end
+                for i = 1, #out do
+                    local p = out[i]
+                    client.color_log(p[2], p[3], p[4], p[1] .. (i < #out and '\0' or ''))
+                end
+            end
+
+            c_logger.log = function(format, ...)
+                line(168, 168, 168, format, ...)
+            end
+
+            c_logger.log_error = function(format, ...)
+                line(255, 130, 130, format, ...)
+            end
         end
 
         c_table = {} do
@@ -4667,8 +4709,7 @@ LPH_NO_VIRTUALIZE(function ()
             -- every memory read goes through these: when a vtable / signature is not found (a game or gamesense update) the
             -- helper gives nil and its users fall back to the gamesense api, the script never stops on it
             local function ffi_note(what)
-                client.color_log(255, 160, 90, "[specter] ffi: " .. what .. " not found, using the gamesense api for it\0")
-                client.color_log(255, 255, 255, " ")
+                c_logger.log_error("ffi: %s not found, using the gamesense api for it", what)
             end
             local function find_sig(module, sig)
                 local ok, addr = pcall(client.find_signature, module, sig)
@@ -4778,8 +4819,7 @@ LPH_NO_VIRTUALIZE(function ()
                     if bad >= 30 then
                         dead = true
                         resolver.read_layer6 = nil
-                        client.color_log(255, 120, 120, "[specter] resolver: animation layers look wrong, layer reading is off\0")
-                        client.color_log(255, 255, 255, " ")
+                        c_logger.log_error("resolver: animation layers look wrong, layer reading is off")
                     end
                     return nil
                 end
@@ -12262,8 +12302,8 @@ LPH_NO_VIRTUALIZE(function ()
                     local colored = config.miscellaneous.console_colors == nil or config.miscellaneous.console_colors:get()
                     if not colored then
                         local plain = {}
-                        for i = 2, #parts do plain[#plain + 1] = parts[i][1] end
-                        client.color_log(180, 160, 255, 'specter  \0')
+                        for i = 3, #parts do plain[#plain + 1] = parts[i][1] end
+                        client.color_log(180, 160, 255, 'specter \194\183 \0')
                         client.color_log(255, 255, 255, table_concat(plain))
                         return
                     end
@@ -12284,7 +12324,8 @@ LPH_NO_VIRTUALIZE(function ()
                 local function line(label, kr, kg, kb, name, aimed, landed_label, landed, lr, lg, lb, dmg, cached)
                     local ar, ag, ab = config.visuals.watermark_color:get()
                     local parts = {
-                        { 'specter  ', ar, ag, ab },
+                        { 'specter', ar, ag, ab },
+                        { ' \194\183 ', c_logger.dot() },
                         { label .. string.rep(' ', math_max(2, 12 - #label)), kr, kg, kb },
                         { name, WHITE[1], WHITE[2], WHITE[3] },
                         { SEP, DIM[1], DIM[2], DIM[3] },
@@ -12313,7 +12354,8 @@ LPH_NO_VIRTUALIZE(function ()
                 function c_logger.event(label, kr, kg, kb, groups)
                     local ar, ag, ab = config.visuals.watermark_color:get()
                     local parts = {
-                        { 'specter  ', ar, ag, ab },
+                        { 'specter', ar, ag, ab },
+                        { ' \194\183 ', c_logger.dot() },
                         { label .. string.rep(' ', math_max(2, 12 - #label)), kr, kg, kb },
                     }
                     for gi, group in ipairs(groups) do
