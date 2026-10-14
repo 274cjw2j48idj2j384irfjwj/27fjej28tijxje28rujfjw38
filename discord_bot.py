@@ -1625,41 +1625,47 @@ async def gh_ensure_branch(token: str, branch: str) -> bool:
 
 
 async def sync_shotlogs() -> list[str]:
-    """The shot logs of the dev build (license server /shotlog) -> one new file on SHOTLOG_BRANCH, then dropped on the
-    server. Nothing is dropped when the write fails: the next round tries again."""
+    """The shot logs (license server /shotlog) -> new files on SHOTLOG_BRANCH, then dropped on the server. The dev build's
+    go to shotlogs/<day>/, azura.lua's (batch ids "az...") to shotlogs/azura/<day>/. Nothing is dropped when a write
+    fails: the next round tries again."""
     if not SHOTLOG_TOKEN:
         return []
     res = await api_get("/admin/shotlog")
     items = res.get("items") if isinstance(res, dict) else None
     if not items:
         return []
-    lines = []
+    folders: dict[str, list[str]] = {}
     for it in items:
         if not isinstance(it, dict):
             continue
-        head = {"at": it.get("at"), "src": it.get("src"), "batch": it.get("id")}
+        batch = str(it.get("id") or "")
+        folder = "shotlogs/azura" if batch.startswith("az") else "shotlogs"
+        head = {"at": it.get("at"), "src": it.get("src"), "batch": batch}
         for line in str(it.get("lines") or "").splitlines():
             line = line.strip()
             if line:
-                lines.append(json.dumps(head, separators=(",", ":")) + "\t" + line)
-    if not lines:
+                folders.setdefault(folder, []).append(json.dumps(head, separators=(",", ":")) + "\t" + line)
+    if not folders:
         await api_get(f"/admin/shotlog?n={len(items)}")
         return []
     if not await gh_ensure_branch(SHOTLOG_TOKEN, SHOTLOG_BRANCH):
         return [f"shot logs: branch {SHOTLOG_BRANCH} could not be made (token rights?)"]
     now = time.gmtime()
-    path = f"shotlogs/{time.strftime('%Y-%m-%d', now)}/{time.strftime('%H%M%S', now)}-{len(lines)}.jsonl"
-    body = ("\n".join(lines) + "\n").encode("utf-8")
+    report = []
     async with aiohttp.ClientSession() as s:
-        async with s.put(f"{GH_API}/repos/{GITHUB_REPO}/contents/{path}", json={
-            "message": f"Shot logs {time.strftime('%Y-%m-%d %H:%M', now)} ({len(lines)} shots)",
-            "content": base64.b64encode(body).decode("ascii"),
-            "branch": SHOTLOG_BRANCH,
-        }, headers={"Authorization": f"token {SHOTLOG_TOKEN}", "Accept": "application/vnd.github.v3+json"}) as r:
-            if r.status not in (200, 201):
-                return [f"shot logs: GitHub write failed ({r.status})"]
+        for folder, lines in folders.items():
+            path = f"{folder}/{time.strftime('%Y-%m-%d', now)}/{time.strftime('%H%M%S', now)}-{len(lines)}.jsonl"
+            body = ("\n".join(lines) + "\n").encode("utf-8")
+            async with s.put(f"{GH_API}/repos/{GITHUB_REPO}/contents/{path}", json={
+                "message": f"Shot logs {time.strftime('%Y-%m-%d %H:%M', now)} ({len(lines)} shots)",
+                "content": base64.b64encode(body).decode("ascii"),
+                "branch": SHOTLOG_BRANCH,
+            }, headers={"Authorization": f"token {SHOTLOG_TOKEN}", "Accept": "application/vnd.github.v3+json"}) as r:
+                if r.status not in (200, 201):
+                    return report + [f"shot logs: GitHub write failed ({r.status})"]
+            report.append(f"shot logs: {len(lines)} shots -> {SHOTLOG_BRANCH}/{path}")
     await api_get(f"/admin/shotlog?n={len(items)}")
-    return [f"shot logs: {len(lines)} shots -> {SHOTLOG_BRANCH}/{path}"]
+    return report
 
 
 async def release_loop():
