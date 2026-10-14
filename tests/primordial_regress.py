@@ -221,8 +221,10 @@ for i, vals in rows:
     p = ["G", "S", "M", "SW", "D", "DM", "A", "AD"][int(i) - 1]
     same = same and [get("Yaw", p + " | Yaw mode"), get("Yaw", p + " | Range"), get("Jitter", p + " | Modifier mode"),
                      get("Desync", p + " | Desync"), get("Defensive", p + " | Defensive")] == [v[0], v[3], v[9], 5, 6]
-check(same and get("Settings", "Anti brute mode") == 2 and get("Features", "Fakelag variance") is True,
-      "default.cfg: the advanced anti-aim, the same values as the preset button")
+check(same and get("Settings", "Anti brute mode") == 2 and get("Features", "Fakelag variance") is True
+      and get("Settings", "Adaptive AA") is True and "set(b.adaptive, true)" in SRC
+      and (get("Yaw", "M | Left"), get("Yaw", "M | Right"), get("Yaw", "M | Left randomization")) == (-10, 10, -18),
+      "default.cfg: the advanced anti-aim + Adaptive AA with the owner's old left / right, the same as the preset button")
 
 # direct control (dev build): the anti-aim code writes into recorders, the lua sends yaw / pitch / desync itself
 DIRECT = chunk("-- the Primordial jitter types (yaw add", "run_antiaim = function(ctx, cmd, unpredicted)")
@@ -451,6 +453,91 @@ dp.execute("resolver.safe[5] = 3")
 r2 = dp.eval("RUNDP()")
 check(all(x == (0, 1) for x in r) and tuple(r2) == (1, 1),
       "Multipoint correction: the head first every time, the chest when Smart body aim took the head out (%s %s)" % (r[0], r2))
+
+# Adaptive AA (owners, Oct 2026: "nagyon advanced aa improve ... unhittable"): a Thompson sampling bandit over AA profiles
+# per state group. Only the deciding maths here (the game decides how good a profile is): draws stay in 0..1, the
+# profile the enemies keep head-hitting is dropped, a head hit switches at once, the side rules
+r = R("""
+math.randomseed(11)
+local lo, hi, sum = 1, 0, 0
+for n = 1, 2000 do local v = builder.adv.beta_sample(30, 3, math.random) lo = math.min(lo, v) hi = math.max(hi, v) sum = sum + v end
+local g = {}
+for i = 1, 8 do g[i] = builder.adv.arm_group(i) end
+return lo >= 0, hi <= 1, sum / 2000, table.concat(g, ",")
+""")
+check(r[0] and r[1] and abs(r[2] - 30 / 33) < 0.02 and r[3] == "4,1,2,2,1,2,3,3",
+      "Adaptive AA: Beta draws in 0..1 around the mean, state groups (%s)" % (r,))
+r = R("""
+math.randomseed(5)
+local st, now, on = {}, 0, {}
+local head = { 0.7, 0.1, 0.5, 0.5, 0.6 }       -- how often each profile gets head hit when a bullet comes
+for n = 1, 600 do
+    now = now + 1
+    local arm = builder.adv.brain_arm(st, 2, now, math.random)
+    on[arm] = (on[arm] or 0) + 1
+    if (n % 2 == 0) then
+        if (math.random() < head[arm]) then builder.adv.brain_learn(st, 2, "hit", 1, now, math.random)
+        else builder.adv.brain_learn(st, 2, "evaded", nil, now, math.random) end
+    end
+end
+local g = st.g[2]
+local before = g.cur
+builder.adv.brain_learn(st, 2, "hit", 1, now, math.random)
+local switched = g.cur ~= before
+local body_before = g.arms[g.cur].b
+builder.adv.brain_learn(st, 2, "hit", 3, now, math.random)
+local ok = true
+for _, a in ipairs(g.arms) do ok = ok and a.a >= 1 and a.b >= 1 and a.a < 20 and a.b < 20 end
+return (on[2] or 0) / 600, switched, g.arms[g.cur].b == body_before, ok
+""")
+check(r[0] > 0.5 and r[1] and r[2] and r[3],
+      "Adaptive AA: plays the profile that is not head hit most of the time, a head hit switches at once, a body hit "
+      "teaches nothing, the beliefs stay bounded (%s)" % (r,))
+r = R("""
+local A = builder.adv.arm_invert
+return A("tied", true, true), A("tied", false, false), A("inverse", true, false), A("inverse", false, true),
+    A("coin", true, true), A("coin", false, false)
+""")
+check(r == (False, True, True, False, True, False), "Adaptive AA: tied / inverse / coin desync side rules (%s)" % (r,))
+BRAIN = chunk("-- Adaptive AA at run time", "-- anti bruteforce: an enemy bullet passing near the head")
+br = L.LuaRuntime(unpack_returned_tuples=True)
+br.execute("""builder = {} TICK = 0 NOW = 0
+globals = { tick_count = function() return TICK end, real_time = function() return NOW end }
+""" + ADV + """
+local function item(v) return { v = v, get = function(self) return self.v end } end
+ui = { antiaim = { builder = { adaptive = item(true), random_side = item(true) } } }
+global = { current_state_number = 3 }
+AA = { yaw_mode = item(4), yaw_val = item(0), yaw_delay = item(4), meta_delay = item(0), yaw_left = item(-20),
+    yaw_right = item(20), yaw_meta_left = item(0), yaw_meta_right = item(0), desync = item(5) }
+SIDE = nil
+refs = { desyncside = { set = function(_, v) SIDE = v end } }
+builder.set_yaw = function(v) builder.base_yaw = v end
+builder.ab_active = function() return false end
+""" + BRAIN + """
+function STEP(fresh)
+    local c = {}
+    c.set_invert_desync = function(_, v) c.inv = v end
+    builder.fresh = fresh
+    builder.brain_apply(c, AA)
+    return builder.base_yaw, c.inv
+end""")
+r = br.eval("""(function()
+    builder.brain.g = { [2] = { arms = {}, cur = 2, until_t = 1000 } }      -- force "Delay tied" on the move group
+    for i = 1, 5 do builder.brain.g[2].arms[i] = { a = 1, b = 1 } end
+    local out = {}
+    for t = 0, 12 do
+        TICK = t
+        local y, inv = STEP(t % 2 == 0)
+        out[#out + 1] = y .. ":" .. tostring(inv)
+    end
+    return table.concat(out, " "), builder.brain_now, SIDE
+end)()""")
+seq = r[0].split()
+yaws = [x.split(":")[0] for x in seq]
+check(r[1] == "Delay tied" and r[2] == 2 and all(x.split(":")[1] == ("false" if x.startswith("-") else "true") for x in seq)
+      and yaws[:4] == [yaws[0]] * 4 and yaws[4] != yaws[0],
+      "Adaptive AA at run time: Delay tied switches only after its delay ticks, on a sent packet, the desync on the "
+      "yaw side (%s)" % (r,))
 
 print("\n%d failed" % len(FAILS) if FAILS else "\nall passed")
 sys.exit(1 if FAILS else 0)
