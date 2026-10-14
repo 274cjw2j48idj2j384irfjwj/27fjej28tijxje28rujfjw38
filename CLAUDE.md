@@ -80,7 +80,13 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   specter_loader.lua of `CLOUD_BRANCH` goes to #loader-download the same way every `RELEASE_MINUTES` (`sync_loader`, the
   post's SHA-256 field says which one is out; only `is_customer_loader`). /post_* and /post_loader replace the old post too
   Logo (`logo()`): `assets/specter_icon.png` (thumbnails) / `assets/specter_logo.png` (the big image of the prices) go with
-  the messages as attachments (`Dockerfile.bot` copies assets/); `SPECTER_LOGO_URL` overrides them with a lasting link. A
+  the messages as attachments (`Dockerfile.bot` copies assets/); `SPECTER_LOGO_URL` overrides them with a lasting link.
+  Which lua a post is about (owners, Oct 2026: "rakjon elé egy Primo logót vagy egy GS logot"): `lua_badge` puts
+  "Specter for Gamesense" / "Specter for Primordial" with `assets/gs_icon.png` / `assets/primordial_icon.png` in the embed's
+  author line, above the title, on the #updates changelogs and the #staff dev build posts (`lua_of(path)`). The two PNGs are
+  placeholders (a GS badge with the gamesense rainbow line, a violet P) until the owners send the real logos: swap the files,
+  same names. The Primordial changelog in #updates (`sync_primordial`, the release merge's message) only with
+  `PRIMORDIAL_UPDATES=1` (default off: the Primordial lua is not out yet). A
   Discord upload link (cdn.discordapp.com/attachments ...?ex=) expires in a day and is ignored. The PNGs are the watermark's
   look: the crescent of `sky()` (accent circle minus a 0.844 r circle at +0.49 r / -0.36 r), accent 180 160 255, panel 12 12 16
 - Railway: `Dockerfile` = license server, `Dockerfile.bot` = bot (service variable `RAILWAY_DOCKERFILE_PATH=Dockerfile.bot`)
