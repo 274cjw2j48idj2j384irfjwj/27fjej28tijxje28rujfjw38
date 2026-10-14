@@ -184,6 +184,14 @@ LUA_BADGES = {
 }
 
 
+def changelog_embed(lua: str, points: str) -> discord.Embed:
+    """The #updates post of a release (the release merge's points); its lua's name + logo go on with lua_badge."""
+    embed = discord.Embed(title="\u2601\ufe0f Specter updated", color=0xB4A0FF if lua == "primordial" else 0x82C3FF,
+                          timestamp=discord.utils.utcnow(), description=points or "A new version of the script is out.")
+    embed.set_footer(text="You get it at your next login (the loader downloads it)")
+    return embed
+
+
 def lua_of(path: str) -> str:
     return "primordial" if "primordial" in path else "gamesense"
 
@@ -1708,9 +1716,7 @@ async def sync_cloud(force: bool = False) -> list[str]:
         points = commit_points(ver["commit"]["commit"].get("message", "")) if ver["commit"] else ""
         if done and new:
             _cloud_told["updates"] = full
-            embed = discord.Embed(title="\u2601\ufe0f Specter updated", color=0x82C3FF, timestamp=discord.utils.utcnow(),
-                                  description=points or "A new version of the script is out.")
-            embed.set_footer(text="You get it at your next login (the loader downloads it)")
+            embed = changelog_embed("gamesense", points)
             for guild in client.guilds:
                 ch = named_channel(guild, UPDATES_CHANNEL)
                 if ch is None:
@@ -1825,15 +1831,41 @@ async def sync_primordial(force: bool = False) -> list[str]:
             ch = named_channel(guild, UPDATES_CHANNEL)
             if ch is None:
                 continue
-            embed = discord.Embed(title="\u2601\ufe0f Specter updated", color=0xB4A0FF, timestamp=discord.utils.utcnow(),
-                                  description=points or "A new version of the script is out.")
-            embed.set_footer(text="You get it at your next login (the loader downloads it)")
+            embed = changelog_embed("primordial", points)
             try:
                 await ch.send(embed=embed, files=lua_badge(embed, "primordial") + logo(embed))
                 report.append(f"primordial changelog posted in {ch.mention}")
             except discord.HTTPException as e:
                 report.append(f"could not post in {ch.mention}: {e}")
     return report
+
+
+@tree.command(name="post_changelog", description="Post the changelog of the newest cloud release again (with its lua's logo)")
+@app_commands.describe(lua="Which lua's changelog", here="Post it in this channel (a preview) instead of #updates")
+@app_commands.choices(lua=[app_commands.Choice(name="Gamesense", value="gamesense"),
+                           app_commands.Choice(name="Primordial", value="primordial")])
+async def post_changelog(interaction: discord.Interaction, lua: str = "gamesense", here: bool = False):
+    if not is_admin(interaction):
+        await interaction.response.send_message("No permission.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    try:
+        ver = await newest_version(PRIMORDIAL_FILE if lua == "primordial" else CLOUD_FILE, CLOUD_BRANCH, head=True)
+    except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError) as e:
+        await interaction.followup.send(f"Could not read `{CLOUD_BRANCH}`: {e}", ephemeral=True)
+        return
+    points = commit_points(ver["commit"]["commit"].get("message", "")) if ver["commit"] else ""
+    ch = interaction.channel if here else named_channel(interaction.guild, UPDATES_CHANNEL)
+    if ch is None:
+        await interaction.followup.send(f"No #{UPDATES_CHANNEL} channel here.", ephemeral=True)
+        return
+    embed = changelog_embed(lua, points)
+    try:
+        await ch.send(embed=embed, files=lua_badge(embed, lua) + logo(embed))
+    except discord.HTTPException as e:
+        await interaction.followup.send(f"Could not post in {ch.mention}: {e}", ephemeral=True)
+        return
+    await interaction.followup.send(f"Changelog posted in {ch.mention}.", ephemeral=True)
 
 
 async def release_loop():

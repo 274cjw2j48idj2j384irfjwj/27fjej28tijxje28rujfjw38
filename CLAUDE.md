@@ -85,7 +85,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   "Specter for Gamesense" / "Specter for Primordial" with `assets/gs_icon.png` / `assets/primordial_icon.png` in the embed's
   author line, above the title, on the #updates changelogs and the #staff dev build posts (`lua_of(path)`). The two PNGs are
   the logos the owners sent (Oct 2026), 128 x 128: the GS badge, and the Primordial hourglass cut out of its black side bars. The Primordial changelog in #updates (`sync_primordial`, the release merge's message) only with
-  `PRIMORDIAL_UPDATES=1` (default off: the Primordial lua is not out yet). A
+  `PRIMORDIAL_UPDATES=1` (default off: the Primordial lua is not out yet).
+  `/post_changelog [lua] [here]` (admin) posts the newest cloud release's changelog again (owners: "újra rakd ki ... akarom
+  nézni hogy néz ki"; the loop posts a version only once), in #updates or, with `here`, in the current channel as a preview.
+  `changelog_embed` builds it for both the loop and the command. A
   Discord upload link (cdn.discordapp.com/attachments ...?ex=) expires in a day and is ignored. The PNGs are the watermark's
   look: the crescent of `sky()` (accent circle minus a 0.844 r circle at +0.49 r / -0.36 r), accent 180 160 255, panel 12 12 16
 - Railway: `Dockerfile` = license server, `Dockerfile.bot` = bot (service variable `RAILWAY_DOCKERFILE_PATH=Dockerfile.bot`)
