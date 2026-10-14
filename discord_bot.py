@@ -1215,18 +1215,20 @@ async def primordial_upload(interaction: discord.Interaction, file: discord.Atta
             raw, source = await file.read(), file.filename
         else:
             raw, source = await gh_fetch_file(PRIMORDIAL_FILE, branch)
-        script = strip_lua_comments(raw.decode("utf-8"))
+        builds = primordial_builds(raw.decode("utf-8"))
     except GitHubFetchError as e:
         await interaction.followup.send(str(e), ephemeral=True)
         return
     except Exception as e:
         await interaction.followup.send(f"Could not read the script: {e}", ephemeral=True)
         return
-    if not is_primordial_script(script):
+    if not is_primordial_script(builds["pm_nightly"]):
         await interaction.followup.send("This is not specter_primordial.lua. Nothing uploaded.", ephemeral=True)
         return
 
-    lines, _ = await upload_script(script, PM_PLANS)
+    lines = []
+    for p in PM_PLANS:
+        lines += (await upload_script(builds[p], [p]))[0]
     embed = discord.Embed(title="Primordial Upload", color=0xB4A0FF, description="\n".join(lines))
     embed.add_field(name="Source", value=source, inline=False)
     await interaction.followup.send(embed=embed, ephemeral=True)
@@ -1235,6 +1237,36 @@ async def primordial_upload(interaction: discord.Interaction, file: discord.Atta
     log_embed.add_field(name="Source", value=source, inline=True)
     log_embed.add_field(name="By", value=interaction.user.mention, inline=True)
     await log_action(interaction.guild, log_embed)
+
+
+PM_BETA_STUB = """-- beta: no resolver here (the nightly version has it); Primordial's own resolver does the resolving
+resolver.on_result = function() end
+resolver.hitscan = function() end
+resolver.native = function() end
+resolver.reset = function()
+    resolver.previous = {}
+    resolver.misses = {}
+end
+update_target = function(ctx)
+    resolver.previous.target = ctx.player:get_index()
+end
+lets_resolve = function() end
+"""
+
+
+def make_primordial_beta(text: str) -> str:
+    """The pm_beta script: specter_primordial.lua without the resolver code between its [pm-resolver:begin] / [pm-resolver:end]
+    markers (a stub with the same names instead), so a beta key never downloads it. Run BEFORE the comments are stripped."""
+    start = text.find("-- [pm-resolver:begin]")
+    end = text.find("-- [pm-resolver:end]")
+    if start < 0 or end < start:
+        raise ValueError("no [pm-resolver:begin] / [pm-resolver:end] markers in specter_primordial.lua")
+    return text[:start] + PM_BETA_STUB + text[end + len("-- [pm-resolver:end]"):]
+
+
+def primordial_builds(raw_text: str) -> dict[str, str]:
+    """plan -> comment-free script: pm_nightly = the whole file, pm_beta = without the resolver."""
+    return {"pm_nightly": strip_lua_comments(raw_text), "pm_beta": strip_lua_comments(make_primordial_beta(raw_text))}
 
 
 def is_primordial_script(text: str) -> bool:
@@ -1741,14 +1773,19 @@ async def sync_primordial(force: bool = False) -> list[str]:
         ver = await newest_version(PRIMORDIAL_FILE, CLOUD_BRANCH)
     except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError) as e:
         return [f"`{PRIMORDIAL_FILE}`: {e}"]
-    if not ver["stripped"] or not is_primordial_script(ver["body"].decode("utf-8", "replace")):
+    try:
+        builds = primordial_builds(ver["raw"].decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as e:
+        return [f"`{PRIMORDIAL_FILE}` of `{CLOUD_BRANCH}`: {e}, not uploaded"]
+    if not is_primordial_script(builds["pm_nightly"]):
         return [f"`{PRIMORDIAL_FILE}` of `{CLOUD_BRANCH}`: not the primordial script, not uploaded"]
-    full = hashlib.sha256(ver["body"]).hexdigest()
     have = await server_script_hashes()
-    plans = [p for p in PM_PLANS if force or have is None or have.get(p) != full]
-    if not plans:
+    lines = []
+    for p in PM_PLANS:
+        if force or have is None or have.get(p) != hashlib.sha256(builds[p].encode("utf-8")).hexdigest():
+            lines += (await upload_script(builds[p], [p]))[0]
+    if not lines:
         return []
-    lines, _ = await upload_script(ver["body"].decode("utf-8"), plans)
     return [f"primordial script `{ver['hash'][:7]}` to the server: " + " ".join(lines)]
 
 
