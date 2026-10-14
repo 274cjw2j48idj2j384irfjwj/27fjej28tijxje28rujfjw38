@@ -1616,7 +1616,9 @@ local global = {
                     self.current_state_number = 11
                 end
 
-                if (manual) then 
+                -- manual left / right (Primordial's manual keys): the "manual" here was an undefined global, the state
+                -- never came
+                if (refs.left:get() or refs.right:get()) then 
                     self.current_state = "manual"
                     self.current_state_number = 10
                 end
@@ -5953,6 +5955,77 @@ end
 
 -- the yaw the anti-aim looks away from: 2 the view, 3 the enemy nearest the crosshair, 4 the nearest enemy (the base
 -- items of the builder + 1); nil = no yaw at all (1, the round end)
+-- own freestanding (direct control, owners Oct 2026: "teljesen saját aa ... minden"): which side of our head the threat
+-- can not see. The fractions of the two traces from its eye to our head moved W units left / right: one side behind a
+-- wall (fraction < 0.97) and the other open = hide on that side (+1 left, -1 right); both covered = keep the side we
+-- had (the head is hidden either way, no flicking), none covered = 0 (the normal anti-aim)
+builder.adv.fs_pick = function(left, right, prev)
+    local lb, rb = left < 0.97, right < 0.97
+    if (lb and not rb) then
+        return 1
+    elseif (rb and not lb) then
+        return -1
+    elseif (lb and rb) then
+        return prev
+    end
+    return 0
+end
+
+builder.own_fs = { side = 0, tick = -100, yaw = nil }
+-- the freestanding yaw (absolute), nil when no wall covers one side; traces every 4 ticks
+builder.own_freestand = function(local_player)
+    local fs, tick = builder.own_fs, globals.tick_count()
+    if (tick - fs.tick < 4 and tick >= fs.tick) then
+        return fs.yaw
+    end
+    fs.tick = tick
+    fs.yaw = nil
+    local head = local_player:get_hitbox_pos(e_hitboxes.HEAD)
+    local view = engine_get_view_angles()
+    if (head == nil or view == nil) then
+        return nil
+    end
+    -- the threat: the enemy nearest the crosshair
+    local threat, best
+    for _, enemy in pairs(entity_list_get_players(true) or {}) do
+        if (enemy:is_alive() and not enemy:is_dormant()) then
+            local o = enemy:get_render_origin()
+            local off = math.abs(builder.adv.norm(math.deg(math.atan2(o.y - head.y, o.x - head.x)) - view.y))
+            if (best == nil or off < best) then
+                threat, best = enemy, off
+            end
+        end
+    end
+    if (threat == nil) then
+        fs.side = 0
+        return nil
+    end
+    local eye = threat:get_eye_position()
+    local to = math.atan2(eye.y - head.y, eye.x - head.x)
+    local w = 24
+    local lx, ly = math.cos(to + math.pi / 2) * w, math.sin(to + math.pi / 2) * w
+    -- walls only (0x400B, no player models: our own body would count as a wall)
+    local left = trace_line(eye, vec3_t(head.x + lx, head.y + ly, head.z), threat, 0x400B).fraction
+    local right = trace_line(eye, vec3_t(head.x - lx, head.y - ly, head.z), threat, 0x400B).fraction
+    fs.side = builder.adv.fs_pick(left, right, fs.side)
+    if (fs.side ~= 0) then
+        fs.yaw = builder.adv.norm(math.deg(to) + 90 * fs.side)
+    end
+    return fs.yaw
+end
+
+-- manual left / right / back (Primordial's manual keys): our yaw relative to the view, nil when none is held
+builder.own_manual = function()
+    if (refs.left:get()) then
+        return 90
+    elseif (refs.right:get()) then
+        return -90
+    elseif (refs.back:get()) then
+        return 180
+    end
+    return nil
+end
+
 builder.direct_base = function(local_player, mode)
     if (mode == nil or mode <= 1) then
         return nil
@@ -5985,18 +6058,19 @@ builder.direct_apply = function(ctx, local_player)
     R.rotate:set(false)
     R.pitch:set(1)
 
-    -- yaw. With Primordial's auto direction (the Freestand key) its own yaw is the freestanding one: an own set_yaw
-    -- took the head out from behind the wall (shot logs, Oct 2026: 41 hits in 51 shots at the Freestand state with direct
-    -- control), so then only the yaw add (+ jitter) goes into its menu
-    local auto_dir = o.abs_yaw == nil and refs.freestand ~= nil and refs.freestand:get() == true
+    -- yaw: an own absolute yaw of the anti-aim code (defensive flicks, edge yaw), else manual (Primordial's manual keys,
+    -- relative to the view), else own freestanding with the Freestand key (the head on the side the threat can not see;
+    -- Primordial's auto direction is not used: an absolute set_yaw overrides it, the head came out from behind the
+    -- wall, 41 hits in 51 shots at the Freestand state), else base + 180 + the yaw add / jitter
+    local manual = o.abs_yaw == nil and builder.own_manual() or nil
+    local free = (o.abs_yaw == nil and manual == nil and refs.freestand ~= nil and refs.freestand:get() == true)
+        and builder.own_freestand(local_player) or nil
     if (o.abs_yaw ~= nil) then
         ctx:set_yaw(builder.adv.norm(o.abs_yaw))
-    elseif (auto_dir) then
-        local add = o.yawadd or 0
-        if (o.jittermode == 2) then
-            add = add + builder.adv.native_jitter(d.jit, o.jittertype or 1, o.jitterrange or 0, builder.fresh)
-        end
-        R.yawadd:set(math.floor(builder.adv.norm(add) + 0.5))
+    elseif (manual ~= nil) then
+        ctx:set_yaw(builder.adv.norm(engine_get_view_angles().y + manual))
+    elseif (free ~= nil) then
+        ctx:set_yaw(free)
     else
         local base = builder.direct_base(local_player, o.yawbase or d.yawbase)
         d.yawbase = o.yawbase or d.yawbase
@@ -6050,6 +6124,7 @@ builder.direct_apply = function(ctx, local_player)
         if (o.invert) then
             left = not left
         end
+        d.last_left = left
         R.desyncside:set(2)
         R.leftamount:set(100)
         R.rightamount:set(100)
@@ -6081,6 +6156,10 @@ run_antiaim = function(ctx, cmd, unpredicted)
 
         local safe_defensive = ui.antiaim.builder.defensive_ping:get() == 1
         local antiaim_side = antiaim_get_desync_side() > 1 and 1 or -1
+        if (builder.direct_on() and builder.direct.last_left ~= nil) then
+            -- direct control: Primordial's menu side is always "left" (the side goes in the sign of set_desync)
+            antiaim_side = builder.direct.last_left and -1 or 1
+        end
 
         local on_defensive = (anti_aim.trigger_defensive:get() == 2 or anti_aim.trigger_defensive:get() == 4 or anti_aim.trigger_defensive:get() == 6)
         local is_defensive = refs.double_tap:get() and (exploits_get_charge() == exploits_get_max_charge()) and not refs.fake_duck:get()

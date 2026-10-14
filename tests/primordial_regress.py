@@ -237,6 +237,7 @@ REAL = {}
 refs = {}
 for _, f in ipairs({ "pitch", "yawbase", "yawadd", "rotate", "rotaterange", "rotatespeed", "jittermode", "jittertype",
     "jitterrange", "desyncside", "leftamount", "rightamount" }) do refs[f] = item(0); REAL[f] = refs[f] end
+refs.left, refs.right, refs.back = item(false), item(false), item(false)
 engine_get_view_angles = function() return { y = 30 } end
 entity_list_get_players = function() return {} end
 """ + ADV + DIRECT + """
@@ -290,17 +291,43 @@ return ctx.calls.set_desync == nil, ctx.calls.set_yaw == nil, REAL.desyncside.v
 """)
 check(r[0] and r[1] and r[2] == 5, "direct control: peek fake stays Primordial's, yaw base 1 (round end) sends no yaw (%s)" % (r,))
 r = D("""
-refs.freestand = { get = function() return true end }
+local function key(v) return { get = function() return v end } end
+refs.left, refs.right, refs.back, refs.freestand = key(false), key(false), key(false), key(true)
+vec3_t = function(x, y, z) return { x = x, y = y, z = z } end
+e_hitboxes = { HEAD = 0 }
 builder.direct_begin()
 local ctx = CTX()
 refs.yawbase:set(2) refs.yawadd:set(15) refs.jittermode:set(1) refs.desyncside:set(2) refs.leftamount:set(80)
 builder.direct_restore()
-builder.direct_apply(ctx, {})
-refs.freestand = nil
-return ctx.calls.set_yaw == nil, REAL.yawadd.v, ctx.calls.set_desync
+builder.direct_apply(ctx, { get_hitbox_pos = function() return { x = 0, y = 0, z = 64 } end })
+local no_wall = ctx.calls.set_yaw
+-- a threat straight ahead (+x), a wall on our left only: the head goes left (to + 90)
+local enemy = { is_alive = function() return true end, is_dormant = function() return false end,
+    get_render_origin = function() return { x = 500, y = 0, z = 0 } end,
+    get_eye_position = function() return { x = 500, y = 0, z = 64 } end }
+entity_list_get_players = function() return { enemy } end
+trace_line = function(_, to) return { fraction = to.y > 0 and 0.5 or 1 } end
+builder.own_fs.tick = -100
+local ctx2 = CTX()
+builder.direct_begin() builder.direct_restore()
+builder.direct_apply(ctx2, { get_hitbox_pos = function() return { x = 0, y = 0, z = 64 } end })
+local fs_yaw = ctx2.calls.set_yaw
+-- manual right: view 30 - 90
+refs.right = key(true)
+local ctx3 = CTX()
+builder.direct_begin() builder.direct_restore()
+builder.direct_apply(ctx3, {})
+refs.right, refs.freestand = key(false), nil
+entity_list_get_players = function() return {} end
+return no_wall, fs_yaw, ctx3.calls.set_yaw, ctx.calls.set_desync, REAL.yawadd.v
 """)
-check(r == (True, 15, -0.8), "direct control + Freestand key: Primordial's auto direction keeps the yaw, our add goes into "
-      "its menu, the desync still ours (%s)" % (r,))
+check(r == (-135, 90, -60, -0.8, 0), "direct control, own: Freestand without a wall = the normal yaw, a wall on the left = "
+      "the head left (90), manual right = view - 90, the desync still ours, Primordial's yaw add 0 (%s)" % (r,))
+r = D("""
+local P = builder.adv.fs_pick
+return P(0.5, 1, 0), P(1, 0.4, 0), P(1, 1, 1), P(0.5, 0.52, -1), P(0.3, 0.9, 1)
+""")
+check(r == (1, -1, 0, -1, 1), "own freestand: the covered side, both covered = keep the side, none = normal AA (%s)" % (r,))
 r = D("""
 local st, a = {}, {}
 for n = 1, 6 do a[#a + 1] = builder.adv.native_jitter(st, 3, 30, true) end
