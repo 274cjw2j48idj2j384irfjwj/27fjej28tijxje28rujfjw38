@@ -145,6 +145,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   Glass / Neon, Watermark info incl. Icons), a "Hotkeys" header pill + one pill per bind (Keybinds style Pills icons /
   classic, Show bind mode), spectators in the same pills with avatars. Dragged with the old `libs.etr` drags (M2 centers);
   the watermark starts top right. `get_user_ping` = 1000 x (out + in) latency (the incoming part was not x1000).
+  Notifications (config load / save, users found ...; owners, Oct 2026: "cleanebben és szebben"): `notifications.render`
+  after the hud block, the same look: dark rounded cards under the watermark, a coloured round icon per kind (success /
+  warn / fail / info = accent), bold title, wrapped text, a thin bar that runs out in `notifications.delay` (3.5 s),
+  slide in from the right + fade. `notifications.create(head, body, kind)` is unchanged; the old emoji SVGs are gone.
 - User detection (owners, Oct 2026: "ugyan úgy ... a scoreboardon egy hold jel", through our own server): `presence` (in
   the old lua network region): every 30 s `GET /presence?t=<version>&q=<hashes>[&me=<hash>]` (hash = 2x32 bit of
   "specter|" .. steam id; `me` only with Shared ESP on). server.js keeps it IN MEMORY (`PRESENCE_TTL` 75 s, not Redis: Upstash
