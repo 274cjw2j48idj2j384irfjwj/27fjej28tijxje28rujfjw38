@@ -366,6 +366,13 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   button: `on_shared_players(true)`; the round start / connect refreshes say nothing) says why nothing shows (owners, Oct
   2026: "a shared esp nem működik"): no answer from the server / nobody else in the game (N players asked, whether we
   are visible).
+- Prim <-> GS user detection (owners, Oct 2026: "jelezze primen belül ha valaki a gs luát használja ... prim user vagy gs specter user"):
+  the gamesense lua sends the same heartbeat as the Primordial one (`miscellaneous.presence` in specter_cloud.lua, checkbox
+  "Show as Specter user", on in `settings.recommended()`, `GET /presence?t=gs&q=&me=<hash>` every 30 s, only with the server url
+  and gamesense/http): the same hash ("specter|" .. the 17 digit steam64 as TEXT, a double would lose digits) and tag `gs` (server.js
+  accepts it). The Primordial lua lists such a player as "name ~ gs user" (moon on the scoreboard, Revealer row, notification
+  "(gs)"), its own kind as "name ~ prim user (dev|nightly|beta)". The gamesense lua does not ask for others yet. If
+  `entity.get_steam64` does not give the 17 digit text, the gamesense lua sends nothing (not confirmed in game).
 - Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";
   Primordial only, the gamesense lua has no user detection to build on): Misc > "Servers" (page 15). "Share my server" (default
   OFF, a RAW `menu_add_checkbox`, not an eui item: eui exports every checkbox into the configs, and an imported / cloud config must

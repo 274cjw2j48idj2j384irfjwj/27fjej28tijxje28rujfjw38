@@ -205,6 +205,16 @@ out = subprocess.run(["node", "-e", fn + "console.log(JSON.stringify([public_srv
                      capture_output=True, text=True).stdout.strip()
 check(out == "[true,false,false,false,false,true]", "server.js /servers: only public ip:port addresses are accepted (%s)" % out)
 
+# the gamesense lua says "gs user" to the Primordial lua: both hash the steam64 text the same way, the heartbeat carries tag gs
+GS_SRC = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "specter_cloud.lua"), encoding="utf-8").read()
+gs_hash = re.search(r"local function hash\(text\)\n.*?\n                end\n", GS_SRC, re.S).group(0)
+hl = L.LuaRuntime(unpack_returned_tuples=True)
+hl.execute("string_format = string.format\npresence = {}\n" + gs_hash.replace("local function hash", "function GSHASH")
+           + chunk("presence.hash = function(s)", "-- Steam64 must never pass through a Lua double"))
+h = hl.eval("function(sid) return GSHASH(sid), presence.hash(sid) end")("76561198012345678")
+check(h[0] == h[1] and len(h[0]) == 16 and "/presence?t=gs&q=&me=" in GS_SRC,
+      "gs user: the gamesense lua and the Primordial lua hash a steam64 text the same way, the heartbeat has tag gs (%s)" % (list(h),))
+
 # the loader's beta version (BUILD_VERSION pm_beta): no Resolver page and no resolver groups, the helpers stay
 beta = L.LuaRuntime()
 beta.execute(MENU_MOCK.replace('info = { beta_build = true', 'info = { plan = "beta", beta_build = true'))

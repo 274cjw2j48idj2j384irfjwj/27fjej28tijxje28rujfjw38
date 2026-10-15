@@ -3115,13 +3115,17 @@ presence.failure = function(why)
         notifications.create("Specter", "Shared ESP: " .. presence.status .. ".", notifications.types.warning)
     end
 end
+-- what a user is called in the list / notification: "gs user" runs the gamesense lua (same hash, tag "gs"), "prim user" this one
+presence.kind = function(version)
+    return version == "gs" and "gs user" or ("prim user (" .. tostring(version) .. ")")
+end
 -- Verify each returned slot against the identity captured when the request began.
 presence.apply = function(on, asked)
     local found, changed, names, unique = {}, false, {}, {}
     local me = entity_list_get_local_player()
     for hash, entry in pairs(asked) do
         local version = on[hash]
-        if (version == "dev" or version == "beta" or version == "nightly") then
+        if (version == "dev" or version == "beta" or version == "nightly" or version == "gs") then
             local player = entity_list_get_entity(entry.idx)
             if (presence.steamid(player) == entry.sid) then
                 local previous = found[entry.idx]
@@ -3147,13 +3151,13 @@ presence.apply = function(on, asked)
             presence.shown[idx] = row
             if (me ~= nil and idx == me:get_index()) then
                 -- our own row is listed too (owners, Oct 2026: "my name didn't appear"), first, never announced
-                table.insert(shared_data, 1, row.name .. " (you) ~ " .. row.version)
+                table.insert(shared_data, 1, row.name .. " (you) ~ " .. presence.kind(row.version))
             else
-                shared_data[#shared_data + 1] = row.name .. " ~ " .. row.version
+                shared_data[#shared_data + 1] = row.name .. " ~ " .. presence.kind(row.version)
                 esp.sync_user[#esp.sync_user + 1] = row.sid
                 if (not presence.announced[row.sid]) then
                     presence.announced[row.sid] = true
-                    names[#names + 1] = row.name
+                    names[#names + 1] = row.name .. (row.version == "gs" and " (gs)" or " (prim)")
                 end
             end
         end

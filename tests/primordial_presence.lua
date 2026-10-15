@@ -118,7 +118,14 @@ other.name = "renamed"
 p.apply({ [p.hash(other_sid)] = "beta" }, {
     [p.hash(other_sid)] = { idx = 2, sid = other_sid, canonical = true },
 })
-check(list[1] == "renamed ~ beta", "name and version changes refresh an existing player row")
+check(list[1] == "renamed ~ prim user (beta)", "name and version changes refresh an existing player row")
+p.apply({ [p.hash(other_sid)] = "gs" }, {
+    [p.hash(other_sid)] = { idx = 2, sid = other_sid, canonical = true },
+})
+check(list[1] == "renamed ~ gs user", "a player running the gamesense lua (tag gs) is listed as a gs user")
+p.apply({ [p.hash(other_sid)] = "beta" }, {
+    [p.hash(other_sid)] = { idx = 2, sid = other_sid, canonical = true },
+})
 local note_count = #notes
 p.apply({ [p.hash(other_sid)] = "beta" }, {
     [p.hash(other_sid)] = { idx = 2, sid = other_sid, canonical = true },

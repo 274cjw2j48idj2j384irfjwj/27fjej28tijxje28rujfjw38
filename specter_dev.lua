@@ -11202,6 +11202,10 @@ LPH_NO_VIRTUALIZE(function ()
                 :record("miscellaneous", "clantag")
                 :save()
 
+            config.miscellaneous.presence = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Show as Specter user")
+                :record("miscellaneous", "presence")
+                :save()
+
             config.miscellaneous.clantag_style = menu.new_item(ui.new_combobox, "AA", "Anti-aimbot angles", "•  Style\nclantag", {"Scrolling", "Glitch"})
                 :record("miscellaneous", "clantag_style")
                 :save()
@@ -11384,6 +11388,44 @@ LPH_NO_VIRTUALIZE(function ()
         end
 
         miscellaneous = {} do
+            -- Specter user detection (owners, Oct 2026: "jelezze primen belül ha valaki a gs luát használja"): every 30 s the license
+            -- server hears that this player runs the gamesense lua (a hash of the steam id, tag "gs"; the same hash and endpoint
+            -- as specter_primordial.lua's presence, so the Primordial lua lists this player as a "gs user"). No names, no address
+            miscellaneous.presence = {} do
+                local SERVER = _auth_data and _auth_data.server_url or ""
+                local next_at = 0
+
+                local function hash(text)
+                    local h1, h2 = 5381, 52711
+                    text = "specter|" .. text
+                    for i = 1, #text do
+                        local c = text:byte(i)
+                        h1 = (h1 * 33 + c) % 4294967296
+                        h2 = (h2 * 31 + c * 7) % 4294967296
+                    end
+                    return string_format("%08x%08x", h1, h2)
+                end
+
+                -- the 17 digit steam64 as TEXT: a number would lose its last digits and the hash would not match
+                local function own_id()
+                    local me = entity.get_local_player()
+                    if not me then return nil end
+                    local ok, sid = pcall(entity.get_steam64, me)
+                    sid = ok and sid ~= nil and tostring(sid) or ""
+                    return sid:match("^7656119%d%d%d%d%d%d%d%d%d%d$")
+                end
+
+                function miscellaneous.presence:run()
+                    if not config.miscellaneous.presence:get() or http == nil or SERVER == "" then return end
+                    local now = globals.realtime()
+                    if now < next_at and now > next_at - 60 then return end
+                    next_at = now + 30
+                    local sid = own_id()
+                    if not sid then return end
+                    http.get(SERVER .. "/presence?t=gs&q=&me=" .. hash(sid), function() end)
+                end
+            end
+
             miscellaneous.clantag = {} do
                 function miscellaneous.clantag.reset()
                     for i=1, 64 do
@@ -12894,6 +12936,7 @@ LPH_NO_VIRTUALIZE(function ()
 
             function miscellaneous:net_update_end()
                 self.clantag:run()
+                self.presence:run()
             end
 
             function miscellaneous:paint_ui()
@@ -13087,6 +13130,7 @@ LPH_NO_VIRTUALIZE(function ()
                 set(A.fs_options, { "Jitter disabled" })
                 set(A.freestanding_disabler_states, { "Air", "Air & Crouch" })
                 set(A.animation_breaker, true)
+                set(config.miscellaneous.presence, true)
                 set(A.animation_breaker_leg, "Walking")
                 set(A.animation_breaker_air, "Walking")
                 set(A.animation_breaker_other, { "Quick peek legs", "Pitch zero on land" })
@@ -14363,6 +14407,7 @@ LPH_NO_VIRTUALIZE(function ()
                 M.hdr_social:display()
                 M.clantag:display()
                 if M.clantag:get() then M.clantag_style:display() end
+                M.presence:display()
                 M.cheat_tweaks:display()
                 if M.cheat_tweaks:get() then M.cheat_tweaks_list:display() end
                 M.trashtalk:display()

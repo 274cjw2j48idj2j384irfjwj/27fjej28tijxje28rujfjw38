@@ -743,7 +743,7 @@ setInterval(() => {
 
 app.get('/presence', (req, res) => {
     const me  = typeof req.query.me === 'string' ? req.query.me : ''
-    const tag = ['nightly', 'beta', 'dev'].includes(req.query.t) ? req.query.t : 'dev'
+    const tag = ['nightly', 'beta', 'dev', 'gs'].includes(req.query.t) ? req.query.t : 'dev'   // gs = the gamesense lua
     const q   = typeof req.query.q === 'string' && req.query.q ? req.query.q.split(',') : []
     if ((me && !/^[0-9a-f]{16}$/.test(me)) || q.length > 64 || q.some(h => !/^[0-9a-f]{16}$/.test(h)))
         return res.status(400).json({ ok: false, reason: 'bad_params' })
