@@ -142,7 +142,10 @@ libs.eui = (function()
 end)()
 
 libs.httpcreator = (function()
-    local a=ffi.cast("uint32_t**",ffi.cast("char**",ffi.cast("char*",memory_find_pattern("client.dll","B9 ? ? ? ? E8 ? ? ? ? 83 3D ? ? ? ? ? 0F 84"))+1)[0]+48)[0]or error("steam_http error")local b=ffi.cast("void***",a)or error("steam_http_ptr error")local c=b[0]or error("steam_http_ptr was null")local function d(e,f)return function(...)return e(f,...)end end;local g=d(ffi.cast(ffi.typeof("uint32_t(__thiscall*)(void*, uint32_t, const char*)"),c[0]),a)local h=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, uint64_t)"),c[5]),a)local i=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*, uint32_t*)"),c[9]),a)local j=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*, char*, uint32_t)"),c[10]),a)local k=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, uint32_t*)"),c[11]),a)local l=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, char*, uint32_t)"),c[12]),a)local m=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*, const char*)"),c[3]),a)local n=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*, const char*)"),c[4]),a)local o=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*)"),c[21]),a)local p=d(ffi.cast("bool(__thiscall*)(void*, uint32_t, const char*, const char*, uint32_t)",c[16]),a)local q=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t)"),c[14]),a)local r={}callbacks.add(e_callbacks.PAINT,function()for s,t in ipairs(r)do if global_vars_cur_time()-t.ls>t.task_interval then t:_process_tasks()t.ls=global_vars_cur_time()end end end)local u={}local v={__index=u}function u.new(w,x,y)return setmetatable({handle=w,url=x,callback=y,ticks=0},v)end;local z={}local A={__index=z}function z.new(B,C,D)return setmetatable({status=B,body=C,headers=D},A)end;function z:success()return self.status==200 end;local E={state={ok=200,no_response=204,timed_out=408,unknown=0}}local F={__index=E}function E.new(G)G=G or{}local t=setmetatable({requests={},task_interval=G.task_interval or 0.3,enable_debug=G.debug or false,timeout=G.timeout or 10,ls=global_vars_cur_time()},F)table.insert(r,t)return t end;local H={["get"]=1,["head"]=2,["post"]=3,["put"]=4,["delete"]=5,["options"]=6,["patch"]=7}function E:request(I,J,K,L)if type(K)=="function"and L==nil then L=K;K={}end;K=K or{}local M=H[tostring(I):lower()]local N=g(M,J)local O="application/text"if type(K.headers)=="table"then for P,Q in pairs(K.headers)do P=tostring(P)Q=tostring(Q)if P:lower()=="content-type"then O=Q end;m(N,P,Q)end end;if type(K.body)=="string"then local R=K.body:len()p(N,O,ffi.cast("unsigned char*",K.body),R)end;if type(K.params)=="table"then for S,T in pairs(K.params)do n(N,S,T)end end;if type(K.user_agent_info)=="string"then o(N,K.user_agent_info)end;if not h(N,0)then return end;local U=u.new(N,J,L)self:_debug("[HTTP] New %s request to: %s",I:upper(),J)table.insert(self.requests,U)end;function E:get(J,L)local N=g(1,J)if not h(N,0)then return end;local U=u.new(N,J,L)self:_debug("[HTTP] New GET request to: %s",J)table.insert(self.requests,U)end;function E:post(J,V,L)local N=g(3,J)for S,T in pairs(V)do n(N,S,T)end;if not h(N,0)then return end;local U=u.new(N,J,L)self:_debug("[HTTP] New POST request to: %s",J)table.insert(self.requests,U)end;function E:download_image(J,W,L)local N=g(1,J)if not h(N,0)then return end;local function X(z)if z:success()then libs.filesystem.write_binary(W,z.body)if L then L(true,"Image downloaded successfully")end else if L then L(false,"Failed to download image")end end end;local U=u.new(N,J,X)table.insert(self.requests,U)end;function E:_process_tasks()for S,T in ipairs(self.requests)do local Y=ffi.new("uint32_t[1]")self:_debug("[HTTP] Processing request #%s",S)if k(T.handle,Y)then local Z=Y[0]if Z>0 then local _=ffi.new("char[?]",Z)if l(T.handle,_,Z)then self:_debug("[HTTP] Request #%s finished. Invoking callback.",S)T.callback(z.new(E.state.ok,ffi.string(_,Z),setmetatable({},{__index=function(a0,a1)return E._get_header(T,a1)end})))table.remove(self.requests,S)q(T.handle)end else T.callback(z.new(E.state.no_response,nil,{}))table.remove(self.requests,S)q(T.handle)end end;local a2=T.ticks+1;if a2>=self.timeout then T.callback(z.new(E.state.timed_out,nil,{}))table.remove(self.requests,S)q(T.handle)else T.ticks=a2 end end end;function E:_debug(...)if self.enable_debug then client_log(string.format(...))end end;function E._get_header(U,a3)local Y=ffi.new("uint32_t[1]")if i(U.handle,a3,Y)then local Z=Y[0]local _=ffi.new("char[?]",Z)if j(U.handle,a3,_,Z)then return ffi.string(_,Z)end end;return nil end;function E._bind(a4,a5)return function(...)return a4[a5](a4,...)end end;return E
+    -- steam http. The passes run on real time: curtime starts again on every server, after a switch to a younger map no
+    -- request was answered until it caught up. A finished request leaves the list before its callback and is not timed out
+    -- in the same pass (its callback ran twice and the request after it was dropped)
+    local a=ffi.cast("uint32_t**",ffi.cast("char**",ffi.cast("char*",memory_find_pattern("client.dll","B9 ? ? ? ? E8 ? ? ? ? 83 3D ? ? ? ? ? 0F 84"))+1)[0]+48)[0]or error("steam_http error")local b=ffi.cast("void***",a)or error("steam_http_ptr error")local c=b[0]or error("steam_http_ptr was null")local function d(e,f)return function(...)return e(f,...)end end;local g=d(ffi.cast(ffi.typeof("uint32_t(__thiscall*)(void*, uint32_t, const char*)"),c[0]),a)local h=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, uint64_t)"),c[5]),a)local i=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*, uint32_t*)"),c[9]),a)local j=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*, char*, uint32_t)"),c[10]),a)local k=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, uint32_t*)"),c[11]),a)local l=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, char*, uint32_t)"),c[12]),a)local m=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*, const char*)"),c[3]),a)local n=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*, const char*)"),c[4]),a)local o=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*)"),c[21]),a)local p=d(ffi.cast("bool(__thiscall*)(void*, uint32_t, const char*, const char*, uint32_t)",c[16]),a)local q=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t)"),c[14]),a)local r={}callbacks.add(e_callbacks.PAINT,function()for s,t in ipairs(r)do if global_vars_real_time()-t.ls>t.task_interval then t:_process_tasks()t.ls=global_vars_real_time()end end end)local u={}local v={__index=u}function u.new(w,x,y)return setmetatable({handle=w,url=x,callback=y,ticks=0},v)end;local z={}local A={__index=z}function z.new(B,C,D)return setmetatable({status=B,body=C,headers=D},A)end;function z:success()return self.status==200 end;local E={state={ok=200,no_response=204,timed_out=408,unknown=0}}local F={__index=E}function E.new(G)G=G or{}local t=setmetatable({requests={},task_interval=G.task_interval or 0.3,enable_debug=G.debug or false,timeout=G.timeout or 10,ls=global_vars_real_time()},F)table.insert(r,t)return t end;local H={["get"]=1,["head"]=2,["post"]=3,["put"]=4,["delete"]=5,["options"]=6,["patch"]=7}function E:request(I,J,K,L)if type(K)=="function"and L==nil then L=K;K={}end;K=K or{}local M=H[tostring(I):lower()]local N=g(M,J)local O="application/text"if type(K.headers)=="table"then for P,Q in pairs(K.headers)do P=tostring(P)Q=tostring(Q)if P:lower()=="content-type"then O=Q end;m(N,P,Q)end end;if type(K.body)=="string"then local R=K.body:len()p(N,O,ffi.cast("unsigned char*",K.body),R)end;if type(K.params)=="table"then for S,T in pairs(K.params)do n(N,S,T)end end;if type(K.user_agent_info)=="string"then o(N,K.user_agent_info)end;if not h(N,0)then return end;local U=u.new(N,J,L)self:_debug("[HTTP] New %s request to: %s",I:upper(),J)table.insert(self.requests,U)end;function E:get(J,L)local N=g(1,J)if not h(N,0)then return end;local U=u.new(N,J,L)self:_debug("[HTTP] New GET request to: %s",J)table.insert(self.requests,U)end;function E:post(J,V,L)local N=g(3,J)for S,T in pairs(V)do n(N,S,T)end;if not h(N,0)then return end;local U=u.new(N,J,L)self:_debug("[HTTP] New POST request to: %s",J)table.insert(self.requests,U)end;function E:download_image(J,W,L)local N=g(1,J)if not h(N,0)then return end;local function X(z)if z:success()then libs.filesystem.write_binary(W,z.body)if L then L(true,"Image downloaded successfully")end else if L then L(false,"Failed to download image")end end end;local U=u.new(N,J,X)table.insert(self.requests,U)end;function E:_process_tasks()for S,T in ipairs(self.requests)do local Y=ffi.new("uint32_t[1]")self:_debug("[HTTP] Processing request #%s",S)if k(T.handle,Y)then local Z=Y[0]if Z>0 then local _=ffi.new("char[?]",Z)if l(T.handle,_,Z)then self:_debug("[HTTP] Request #%s finished. Invoking callback.",S)table.remove(self.requests,S)T.done=true;T.callback(z.new(E.state.ok,ffi.string(_,Z),setmetatable({},{__index=function(a0,a1)return E._get_header(T,a1)end})))q(T.handle)end else table.remove(self.requests,S)T.done=true;T.callback(z.new(E.state.no_response,nil,{}))q(T.handle)end end;if not T.done then local a2=T.ticks+1;if a2>=self.timeout then table.remove(self.requests,S)T.done=true;T.callback(z.new(E.state.timed_out,nil,{}))q(T.handle)else T.ticks=a2 end end end end;function E:_debug(...)if self.enable_debug then client_log(string.format(...))end end;function E._get_header(U,a3)local Y=ffi.new("uint32_t[1]")if i(U.handle,a3,Y)then local Z=Y[0]local _=ffi.new("char[?]",Z)if j(U.handle,a3,_,Z)then return ffi.string(_,Z)end end;return nil end;function E._bind(a4,a5)return function(...)return a4[a5](a4,...)end end;return E
 end)()
 
 libs.panorama = (function()
@@ -1067,7 +1070,7 @@ local ui = {
 
         refresh_players = groups.nav:button("Refresh players",
             function()
-                on_shared_players()
+                on_shared_players(true)
             end
         ),
         sep1 = menu_add_separator("Home | Specter v" .. client_version .. "" .. info.beta_text2),
@@ -3118,7 +3121,10 @@ presence.apply = function(on, asked)
         for _, idx in ipairs(order) do
             local row = found[idx]
             presence.shown[idx] = row
-            if (me == nil or idx ~= me:get_index()) then
+            if (me ~= nil and idx == me:get_index()) then
+                -- our own row is listed too (owners, Oct 2026: "my name didn't appear"), first, never announced
+                table.insert(shared_data, 1, row.name .. " (you) ~ " .. row.version)
+            else
                 shared_data[#shared_data + 1] = row.name .. " ~ " .. row.version
                 esp.sync_user[#esp.sync_user + 1] = row.sid
                 if (not presence.announced[row.sid]) then
@@ -3140,7 +3146,8 @@ presence.apply = function(on, asked)
         local visible = me ~= nil and found[me:get_index()] ~= nil
         local visibility = visible and "your badge is active"
             or (ui.utils.shared_esp:get() and "your badge is not confirmed yet" or "your visibility is off")
-        notifications.create("Specter", "Shared ESP: " .. #shared_data .. " other user(s) found, " .. count
+        local others = #shared_data - (visible and 1 or 0)
+        notifications.create("Specter", "Shared ESP: " .. others .. " other user(s) found, " .. count
             .. " player(s) checked; " .. visibility .. ".",
             notifications.types.information)
     end
@@ -3245,11 +3252,12 @@ presence.update = function(force)
     end
 end
 
-on_shared_players = function()
+-- report = the "Refresh players" button (the round start / connect refreshes say nothing)
+on_shared_players = function(report)
     if (check_conditions()) then
-        presence.report = true
+        presence.report = presence.report or report == true
         presence.update(true)
-    else
+    elseif (report == true) then
         notifications.create("Specter", "Shared ESP: join a game before refreshing players.", notifications.types.information)
     end
 end
@@ -3610,49 +3618,61 @@ local damage = {
     end
 }
 
+-- HITSCAN runs per command and target (double tap: many in one frame): the group is picked once per tick and target
+local dmg_pick = {}
 dmg_prediction = function(ctx, cmd, unpredicted_data)
     if (ui.ragebot.multipoint_pred:get()) then
         if (not defensive:is_active(ctx.player)) then
-            local local_pos = entity_list_get_local_player():get_eye_position()
             local enemy = ctx.player
-
-            local enemy_pos = {
-                head = enemy:get_hitbox_pos(e_hitboxes.HEAD),
-                chest = enemy:get_hitbox_pos(e_hitboxes.CHEST),
-                stomach = enemy:get_hitbox_pos(e_hitboxes.PELVIS)
-            }
-        
-            local enemy_dmg = {
-                head = damage:calculate(enemy, "head"),
-                chest = damage:calculate(enemy, "chest"),
-                stomach = damage:calculate(enemy, "stomach")
-            }
-        
-            -- head first (owners, Oct 2026: "nagyon sok a body hit"): `pairs` went through the three in the table's hash
-            -- order, so the chest / stomach got the 70 % hitchance and the push while the head was shootable too. The head
-            -- is skipped when Smart body aim took it out for this target (resolver.safe 3: only a lethal body shot)
             local nohead = resolver.safe ~= nil and resolver.safe[enemy:get_index()] == 3
-            for _, k in ipairs({ "head", "chest", "stomach" }) do
-                local v = enemy_dmg[k]
-                if ((k ~= "head" or not nohead) and (v > enemy:get_prop("m_iHealth") or v > get_dmg())) then
-                    local bullet = trace_bullet(local_pos, enemy_pos[k], entity_list_get_local_player(), enemy)
-                    if (bullet.valid and (client_get_hitgroup_name(bullet.hitgroup) == k)) then
-                        local hitgroup = e_hitscan_groups[string.upper(k)]
-                        if (not resolver.fast_target(enemy)) then
-                            ctx:set_hitchance(70, hitgroup)
-                        end
-                        ctx:set_hitscan_group_state(hitgroup, true, false)
-                        
-                        break
-                    end
-                end
+            local tick = globals.tick_count()
+            local cached = dmg_pick[enemy:get_index()]
+            local k
+            if (cached ~= nil and cached.tick == tick and cached.nohead == nohead) then
+                k = cached.k
+            else
+                k = dmg_prediction_pick(enemy, nohead)
+                dmg_pick[enemy:get_index()] = { tick = tick, nohead = nohead, k = k }
             end
-        else
-            return
+            if (k) then
+                local hitgroup = e_hitscan_groups[string.upper(k)]
+                if (not resolver.fast_target(enemy)) then
+                    ctx:set_hitchance(70, hitgroup)
+                end
+                ctx:set_hitscan_group_state(hitgroup, true, false)
+            end
         end
-    else
-        return
     end
+end
+
+-- the first of head, chest, stomach that kills or does the min damage and a bullet reaches, false: none
+dmg_prediction_pick = function(enemy, nohead)
+    local local_player = entity_list_get_local_player()
+    local local_pos = local_player:get_eye_position()
+    local enemy_pos = {
+        head = enemy:get_hitbox_pos(e_hitboxes.HEAD),
+        chest = enemy:get_hitbox_pos(e_hitboxes.CHEST),
+        stomach = enemy:get_hitbox_pos(e_hitboxes.PELVIS)
+    }
+    local enemy_dmg = {
+        head = damage:calculate(enemy, "head"),
+        chest = damage:calculate(enemy, "chest"),
+        stomach = damage:calculate(enemy, "stomach")
+    }
+
+    -- head first (owners, Oct 2026: "nagyon sok a body hit"): `pairs` went through the three in the table's hash
+    -- order, so the chest / stomach got the 70 % hitchance and the push while the head was shootable too. The head
+    -- is skipped when Smart body aim took it out for this target (resolver.safe 3: only a lethal body shot)
+    for _, k in ipairs({ "head", "chest", "stomach" }) do
+        local v = enemy_dmg[k]
+        if ((k ~= "head" or not nohead) and (v > enemy:get_prop("m_iHealth") or v > get_dmg())) then
+            local bullet = trace_bullet(local_pos, enemy_pos[k], local_player, enemy)
+            if (bullet.valid and (client_get_hitgroup_name(bullet.hitgroup) == k)) then
+                return k
+            end
+        end
+    end
+    return false
 end
 
 --- @endregion
@@ -4954,6 +4974,15 @@ end
 resolver.body_damage = function(ent)
     local local_player = entity_list_get_local_player()
     if (local_player == nil or ent == nil) then return 0 end
+    -- once per tick and target (HITSCAN runs per command, double tap sends many in one frame)
+    resolver.body_damage_seen = resolver.body_damage_seen or {}
+    local tick, seen = globals.tick_count(), resolver.body_damage_seen[ent:get_index()]
+    if (seen ~= nil and seen.tick == tick) then return seen.damage end
+    local best = resolver.body_damage_now(local_player, ent)
+    resolver.body_damage_seen[ent:get_index()] = { tick = tick, damage = best }
+    return best
+end
+resolver.body_damage_now = function(local_player, ent)
     local eye = local_player:get_eye_position()
     if (eye == nil) then return 0 end
     local best = 0
@@ -6308,6 +6337,37 @@ builder.direct_apply = function(ctx, local_player)
     end
 end
 
+-- the on peek defensive check: can this enemy shoot us 3 ticks from now, or we him. Two bullet traces per enemy, and
+-- Primordial runs the anti-aim once per command: double tap sends many commands in one frame (owners, Oct 2026: "lagging
+-- only in mid mirage with dt": an open map with every enemy in view and long traces). Each enemy is traced at most once
+-- per 4 ticks, at most 2 enemies per frame; meanwhile its last result stays
+builder.peek_seen, builder.peek_budget = {}, { frame = -1, left = 0 }
+builder.peek_visible = function(local_player, player, abs_origin, localmod)
+    local tick, idx = globals.tick_count(), player:get_index()
+    local seen = builder.peek_seen[idx]
+    if (seen ~= nil and tick >= seen.tick and tick - seen.tick < 4) then
+        return seen.visible
+    end
+    local budget, frame = builder.peek_budget, global_vars_frame_count()
+    if (budget.frame ~= frame) then
+        budget.frame, budget.left = frame, 2
+    end
+    if (budget.left <= 0) then
+        return seen ~= nil and seen.visible
+    end
+    budget.left = budget.left - 1
+    local vel, origin = player:get_prop("m_vecVelocity"), player:get_eye_position()
+    local visible = false
+    if (vel ~= nil and origin ~= nil) then
+        local ahead = globals.interval_per_tick() * 3
+        local traced = trace_bullet(origin + vec3_t(vel.x * ahead, vel.y * ahead, vel.z * ahead), abs_origin, local_player, player)
+        local tracent = trace_bullet(abs_origin + localmod, player:get_hitbox_pos(e_hitboxes.BODY), local_player, player)
+        visible = (traced.valid and traced.damage > 3) or (tracent.valid and tracent.damage > 3)
+    end
+    builder.peek_seen[idx] = { tick = tick, visible = visible }
+    return visible
+end
+
 run_antiaim = function(ctx, cmd, unpredicted)
     if (ui.antiaim.builder.enable:get()) then
         refs.overridemove:set(false)
@@ -6420,24 +6480,8 @@ run_antiaim = function(ctx, cmd, unpredicted)
                 end
 
                 if (anti_aim.trigger_defensive:get() == 2 or (smart ~= nil and smart:get(1))) then
-                    if (not player:is_dormant()) then
-                        local vel = player:get_prop("m_vecVelocity")
-                        
-                        local origin = player:get_eye_position()
-                        local tickinterval = globals.interval_per_tick()
-                        
-                        if (vel or origin) then
-                            local ticks_to_predict = 3
-    
-                            local mod = vec3_t(vel.x * tickinterval * ticks_to_predict, vel.y * tickinterval * ticks_to_predict, vel.z * tickinterval * ticks_to_predict)
-        
-                            local traced = trace_bullet(origin + mod, abs_origin, local_player, player)
-                            local tracent = trace_bullet(abs_origin + localmod, player:get_hitbox_pos(e_hitboxes.BODY), local_player, player)
-
-                            if (traced.valid and traced.damage > 3) or (tracent.valid and tracent.damage > 3) then
-                                visible = true
-                            end
-                        end
+                    if (not player:is_dormant() and builder.peek_visible(local_player, player, abs_origin, localmod)) then
+                        visible = true
                     end
                 end
     

@@ -352,6 +352,7 @@ test("lethal body scan respects actual traced damage through walls", function()
     trace_handler = function() return { valid = true, damage = 20, hitgroup = 3 } end
     resolver.hitscan(ctx)
     assert(ctx.groups[1] == nil)
+    tick = tick + 1 -- the body damage is traced once per tick and target
     trace_handler = function() return { valid = true, damage = 65, hitgroup = 3 } end
     resolver.hitscan(ctx)
     assert(ctx.groups[1] == false)
@@ -359,8 +360,10 @@ test("lethal body scan respects actual traced damage through walls", function()
     resolver.misses[2] = nil
 end)
 test("head hits and invalid traces do not count as lethal body damage", function()
+    tick = tick + 1
     trace_handler = function() return { valid = true, damage = 100, hitgroup = 1 } end
     assert(resolver.body_damage(target) == 0)
+    tick = tick + 1
     trace_handler = function() return nil end
     assert(resolver.body_damage(target) == 0)
     trace_handler = nil
