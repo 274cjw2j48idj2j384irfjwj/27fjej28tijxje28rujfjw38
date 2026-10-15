@@ -11448,7 +11448,7 @@ LPH_NO_VIRTUALIZE(function ()
                     return temp
                 end
 
-                local text = 'specter'
+                local text = 'specter.gs'
                 local cache = ''
                 local last_style = nil
                 local chars = {}
