@@ -573,6 +573,23 @@ check(abs(r[0] + 58) < 1e-6 and abs(r[1] + 33) < 1e-6 and abs(r[2] + 8) < 1e-6 a
       "feet model: standing feet go to the LBY target at 100 deg/s inside the max body yaw, running they follow the eye "
       "yaw, no LBY = no model, the max body yaw shrinks with speed (%s)" % (r,))
 
+# per state profile: standing = LBY phase, full trust once the model converged; moving / air = eye phase, less trust; a crouched
+# walker is its own state
+r = F("""
+local st = resolver.profile(0, false, 12, false)
+local fresh = resolver.profile(0, false, 0, false)
+local mv = resolver.profile(250, false, 12, false)
+local cm = resolver.profile(120, false, 12, true)
+local air = resolver.profile(0, true, 12, false)
+local p = {}
+for i = 1, 5 do resolver.feet_step(p, 0, 30, 0, false, 58, 100 + i, 1 / 64) end
+return st.phase, st.rel, fresh.rel, mv.phase, mv.rel, mv.zero, cm.rel, air.phase, p.feet_steps
+""")
+check(r[0] == "lby" and r[1] == 1 and abs(r[2] - 0.25) < 1e-6 and r[3] == "eye" and abs(r[4] - 0.35) < 1e-6 and r[5] == 12
+      and abs(r[6] - 0.5) < 1e-6 and r[7] == "eye" and r[8] == 5,
+      "state profile: the LBY phase is fully trusted once the feet model converged, the eye phase (moving / air) less, a "
+      "fresh model little, the steps are counted (%s)" % (r,))
+
 # jitter period / phase
 r = F("""
 local a, pa, ca = resolver.run_predict({ 3, 3, 3 }, 3, 1)       -- delay 3: the run reached it: switches now
