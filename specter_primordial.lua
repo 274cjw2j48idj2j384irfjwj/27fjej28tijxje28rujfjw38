@@ -4499,6 +4499,14 @@ backtrack.predict = function(local_player)
                 local ducking = bit.band(tonumber(enemy:get_prop("m_fFlags")) or 0, 2) ~= 0
                 local ahead = backtrack.horizon(net, ducking)
                 local to = vec3_t(head.x + velocity.x * ahead, head.y + velocity.y * ahead, head.z)
+                local tracked = resolver.data[enemy:get_index()]
+                local predicted = resolver.advanced ~= nil and resolver.advanced.forecast(tracked, enemy,
+                    math.ceil(ahead / globals.interval_per_tick())) or nil
+                if (predicted ~= nil and not predicted.blocked) then
+                    local origin = tracked.advanced.last
+                    to = vec3_t(head.x + predicted.x - origin.x, head.y + predicted.y - origin.y,
+                        head.z + predicted.z - origin.z)
+                end
                 local wall = trace_line(head, to, enemy, 0x400B)
                 if (wall ~= nil and type(wall.fraction) == "number" and wall.fraction == wall.fraction
                     and wall.fraction >= 0.98) then
@@ -5238,6 +5246,150 @@ resolver.fresh = function(p)
     return now >= p.updated and now - p.updated <= 0.12
         and now >= (p.defensive_until or 0)
 end
+-- ── movement observer + forecast (owners' fixed file, Oct 2026): per target the last 64 records (origin, velocity, yaw, state),
+-- a per state yaw predictor (static / linear / alternating, the one with the least error) and a forecast of the origin `ticks`
+-- ahead (velocity fading, gravity in the air, bullet-solid walls stop it). Used by the advanced prediction of the peek check ──
+resolver.advanced = { version = 2, limit = 64 }
+resolver.advanced.finite = function(x)
+    return type(x) == "number" and x == x and math.abs(x) < 1e12
+end
+resolver.advanced.vector = function(v)
+    local A = resolver.advanced
+    return v ~= nil and type(v) ~= "number" and A.finite(v.x) and A.finite(v.y) and A.finite(v.z)
+end
+resolver.advanced.observe = function(p, ent, eye)
+    local A = resolver.advanced
+    local sim, dt = ent:get_prop("m_flSimulationTime"), globals.interval_per_tick()
+    if not A.finite(sim) or not A.finite(eye) or not A.finite(dt) or dt <= 0 then return end
+    local o, v = ent:get_prop("m_vecOrigin"), ent:get_prop("m_vecVelocity")
+    if not A.vector(o) or not A.vector(v) then return end
+    local h = p.advanced
+    if not h then h = { records = {}, states = {}, transitions = {} }; p.advanced = h end
+    local last = h.records[#h.records]
+    if last and sim <= last.sim then return end
+    local state, flags = resolver.state_of(ent), tonumber(ent:get_prop("m_fFlags")) or 0
+    local r = {sim=sim, yaw=res_norm(eye), x=o.x, y=o.y, z=o.z,
+        vx=v.x, vy=v.y, vz=v.z, state=state, ground=bit.band(flags,1)~=0,
+        duck=bit.band(flags,2)~=0, ax=0, ay=0, time=globals.real_time()}
+    if last then
+        local elapsed=sim-last.sim
+        local dx,dy,dz=r.x-last.x,r.y-last.y,r.z-last.z
+        r.gap=math.floor(elapsed/dt+0.5)
+        r.discontinuity=elapsed>64*dt or dx*dx+dy*dy+dz*dz>4096
+        if not r.discontinuity and last.state==state then
+            r.ax=res_clamp((r.vx-last.vx)/elapsed,-1000,1000)
+            r.ay=res_clamp((r.vy-last.vy)/elapsed,-1000,1000)
+        end
+        if last.state~=state then
+            local t=h.transitions[last.state] or {}; h.transitions[last.state]=t
+            t[state]=math.min(10000,(t[state] or 0)+1)
+        end
+    end
+    local m=h.states[state]
+    if not m then m={samples={}, errors={static=45,linear=45,alternating=45},n=0}; h.states[state]=m end
+    local a,b=m.samples[#m.samples],m.samples[#m.samples-1]
+    if a and last and last.state==state and not r.discontinuity and sim-a.sim<=dt*4 then
+        local rate=b and res_norm(a.yaw-b.yaw)/math.max(dt,a.sim-b.sim) or 0
+        local pred={static=a.yaw,linear=res_norm(a.yaw+rate*(sim-a.sim)),alternating=b and b.yaw or a.yaw}
+        for name,yaw in pairs(pred) do m.errors[name]=m.errors[name]*0.85+math.abs(res_norm(r.yaw-yaw))*0.15 end
+        m.n=math.min(10000,m.n+1)
+    end
+    if r.discontinuity or (last and last.state~=state) then m.samples={} end
+    m.samples[#m.samples+1]=r
+    if #m.samples>32 then table.remove(m.samples,1) end
+    m.kind,m.error="static",m.errors.static
+    for _,name in ipairs({"linear","alternating"}) do
+        if m.errors[name]<m.error then m.kind,m.error=name,m.errors[name] end
+    end
+    m.confidence=math.min(1,m.n/16)*math.max(0,1-m.error/90)
+    m.last=r
+    h.records[#h.records+1]=r
+    while #h.records>1 and (#h.records>65 or sim-h.records[1].sim>64*dt) do table.remove(h.records,1) end
+    h.last,h.model=r,m
+end
+resolver.advanced.interpolate = function(p,time)
+    local A=resolver.advanced
+    local h=p and p.advanced
+    if not h or not A.finite(time) then return nil end
+    for i=2,#h.records do
+        local a,b=h.records[i-1],h.records[i]
+        if time>=a.sim and time<=b.sim and not b.discontinuity then
+            local u=(time-a.sim)/(b.sim-a.sim)
+            return {x=a.x+(b.x-a.x)*u,y=a.y+(b.y-a.y)*u,z=a.z+(b.z-a.z)*u,
+                yaw=res_norm(a.yaw+res_norm(b.yaw-a.yaw)*u),sim=time}
+        end
+    end
+    return nil
+end
+resolver.advanced.forecast = function(p,ent,ticks)
+    local A=resolver.advanced
+    local h=p and p.advanced
+    local r=h and h.last
+    local dt,now=globals.interval_per_tick(),globals.real_time()
+    ticks=tonumber(ticks)
+    if not r or r.discontinuity or not A.finite(ticks) or not A.finite(dt) or dt<=0
+        or now<r.time or now-r.time>0.12 or now<(p.defensive_until or 0) then return nil end
+    ticks=math.floor(res_clamp(ticks,1,64))
+    local cache=h.prediction
+    if cache and cache.source==r and cache.requested_ticks==ticks then return cache end
+    local gravity=800
+    local ok,g=pcall(function() return cvars.sv_gravity:get_float() end)
+    if ok and A.finite(g) and g>0 then gravity=g end
+    local x,y,z,vx,vy,vz=r.x,r.y,r.z,r.vx,r.vy,r.vz
+    local landing,blocked,steps=nil,false,0
+    for i=1,ticks do
+        local fade=math.exp(-(i-1)/4)
+        local ax,ay=r.ax*fade,r.ay*fade
+        local nx,ny=x+vx*dt+ax*dt*dt*0.5,y+vy*dt+ay*dt*dt*0.5
+        local nz=r.ground and z or z+vz*dt-gravity*dt*dt*0.5
+        local tr=trace_line(vec3_t(x,y,z+2),vec3_t(nx,ny,nz+2),ent,0x400B)
+        if not tr or not A.finite(tr.fraction) then return nil end
+        local f=res_clamp(tr.fraction,0,1)
+        x,y,z=x+(nx-x)*f,y+(ny-y)*f,z+(nz-z)*f
+        steps=i
+        if f<0.999 then
+            blocked=true
+            local normal=tr.plane_normal
+            local floor=normal~=nil and A.finite(normal.z) and normal.z>=0.7
+            if not r.ground and vz<0 then
+                landing={x=x,y=y,z=z,tick=i,verified=false,floor_hint=floor}
+            end
+            break
+        end
+        vx,vy=vx+ax*dt,vy+ay*dt
+        if not r.ground then vz=vz-gravity*dt end
+    end
+    local predicted_state=r.state
+    if landing and landing.floor_hint then
+        local speed=math.sqrt(vx*vx+vy*vy)
+        predicted_state=r.duck and (speed>5 and "cmove" or "duck")
+            or (speed>100 and "move" or speed>5 and "slow" or "stand")
+    end
+    local m=h.states[predicted_state]
+    local yaw,confidence=r.yaw,0
+    if m and m.last then
+        yaw=m.last.yaw
+        confidence=m.confidence*math.exp(-math.max(0,r.sim-m.last.sim)/2)
+        local a,b=m.samples[#m.samples],m.samples[#m.samples-1]
+        if a and b and predicted_state==r.state then
+            if m.kind=="linear" then
+                yaw=res_norm(a.yaw+res_norm(a.yaw-b.yaw)/math.max(dt,a.sim-b.sim)*steps*dt)
+            elseif m.kind=="alternating" and steps%2==1 then yaw=b.yaw end
+        end
+    end
+    local out={x=x,y=y,z=z,yaw=yaw,state=predicted_state,landing=landing,blocked=blocked,
+        pattern=m and m.kind or "unknown",confidence=confidence*math.exp(-steps/16),
+        ticks=steps,requested_ticks=ticks,source=r}
+    h.prediction=out
+    return out
+end
+resolver.advanced.base_track = resolver.track
+resolver.track = function(ent,eye)
+    local p=resolver.advanced.base_track(ent,eye)
+    if p then resolver.advanced.observe(p,ent,eye) end
+    return p
+end
+
 resolver.update = function(local_player, ent)
     local idx = ent:get_index()
     local st = resolver.animstate(idx)

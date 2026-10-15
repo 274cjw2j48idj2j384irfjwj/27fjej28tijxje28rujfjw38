@@ -384,7 +384,7 @@ resolver = { data = {}, misses = {}, mem = {}, previous = {}, active = false }
 resolver.state_of = function() return "stand" end
 resolver.fast_target = function() return false end
 TICKS = 0
-globals = { real_time = function() return SIM end, tick_count = function() TICKS = TICKS + 1 return TICKS end }
+globals = { real_time = function() return SIM end, tick_count = function() TICKS = TICKS + 1 return TICKS end, interval_per_tick = function() return 1 / 64 end }
 local function item(v) return { get = function() return v end } end
 ui = { ragebot = { logic_reso = item(false), smart_baim = item(true),
     smart_baim_hp = item(40), smart_baim_lethal = item(true), resolver = { shot_pred = item(4) } } }
@@ -715,6 +715,35 @@ ENT = { get_index = function() return 3 end,
 function STEP(eye) SIM, NOW, TICK = SIM + 2 / 64, NOW + 2 / 64, TICK + 2 ST.m_flEyeYaw = eye resolver.update({}, ENT) end
 """ + UP)
 U = um.eval("function(code) return assert(loadstring(code))() end")
+
+# movement observer + forecast: a runner is predicted ahead along its velocity, a wall stops it, garbage is ignored
+r = U("""
+cvars = { sv_gravity = { get_float = function() return 800 end } }
+WALL = false
+trace_line = function(from, to) return { fraction = (WALL and to.x > 40) and 0.5 or 1, plane_normal = { x = -1, y = 0, z = 0 } } end
+vec3_t = function(x, y, z) return { x = x, y = y, z = z } end
+local X, S = 0, 100
+local mover = { get_prop = function(_, n)
+    if n == "m_flSimulationTime" then return S end
+    if n == "m_vecOrigin" then return { x = X, y = 0, z = 0 } end
+    if n == "m_vecVelocity" then return { x = 250, y = 0, z = 0 } end
+    if n == "m_fFlags" then return 1 end
+    return 0
+end }
+local p = {}
+for i = 1, 6 do S = 100 + i / 64 X = i * 250 / 64 NOW = S resolver.advanced.observe(p, mover, 10) end
+local f = resolver.advanced.forecast(p, mover, 10)
+WALL = true
+p.advanced.prediction = nil
+local w = resolver.advanced.forecast(p, mover, 10)
+local bad = {}
+resolver.advanced.observe(bad, { get_prop = function() return nil end }, 10)
+resolver.advanced.observe(bad, mover, 0 / 0)
+return f.x > p.advanced.last.x + 10, f.blocked == false, w.blocked == true, w.x < f.x, #p.advanced.records, bad.advanced == nil,
+    resolver.advanced.forecast(nil, mover, 10) == nil
+""")
+check(all(bool(v) for v in list(r)[:4]) and r[4] == 6 and r[5] and r[6],
+      "movement forecast: a runner is predicted ahead along its velocity, a wall stops it, garbage netvars and no data give nothing (%s)" % (list(r),))
 r = U("""
 for _ = 1, 8 do STEP(0) end
 local prev = resolver.previous[3]
@@ -774,7 +803,7 @@ res_sign = function(v) return v < 0 and -1 or 1 end
 res_custom = function() return false end
 time_to_ticks = function(t) return math.floor(t * 64 + 0.5) end
 SIM, NOW, ORIGIN = 0, 0, { x = 0, y = 0, z = 0 }
-globals = { real_time = function() return NOW end }
+globals = { real_time = function() return NOW end, interval_per_tick = function() return 1 / 64 end }
 local function item(v) return { get = function() return v end } end
 ui = { ragebot = { resolver = { shot_pred = item(15) } } }
 resolver = { data = {}, mem = {}, previous = {}, misses = {}, shots = {}, epoch = 0, stats = {} }

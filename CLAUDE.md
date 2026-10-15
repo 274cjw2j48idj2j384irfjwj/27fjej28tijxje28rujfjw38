@@ -245,6 +245,13 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   feet model, moving / crouch walk / air: half size + jitter pattern); the results overrule it. States: stand, slow, move,
   duck, cmove, air, airduck (new: in the air crouched), "state fs" and "jitter" keep their own memory. Prior only: the
   workshop luas are not what the enemies on the real servers run, judge it by the per state stats.
+- Movement forecast (the owners' fixed file, Oct 2026, `resolver.advanced`, inside the pm-resolver block; `resolver.track` is
+  wrapped to feed `observe`): per target the last 64 records (origin, velocity, acceleration, yaw, state) and a per state yaw
+  predictor (static / linear / alternating by the least error); `forecast(p, ent, ticks)` walks the origin ahead (fading
+  acceleration, gravity in the air, `trace_line` 0x400B stops it, cached per record, nil on a stale / shifted / garbage
+  record). The advanced prediction (peek check) aims its look-ahead trace at that point instead of velocity x time; the beta
+  stub has no `resolver.advanced`, so the call site checks it. The lag break limit of `track` stays 32 ticks (their 64 would
+  call a runner's normal 250 u/s a teleport).
 - Backtrack: Primordial's (its records, the tick count of its shot). The old "Improve backtrack" wrote cmd.tick_count on
   every command from the enemy nearest the crosshair minus "dynamic ticks": the server rewound to a time the aimbot did
   not aim at. Now Improve backtrack sets Primordial's fake ping amount (100 ms, Extended backtrack 200 ms; the server takes
