@@ -398,6 +398,12 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   64 x 64 `assets/reveal/<key>.png` and the `REVEAL_PNG` block of server.js, served at `GET /reveal/<key>.png`, downloaded once into
   csgo/materials/panorama/images/icons/specter_reveal_<key>.png. To change one: replace its file in assets/reveal/src/, run the script,
   commit assets/reveal + server.js.
+- Improve doubletap (owners, Oct 2026: "az improve doubletap miatt laggolok, nem tudok mozogni"): it wrote `sv_maxusrcmdprocessticks`
+  17 (Static, the default), 14 / 12 or the slider's 5-17 whatever the server allowed; a server that gets more user commands than its
+  limit drops them = rubber banding, no movement. Now `set_dt_ticks` never writes more than the SERVER's value (`dt_limit`: the cvar is
+  replicated, what we read before writing is the server's; a new value from the server, seen as "the cvar no longer holds what we
+  wrote", replaces it). The Switch / Automatic modes also measured the distance to the map's origin (0, 0) instead of to an enemy:
+  they use the nearest enemy now (`dt_wanted`).
 - Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";
   Primordial only, the gamesense lua has no user detection to build on): Misc > "Servers" (page 15). "Share my server" (default
   OFF, a RAW `menu_add_checkbox`, not an eui item: eui exports every checkbox into the configs, and an imported / cloud config must

@@ -7963,13 +7963,39 @@ better_hs = function(cmd)
 end
 
 -- the double tap speed (sv_maxusrcmdprocessticks), written only when it changes: it was set every frame (15 with Better
--- DT off, once per enemy with the distance modes), a cvar write per call (owners, Oct 2026: 70 fps)
-local dt_ticks_set = nil
-local function set_dt_ticks(ticks)
+-- DT off, once per enemy with the distance modes), a cvar write per call (owners, Oct 2026: 70 fps).
+-- Never more than the SERVER allows (owners, Oct 2026: "az improve doubletap miatt laggolok, nem tudok mozogni"): the cvar is
+-- replicated, so what the client reads before we write it is the server's limit (16 by default, community servers differ).
+-- Better DT asked for 17 (Static, the default), 14 / 12 or the slider's 5-17 whatever that limit was, and a server that gets
+-- more user commands than it allows drops them: rubber banding, no movement. `dt_limit_value` is that limit; the server sending
+-- its value again (a new connect) is noticed because the cvar no longer holds what we wrote
+local dt_ticks_set, dt_limit_value = nil, nil
+local function dt_limit()
+    local ok, current = pcall(function() return cvars.sv_maxusrcmdprocessticks:get_int() end)
+    current = ok and tonumber(current) or nil
+    if (current ~= nil and (dt_ticks_set == nil or current ~= dt_ticks_set)) then
+        dt_limit_value, dt_ticks_set = current, nil
+    end
+    return dt_limit_value
+end
+-- the ticks to write: the wanted number, but at most the server's limit (nil = leave the cvar alone)
+local function dt_ticks_for(wanted, limit)
+    if (wanted == nil or limit == nil or limit < 1) then return nil end
+    return math.min(wanted, limit)
+end
+local function set_dt_ticks(wanted)
+    local ticks = dt_ticks_for(wanted, dt_limit())
     if (ticks ~= nil and ticks ~= dt_ticks_set) then
         cvars.sv_maxusrcmdprocessticks:set_int(ticks)
         dt_ticks_set = ticks
     end
+end
+-- Switch: 17 close, 14 far; Automatic: 17 / 14 / 12 by the distance of the nearest enemy
+local function dt_wanted(calc, dist)
+    if (calc == 2) then
+        return dist < 600 and 17 or 14
+    end
+    return dist < 600 and 17 or dist < 1000 and 14 or 12
 end
 
 custom_dt = function()
@@ -7993,11 +8019,17 @@ custom_dt = function()
         set_dt_ticks(17)
         return
     end
-    local dist = distance(entity_list_get_local_player():get_render_origin(), vec3_t(0.0, 0.0, 0.0))
-    if (calc == 2) then
-        set_dt_ticks(dist < 600 and 17 or dist > 600 and 14 or nil)
-    elseif (calc == 3) then
-        set_dt_ticks(dist < 600 and 17 or (dist > 600 and dist < 1000) and 14 or dist > 1000 and 12 or nil)
+    -- it measured the distance to the map's origin (0, 0), not to an enemy: the value jumped around as we moved
+    local me = entity_list_get_local_player():get_render_origin()
+    local dist = math.huge
+    for _, enemy in pairs(enemies) do
+        if (enemy:is_alive() and not enemy:is_dormant()) then
+            local o = enemy:get_render_origin()
+            dist = math.min(dist, math.sqrt((o.x - me.x) ^ 2 + (o.y - me.y) ^ 2))
+        end
+    end
+    if (dist ~= math.huge) then
+        set_dt_ticks(dt_wanted(calc, dist))
     end
 end
 

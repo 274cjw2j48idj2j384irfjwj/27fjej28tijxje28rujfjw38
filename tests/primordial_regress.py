@@ -324,6 +324,30 @@ check(r[0] == "gsgsgsgsnlnixprimot----" and r[1] == "2 2 2:file://{images}/icons
       "cheat revealer: clan tags name the cheat (typed prefixes too, Specter / short / empty ones not), badges + one notification each, "
       "kept 2 minutes, a Specter user keeps the moon (%s)" % (list(r),))
 
+# Improve doubletap: never more ticks than the server allows (17 on a 16 tick server = dropped commands = no movement), the limit is
+# the value the server replicated, a new connect (the cvar no longer holds what we wrote) refreshes it, the distance modes pick by
+# the nearest enemy
+DT = chunk("local dt_ticks_set, dt_limit_value = nil, nil", "custom_dt = function()")
+dl = L.LuaRuntime(unpack_returned_tuples=True)
+dl.execute("""
+CVAR, WRITES = 16, {}
+cvars = { sv_maxusrcmdprocessticks = { get_int = function() return CVAR end, set_int = function(_, v) CVAR = v WRITES[#WRITES + 1] = v end } }
+""" + DT + """
+OUT = {}
+set_dt_ticks(17); OUT[1] = CVAR                    -- 17 wanted on a 16 server: 16
+set_dt_ticks(14); OUT[2] = CVAR                    -- 14 is fine
+set_dt_ticks(17); OUT[3] = CVAR                    -- the limit is still 16, not the 14 we wrote
+local n = #WRITES; set_dt_ticks(17); OUT[4] = #WRITES == n   -- nothing changes: no write
+CVAR = 8                                           -- a new connect: the server says 8
+set_dt_ticks(15); OUT[5] = CVAR
+CVAR = 20; set_dt_ticks(17); OUT[6] = CVAR         -- a server that allows 20: 17 goes through
+OUT[7] = dt_wanted(2, 300) .. "," .. dt_wanted(2, 900) .. "," .. dt_wanted(3, 300) .. "," .. dt_wanted(3, 800) .. "," .. dt_wanted(3, 1500)
+OUT[8] = dt_ticks_for(17, nil) == nil and dt_ticks_for(17, 0) == nil and dt_ticks_for(5, 16) == 5
+""")
+r = [dl.globals().OUT[i] for i in range(1, 9)]
+check(list(r) == [16, 14, 16, True, 8, 17, "17,14,17,14,12", True],
+      "improve doubletap: never above the server's sv_maxusrcmdprocessticks, a new server value is learned, distance modes by the nearest enemy (%s)" % (list(r),))
+
 # the loader's beta version (BUILD_VERSION pm_beta): no Resolver page and no resolver groups, the helpers stay
 beta = L.LuaRuntime()
 beta.execute(MENU_MOCK.replace('info = { beta_build = true', 'info = { plan = "beta", beta_build = true'))
