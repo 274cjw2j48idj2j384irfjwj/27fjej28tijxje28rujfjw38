@@ -23,6 +23,7 @@ BADGES = {
     "fat": ("FT", (225, 40, 105), (255, 255, 255)),
     "aw": ("AW", (190, 30, 30), (255, 255, 255)),
     "pan": ("PD", (140, 90, 220), (255, 255, 255)),
+    "ev": ("EV", (60, 150, 255), (255, 255, 255)),
 }
 FONTS = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "DejaVuSans-Bold.ttf"]
 
