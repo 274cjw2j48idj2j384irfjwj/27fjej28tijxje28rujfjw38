@@ -256,7 +256,7 @@ zl.execute(ZS)
 Z = zl.eval("function(code) return assert(loadstring(code))() end")
 r = Z("""
 local function enemy(dist, closing, holds, see) return { dist = dist, closing = closing, holds = holds, see = function() return see ~= false end } end
-local function st(o) o.speed = o.speed or 0 o.weapon = o.weapon or "ak47" o.taken = o.taken or false o.has_zeus = true
+local function st(o) o.speed = o.speed or 0 o.weapon = o.weapon or "ssg08" o.taken = o.taken or false o.has_zeus = true
   o.equip_at = o.equip_at or 0 o.threat_at = o.threat_at or 0 o.enemies = o.enemies or {} return o end
 local out = {}
 out[1] = zeus.decide(st{ enemies = { enemy(300, 200, "knife") } }, 10)                       -- knife rusher: equip
@@ -273,10 +273,12 @@ out[10] = zeus.decide(st{ weapon = "taser", taken = true, threat_at = 5, enemies
 out[11] = zeus.decide(st{ weapon = "taser", taken = true, threat_at = 9.5, enemies = {} }, 10)         -- just gone: keep
 out[12] = zeus.decide(st{ weapon = "taser", taken = true, clip = 0, enemies = { enemy(100, 0, "knife") } }, 10)  -- fired: put away
 out[13] = zeus.decide(st{ weapon = "taser", taken = false, threat_at = 0, enemies = {} }, 10)          -- not ours: leave it
-return out[1], out[2], out[3], out[4], out[5], out[6], out[7], out[8], out[9], out[10], out[11], out[12], out[13], t ~= nil
+out[14] = zeus.decide(st{ weapon = "awp", enemies = { enemy(300, 200, "knife") } }, 10)                -- awp in hand: equip
+out[15] = zeus.decide(st{ weapon = "ak47", enemies = { enemy(300, 200, "knife") } }, 10)               -- any other weapon: stay
+return out[1], out[2], out[3], out[4], out[5], out[6], out[7], out[8], out[9], out[10], out[11], out[12], out[13], t ~= nil, out[14], out[15]
 """)
-check(list(r) == ["equip", "equip", None, None, None, "fire", None, "fire", None, "restore", None, "restore", None, True],
-      "zeus vs rushers: equips against a knife / zeus rusher, fires at the range edge (wider standing), needs a clear line, puts it away (%s)" % (list(r),))
+check(list(r) == ["equip", "equip", None, None, None, "fire", None, "fire", None, "restore", None, "restore", None, True, "equip", None],
+      "zeus vs rushers: equips (only from a scout / awp) against a knife / zeus rusher, fires at the range edge (wider standing), needs a clear line, puts it away (%s)" % (list(r),))
 
 # the loader's beta version (BUILD_VERSION pm_beta): no Resolver page and no resolver groups, the helpers stay
 beta = L.LuaRuntime()
