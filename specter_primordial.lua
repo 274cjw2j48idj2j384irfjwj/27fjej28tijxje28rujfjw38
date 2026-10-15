@@ -4892,7 +4892,7 @@ resolver.update = function(local_player, ent)
         key, kind, hint = "jitter", "jitter", -p.dir
     else
         key, hint = state, 1
-        if (ui.ragebot.pose_reso:get()) then
+        do
             local tick = globals.tick_count()
             if (tick - p.fs_tick >= RES_FS_TICKS or tick < p.fs_tick) then
                 p.fs = resolver.freestand(local_player, ent)
@@ -4906,8 +4906,7 @@ resolver.update = function(local_player, ent)
 
     local mem = resolver.memory(idx, key, kind)
     local confidence = kind == "jitter" and p.confidence or kind == "fs" and 0.55 or 0.25
-    local candidate = ui.ragebot.logic_reso:get()
-        and resolver.choose(mem, confidence, ui.ragebot.reso_cfg.yaw_calc:get() == 3) or 1
+    local candidate = resolver.choose(mem, confidence, ui.ragebot.reso_cfg.yaw_calc:get() == 3)
     local half = res_custom() and res_clamp(ui.ragebot.resolver.pred_sel:get(), 25, 70) / 100 or 0.5
     local size = ({ 1, -1, half, -half, 0 })[candidate]
     local value = 0
@@ -4954,15 +4953,11 @@ resolver.on_result = function(target, hit_ok, resolver_miss, event)
     if (hit_ok) then
         mem.misses = 0
         mem.last_failed = nil
-        if (ui.ragebot.logic_reso:get()) then
-            c.good = c.good + 1
-        end
+        c.good = c.good + 1
     elseif (resolver_miss) then
         mem.misses = mem.misses + 1
-        if (ui.ragebot.logic_reso:get()) then
-            c.bad = c.bad + 1
-            mem.last_failed = snapshot.candidate
-        end
+        c.bad = c.bad + 1
+        mem.last_failed = snapshot.candidate
     end
     if (hit_ok or resolver_miss) then
         for _, hypothesis in ipairs(mem.candidates) do
@@ -5098,13 +5093,14 @@ end
 
 lets_resolve = function()
     local local_player = entity_list_get_local_player()
-    local on = local_player ~= nil and info.plan ~= "beta" and (ui.ragebot.nexzu_reso:get() or ui.ragebot.logic_reso:get()
-        or ui.ragebot.pose_reso:get() or res_custom())
+    -- OUR resolver always runs (owners, Oct 2026: "a Primo resolver outdated és rosszul működik"): no resolver toggle
+    -- needed, Primordial's own "Resolve Antiaim" is only the fallback while the ping is high / the target data is stale
+    local on = local_player ~= nil and info.plan ~= "beta"
     local mode = on and resolver.disabler(local_player) or 0
 
     resolver.active = on and mode ~= 1
     resolver.safe_all = mode == 2
-    local requested = resolver.active and res_custom() and ui.ragebot.resolver.unsafe_reso:get()
+    local requested = resolver.active
     local target = resolver.data[resolver.previous.target]
     local fallback = requested and (resolver.network().high
         or (target ~= nil and not resolver.fresh(target)))

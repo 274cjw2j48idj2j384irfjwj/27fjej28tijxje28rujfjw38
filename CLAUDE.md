@@ -179,9 +179,13 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   chest / stomach the 70 % hitchance push while the head was shootable) and skips the head when Smart body aim took it
   out (`resolver.safe[idx] == 3`). The shot logs carry `sp` (1 safe
   point, 2 for jitter, 3 smart body aim), the AA lines `dc` (Direct control on).
-  The lua side override (freestanding / jitter side written into the animstate, the old "Unsafe resolver" that switched
-  Primordial's resolver off) is "Lua side override (experimental)", off by default (the label changed so the old configs
-  do not switch it on).
+  OUR resolver is the default (owners, Oct 2026: "a Primo resolver outdated és rosszul működik"): `lets_resolve` runs it
+  for every non-beta plan with no resolver toggle needed (freestanding hint, jitter side, the learned candidates from
+  hits / misses always on), writing the side into the animstate and switching Primordial's "Resolve Antiaim" off; that
+  one is only the FALLBACK while our ping is high (`resolver.network().high`) or the target's data is stale. The menu
+  toggles (Logic / Improve / Pose / Custom resolver, "Lua side override") no longer switch it on or off, Custom resolver
+  only tunes it (pred_sel, calc_box, shot_pred, disablers). Not proven in game: judge it by the shot logs (`native`
+  false = ours, miss reasons resolver / jitter).
 - Backtrack: Primordial's (its records, the tick count of its shot). The old "Improve backtrack" wrote cmd.tick_count on
   every command from the enemy nearest the crosshair minus "dynamic ticks": the server rewound to a time the aimbot did
   not aim at. Now Improve backtrack sets Primordial's fake ping amount (100 ms, Extended backtrack 200 ms; the server takes
