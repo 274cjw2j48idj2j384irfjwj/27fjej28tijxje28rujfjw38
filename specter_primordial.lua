@@ -3992,7 +3992,9 @@ end
 -- zeus is fired by the lua once the enemy is in its range. The decision is a pure function (`zeus.decide`, tested); the game
 -- calls are in `zeus_rush`. Standing still the shot is taken at the very edge of the range (the aim is not disturbed by our
 -- own movement), moving it waits for a margin so the bolt does not fall short
-zeus = { RANGE = 182, EQUIP = { knife = 450, taser = 520 }, taken = false, equip_at = 0, threat_at = 0 }
+-- the zeus is taken out only from a scout or an awp (owners, Oct 2026: "csak akkor valtson ha scout vagy awp van a kezembe"): with
+-- any other weapon in hand nothing is switched
+zeus = { RANGE = 182, EQUIP = { knife = 450, taser = 520 }, SNIPERS = { ssg08 = true, awp = true }, taken = false, equip_at = 0, threat_at = 0 }
 -- enemies: { dist, closing (units / s towards us), holds = "knife" | "taser" | other, see = function() -> bool }
 -- returns "equip" | "fire" | "restore" | nil
 zeus.decide = function(st, now)
@@ -4022,7 +4024,7 @@ zeus.decide = function(st, now)
         end
         return nil
     end
-    if (best_equip and st.has_zeus and now - st.equip_at > 0.6) then
+    if (best_equip and st.has_zeus and zeus.SNIPERS[st.weapon] and now - st.equip_at > 0.6) then
         return "equip"
     end
     return nil
