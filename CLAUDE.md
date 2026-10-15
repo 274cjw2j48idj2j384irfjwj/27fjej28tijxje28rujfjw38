@@ -157,7 +157,11 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   "max 1-2 jitter 20-30 lövésenként"): the "jitter" / "resolver" miss reasons are PRIMORDIAL's resolver (it resolves
   whatever the lua toggles say; the api gives no way to tell its aimbot the side). What the lua decides is where it may
   shoot: ALWAYS (every resolver toggle off too, not beta) a jittering target gets head + chest safe points, a target after a
-  resolver / jitter miss a head safe point until a hit. Smart body aim (Resolver page, default on; owners, Oct 2026: "ha nem
+  resolver / jitter miss a head safe point until a hit. The jitter safe point (`resolver.hitscan`) is NOT gated by
+  `resolver.active` (owners, Oct 2026: "statikus resolvernél vannak problémák a jitternel"; the real shot logs, 86 shots,
+  had jitter the top miss cause 16/32 with `sp` None on 83, because it used to need a resolver toggle on). The after-miss
+  head safe point (misses >= 2) and the Custom resolver options (duck / peek / HP) stay behind `resolver.active`; `safe_all`
+  (a disabler set to head safe point) forces safety even on a fast peek. Smart body aim (Resolver page, default on; owners, Oct 2026: "ha nem
   100% biztos a fejbe inkább safepointos vagy testre lő ... de ha 100 a kövi hitnél akkor ne test legyen"; a version that
   turned the head off after every miss was "faszság", almost no head shots): the head is sure when the target does not
   jitter and has no miss since the last hit; not sure -> body (head group off) only when a body hit kills (HP <= the weaker

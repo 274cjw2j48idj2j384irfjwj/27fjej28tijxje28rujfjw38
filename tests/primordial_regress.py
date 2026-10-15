@@ -475,10 +475,17 @@ local jit_head_100 = LAST.groups[0] == nil and resolver.safe[3] == 2
 HP = 50
 HS()
 local jit_body_50 = LAST.groups[0] == false
-return h0, c0, sure_head, h1, c1, head_100, body_60, h2, c2, jit_head_100, jit_body_50
+-- a jittering target gets head + chest safe points even with every resolver toggle off (owners: ALWAYS, not beta):
+-- the real shot logs had jitter as the top miss cause with almost no safe point because it was gated behind the toggle
+HP = 100
+resolver.active = false
+HS()
+local jit_offtoggle = resolver.safe[3] == 2 and LAST.safe[0] == true and LAST.safe[1] == true
+return h0, c0, sure_head, h1, c1, head_100, body_60, h2, c2, jit_head_100, jit_body_50, jit_offtoggle
 """)
-check(r == (False, False, True, False, False, True, True, True, True, True, True),
-      "smart body aim: independent lethal-body fallback; inactive safety stays off, fresh active jitter gets safety (%s)" % (r,))
+check(r == (False, False, True, False, False, True, True, True, True, True, True, True),
+      "smart body aim: independent lethal-body fallback; inactive safety stays off, a jittering target gets head + chest "
+      "safe points even with every resolver toggle off (%s)" % (r,))
 
 # FPS (owners, Oct 2026: "70 fpsem"): menu.find is asked once per item, the profiler only times while it runs
 MF = chunk("-- menu.find walks Primordial's whole menu by name", "-- FPS profiler (dev build")
