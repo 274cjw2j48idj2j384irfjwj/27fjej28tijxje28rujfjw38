@@ -1287,6 +1287,9 @@ resolver.reset = function()
     resolver.previous = {}
     resolver.misses = {}
 end
+resolver.new_round = function()
+    resolver.reset()
+end
 update_target = function(ctx)
     resolver.previous.target = ctx.player:get_index()
 end

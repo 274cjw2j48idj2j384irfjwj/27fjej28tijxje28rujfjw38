@@ -4686,24 +4686,33 @@ resolver.memory = function(idx, key, kind)
     end
     if (mem[key] == nil) then
         mem[key] = { rel = 1, misses = 0, candidates = {}, selected = 1 }
-        for i = 1, 5 do
+        for i = 1, resolver.NCAND do
             mem[key].candidates[i] = { good = 1, bad = 1 }
         end
     end
     return mem[key]
 end
 -- Per-target/per-state hypotheses. Side hint is evidence, not a guarantee.
-resolver.choose = function(mem, confidence, allow_half)
+-- the hypotheses of a target (value = the body yaw of the record, relative to its eye yaw; see resolver.hypothesis):
+-- 1 / 2 the side hint, full size, as is / mirrored; 3 / 4 the same, half size; 5 no desync; 6 / 7 the computed body
+-- yaw of the feet model, as is / mirrored; 8 / 9 the side the jitter pattern predicts for the NEXT record, as is / mirrored
+resolver.NCAND = 9
+resolver.PRIOR = { 0.14, 0.02, 0.08, 0.00, -0.03, 0.0, 0.0, 0.0, 0.0 }
+-- opt.skip[i] = the hypothesis does not apply now, opt.bonus[i] = what the situation says for it before any result
+resolver.choose = function(mem, confidence, allow_half, opt)
     local best, score = 1, -math.huge
+    local skip, bonus = opt and opt.skip or {}, opt and opt.bonus or {}
     for i, c in ipairs(mem.candidates) do
-        local n = c.good + c.bad
-        local prior = ({ 0.14, 0.02, 0.08, 0.00, -0.03 })[i] * confidence
-        local value = c.good / n + 0.10 / math.sqrt(n) + prior
-        if (mem.last_failed == i) then
-            value = value - 0.25
-        end
-        if ((allow_half ~= false or (i ~= 3 and i ~= 4)) and value > score) then
-            best, score = i, value
+        if (not skip[i]) then
+            local n = c.good + c.bad
+            local prior = (resolver.PRIOR[i] or 0) * confidence + (bonus[i] or 0)
+            local value = c.good / n + 0.10 / math.sqrt(n) + prior
+            if (mem.last_failed == i) then
+                value = value - 0.25
+            end
+            if ((allow_half ~= false or (i ~= 3 and i ~= 4)) and value > score) then
+                best, score = i, value
+            end
         end
     end
     mem.selected = best
@@ -4730,6 +4739,7 @@ resolver.capture = function(shot)
     if (prev ~= nil) then
         s.key, s.kind, s.rel = prev.key, prev.kind, prev.rel
         s.candidate, s.desync = prev.candidate, prev.m_flDesync
+        s.model, s.nxt = prev.model, prev.nxt
     end
     resolver.shots[#resolver.shots + 1] = s
     if (#resolver.shots > 128) then table.remove(resolver.shots, 1) end
@@ -4799,6 +4809,186 @@ resolver.jit_classify = function(steps, min, yaws)
     return big >= 3 and flips >= 2 and math.abs(net) <= total * 0.5
 end
 
+resolver.K = {
+    zero = 20,          -- |computed body yaw| below this: the feet model sees no desync (micromovement keeps the LBY on the eye yaw)
+    shift = 0.5,        -- a sim time that goes back by less (s) is a tickbase shift (defensive), not a reset
+    round_keep = 0.5,   -- how much of what was learned about a player stays into the next round
+    change_keep = 0.35, -- the same when its yaw pattern changed
+    change = 10,        -- records in a row with another pattern = the pattern changed
+    forget = 0.97,      -- every counted result pulls all hypotheses of that situation back toward the start
+}
+
+-- steam id of an entity: the learning follows the player, not the slot
+resolver.sid = function(ent)
+    local ok, a, b = pcall(ent.get_steamids, ent)
+    if (not ok) then return nil end
+    local id = (type(b) == "string" and #b >= 5) and b or tonumber(a)
+    return id ~= nil and id ~= 0 and tostring(id) or nil
+end
+
+-- ── feet model (owners, Oct 2026: the GS lua's resolver works on it; the server's feet logic on netvars) ──
+-- Standing, the feet turn to the lower body yaw target (100 deg/s); moving or in the air, they follow the eye yaw
+-- (30-50 deg/s). They are never further than the max body yaw from the eye yaw: eye yaw - feet = the body yaw of the record
+resolver.feet_limit = function(speed, duck)
+    local ratio = 1 - 0.35 * res_clamp(speed / 250, 0, 1)
+    duck = res_clamp(duck, 0, 1)
+    if (duck > 0) then
+        ratio = ratio + duck * res_clamp(speed / 85, 0, 1) * (0.5 - ratio)
+    end
+    return 58 * res_clamp(ratio, 0.5, 1)
+end
+
+resolver.approach = function(target, cur, step)
+    local d = res_norm(target - cur)
+    if (math.abs(d) <= step) then
+        return res_norm(target)
+    end
+    return res_norm(cur + (d > 0 and step or -step))
+end
+
+-- one record at tick t (the arrival tick: a shifted update's sim time says nothing about how long the server animated)
+resolver.feet_step = function(p, eye, lby, speed, air, maxd, t, interval)
+    local moving = speed > 5 or air
+    local target = moving and eye or lby
+    if (target == nil) then
+        p.model = nil
+        return nil
+    end
+    if (p.feet == nil or p.feet_t == nil or t < p.feet_t) then
+        p.feet, p.feet_t = target, t
+    end
+    local dt = res_clamp((t - p.feet_t) * interval, 0, 0.25)
+    p.feet_t = t
+    local rate = moving and (30 + 20 * res_clamp((speed - 70) / 65, 0, 1)) or 100
+    p.feet = resolver.approach(target, p.feet, rate * dt)
+    local d = res_norm(eye - p.feet)
+    if (d > maxd) then
+        p.feet = res_norm(eye - maxd)
+    elseif (d < -maxd) then
+        p.feet = res_norm(eye + maxd)
+    end
+    p.model = res_norm(eye - p.feet)
+    return p.model
+end
+
+-- ── jitter pattern: how long the target holds a side (owners: "periódus és fázis") ──
+-- runs = the lengths (records) of the finished runs on one side, run_len = the current one, side = +1 / -1.
+-- Returns the side of the NEXT record, the fixed period (or nil) and how sure that is (0..1). A fixed period (the last three
+-- runs the same length: a delay jitter) switches exactly when the run reaches it; else it switches when most runs that
+-- got as long as the current one ended there (a tick jitter every record, a random hold at the length it ends most often)
+resolver.run_predict = function(runs, run_len, side)
+    local n = #runs
+    if (side == nil or n < 2) then
+        return nil, nil, 0
+    end
+    local period = runs[n]
+    local k = 0
+    for i = n, 1, -1 do
+        if (runs[i] ~= period) then break end
+        k = k + 1
+    end
+    if (k >= 3) then
+        local conf = math.min(1, 0.5 + 0.1 * k)
+        return (run_len >= period) and -side or side, period, conf
+    end
+    local ended, longer = 0, 0
+    for _, len in ipairs(runs) do
+        if (len == run_len) then ended = ended + 1 end
+        if (len >= run_len) then longer = longer + 1 end
+    end
+    if (longer == 0) then
+        return -side, nil, 0.3
+    end
+    local sw = ended * 2 >= longer
+    return sw and -side or side, nil, 0.5 * (sw and ended or longer - ended) / longer
+end
+
+resolver.run_update = function(p)
+    if (not p.jitter) then
+        p.run_side, p.run_len, p.next_side, p.period, p.period_conf = nil, 0, nil, nil, 0
+        return
+    end
+    p.runs = p.runs or {}
+    if (p.dir == p.run_side) then
+        p.run_len = (p.run_len or 0) + 1
+    else
+        if (p.run_side ~= nil and (p.run_len or 0) > 0) then
+            p.runs[#p.runs + 1] = p.run_len
+            while (#p.runs > 24) do table.remove(p.runs, 1) end
+        end
+        p.run_side, p.run_len = p.dir, 1
+    end
+    p.next_side, p.period, p.period_conf = resolver.run_predict(p.runs, p.run_len, p.run_side)
+end
+
+-- the yaw pattern of a jitterer from its newest eye yaws (newest first): how many yaw positions it uses and their spread
+resolver.pattern = function(yaws)
+    local n = #yaws
+    if (n < 6) then return nil end
+    local v = {}
+    for i = 1, n do v[i] = res_norm(yaws[i] - yaws[1]) end
+    table.sort(v)
+    local clusters, last = 0, nil
+    for i = 1, n do
+        if (last == nil or v[i] - last > 8) then clusters = clusters + 1 end
+        last = v[i]
+    end
+    return { kind = clusters <= 1 and "static" or clusters == 2 and "two" or clusters <= 5 and "multi" or "random",
+             span = v[n] - v[1] }
+end
+
+-- true when a jitterer kept another pattern for resolver.K.change records in a row (the AA was changed: what was learned
+-- about it is worth less). Mouse turns do not count: only while the jitter detector holds
+resolver.pattern_update = function(p)
+    if (not p.jitter) then
+        p.sig, p.sig_new, p.sig_n = nil, nil, 0
+        return false
+    end
+    local sig = resolver.pattern(p.jy)
+    if (sig == nil) then return false end
+    local function differs(a, b) return a.kind ~= b.kind or math.abs(a.span - b.span) > 25 end
+    if (p.sig == nil) then
+        p.sig, p.sig_new, p.sig_n = sig, nil, 0
+        return false
+    end
+    if (not differs(sig, p.sig)) then
+        p.sig_new, p.sig_n = nil, 0
+        return false
+    end
+    if (p.sig_new ~= nil and not differs(sig, p.sig_new)) then
+        p.sig_n = p.sig_n + 1
+    else
+        p.sig_new, p.sig_n = sig, 1
+    end
+    if (p.sig_n >= resolver.K.change) then
+        p.sig, p.sig_new, p.sig_n = sig, nil, 0
+        return true
+    end
+    return false
+end
+
+-- pulls what was learned about a player toward the start (keep = how much stays)
+resolver.decay_memory = function(player_mem, keep)
+    for _, m in pairs(player_mem or {}) do
+        for _, c in ipairs(m.candidates) do
+            c.good = 1 + (c.good - 1) * keep
+            c.bad = 1 + (c.bad - 1) * keep
+        end
+        m.misses, m.last_failed = 0, nil
+    end
+end
+
+-- the body yaw (value) a hypothesis gives for the record
+resolver.hypothesis = function(i, hint, nhint, half, maxd, c)
+    if (i <= 5) then
+        return ({ 1, -1, half, -half, 0 })[i] * hint * maxd
+    elseif (i <= 7) then
+        local v = res_clamp(c or 0, -maxd, maxd)
+        return i == 6 and -v or v
+    end
+    return (i == 8 and nhint or -nhint) * maxd
+end
+
 -- one record: its eye yaw step, the jitter state; p.dir = the direction of the newest big step (the lua side override)
 resolver.jit_record = function(p, delta, sim, min, eye)
     table.insert(p.jd, 1, delta)
@@ -4827,6 +5017,10 @@ resolver.jit_record = function(p, delta, sim, min, eye)
     if (resolver.jit_returns(p.jy) >= RES_JIT_RETURNS) then
         p.confidence = math.max(p.confidence, 0.75)
     end
+    resolver.run_update(p)
+    if (resolver.pattern_update(p)) then
+        p.changed, p.runs, p.run_side, p.run_len = true, {}, nil, 0
+    end
 end
 
 -- every enemy, every net update, whichever resolver is on (also none): choke count and the jitter detector
@@ -4839,13 +5033,33 @@ resolver.track = function(ent, eye)
     end
     local spawn = ent:get_prop("m_flSpawnTime")
     local state, now = resolver.state_of(ent), globals.real_time()
+    -- a tickbase shift (defensive / double tap) sends a sim time that does not move forward: not a record (the server
+    -- keeps no lag record of it, its angles say nothing about the real AA) but the server animates it. What was learned
+    -- stays (every shift used to wipe it), only a short grace window
+    if (p ~= nil and sim < p.sim and p.sim - sim <= resolver.K.shift
+        and (spawn == nil or p.spawn == nil or spawn == p.spawn)) then
+        p.defensive_until, p.nochoke = now + 0.25, 0
+        return p
+    end
     if (p == nil or sim < p.sim or sim - p.sim > 1
         or (spawn ~= nil and p.spawn ~= nil and spawn ~= p.spawn)) then
-        resolver.mem[idx], resolver.previous[idx], resolver.misses[idx] = nil, nil, nil
         local rewind = p ~= nil and sim < p.sim
+        local sid = resolver.sid(ent)
+        -- what was learned stays with the PLAYER (steam id), not the slot or the record: it came back after a dormant
+        -- phase / a respawn / a round change (it used to be wiped at every one of them)
+        local keep = nil
+        if (sid ~= nil) then
+            if (p ~= nil and p.sid == sid) then
+                keep = resolver.mem[idx]
+            elseif (resolver.carry ~= nil and resolver.carry[sid] ~= nil) then
+                keep = resolver.carry[sid]
+                resolver.carry[sid] = nil
+            end
+        end
+        resolver.mem[idx], resolver.previous[idx], resolver.misses[idx] = keep, nil, nil
         p = { sim = sim, eye = eye, nochoke = 0, jd = {}, jy = {}, dir = 1,
             jitter = false, fs = 0, fs_tick = -RES_FS_TICKS, confidence = 0,
-            spawn = spawn, samples = 0, choke = 0, state = state,
+            spawn = spawn, samples = 0, choke = 0, state = state, sid = sid, rec_n = 0,
             updated = now, defensive_until = rewind and now + 0.25 or 0 }
         resolver.data[idx] = p
         return p
@@ -4857,6 +5071,7 @@ resolver.track = function(ent, eye)
     end
     if (ticks >= 1) then
         p.samples = p.samples + 1
+        p.rec_n = (p.rec_n or 0) + 1
         p.choke = res_clamp(ticks - 1, 0, 64)
         p.nochoke = (ticks == 1) and (p.nochoke + 1) or 0
         local min = res_custom() and res_clamp(ui.ragebot.resolver.shot_pred:get(), 15, 65) or RES_JIT_MIN
@@ -4904,15 +5119,46 @@ resolver.update = function(local_player, ent)
         end
     end
 
+    -- the yaw pattern of a jitterer changed: what was learned about him is worth less
+    if (p.changed) then
+        p.changed = false
+        resolver.decay_memory(resolver.mem[idx], resolver.K.change_keep)
+    end
+
+    -- the computed body yaw of the newest record (the server's feet logic on netvars)
+    if (p.feet_n ~= p.rec_n) then
+        p.feet_n = p.rec_n
+        local vel = ent:get_prop("m_vecVelocity")
+        local speed = vel and math.vec_length2d(vel) or 0
+        local flags = tonumber(ent:get_prop("m_fFlags")) or 0
+        local lby = ent:get_prop("m_flLowerBodyYawTarget")
+        lby = (type(lby) == "number" and lby == lby and math.abs(lby) <= 1e6) and lby or nil
+        resolver.feet_step(p, eye, lby, speed, bit.band(flags, 1) == 0,
+            resolver.feet_limit(speed, tonumber(ent:get_prop("m_flDuckAmount"))), globals.tick_count(), globals.interval_per_tick())
+    end
+
     local mem = resolver.memory(idx, key, kind)
     local confidence = kind == "jitter" and p.confidence or kind == "fs" and 0.55 or 0.25
-    local candidate = resolver.choose(mem, confidence, ui.ragebot.reso_cfg.yaw_calc:get() == 3)
+    local c = p.model
+    local nx = kind == "jitter" and p.next_side or nil
+    local opt = { skip = {}, bonus = {} }
+    if (c == nil or math.abs(c) < resolver.K.zero) then
+        opt.skip[6], opt.skip[7] = true, true
+    else
+        -- standing the feet follow the LBY (what the model is built on); moving / in the air they lag behind the eye yaw
+        opt.bonus[6] = 0.12 * (state == "stand" and 1 or state == "slow" and 0.7 or state == "duck" and 0.7 or 0.4)
+    end
+    if (nx == nil) then
+        opt.skip[8], opt.skip[9] = true, true
+    else
+        opt.bonus[8] = 0.15 * (p.period_conf or 0)
+    end
+    local candidate = resolver.choose(mem, confidence, ui.ragebot.reso_cfg.yaw_calc:get() == 3, opt)
     local half = res_custom() and res_clamp(ui.ragebot.resolver.pred_sel:get(), 25, 70) / 100 or 0.5
-    local size = ({ 1, -1, half, -half, 0 })[candidate]
     local value = 0
     local applied = p.samples >= 2 and p.nochoke < RES_NOCHOKE and resolver.fresh(p)
     if (applied) then
-        value = hint * size * resolver.max_desync(st)
+        value = resolver.hypothesis(candidate, hint, nx and -nx or 0, half, resolver.max_desync(st), c)
         st.m_flGoalFeetYaw = res_norm(eye + value)
     end
 
@@ -4929,8 +5175,9 @@ resolver.update = function(local_player, ent)
     prev.state = state
     prev.key = key
     prev.kind = kind
-    prev.rel = value ~= 0 and res_sign(size) or 0
+    prev.rel = value ~= 0 and res_sign(value * hint) or 0
     prev.candidate, prev.confidence = applied and candidate or nil, confidence
+    prev.model, prev.nxt = c, nx
 end
 resolver.on_result = function(target, hit_ok, resolver_miss, event)
     local snapshot = target and resolver.take_shot(event, target:get_index()) or nil
@@ -4950,6 +5197,13 @@ resolver.on_result = function(target, hit_ok, resolver_miss, event)
     local mem = resolver.memory(snapshot.idx, snapshot.key, snapshot.kind)
     local c = mem.candidates[snapshot.candidate]
     if (c == nil) then return end
+    if (hit_ok or resolver_miss) then
+        -- a changing target is followed: every counted result pulls all hypotheses of the situation back toward the start
+        for _, h in ipairs(mem.candidates) do
+            h.good = 1 + (h.good - 1) * resolver.K.forget
+            h.bad = 1 + (h.bad - 1) * resolver.K.forget
+        end
+    end
     if (hit_ok) then
         mem.misses = 0
         mem.last_failed = nil
@@ -5067,6 +5321,7 @@ resolver.hitscan = function(ctx)
 end
 
 resolver.reset = function()
+    resolver.carry = {}
     resolver.data = {}
     resolver.mem = {}
     resolver.previous = {}
@@ -5077,6 +5332,21 @@ resolver.reset = function()
     resolver.trust = { fs = 0, jitter = 0 }
     backtrack.peekers, backtrack.records, backtrack.peek_until, backtrack.predict_tick = {}, {}, 0, -1
     backtrack.high_until = 0
+end
+-- a new round (owners: "minden körben újra scanneli az aa-t, változott-e"): the players are new records (positions,
+-- feet, runs start over) but what was learned about each stays, halved: an AA mostly stays between rounds, and the
+-- first results of the new round overrule it fast if it was changed
+resolver.new_round = function()
+    local carry = {}
+    for idx, mem in pairs(resolver.mem) do
+        local p = resolver.data[idx]
+        if (p ~= nil and p.sid ~= nil) then
+            resolver.decay_memory(mem, resolver.K.round_keep)
+            carry[p.sid] = mem
+        end
+    end
+    resolver.reset()
+    resolver.carry = carry
 end
 resolver.native = function(off, fallback)
     local want = not off and (fallback == true or auto_cfg.resolve_antiaim == true)
@@ -5126,7 +5396,17 @@ lets_resolve = function()
             end
         else
             local idx = v:get_index()
-            resolver.data[idx], resolver.previous[idx], resolver.mem[idx], resolver.misses[idx] = nil, nil, nil, nil
+            local p = resolver.data[idx]
+            if (not v:is_alive()) then
+                -- dead: the learning waits for the next life of that player (by steam id)
+                if (p ~= nil and p.sid ~= nil and resolver.mem[idx] ~= nil) then
+                    resolver.carry = resolver.carry or {}
+                    resolver.carry[p.sid] = resolver.mem[idx]
+                end
+                resolver.data[idx], resolver.mem[idx] = nil, nil
+            end
+            -- dormant: the record goes stale (nothing is written, no safe point from it), what was learned stays
+            resolver.previous[idx], resolver.misses[idx] = nil, nil
             if (resolver.safe) then resolver.safe[idx] = nil end
         end
     end
@@ -5291,6 +5571,13 @@ shotlog.result = function(shot, hit)
         lby = shotlog.num(target:get_prop("m_flLowerBodyYawTarget"), 1),
         hp = target:get_prop("m_iHealth"),
     }
+    -- what our resolver did for this shot: situation (rk), hypothesis (cd, see resolver.NCAND), the body yaw it wrote (vl),
+    -- the feet model's body yaw (md) and the side the jitter pattern predicted (nx)
+    local snap = resolver.last_result
+    if (snap ~= nil and snap.idx == idx) then
+        row.rk, row.cd, row.vl = snap.key, snap.candidate, shotlog.num(snap.desync, 1)
+        row.md, row.nx = shotlog.num(snap.model, 1), snap.nxt
+    end
     if (hit) then
         row.hg, row.dmg = shot.hitgroup, shotlog.num(shot.damage)
         row.dead = (tonumber(row.hp) or 1) <= 0 or nil
@@ -8775,7 +9062,7 @@ do_event = function()
             end
 
             if (event.name == "round_start") then
-                resolver.reset()
+                resolver.new_round()
                 builder.incoming, builder.brain_d = {}, {}
                 builder.packet_tick, builder.packet_state = nil, nil
                 builder.ab_until, builder.ab_phase_until, builder.ab_trigger_tick = 0, 0, nil

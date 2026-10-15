@@ -542,6 +542,220 @@ check(all(x == (0, 1) for x in r) and tuple(r2) == (1, 1) and same_tick == 1 and
       "Multipoint correction: the head first every time, the chest when Smart body aim took the head out, one trace "
       "per tick and target however many commands (double tap) (%s %s %s %s)" % (r[0], r2, same_tick, next_tick))
 
+# our resolver (owners, Oct 2026: "mindegyiket csináld meg"): feet model, jitter period / phase, relearning per round
+FM = chunk("resolver.memory = function(idx, key, kind)", "resolver.shot_id = function(event)") + \
+     chunk("resolver.K = {", "-- one record: its eye yaw step, the jitter state") + \
+     chunk("resolver.reset = function()", "resolver.native = function(off, fallback)")
+fm = L.LuaRuntime(unpack_returned_tuples=True)
+fm.execute("""
+res_clamp = function(v, a, b) v = tonumber(v) or a return math.max(a, math.min(b, v)) end
+res_norm = function(v) return (v + 180) % 360 - 180 end
+res_sign = function(v) return v < 0 and -1 or 1 end
+resolver = { data = {}, mem = {}, previous = {}, misses = {}, shots = {}, epoch = 0, trust = {} }
+backtrack = { peekers = {}, records = {}, peek_until = 0, predict_tick = 0, high_until = 0 }
+""" + FM)
+F = fm.eval("function(code) return assert(loadstring(code))() end")
+
+# feet model: standing, the feet go to the LBY target at 100 deg/s but never further than the max body yaw from the eye
+r = F("""
+local p = {}
+local d1 = resolver.feet_step(p, 0, 100, 0, false, 58, 100, 1 / 64)        -- first record: feet = the target, clamped to 58
+local d2 = resolver.feet_step(p, 0, -40, 0, false, 58, 164, 1 / 64)         -- 1 s later (capped to 0.25 s = 25 deg): 58 -> 33
+local d3 = resolver.feet_step(p, 0, -40, 0, false, 58, 228, 1 / 64)         -- 33 -> 8 (another 25 deg)
+local m = {}
+resolver.feet_step(m, 90, 0, 250, false, 58, 100, 1 / 64)                  -- running: feet follow the EYE yaw
+local m2 = resolver.feet_step(m, 120, 0, 250, false, 58, 112, 1 / 64)       -- 30 deg turn in 12 ticks: the feet lag
+local nolby = resolver.feet_step({}, 0, nil, 0, false, 58, 1, 1 / 64)
+return d1, d2, d3, m2, nolby, resolver.feet_limit(0, 0), resolver.feet_limit(250, 0)
+""")
+check(abs(r[0] + 58) < 1e-6 and abs(r[1] + 33) < 1e-6 and abs(r[2] + 8) < 1e-6 and r[3] is not None and 0 < r[3] <= 58
+      and r[4] is None and abs(r[5] - 58) < 1e-6 and abs(r[6] - 58 * 0.65) < 1e-6,
+      "feet model: standing feet go to the LBY target at 100 deg/s inside the max body yaw, running they follow the eye "
+      "yaw, no LBY = no model, the max body yaw shrinks with speed (%s)" % (r,))
+
+# jitter period / phase
+r = F("""
+local a, pa, ca = resolver.run_predict({ 3, 3, 3 }, 3, 1)       -- delay 3: the run reached it: switches now
+local b, pb = resolver.run_predict({ 3, 3, 3 }, 2, 1)           -- not yet
+local c, pc = resolver.run_predict({ 1, 1, 1, 1 }, 1, -1)      -- every record
+local d, pd, cd = resolver.run_predict({ 1, 4, 2, 3, 1, 2 }, 2, 1)   -- no fixed period: statistics only
+local e = resolver.run_predict({ 3 }, 1, 1)
+return a, pa, ca, b, pb, c, pc, d, pd, cd, e
+""")
+check(r[0] == -1 and r[1] == 3 and r[2] >= 0.8 and r[3] == 1 and r[4] == 3 and r[5] == 1 and r[6] == 1
+      and r[7] in (1, -1) and r[8] is None and 0 <= r[9] <= 0.5 and r[10] is None,
+      "jitter period: a fixed delay switches exactly when the run reaches it, a tick jitter every record, no period = "
+      "a low confidence guess, too little history = nothing (%s)" % (r,))
+r = F("""
+local p = { jitter = true }
+local out = {}
+for i = 1, 30 do
+    p.dir = ((math.floor((i - 1) / 3) % 2) == 0) and 1 or -1      -- a delay 3 jitter: 1 1 1 -1 -1 -1 ...
+    resolver.run_update(p)
+    out[i] = p.next_side or 0
+end
+local last_in_run = out[30]        -- record 30 is the 3rd of a -1 run: the next one switches to +1
+local mid_run = out[29]            -- the 2nd of that run: stays -1
+p.jitter = false
+resolver.run_update(p)
+return last_in_run, mid_run, p.next_side, p.period
+""")
+check(r[0] == 1 and r[1] == -1 and r[2] is None and r[3] is None,
+      "jitter period: run_update follows a delay 3 jitter (stays inside a run) and forgets when the jitter ends (%s)" % (r,))
+
+# the yaw pattern changed: only while the jitter detector holds, 10 records in a row with another pattern
+r = F("""
+local function window(list, n) local t = {} for i = 1, 12 do t[i] = list((n - i + 1)) end return t end
+local p = { jitter = true, jy = {} }
+local two = function(i) return (i % 2 == 0) and 30 or -30 end
+local multi = function(i) return ({ 0, 40, -40, 80, -80 })[i % 5 + 1] end
+local fired, first = 0, nil
+for n = 1, 20 do p.jy = window(two, n) if resolver.pattern_update(p) then fired = fired + 1 end end
+for n = 21, 60 do p.jy = window(multi, n) if resolver.pattern_update(p) then fired = fired + 1 first = first or n end end
+local q = { jitter = false, jy = window(multi, 99) }
+local mouse = resolver.pattern_update(q)
+local same = { jitter = true, jy = {} }
+local f2 = 0
+for n = 1, 60 do same.jy = window(two, n) if resolver.pattern_update(same) then f2 = f2 + 1 end end
+return fired, first, mouse, f2
+""")
+check(r[0] == 1 and r[1] is not None and 30 <= r[1] <= 36 and r[2] is False and r[3] == 0,
+      "pattern change: fires once, after 10 records of the new pattern; a steady jitterer and a non-jitterer never do (%s)" % (r,))
+
+# the learning comes back per player after a round change, halved; hypotheses 6 / 7 only with a visible body yaw
+r = F("""
+resolver.data[3] = { sid = "S1" }
+resolver.data[4] = {}                                          -- no steam id: not carried
+local m = resolver.memory(3, "stand")
+m.candidates[1].good, m.candidates[1].bad, m.misses, m.last_failed = 11, 5, 3, 1
+resolver.memory(4, "stand").candidates[1].good = 9
+resolver.new_round()
+local gone = next(resolver.mem) == nil and next(resolver.data) == nil
+local c = resolver.carry["S1"] and resolver.carry["S1"].stand
+local kept = c ~= nil and math.abs(c.candidates[1].good - 6) < 1e-9 and math.abs(c.candidates[1].bad - 3) < 1e-9
+    and c.misses == 0 and c.last_failed == nil
+local none = resolver.carry["nobody"] == nil and #resolver.carry == 0
+local mem = resolver.memory(5, "stand")
+local with = resolver.choose(mem, 0.25, true, { skip = {}, bonus = { [6] = 0.12 } })
+local without = resolver.choose(mem, 0.25, true, { skip = { [6] = true, [7] = true }, bonus = { [6] = 0.12 } })
+mem.candidates[with].bad = 30
+local after = resolver.choose(mem, 0.25, true, { skip = {}, bonus = { [6] = 0.12 } })
+return gone, kept, none, with, without, after, resolver.hypothesis(6, 1, 0, 0.5, 58, 40), resolver.hypothesis(7, 1, 0, 0.5, 58, 40),
+    resolver.hypothesis(6, 1, 0, 0.5, 58, 90), resolver.hypothesis(8, 1, -1, 0.5, 58, 0), resolver.hypothesis(9, 1, -1, 0.5, 58, 0)
+""")
+check(r[0] and r[1] and r[2] and r[3] == 6 and r[4] != 6 and r[4] != 7 and r[5] != 6
+      and r[6] == -40 and r[7] == 40 and r[8] == -58 and r[9] == -58 and r[10] == 58,
+      "round change: what was learned about a player comes back halved, the feet hypothesis wins first with a visible "
+      "body yaw, loses after misses, is skipped without one; hypothesis values (%s)" % (r,))
+
+# resolver.update end to end (animstate mock): a standing target with a visible body yaw gets the feet model's value written,
+# a delay jitter fills the next side prediction, nothing breaks without an LBY / with garbage
+UP = chunk("resolver.memory = function(idx, key, kind)", "resolver.shot_id = function(event)") + \
+     chunk("resolver.max_desync = function(st)", "resolver.state_of = function(ent)") + \
+     chunk("local RES_JIT_N = 12", "resolver.update = function(local_player, ent)") + \
+     chunk("resolver.update = function(local_player, ent)", "resolver.on_result = function(")
+um = L.LuaRuntime(unpack_returned_tuples=True)
+um.execute("""
+RES_NOCHOKE, RES_FS_TICKS, RES_STATE_NUM = 8, 16, { stand = 1 }
+res_clamp = function(v, a, b) v = tonumber(v) or a return math.max(a, math.min(b, v)) end
+res_norm = function(v) return (v + 180) % 360 - 180 end
+res_sign = function(v) return v < 0 and -1 or 1 end
+res_custom = function() return false end
+time_to_ticks = function(t) return math.floor(t * 64 + 0.5) end
+math.vec_length2d = function(v) return math.sqrt(v.x * v.x + v.y * v.y) end
+SIM, NOW, TICK = 0, 0, 0
+globals = { real_time = function() return NOW end, tick_count = function() return TICK end, interval_per_tick = function() return 1 / 64 end }
+local function item(v) return { get = function() return v end } end
+ui = { ragebot = { reso_cfg = { yaw_calc = item(1) }, resolver = { pred_sel = item(50), shot_pred = item(15) } } }
+resolver = { data = {}, mem = {}, previous = {}, misses = {}, shots = {}, epoch = 0 }
+resolver.state_of = function() return "stand" end
+resolver.freestand = function() return 0 end
+ST = { m_flEyeYaw = 0, m_flGoalFeetYaw = 0 }
+resolver.animstate = function() return ST end
+LBY = -58
+ENT = { get_index = function() return 3 end,
+    get_prop = function(_, n)
+        if n == "m_flSimulationTime" then return SIM end
+        if n == "m_flSpawnTime" then return 1 end
+        if n == "m_vecVelocity" then return { x = 0, y = 0, z = 0 } end
+        if n == "m_flLowerBodyYawTarget" then return LBY end
+        if n == "m_fFlags" then return 1 end
+        return 0
+    end }
+function STEP(eye) SIM, NOW, TICK = SIM + 2 / 64, NOW + 2 / 64, TICK + 2 ST.m_flEyeYaw = eye resolver.update({}, ENT) end
+""" + UP)
+U = um.eval("function(code) return assert(loadstring(code))() end")
+r = U("""
+for _ = 1, 8 do STEP(0) end
+local prev = resolver.previous[3]
+local still = { prev.candidate, prev.model, ST.m_flGoalFeetYaw, prev.kind }
+-- delay 3 jitter, +-30
+resolver.data, resolver.mem, resolver.previous = {}, {}, {}
+SIM, NOW, TICK = 0, 0, 0
+for i = 1, 30 do STEP(((math.floor((i - 1) / 3) % 2) == 0) and 30 or -30) end
+local p = resolver.data[3]
+local jit = { p.jitter, p.next_side ~= nil, p.period, resolver.previous[3].kind, resolver.previous[3].nxt ~= nil,
+    ST.m_flGoalFeetYaw == ST.m_flGoalFeetYaw }
+LBY = nil
+resolver.data, resolver.mem, resolver.previous = {}, {}, {}
+SIM, NOW, TICK = 0, 0, 0
+for _ = 1, 8 do STEP(0) end
+local nolby = resolver.previous[3].model == nil
+LBY = 0 / 0
+for _ = 1, 3 do STEP(10) end
+return still[1], still[2], still[3], still[4], jit[1], jit[2], jit[3], jit[4], jit[5], jit[6], nolby
+""")
+check(r[0] == 6 and abs(r[1] - 58) < 1e-6 and abs(r[2] + 58) < 1e-6 and r[3] is None
+      and r[4] is True and r[5] is True and r[6] == 3 and r[7] == "jitter" and r[8] is True and r[9] is True and r[10] is True,
+      "resolver.update: a standing target with a visible body yaw gets the feet model's value, a delay 3 jitter gets its "
+      "period and next side, no / garbage LBY breaks nothing (%s)" % (r,))
+
+# a tickbase shift keeps what was learned (it used to wipe it); a big jump back (a new map) still resets
+r = J("""
+RUN(SEQ(20, function(i) return i % 2 == 0 and 30 or -30 end))
+local p = resolver.data[3]
+resolver.mem[3] = { jitter = { candidates = { { good = 9, bad = 1 } } } }
+local keep_sim = SIM
+SIM = keep_sim - 0.1                                           -- a shifted update, 0.1 s back
+local same = resolver.track(ENT, 30) == p
+local kept = resolver.mem[3] ~= nil and resolver.mem[3].jitter.candidates[1].good == 9
+local grace = p.defensive_until > SIM
+SIM = keep_sim - 1                                              -- a second back: a new record, everything starts over
+local fresh = resolver.track(ENT, 30)
+return same, kept, grace, fresh ~= p, resolver.mem[3] == nil
+""")
+check(tuple(r) == (True, True, True, True, True),
+      "tickbase shift: the target and what was learned stay with a short grace window, a big jump back starts over (%s)" % (r,))
+
+# what was learned stays with the PLAYER: a dormant phase / respawn keeps it, another player in the slot does not
+r = J("""
+local SID = "76561198000000042"
+local E = setmetatable({ get_steamids = function() return 42, SID end }, { __index = ENT })
+resolver.data, resolver.mem, resolver.carry = {}, {}, {}
+SIM = 1
+local p1 = resolver.track(E, 0)
+resolver.mem[3] = { stand = { candidates = { { good = 7, bad = 1 } } } }
+SIM = 5                                                       -- came back after more than a second (dormant)
+local p2 = resolver.track(E, 0)
+local back = p2 ~= p1 and resolver.mem[3] ~= nil and resolver.mem[3].stand.candidates[1].good == 7
+SID = "76561198000000099"                                     -- another player took the slot
+SIM = 9
+local p3 = resolver.track(E, 0)
+local other = p3 ~= p2 and resolver.mem[3] == nil
+-- a dead player's learning waits in the carry for his next life
+SID = "76561198000000042"
+resolver.mem[3] = { stand = { candidates = { { good = 5, bad = 1 } } } }
+resolver.data[3].sid = SID
+resolver.carry[SID] = resolver.mem[3]
+resolver.data[3], resolver.mem[3] = nil, nil
+SIM = 20
+resolver.track(E, 0)
+local revived = resolver.mem[3] ~= nil and resolver.mem[3].stand.candidates[1].good == 5 and resolver.carry[SID] == nil
+return back, other, revived, p1.sid == "76561198000000042"
+""")
+check(tuple(r) == (True, True, True, True),
+      "learning follows the player (steam id): kept over a dormant phase and a respawn, not given to another player in the slot (%s)" % (r,))
+
 # DT lag (owners, Oct 2026: "lagging only in mid mirage with dt"): the on peek defensive check traces each enemy at
 # most once per 4 ticks and 2 enemies per frame, however many commands double tap runs in one frame
 PV = chunk("builder.peek_seen, builder.peek_budget = {}", "run_antiaim = function(")
