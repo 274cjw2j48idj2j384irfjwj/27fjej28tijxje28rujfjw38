@@ -5019,13 +5019,22 @@ resolver.hitscan = function(ctx)
     local idx = ent:get_index()
     local misses = resolver.misses[idx] or 0
     local p = resolver.data[idx]
-    local jitter = resolver.active and resolver.fresh(p) and p.jitter == true
-        and (p.confidence or 0) >= 0.65
     local fast = resolver.fast_target(ent)
+    -- a jittering target gets head + chest safe points no matter the resolver toggles (owners, Oct 2026: "ALWAYS ...
+    -- every resolver toggle off too, not beta"): Primordial's own resolver can not be told the side, so a safe point is
+    -- the only safe shot. The real shot logs (Oct 2026, 86 shots) had jitter as the top miss cause (16 / 32) with almost
+    -- no shot carrying a safe point, because this was gated behind resolver.active
+    local fresh = resolver.fresh(p)
+    local jitter = fresh and p.jitter == true and (p.confidence or 0) >= 0.65
+    local jitter_safe = jitter and not fast
+    -- safe_all (a disabler set to "head safe point") forces safety even on a fast peek, as before
     local safe = resolver.active and resolver.safe_all == true
-    if (resolver.active and not fast) then
-        safe = safe or jitter or misses >= 2
-        if (res_custom()) then
+    if (not fast) then
+        safe = safe or jitter
+        if (resolver.active) then
+            safe = safe or misses >= 2
+        end
+        if (resolver.active and res_custom()) then
             local opt = ui.ragebot.resolver
             safe = safe
                 or (opt.duck_mode:get() and bit.band(tonumber(ent:get_prop("m_fFlags")) or 0, 2) ~= 0)
@@ -5050,14 +5059,14 @@ resolver.hitscan = function(ctx)
 
     -- what the shot logs carry: 3 = body (smart body aim), 2 = a safe point for a jittering target, 1 = for another reason
     resolver.safe = resolver.safe or {}
-    resolver.safe[idx] = body and 3 or safe and (jitter and 2 or 1) or nil
+    resolver.safe[idx] = body and 3 or (jitter_safe and 2) or (safe and 1) or nil
     if (body) then
         resolver.enforce_body(ctx)
     end
     if (safe and not body) then
         ctx:set_safepoint_state(true, e_hitscan_groups.HEAD)
     end
-    if (body and safe or jitter and not fast) then
+    if ((body and safe) or jitter_safe) then
         ctx:set_safepoint_state(true, e_hitscan_groups.CHEST)
     end
 end
