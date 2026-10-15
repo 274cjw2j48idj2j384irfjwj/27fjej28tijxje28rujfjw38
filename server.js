@@ -417,11 +417,16 @@ app.get('/script', async (req, res) => {
     // the script talks back to this server (cloud loadouts, tamper reports); without PUBLIC_URL: the host it was asked on
     const host = String(req.get('host') || '')
     const public_url = env('PUBLIC_URL', '') || (/^[A-Za-z0-9.:-]+$/.test(host) ? 'https://' + host : '')
+    // the clock expression must match the auth gate of the plan's script. gamesense: client.unix_time (no `os`);
+    // Primordial (pm_*): client.get_unix_time. The pm auth gate the bot prepends reads the clock the same way.
+    const pm = String(plan).startsWith('pm_')
+    const now_expr = pm
+        ? `(client and client.get_unix_time and client.get_unix_time()) or 0`
+        : `(client and client.unix_time and client.unix_time()) or (os and os.time and os.time()) or (client and client.timestamp and math.floor(client.timestamp() / 1000)) or 0`
     const prefix = [
         `rawset(_G, "_auth_ok",        true)`,
         `rawset(_G, "_auth_alive",      true)`,
-        // gamesense has no `os` library; this must read the clock exactly like the auth gate in the script does
-        `rawset(_G, "_auth_ts",         (client and client.unix_time and client.unix_time()) or (os and os.time and os.time()) or (client and client.timestamp and math.floor(client.timestamp() / 1000)) or 0)`,
+        `rawset(_G, "_auth_ts",         ${now_expr})`,
         `rawset(_G, "_auth_ticket",     ${JSON.stringify(ticket)})`,
         `rawset(_G, "_auth_ticket_exp", ${license.last_ticket_exp})`,
         `rawset(_G, "_auth_nonce",      ${JSON.stringify(nonce)})`,

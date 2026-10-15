@@ -1254,14 +1254,15 @@ async def primordial_upload(interaction: discord.Interaction, file: discord.Atta
             raw, source = await file.read(), file.filename
         else:
             raw, source = await gh_fetch_file(PRIMORDIAL_FILE, branch)
-        builds = primordial_builds(raw.decode("utf-8"))
+        raw_text = raw.decode("utf-8")
+        builds = primordial_builds(raw_text)
     except GitHubFetchError as e:
         await interaction.followup.send(str(e), ephemeral=True)
         return
     except Exception as e:
         await interaction.followup.send(f"Could not read the script: {e}", ephemeral=True)
         return
-    if not is_primordial_script(builds["pm_nightly"]):
+    if not is_primordial_script(raw_text):
         await interaction.followup.send("This is not specter_primordial.lua. Nothing uploaded.", ephemeral=True)
         return
 
@@ -1303,14 +1304,44 @@ def make_primordial_beta(text: str) -> str:
     return text[:start] + PM_BETA_STUB + text[end + len("-- [pm-resolver:end]"):]
 
 
+# Auth gate for the CUSTOMER Primordial builds (pm_nightly / pm_beta). The bot prepends it to the script it uploads to
+# the server; the repo file and the #staff dev build never get it (owners: the dev build runs without a key). The loader
+# makes the server set the globals it reads (same /script prefix as gamesense, with the Primordial clock). Loaded without
+# the loader (the globals missing, or a stale token) the chunk returns at once, so the cloud file does not run standalone.
+PM_AUTH_GATE = """-- [pm-auth:begin]
+do
+    local _rg = rawget
+    if (type(_rg) ~= "function") then return end
+    if (not _rg(_G, "_auth_ok") or not _rg(_G, "_auth_alive")) then
+        if (client and client.log) then client.log("[Specter] Load it with the Specter loader.") end
+        return
+    end
+    local _ts = _rg(_G, "_auth_ts") or 0
+    local _now = (client and client.get_unix_time and client.get_unix_time()) or 0
+    if (_now - _ts > 30 or _ts > _now + 5) then
+        if (client and client.log) then client.log("[Specter] Session expired, log in again.") end
+        return
+    end
+    for _, k in ipairs({ "_auth_ok", "_auth_alive", "_auth_ts", "_auth_ticket", "_auth_ticket_exp",
+        "_auth_nonce", "_auth_key", "_auth_hwid", "_server_url" }) do
+        rawset(_G, k, nil)
+    end
+end
+-- [pm-auth:end]
+"""
+
+
 def primordial_builds(raw_text: str) -> dict[str, str]:
-    """plan -> comment-free script: pm_nightly = the whole file, pm_beta = without the resolver."""
-    return {"pm_nightly": strip_lua_comments(raw_text), "pm_beta": strip_lua_comments(make_primordial_beta(raw_text))}
+    """plan -> comment-free CUSTOMER script with the auth gate prepended: pm_nightly = the whole file, pm_beta = without
+    the resolver. The gate is added after the stripping so it stays intact; the repo file / dev build never carry it."""
+    return {"pm_nightly": PM_AUTH_GATE + strip_lua_comments(raw_text),
+            "pm_beta": PM_AUTH_GATE + strip_lua_comments(make_primordial_beta(raw_text))}
 
 
 def is_primordial_script(text: str) -> bool:
-    """specter_primordial.lua (Primordial API, the eui menu), not the gamesense script or a loader."""
-    return "e_callbacks" in text and "libs.eui" in text and "_specter_loader_loaded" not in text and "AUTH GATE" not in text
+    """specter_primordial.lua (Primordial API, the eui menu), not the gamesense script or a loader. Checked on the RAW
+    repo file (before primordial_builds prepends the auth gate), so the gate's "AUTH GATE"-free marker is not required."""
+    return "e_callbacks" in text and "libs.eui" in text and "_specter_loader_loaded" not in text and "[pm-auth:begin]" not in text
 
 
 # ── /post_loader — the customer loader in #loader-download ──────────
@@ -1860,10 +1891,11 @@ async def sync_primordial(force: bool = False) -> list[str]:
     except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError) as e:
         return [f"`{PRIMORDIAL_FILE}`: {e}"]
     try:
-        builds = primordial_builds(ver["raw"].decode("utf-8"))
+        raw_text = ver["raw"].decode("utf-8")
+        builds = primordial_builds(raw_text)
     except (UnicodeDecodeError, ValueError) as e:
         return [f"`{PRIMORDIAL_FILE}` of `{CLOUD_BRANCH}`: {e}, not uploaded"]
-    if not is_primordial_script(builds["pm_nightly"]):
+    if not is_primordial_script(raw_text):
         return [f"`{PRIMORDIAL_FILE}` of `{CLOUD_BRANCH}`: not the primordial script, not uploaded"]
     have = await server_script_hashes()
     lines, done = [], []
