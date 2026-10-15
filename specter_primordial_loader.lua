@@ -12,7 +12,7 @@ rawset(_G, "_specter_pm_loader_loaded", true)
 local SERVER_URL = "https://specter-license-mh111-production.up.railway.app"
 -- bump whenever this file changes: the server hands out the number of the newest loader (the bot reads it from the cloud
 -- branch) and an older one tells its user to download the new one
-local LOADER_VERSION = 1
+local LOADER_VERSION = 2
 local KEY_FILE = "specter/key.txt"             -- csgo/specter/key.txt
 local GROUP = "Specter loader"
 
@@ -140,7 +140,7 @@ local function login()
         local latest = tonumber(body:match('"loader_pm"%s*:%s*(%d+)'))
         if (latest ~= nil and latest > LOADER_VERSION) then
             local text = "A new Specter loader is out (v" .. latest .. ", you have v" .. LOADER_VERSION
-                .. "): download it again and replace this file."
+                .. "): download it from #primordial-loader and replace this file."
             say(text)
             pcall(menu.add_text, "Specter update", text)
         end

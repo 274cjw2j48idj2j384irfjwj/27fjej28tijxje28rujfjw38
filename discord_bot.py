@@ -33,7 +33,8 @@ ENV VARS (set in Discord bot host or .env):
   UPDATES_CHANNEL     — public channel (name or id) the changelog of a new cloud script is posted in (default: updates)
   AUTO_PANELS         — 1 (default): at every start the prices / rules / how-to / ticket panels that changed (or are missing)
                         are posted again in their channels and the old posts deleted; a new specter_loader.lua of
-                        CLOUD_BRANCH goes to #loader-download the same way (checked every RELEASE_MINUTES). 0: only by hand
+                        CLOUD_BRANCH goes to #loader-download the same way, specter_primordial_loader.lua to
+                        #primordial-loader (checked every RELEASE_MINUTES). 0: only by hand
   LOG_TOKEN           — GitHub token that can WRITE the repo's contents (fine-grained, Contents: Read and write). The
                         resolver shot logs of the dev build (license server /shotlog) go with it to SHOTLOG_BRANCH
                         (default: shotlogs) every RELEASE_MINUTES, one file per round: shotlogs/<day>/<time>-<shots>.jsonl.
@@ -261,6 +262,7 @@ CHANNEL_STRUCTURE = [
         "category": "\U0001f51c Specter·Primordial",
         "channels": [
             {"name": "primordial-news", "type": "text", "readonly": True, "emoji": "\U0001f4e2", "topic": "Specter for primordial: news and the release"},
+            {"name": "primordial-loader", "type": "text", "access": "primordial_readonly", "emoji": "\U0001f4e5", "topic": "Download the Specter for Primordial loader here"},
             {"name": "sneak-peeks",     "type": "text", "readonly": True, "emoji": "\U0001f440", "topic": "Sneak peeks of the primordial lua"},
             {"name": "primordial-chat", "type": "text", "access": "member", "emoji": "\U0001f4ac", "topic": "Talk about the primordial lua"},
         ],
@@ -631,9 +633,10 @@ async def setup_channels(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     guild = interaction.guild
 
-    member_role   = await find_or_create_role(guild, "Member")
-    customer_role = await find_or_create_role(guild, "Customer")
-    staff_role    = await find_or_create_role(guild, "Staff")
+    member_role     = await find_or_create_role(guild, "Member")
+    customer_role   = await find_or_create_role(guild, "Customer")
+    staff_role      = await find_or_create_role(guild, "Staff")
+    primordial_role = await find_or_create_role(guild, "Primordial")
 
     access_map = {
         "member":   [member_role],
@@ -679,9 +682,10 @@ async def setup_channels(interaction: discord.Interaction):
                 if staff_role:
                     overwrites[staff_role] = discord.PermissionOverwrite(
                         view_channel=True, send_messages=True, read_message_history=True)
-            elif ch.get("access") == "customer_readonly":
-                if customer_role:
-                    overwrites[customer_role] = discord.PermissionOverwrite(
+            elif ch.get("access") in ("customer_readonly", "primordial_readonly"):
+                reader = customer_role if ch["access"] == "customer_readonly" else primordial_role
+                if reader:
+                    overwrites[reader] = discord.PermissionOverwrite(
                         view_channel=True, send_messages=False, read_message_history=True)
                 if staff_role:
                     overwrites[staff_role] = discord.PermissionOverwrite(
@@ -1312,6 +1316,7 @@ def is_primordial_script(text: str) -> bool:
 # ── /post_loader — the customer loader in #loader-download ──────────
 
 LOADER_FILE = "specter_loader.lua"
+PM_LOADER_FILE = "specter_primordial_loader.lua"
 
 
 def is_customer_loader(text: str) -> bool:
@@ -1321,38 +1326,71 @@ def is_customer_loader(text: str) -> bool:
             and "[resolver:begin]" not in text and len(text) < 200_000)
 
 
+def is_pm_customer_loader(text: str) -> bool:
+    """The Primordial loader only: never specter_primordial.lua itself (it runs everything without a key)."""
+    return ("_specter_pm_loader_loaded" in text and "[pm-resolver:begin]" not in text
+            and "[resolver:begin]" not in text and len(text) < 200_000)
+
+
 LOADER_CHANNEL = "loader-download"
+PM_LOADER_CHANNEL = "primordial-loader"
 
-
-def loader_sha(raw: bytes) -> str:
-    return hashlib.sha256(raw).hexdigest()[:16]
-
-
-async def send_loader(target: discord.TextChannel, raw: bytes, replace: bool = True) -> int:
-    """The loader post (install steps + the file) in `target`; then the bot's older loader posts there go -> how many."""
-    embed = discord.Embed(
-        title="\U0001f4e5 Specter Loader",
-        description=(
+# both loaders (owners, Oct 2026: "ahhoz is csinálj egy külön csatornát ... cloudrol tudja bepótolni"): the file of
+# CLOUD_BRANCH goes to its own channel, by /post_loader or by itself every RELEASE_MINUTES (sync_loader)
+LOADERS = {
+    "gamesense": {
+        "file": LOADER_FILE, "channel": LOADER_CHANNEL, "check": is_customer_loader,
+        "title": "\U0001f4e5 Specter Loader",
+        "steps": (
             "**Install**\n"
             "1. Download `specter_loader.lua` below\n"
             "2. Put it into your **CS:GO folder** (where `csgo.exe` is): gamesense loads Lua scripts from there\n"
             "3. In gamesense open the **Lua** tab, refresh the list and load **specter_loader**\n"
             "4. Go to **AA > Anti-aimbot angles**, copy your key and click **Paste key** (Ctrl+V does not work in gamesense text fields), pick a username & password\n"
             "5. **Register** the first time, **Login** after that. Your HWID locks on first use\n\n"
-            "The script itself is downloaded from our server every time you log in, so this file only changes "
+        ),
+    },
+    "primordial": {
+        "file": PM_LOADER_FILE, "channel": PM_LOADER_CHANNEL, "check": is_pm_customer_loader,
+        "title": "\U0001f4e5 Specter for Primordial \u00b7 Loader",
+        "steps": (
+            "**Install**\n"
+            "1. Download `specter_primordial_loader.lua` below\n"
+            "2. Put it into your **Primordial scripts folder**\n"
+            "3. Load **specter_primordial_loader** in Primordial's Lua tab\n"
+            "4. Type your **Primordial key** (nightly / beta) and click **Login**. The key is saved, the next start logs in by "
+            "itself. Your HWID locks on first use\n\n"
+        ),
+    },
+}
+
+
+def loader_sha(raw: bytes) -> str:
+    return hashlib.sha256(raw).hexdigest()[:16]
+
+
+async def send_loader(target: discord.TextChannel, raw: bytes, replace: bool = True, lua: str = "gamesense") -> int:
+    """The loader post (install steps + the file) in `target`; then the bot's older loader posts there go -> how many."""
+    spec = LOADERS[lua]
+    embed = discord.Embed(
+        title=spec["title"],
+        description=(
+            spec["steps"]
+            + "The script itself is downloaded from our server every time you log in, so this file only changes "
             "when we post a new one here.\n"
             "No key yet? See #prices. Problems? Open a ticket in #support-ticket."
         ),
-        color=0x82C3FF,
+        color=0xB4A0FF if lua == "primordial" else 0x82C3FF,
     )
     embed.add_field(name="Updated", value=f"<t:{int(discord.utils.utcnow().timestamp())}:D>", inline=True)
     embed.add_field(name="SHA-256", value=f"`{loader_sha(raw)}`", inline=True)
     embed.set_footer(text="Specter \U0001f319 • never share your key or the loader")
-    msg = await target.send(embed=embed, files=[discord.File(io.BytesIO(raw), filename=LOADER_FILE)] + logo(embed))
+    files = [discord.File(io.BytesIO(raw), filename=spec["file"])] + lua_badge(embed, lua) + logo(embed)
+    msg = await target.send(embed=embed, files=files)
     if not replace:
         return 0
     return await delete_posts(await bot_posts(target, lambda m: m.id != msg.id
-                                              and any(a.filename == LOADER_FILE for a in m.attachments)))
+                                              and any(a.filename == spec["file"] for a in m.attachments)))
 
 
 async def bot_posts(ch: discord.TextChannel, test, limit: int = 50) -> list[discord.Message]:
@@ -1378,15 +1416,19 @@ async def delete_posts(msgs: list[discord.Message]) -> int:
     return n
 
 
-@tree.command(name="post_loader", description="Post the Specter loader (specter_loader.lua) for customers to download")
+@tree.command(name="post_loader", description="Post a Specter loader (gamesense / Primordial) for customers to download")
 @app_commands.describe(
-    file="specter_loader.lua (empty: taken from GitHub)",
+    lua="Which loader (default: gamesense)",
+    file="The loader file (empty: taken from GitHub)",
     branch="GitHub branch when no file is given (default: CLOUD_BRANCH)",
-    channel="Where to post it (default: #loader-download, else this channel)",
+    channel="Where to post it (default: #loader-download / #primordial-loader, else this channel)",
     replace="Delete the bot's older loader posts in that channel (default: yes)",
 )
+@app_commands.choices(lua=[app_commands.Choice(name="Gamesense", value="gamesense"),
+                           app_commands.Choice(name="Primordial", value="primordial")])
 async def post_loader(
     interaction: discord.Interaction,
+    lua: str = "gamesense",
     file: discord.Attachment = None,
     branch: str = "",
     channel: discord.TextChannel = None,
@@ -1401,7 +1443,7 @@ async def post_loader(
         if file is not None:
             raw, source = await file.read(), file.filename
         else:
-            raw, source = await gh_fetch_file(LOADER_FILE, branch)
+            raw, source = await gh_fetch_file(LOADERS[lua]["file"], branch)
         text = raw.decode("utf-8")
     except GitHubFetchError as e:
         await interaction.followup.send(str(e), ephemeral=True)
@@ -1410,19 +1452,19 @@ async def post_loader(
         await interaction.followup.send(f"Could not read the loader: {e}", ephemeral=True)
         return
 
-    if not is_customer_loader(text):
+    if not LOADERS[lua]["check"](text):
         await interaction.followup.send(
-            "This is not specter_loader.lua (the cloud script, the dev build and the dev loader are never posted). "
+            f"This is not {LOADERS[lua]['file']} (the scripts, the dev build and the dev loader are never posted). "
             "Nothing posted.", ephemeral=True)
         return
 
-    target = channel or named_channel(interaction.guild, LOADER_CHANNEL) or interaction.channel
+    target = channel or named_channel(interaction.guild, LOADERS[lua]["channel"]) or interaction.channel
     if not isinstance(target, discord.TextChannel):
         await interaction.followup.send("Pick a text channel to post the loader in.", ephemeral=True)
         return
 
     try:
-        removed = await send_loader(target, raw, replace)
+        removed = await send_loader(target, raw, replace, lua)
     except discord.HTTPException as e:
         await interaction.followup.send(f"Could not post in {target.mention}: {e}", ephemeral=True)
         return
@@ -2196,7 +2238,6 @@ async def sync_panels() -> list[str]:
     return report
 
 
-PM_LOADER_FILE = "specter_primordial_loader.lua"
 _loader_sent: dict[str, int] = {}
 
 
@@ -2233,33 +2274,41 @@ async def sync_loader_versions(force: bool = False) -> list[str]:
 
 
 async def sync_loader(force: bool = False) -> list[str]:
-    """A new specter_loader.lua of CLOUD_BRANCH goes to #loader-download (install steps + the file), the older loader
-    post is deleted. Only the customer loader is ever posted there."""
+    """A new loader of CLOUD_BRANCH (gamesense -> #loader-download, Primordial -> #primordial-loader) is posted with its
+    install steps, the older post there deleted. Only the customer loaders are ever posted."""
+    report = []
+    for lua, spec in LOADERS.items():
+        report += await sync_one_loader(lua, spec, force)
+    return report
+
+
+async def sync_one_loader(lua: str, spec: dict, force: bool) -> list[str]:
+    path = spec["file"]
     try:
-        ver = await newest_version(LOADER_FILE, CLOUD_BRANCH)
+        ver = await newest_version(path, CLOUD_BRANCH)
     except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError) as e:
-        return [f"`{LOADER_FILE}`: {e}"]
+        return [f"`{path}`: {e}"]
     raw = ver["raw"]
-    if not is_customer_loader(raw.decode("utf-8", "replace")):
-        return [f"`{LOADER_FILE}` of `{CLOUD_BRANCH}` is not the customer loader, not posted"]
+    if not spec["check"](raw.decode("utf-8", "replace")):
+        return [f"`{path}` of `{CLOUD_BRANCH}` is not the customer loader, not posted"]
     sha = loader_sha(raw)
     report = []
     for guild in client.guilds:
-        ch = named_channel(guild, LOADER_CHANNEL)
+        ch = named_channel(guild, spec["channel"])
         if ch is None:
             continue
-        posts = await bot_posts(ch, lambda m: any(a.filename == LOADER_FILE for a in m.attachments))
+        posts = await bot_posts(ch, lambda m: any(a.filename == path for a in m.attachments))
         has_logo = bool(LOGO_URL) or os.path.isfile(os.path.join(ASSETS, "specter_icon.png"))
         if posts and not force and posts[0].embeds and any(f.name == "SHA-256" and sha in (f.value or "")
                                                            for f in posts[0].embeds[0].fields) \
                 and (bool(posts[0].embeds[0].thumbnail.url) or not has_logo):
             continue
         try:
-            removed = await send_loader(ch, raw)
+            removed = await send_loader(ch, raw, lua=lua)
         except discord.HTTPException as e:
-            report.append(f"`{LOADER_FILE}`: could not post in {ch.mention}: {e}")
+            report.append(f"`{path}`: could not post in {ch.mention}: {e}")
             continue
-        report.append(f"`{LOADER_FILE}` `{sha[:7]}` posted in {ch.mention}"
+        report.append(f"`{path}` `{sha[:7]}` posted in {ch.mention}"
                       + (f" ({removed} older post{'s' if removed != 1 else ''} removed)" if removed else ""))
     return report
 
@@ -2362,9 +2411,10 @@ async def setup_server(interaction: discord.Interaction):
         if what != "exists":
             log_lines.append(f"{'❌' if what.startswith('failed') else '✅'} Role **{name}** {what}")
 
-    member_role   = await find_or_create_role(guild, "Member")
-    customer_role = await find_or_create_role(guild, "Customer")
-    staff_role    = await find_or_create_role(guild, "Staff")
+    member_role     = await find_or_create_role(guild, "Member")
+    customer_role   = await find_or_create_role(guild, "Customer")
+    staff_role      = await find_or_create_role(guild, "Staff")
+    primordial_role = await find_or_create_role(guild, "Primordial")
     access_map = {
         "member":   [member_role],
         "customer": [customer_role, staff_role],
@@ -2410,9 +2460,10 @@ async def setup_server(interaction: discord.Interaction):
                 if staff_role:
                     overwrites[staff_role] = discord.PermissionOverwrite(
                         view_channel=True, send_messages=True, read_message_history=True)
-            elif ch.get("access") == "customer_readonly":
-                if customer_role:
-                    overwrites[customer_role] = discord.PermissionOverwrite(
+            elif ch.get("access") in ("customer_readonly", "primordial_readonly"):
+                reader = customer_role if ch["access"] == "customer_readonly" else primordial_role
+                if reader:
+                    overwrites[reader] = discord.PermissionOverwrite(
                         view_channel=True, send_messages=False, read_message_history=True)
                 if staff_role:
                     overwrites[staff_role] = discord.PermissionOverwrite(
