@@ -384,6 +384,18 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   shot (clip 0) or 1.5 s without a threat; one we took ourselves is left alone. The decision is the pure `zeus.decide`
   (tested). Not proven in game: the server checks the range on the lag compensated enemy, so firing "earlier" than the range
   edge would only miss.
+- Scoreboard flag + cheat revealer (owners, Oct 2026: "a specter hold írja felül az ország zászlaját ... és adj hozzá cheat
+  revealert külön logókkal, pl. gs-nél prim nixware"): the scoreboard badge (`libs.tools.js`) hides the row's country flag
+  (`find_flag`: ids FlagImg / Flag / CountryFlag, classes sb-row__cell__flag ... of the CS:GO scoreboard; not confirmed in game: none
+  found = the badge stays beside the rank as before) and sits in its place, the flag comes back when the badge goes (`destroy_panel`,
+  `remove(index)`). Utils "Cheat revealer" (default on, `reveal` outside the resolver block): every 2 s the clan tag of the other
+  players (`m_szClan`) is matched against `reveal.SOFT` (gamesense / skeet, primordial, nixware, neverlose, onetap, fatality, aimware,
+  pandora; a typed prefix of 5+ letters counts, a hit is kept 120 s because animated tags show the word only part of the time):
+  the player gets that cheat's badge on the scoreboard (not a Specter user: the moon wins) and one notification. Passive, only the
+  public clan tag: a player with another / no tag is not seen. The badges are OUR monogram badges (letters on a coloured rounded
+  square, `tools/make_reveal_icons.py` -> `assets/reveal/<key>.png` and the `REVEAL_PNG` block of server.js, served at
+  `GET /reveal/<key>.png`, downloaded once into csgo/materials/panorama/images/icons/specter_reveal_<key>.png), NOT the logos of those
+  programs; put a real 32 x 32 PNG with the same name into assets/reveal/ and run the script again to use it.
 - Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";
   Primordial only, the gamesense lua has no user detection to build on): Misc > "Servers" (page 15). "Share my server" (default
   OFF, a RAW `menu_add_checkbox`, not an eui item: eui exports every checkbox into the configs, and an imported / cloud config must

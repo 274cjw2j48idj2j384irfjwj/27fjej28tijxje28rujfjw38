@@ -170,7 +170,11 @@ const valid = function(panel) {
 };
 const destroy_panel = function(xuid) {
     const panel = entity_panels[xuid];
-    if (valid(panel)) panel.DeleteAsync(0);
+    if (valid(panel)) {
+        // the country flag we covered comes back
+        if (valid(panel.specter_flag)) panel.specter_flag.visible = true;
+        panel.DeleteAsync(0);
+    }
     delete entity_panels[xuid];
 };
 const destroy_panels = function() {
@@ -187,6 +191,21 @@ const scoreboard = function() {
     }
     const board = context.FindChildTraverse("Scoreboard");
     return valid(board) ? board : null;
+};
+// the country flag of a row (owners, Oct 2026: on some servers the flag is all a row has and our icon beside it looked bad: the
+// icon takes the flag's place). The ids / classes are the ones of the CS:GO scoreboard; none found = the icon stays beside the rank
+const find_flag = function(row) {
+    const ids = ["FlagImg", "Flag", "CountryFlag"];
+    for (let i = 0; i < ids.length; i++) {
+        const found = row.FindChildTraverse(ids[i]);
+        if (valid(found)) return found;
+    }
+    const classes = ["sb-row__cell__flag", "sb-row__flag", "sb-flag"];
+    for (let i = 0; i < classes.length; i++) {
+        const list = row.FindChildrenWithClassTraverse(classes[i]) || [];
+        if (list.length > 0 && valid(list[0])) return list[0];
+    }
+    return null;
 };
 const player_xuid = function(index) {
     try {
@@ -217,8 +236,15 @@ const get_panel = function(xuid) {
             break;
         }
     }
+    const flag = find_flag(row);
+    if (flag != null && typeof flag.GetParent === "function" && valid(flag.GetParent())) parent = flag.GetParent();
     const panel = $.CreatePanel("Panel", parent, "specter-presence-" + xuid);
     panel.specter_row = row;
+    if (flag != null) {
+        flag.visible = false;
+        panel.specter_flag = flag;
+        try { if (typeof parent.MoveChildBefore === "function") parent.MoveChildBefore(panel, flag); } catch (_) {}
+    }
     panel.style.flowChildren = "right";
     panel.style.marginLeft = "4px";
     panel.style.verticalAlign = "center";
@@ -265,6 +291,11 @@ const update = function(index, path, ready, expected_xuid) {
     return true;
 };
 const clear = function() { entity_data = {}; destroy_panels(); };
+const remove = function(index) {
+    const data = entity_data[index];
+    delete entity_data[index];
+    if (data && data.xuid) destroy_panel(data.xuid);
+};
 const destroy = function() {
     clear();
     Object.keys(event_callbacks).forEach(function(event) {
@@ -282,7 +313,7 @@ const create = function() {
     });
     apply_data();
 };
-return { create: create, destroy: destroy, clear: clear, update: update,
+return { create: create, destroy: destroy, clear: clear, update: update, remove: remove,
     destroy_panel: destroy_panels, apply: apply_data };
 ]], "CSGOHud")()
 
@@ -1422,6 +1453,7 @@ local ui = {
 
         clantag = groups.sync:checkbox("Clan tag", true),
         shared_esp = groups.sync:checkbox("Shared ESP", true),
+        cheat_reveal = groups.sync:checkbox("Cheat revealer", true),
 
         synced_players = groups.sync:multi_selection(
             "Synced players",
@@ -3304,6 +3336,106 @@ on_chatsync = function(event)
     end
 end
 
+-- cheat revealer (owners, Oct 2026: "adj hozzá cheat revealert a luához külön logókkal, pl. gs-nél prim nixware meg ilyen fő jó
+-- softwarek"): a player whose clan tag names a known cheat gets that cheat's badge on the scoreboard (in place of the country
+-- flag, like our moon) and a notification. Passive: it only reads the public clan tag (`m_szClan`), so a player who has no / an
+-- other clan tag is not seen. The badges are our own monogram badges served by the license server (/reveal/<key>.png)
+reveal = { found = {}, next = 0, ready = {}, busy = {}, retry = {}, announced = {} }
+reveal.SOFT = {
+    { key = "gs", name = "gamesense", words = { "gamesense", "skeet" } },
+    { key = "prim", name = "primordial", words = { "primordial" } },
+    { key = "nix", name = "nixware", words = { "nixware" } },
+    { key = "nl", name = "neverlose", words = { "neverlose" } },
+    { key = "ot", name = "onetap", words = { "onetap" } },
+    { key = "fat", name = "fatality", words = { "fatality" } },
+    { key = "aw", name = "aimware", words = { "aimware" } },
+    { key = "pan", name = "pandora", words = { "pandora" } },
+}
+-- the clan tag of a typing / scrolling animation shows a part of the word: a prefix of 5+ letters counts as well
+reveal.detect = function(tag)
+    if (type(tag) ~= "string") then return nil end
+    tag = tag:lower():gsub("[^%a%d]", "")
+    if (#tag < 5) then return nil end
+    for _, soft in ipairs(reveal.SOFT) do
+        for _, word in ipairs(soft.words) do
+            if (tag:find(word, 1, true) or (#tag <= #word and word:sub(1, #tag) == tag)) then return soft end
+        end
+    end
+    return nil
+end
+reveal.path = function(key)
+    return "file://{images}/icons/specter_reveal_" .. key .. ".png"
+end
+reveal.install = function(key)
+    local now = globals.real_time()
+    if (reveal.ready[key] or reveal.busy[key] or now < (reveal.retry[key] or 0)) then return end
+    local path = "materials/panorama/images/icons/specter_reveal_" .. key .. ".png"
+    local ok, exists = pcall(libs.filesystem.exists, path, "MOD")
+    if (ok and exists) then
+        reveal.ready[key] = true
+        return
+    end
+    pcall(libs.filesystem.create_directory, "materials/panorama/images/icons", "MOD")
+    reveal.busy[key], reveal.retry[key] = now, now + 30
+    local sent = pcall(libs.tools.http.download_image, libs.tools.http, presence.server .. "/reveal/" .. key .. ".png", path,
+        function(success)
+            reveal.busy[key] = nil
+            local checked, saved = pcall(libs.filesystem.exists, path, "MOD")
+            reveal.ready[key] = success == true and checked and saved == true
+        end)
+    if (not sent) then reveal.busy[key] = nil end
+end
+reveal.remove = function(idx)
+    reveal.found[idx] = nil
+    pcall(libs.tools.js.remove, idx)
+end
+reveal.clear = function()
+    for idx in pairs(reveal.found) do reveal.remove(idx) end
+end
+reveal.update = function()
+    local now = globals.real_time()
+    if (now < reveal.next and now > reveal.next - 60) then return end
+    reveal.next = now + 2
+    if (not ui.utils.cheat_reveal:get() or not check_conditions()) then
+        reveal.clear()
+        return
+    end
+    local me = entity_list_get_local_player()
+    for _, player in pairs(entity_list_get_players() or {}) do
+        local idx = player:get_index()
+        if (me ~= nil and idx ~= me:get_index()) then
+            local ok, tag = pcall(player_resource_get_prop, "m_szClan", idx)
+            local soft = ok and reveal.detect(tag) or nil
+            local sid = soft and presence.steamid(player) or nil
+            if (soft ~= nil and sid ~= nil) then
+                local row = reveal.found[idx]
+                if (row == nil or row.sid ~= sid or row.key ~= soft.key) then
+                    row = { sid = sid, key = soft.key }
+                    reveal.found[idx] = row
+                    if (not reveal.announced[sid .. soft.key]) then
+                        reveal.announced[sid .. soft.key] = true
+                        notifications.create("Cheat revealer", tostring(player:get_name()) .. " uses " .. soft.name,
+                            notifications.types.information)
+                    end
+                end
+                row.until_t = now + 120  -- the animated tags show the word only part of the time
+            end
+        end
+    end
+    for idx, row in pairs(reveal.found) do
+        local player = entity_list_get_entity(idx)
+        if (now > (row.until_t or 0) or player == nil or presence.steamid(player) ~= row.sid) then
+            reveal.remove(idx)
+        elseif (presence.shown[idx] == nil) then
+            -- a Specter user keeps our own moon
+            reveal.install(row.key)
+            if (reveal.ready[row.key]) then
+                pcall(libs.tools.js.update, idx, reveal.path(row.key), true, row.sid)
+            end
+        end
+    end
+end
+
 -- server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni"):
 -- the "Servers" page lists the Specter users who switched "Share my server" on (their server's ip:port, name, map, players) and
 -- connects to the selected one. Opt in, off at every start; our own address is read from the net channel (GetAddress) and goes
@@ -3413,6 +3545,7 @@ end
 
 lets_sync = function()
     presence.update(false)
+    reveal.update()
     servers.update(false)
 end
 
