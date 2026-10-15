@@ -207,6 +207,29 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   positions + span, only while the jitter detector holds) changed for `K.change` records in a row has it cut to
   `K.change_keep`. The shot logs carry `rk` (situation), `cd` (hypothesis), `vl` (the body yaw written), `md` (the feet
   model's), `nx` (predicted next side): tune the priors / the hypotheses by the hit rate per `cd`.
+  ENEMY defensive / lag break detector (owners: "tökéletes defensive érzékelés", the target's, not ours; Primordial's
+  miss reasons have no "defensive": a shot at a shifted target came as "jitter" / "resolver" and was learned as a miss).
+  `resolver.track` logs events `p.events` as WE observe them: a tickbase shift (sim time back by < `K.shift` 0.5 s, the
+  size of the step = how long it lasts, like `defensive:is_active`) and a lag break (> 64 units between two records,
+  `K.lc_window` 0.5 s). Timing: the server tests our shot against the target's state when it arrives, but we see the
+  target one way latency late, so the shift that spoils a shot fired at t is observed about one round trip LATER, inside
+  [t + rtt - dur, t + rtt] (`resolver.spoiled`, `K.ev_margin`): so a shot is classified when its RESULT arrives
+  (`on_result`, from `snapshot.time` / `snapshot.rtt` of `capture`), not when it is fired. Such a MISS is no resolver
+  miss and teaches nothing (a hit still counts); the shot log carries `df` / `lb`. Not done: predicting WHEN a target
+  will use a defensive (the double tap recharge is not readable).
+  Resolver stats per state (owners: "/state hogy megnézzük mire missel a legtöbbet"): `resolver.record` per result (the
+  state of the target at the shot, the Primordial miss reason, a spoiled shot relabelled "defensive" / "lag break", the
+  hypothesis used and its hits) into `resolver.stats` (outside the beta-cut block; session wide, "Reset resolver stats"):
+  Utils "Resolver stats" = the draggable panel (`hud.pill_panel`, shared with the AA stats; state, shots, hit rate, the two
+  top miss reasons), "Resolver stats to console" = the full lines (`resolver.stat_lines`: all reasons, the four most used
+  hypotheses as hit / used), the shot log carries `sx` (state). Fix the state with the most misses first.
+  Defensive / lag break detector (owners: "nem lesz defensive detectorunk?"; Primordial's miss reasons have no
+  "defensive", a shot at a shifted target came as "jitter" / "resolver" and was learned as a miss): `resolver.track`
+  flags a target `p.def_until` for `K.def_window` 0.4 s after a tickbase shift update (sim time back by < 0.5 s) and
+  `p.lc_until` for `K.lc_window` 0.5 s after more than 64 units between two records (teleport / lag break). `capture`
+  marks a shot fired inside a window (`defensive` / `lagbreak`), `on_result` then does not count its MISS (no resolver
+  miss, no bad for the hypothesis; a hit still counts), the shot log carries `df` / `lb`. Not done: predicting WHEN a
+  target will use a defensive (the double tap recharge is not readable), the aimbot's own extrapolation is Primordial's.
 - Backtrack: Primordial's (its records, the tick count of its shot). The old "Improve backtrack" wrote cmd.tick_count on
   every command from the enemy nearest the crosshair minus "dynamic ticks": the server rewound to a time the aimbot did
   not aim at. Now Improve backtrack sets Primordial's fake ping amount (100 ms, Extended backtrack 200 ms; the server takes
