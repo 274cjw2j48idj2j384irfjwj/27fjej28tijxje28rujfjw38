@@ -366,6 +366,15 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   button: `on_shared_players(true)`; the round start / connect refreshes say nothing) says why nothing shows (owners, Oct
   2026: "a shared esp nem működik"): no answer from the server / nobody else in the game (N players asked, whether we
   are visible).
+- Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";
+  Primordial only, the gamesense lua has no user detection to build on): Misc > "Servers" (page 15). "Share my server" (default
+  OFF, a RAW `menu_add_checkbox`, not an eui item: eui exports every checkbox into the configs, and an imported / cloud config must
+  never switch sharing on) sends our `ip:port` (read from the net channel, `INetChannelInfo::GetAddress` = vfunc 1 of
+  `VEngineClient014` vfunc 78), name, map and player count to `GET /servers` every 20 s; the list "Specter users on servers" shows the
+  others, "Connect to the selected" runs `connect <ip:port>`. The list is polled only while the page is open or sharing is on;
+  unchecking the box / unloading sends `off=1` (the entry also dies after `SERVERS_TTL` 60 s). A row's address is checked on the
+  server (`public_srv`: public ipv4:port only, no private / loopback / multicast) and again before `connect` (`servers.valid`):
+  it is somebody else's text, never a console command. server.js keeps it in memory, 120 requests / IP / 10 minutes.
 - Steam http lib (`libs.httpcreator`, minified): its passes run on `global_vars_real_time()` (curtime starts again on every
   server: after a switch to a younger map no request was answered); a finished request leaves the list before its
   callback and is not timed out in the same pass (its callback ran twice, the request after it was dropped).
