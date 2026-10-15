@@ -266,6 +266,31 @@ check(same and get("Settings", "Anti brute mode") == 2 and get("Features", "Fake
       and (get("Yaw", "M | Left"), get("Yaw", "M | Right"), get("Yaw", "M | Left randomization")) == (-10, 10, -18),
       "default.cfg: the advanced anti-aim + Adaptive AA with the owner's old left / right, the same as the preset button")
 
+# safe head by height: only an enemy 5+ units below us whose bullet reaches the head, at most 2 traced, cached for 4 ticks
+HS = chunk("builder.height = { tick = -100, on = false }", "run_antiaim = function(ctx, cmd, unpredicted)")
+hs = L.LuaRuntime(unpack_returned_tuples=True)
+hs.execute("""builder = {}
+TICK, TRACES, DMG = 0, 0, 10
+globals = { tick_count = function() return TICK end }
+e_hitboxes = { HEAD = 0 }
+vec3_t = function(x, y, z) return setmetatable({ x = x, y = y, z = z }, { __add = function(a, b) return vec3_t(a.x + b.x, a.y + b.y, a.z + b.z) end }) end
+trace_bullet = function() TRACES = TRACES + 1 return { valid = true, damage = DMG } end
+local function enemy(z) return { is_alive = function() return true end, is_dormant = function() return false end,
+    get_prop = function() return { x = 0, y = 0, z = z } end, get_eye_position = function() return vec3_t(0, 0, z + 64) end } end
+ENEMIES = { enemy(0), enemy(0), enemy(0) }
+entity_list_get_players = function() return ENEMIES end
+ME = { get_prop = function() return { x = 0, y = 0, z = 100 } end, get_hitbox_pos = function() return vec3_t(0, 0, 164) end }
+""" + HS)
+r = hs.eval("function() local a = builder.height_safe(ME) local n = TRACES TICK = 2 local b = builder.height_safe(ME) local m = TRACES TICK = 10 DMG = 0 "
+            "local c = builder.height_safe(ME) TICK = 20 DMG = 10 ENEMIES = { { is_alive = function() return true end, is_dormant = function() return false end, "
+            "get_prop = function() return { x = 0, y = 0, z = 200 } end, get_eye_position = function() return vec3_t(0, 0, 264) end } } "
+            "local d = builder.height_safe(ME) return a, n, b, m, c, d end")()
+check(r[0] and r[1] == 1 and r[2] and r[3] == 1 and not r[4] and not r[5],
+      "safe head height: a lower enemy that hits the head turns it on, cached for 4 ticks (no new trace), no damage = off, an enemy above us = off (%s)" % (list(r),))
+check('safe_opt:get("Air zeus")' in SRC and 'safe_opt:get("Height advantage")' in SRC
+      and get("Features", "Safe head") and ["Height advantage", True] in get("Features", "Safe head"),
+      "safe head: Air knife / Air zeus / Height advantage in the menu and on in default.cfg")
+
 # direct control (dev build): the anti-aim code writes into recorders, the lua sends yaw / pitch / desync itself
 DIRECT = chunk("-- the Primordial jitter types (yaw add", "run_antiaim = function(ctx, cmd, unpredicted)")
 dr = L.LuaRuntime(unpack_returned_tuples=True)

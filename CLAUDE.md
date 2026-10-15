@@ -261,6 +261,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   over 11 groups instead of 4), their `brain_learn` (body hits taught the profiles, the design says they teach nothing) and
   the wrappers around `builder.adv.*` at the end of the file (a second copy of the logic that the tests do not see); their
   simpler forecast duplicated the module that is already in.
+- Safe head (owners, Oct 2026: "add safehead to the aa"): Features "Safe head" has Air knife / Air zeus (crouched in the air with
+  that weapon out), Height advantage (`builder.height_safe`, the gamesense lua's trace: an enemy 5+ units below us whose bullet
+  reaches the head; every 4 ticks, 2 enemies at most) and Allow defensive; the safe head sets pitch down, yaw add 0, no jitter /
+  desync. All four are on in default.cfg. The new options are at the END of the list (saved configs load).
 - Backtrack: Primordial's (its records, the tick count of its shot). The old "Improve backtrack" wrote cmd.tick_count on
   every command from the enemy nearest the crosshair minus "dynamic ticks": the server rewound to a time the aimbot did
   not aim at. Now Improve backtrack sets Primordial's fake ping amount (100 ms, Extended backtrack 200 ms; the server takes
