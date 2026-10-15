@@ -1,0 +1,2 @@
+{"at":1792099308733,"src":"dev","batch":"pm802e2b7199312"}	{"st":"Move","v":1,"jm":"Switch random","r":"hit","ds":"Random","lua":"primordial","ym":"Distort","hg":0,"arm":"Delay tied","ping":42,"dmg":1,"dc":true,"kind":"aa","t":1792099280,"map":"maps\\de_mirage.bsp"}
+{"at":1792099308733,"src":"dev","batch":"pm802e2b7199312"}	{"st":"Duck","v":1,"jm":"Random","r":"hit","ds":"Random","lua":"primordial","ym":"X-Way","hg":1,"ab":true,"arm":"Packet coin","ping":38,"dmg":115,"dc":true,"kind":"aa","t":1792099285,"map":"maps\\de_mirage.bsp"}
