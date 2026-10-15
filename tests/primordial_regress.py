@@ -727,6 +727,93 @@ return same, kept, grace, fresh ~= p, resolver.mem[3] == nil
 check(tuple(r) == (True, True, True, True, True),
       "tickbase shift: the target and what was learned stay with a short grace window, a big jump back starts over (%s)" % (r,))
 
+# defensive / lag break detector (owners: "nem lesz defensive detectorunk?"): a miss on a shot fired while the target
+# shifted its tickbase or broke lag compensation is not a resolver miss and teaches nothing, a hit still counts
+DF = chunk("resolver.memory = function(idx, key, kind)", "resolver.shot_id = function(event)") + \
+     chunk("resolver.shot_id = function(event)", "local RES_JIT_N = 12") + \
+     chunk("local RES_JIT_N = 12", "resolver.update = function(local_player, ent)") + \
+     chunk("resolver.on_result = function(target, hit_ok, resolver_miss, event)", "resolver.body_damage = function(ent)")
+dm = L.LuaRuntime(unpack_returned_tuples=True)
+dm.execute("""
+RES_FS_TICKS = 16
+res_clamp = function(v, a, b) v = tonumber(v) or a return math.max(a, math.min(b, v)) end
+res_norm = function(v) return (v + 180) % 360 - 180 end
+res_sign = function(v) return v < 0 and -1 or 1 end
+res_custom = function() return false end
+time_to_ticks = function(t) return math.floor(t * 64 + 0.5) end
+SIM, NOW, ORIGIN = 0, 0, { x = 0, y = 0, z = 0 }
+globals = { real_time = function() return NOW end }
+local function item(v) return { get = function() return v end } end
+ui = { ragebot = { resolver = { shot_pred = item(15) } } }
+resolver = { data = {}, mem = {}, previous = {}, misses = {}, shots = {}, epoch = 0 }
+resolver.state_of = function() return "stand" end
+ENT = { get_index = function() return 3 end, get_hitbox_pos = function() return 0 end,
+    get_prop = function(_, n)
+        if n == "m_flSimulationTime" then return SIM end
+        if n == "m_flSpawnTime" then return 1 end
+        if n == "m_vecOrigin" then return ORIGIN end
+        return 0
+    end }
+function REC(eye) SIM, NOW = SIM + 2 / 64, NOW + 2 / 64 return resolver.track(ENT, eye) end
+function FIRE(id) resolver.capture({ player = ENT, id = id }) end
+""" + DF)
+D = dm.eval("function(code) return assert(loadstring(code))() end")
+r = D("""
+for i = 1, 6 do REC(i % 2 == 0 and 30 or -30) end
+local p = resolver.data[3]
+-- the situation the shots are credited to
+resolver.previous[3] = { key = "jitter", kind = "jitter", candidate = 1, m_flDesync = 20, rel = 1 }
+local mem = resolver.memory(3, "jitter")
+local function miss(id, reason_resolver, fired_when)
+    FIRE(id)
+    resolver.on_result(ENT, false, reason_resolver, { id = id })
+end
+-- 1. a plain resolver miss counts
+miss(1, true)
+local plain = resolver.misses[3] == 1 and mem.candidates[1].bad > 1
+-- 2. fired during a tickbase shift (sim goes back 0.1 s): not counted
+local bad, misses = mem.candidates[1].bad, resolver.misses[3]
+SIM = SIM - 0.1
+resolver.track(ENT, 30)
+local flagged = p.def_until > NOW
+FIRE(2)
+local snap = resolver.shots[#resolver.shots]
+resolver.on_result(ENT, false, true, { id = 2 })
+local def_ignored = snap.defensive == true and resolver.misses[3] == misses and mem.candidates[1].bad == bad
+-- 3. a HIT during the same window still counts
+FIRE(3)
+local good = mem.candidates[1].good
+resolver.on_result(ENT, true, false, { id = 3 })
+local hit_counts = mem.candidates[1].good > good and resolver.misses[3] == 0
+-- 4. the window ends: counted again
+NOW = NOW + 1
+SIM = SIM + 0.3
+REC(30)
+miss(4, true)
+local after = resolver.misses[3] == 1
+-- 5. lag break: 100 units between two records
+NOW = NOW + 1
+ORIGIN = { x = 0, y = 0, z = 0 }
+REC(-30)
+ORIGIN = { x = 100, y = 0, z = 0 }
+REC(30)
+local lb = p.lc_until > NOW
+local bad2, m2 = mem.candidates[1].bad, resolver.misses[3]
+FIRE(5)
+local s5 = resolver.shots[#resolver.shots]
+resolver.on_result(ENT, false, true, { id = 5 })
+local lb_ignored = s5.lagbreak == true and resolver.misses[3] == m2 and mem.candidates[1].bad == bad2
+-- 6. walking normally (a few units) is no lag break
+NOW = NOW + 1
+ORIGIN = { x = 105, y = 0, z = 0 }
+REC(-30)
+local walk = p.lc_until <= NOW
+return plain, flagged, def_ignored, hit_counts, after, lb, lb_ignored, walk
+""")
+check(tuple(r) == (True,) * 8,
+      "defensive / lag break detector: a tickbase shift or a 100 unit jump flags the shots fired in the window, such a miss "
+      "is no resolver miss and teaches nothing, a hit still counts, normal walking flags nothing (%s)" % (r,))
+
 # what was learned stays with the PLAYER: a dormant phase / respawn keeps it, another player in the slot does not
 r = J("""
 local SID = "76561198000000042"

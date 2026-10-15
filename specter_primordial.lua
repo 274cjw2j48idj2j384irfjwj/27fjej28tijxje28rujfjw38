@@ -4741,6 +4741,12 @@ resolver.capture = function(shot)
         s.candidate, s.desync = prev.candidate, prev.m_flDesync
         s.model, s.nxt = prev.model, prev.nxt
     end
+    -- fired while the target shifted its tickbase (defensive) or broke lag compensation: the server tests the shot against
+    -- a record we never saw (lag comp), a miss says nothing about the body yaw we gave. Hits still count
+    if (p ~= nil) then
+        s.defensive = (p.def_until or 0) > now or nil
+        s.lagbreak = (p.lc_until or 0) > now or nil
+    end
     resolver.shots[#resolver.shots + 1] = s
     if (#resolver.shots > 128) then table.remove(resolver.shots, 1) end
 end
@@ -4816,6 +4822,8 @@ resolver.K = {
     change_keep = 0.35, -- the same when its yaw pattern changed
     change = 10,        -- records in a row with another pattern = the pattern changed
     forget = 0.97,      -- every counted result pulls all hypotheses of that situation back toward the start
+    def_window = 0.4,   -- seconds after a tickbase shift update in which a shot at him counts as a shot at a defensive target
+    lc_window = 0.5,    -- the same after a broken lag compensation (a teleport)
 }
 
 -- steam id of an entity: the learning follows the player, not the slot
@@ -5039,6 +5047,7 @@ resolver.track = function(ent, eye)
     if (p ~= nil and sim < p.sim and p.sim - sim <= resolver.K.shift
         and (spawn == nil or p.spawn == nil or spawn == p.spawn)) then
         p.defensive_until, p.nochoke = now + 0.25, 0
+        p.def_until, p.shifts = now + resolver.K.def_window, (p.shifts or 0) + 1
         return p
     end
     if (p == nil or sim < p.sim or sim - p.sim > 1
@@ -5060,7 +5069,8 @@ resolver.track = function(ent, eye)
         p = { sim = sim, eye = eye, nochoke = 0, jd = {}, jy = {}, dir = 1,
             jitter = false, fs = 0, fs_tick = -RES_FS_TICKS, confidence = 0,
             spawn = spawn, samples = 0, choke = 0, state = state, sid = sid, rec_n = 0,
-            updated = now, defensive_until = rewind and now + 0.25 or 0 }
+            updated = now, defensive_until = rewind and now + 0.25 or 0,
+            def_until = rewind and now + resolver.K.def_window or 0, lc_until = 0 }
         resolver.data[idx] = p
         return p
     end
@@ -5072,6 +5082,19 @@ resolver.track = function(ent, eye)
     if (ticks >= 1) then
         p.samples = p.samples + 1
         p.rec_n = (p.rec_n or 0) + 1
+        -- lag compensation broken: more than 64 units between two records = the server keeps no old record of him
+        -- (teleport / lag break), the aimbot can only shoot the newest one extrapolated: a miss on it is about the
+        -- position, not the angle
+        local o = ent:get_prop("m_vecOrigin")
+        if (type(o) ~= "number" and o ~= nil and type(o.x) == "number") then
+            if (p.last_o ~= nil and ticks <= 32) then
+                local dx, dy, dz = o.x - p.last_o[1], o.y - p.last_o[2], (o.z or 0) - p.last_o[3]
+                if (dx * dx + dy * dy + dz * dz > 4096) then
+                    p.lc_until = now + resolver.K.lc_window
+                end
+            end
+            p.last_o = { o.x, o.y, o.z or 0 }
+        end
         p.choke = res_clamp(ticks - 1, 0, 64)
         p.nochoke = (ticks == 1) and (p.nochoke + 1) or 0
         local min = res_custom() and res_clamp(ui.ragebot.resolver.shot_pred:get(), 15, 65) or RES_JIT_MIN
@@ -5183,6 +5206,9 @@ resolver.on_result = function(target, hit_ok, resolver_miss, event)
     local snapshot = target and resolver.take_shot(event, target:get_index()) or nil
     resolver.last_result = snapshot
     if (snapshot == nil or snapshot.track == nil or snapshot.track ~= resolver.data[snapshot.idx]) then return end
+    if (not hit_ok and (snapshot.defensive or snapshot.lagbreak)) then
+        resolver_miss = false
+    end
     if (target ~= nil) then
         local idx = target:get_index()
         if (hit_ok) then
@@ -5212,12 +5238,6 @@ resolver.on_result = function(target, hit_ok, resolver_miss, event)
         mem.misses = mem.misses + 1
         c.bad = c.bad + 1
         mem.last_failed = snapshot.candidate
-    end
-    if (hit_ok or resolver_miss) then
-        for _, hypothesis in ipairs(mem.candidates) do
-            hypothesis.good = 1 + (hypothesis.good - 1) * 0.97
-            hypothesis.bad = 1 + (hypothesis.bad - 1) * 0.97
-        end
     end
 end
 resolver.body_damage = function(ent)
@@ -5577,6 +5597,7 @@ shotlog.result = function(shot, hit)
     if (snap ~= nil and snap.idx == idx) then
         row.rk, row.cd, row.vl = snap.key, snap.candidate, shotlog.num(snap.desync, 1)
         row.md, row.nx = shotlog.num(snap.model, 1), snap.nxt
+        row.df, row.lb = snap.defensive, snap.lagbreak
     end
     if (hit) then
         row.hg, row.dmg = shot.hitgroup, shotlog.num(shot.damage)

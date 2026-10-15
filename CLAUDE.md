@@ -207,6 +207,13 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   positions + span, only while the jitter detector holds) changed for `K.change` records in a row has it cut to
   `K.change_keep`. The shot logs carry `rk` (situation), `cd` (hypothesis), `vl` (the body yaw written), `md` (the feet
   model's), `nx` (predicted next side): tune the priors / the hypotheses by the hit rate per `cd`.
+  Defensive / lag break detector (owners: "nem lesz defensive detectorunk?"; Primordial's miss reasons have no
+  "defensive", a shot at a shifted target came as "jitter" / "resolver" and was learned as a miss): `resolver.track`
+  flags a target `p.def_until` for `K.def_window` 0.4 s after a tickbase shift update (sim time back by < 0.5 s) and
+  `p.lc_until` for `K.lc_window` 0.5 s after more than 64 units between two records (teleport / lag break). `capture`
+  marks a shot fired inside a window (`defensive` / `lagbreak`), `on_result` then does not count its MISS (no resolver
+  miss, no bad for the hypothesis; a hit still counts), the shot log carries `df` / `lb`. Not done: predicting WHEN a
+  target will use a defensive (the double tap recharge is not readable), the aimbot's own extrapolation is Primordial's.
 - Backtrack: Primordial's (its records, the tick count of its shot). The old "Improve backtrack" wrote cmd.tick_count on
   every command from the enemy nearest the crosshair minus "dynamic ticks": the server rewound to a time the aimbot did
   not aim at. Now Improve backtrack sets Primordial's fake ping amount (100 ms, Extended backtrack 200 ms; the server takes
