@@ -5255,16 +5255,31 @@ resolver.advanced = { version = 2, limit = 64 }
 resolver.advanced.finite = function(x)
     return type(x) == "number" and x == x and math.abs(x) < 1e12
 end
-resolver.advanced.vector = function(v)
+-- a netvar vector as { x, y, z } or nil. Some of them arrive as a 2D vector (x, y only: indexing .z raises "not a numeric type"
+-- and stops the whole callback), then z is the netvar's own "[2]" element, else 0
+resolver.advanced.read = function(ent, name)
     local A = resolver.advanced
-    return v ~= nil and type(v) ~= "number" and A.finite(v.x) and A.finite(v.y) and A.finite(v.z)
+    local v = ent:get_prop(name)
+    if v == nil or type(v) == "number" then
+        return nil
+    end
+    local ok, x, y = pcall(function() return v.x, v.y end)
+    if not ok or not A.finite(x) or not A.finite(y) then
+        return nil
+    end
+    local okz, z = pcall(function() return v.z end)
+    if not okz or not A.finite(z) then
+        z = tonumber(ent:get_prop(name .. "[2]"))
+        z = A.finite(z) and z or 0
+    end
+    return { x = x, y = y, z = z }
 end
 resolver.advanced.observe = function(p, ent, eye)
     local A = resolver.advanced
     local sim, dt = ent:get_prop("m_flSimulationTime"), globals.interval_per_tick()
     if not A.finite(sim) or not A.finite(eye) or not A.finite(dt) or dt <= 0 then return end
-    local o, v = ent:get_prop("m_vecOrigin"), ent:get_prop("m_vecVelocity")
-    if not A.vector(o) or not A.vector(v) then return end
+    local o, v = A.read(ent, "m_vecOrigin"), A.read(ent, "m_vecVelocity")
+    if not o or not v then return end
     local h = p.advanced
     if not h then h = { records = {}, states = {}, transitions = {} }; p.advanced = h end
     local last = h.records[#h.records]
@@ -6992,26 +7007,29 @@ builder.height_safe = function(local_player)
         return h.on
     end
     h.tick, h.on = tick, false
-    local origin, head = local_player:get_prop("m_vecAbsOrigin"), local_player:get_hitbox_pos(e_hitboxes.HEAD)
-    if (origin == nil or head == nil) then
-        return false
-    end
-    local looked = 0
-    for _, enemy in pairs(entity_list_get_players(true) or {}) do
-        local o = enemy:is_alive() and not enemy:is_dormant() and enemy:get_prop("m_vecAbsOrigin") or nil
-        if (o ~= nil and origin.z - o.z > 5) then
-            looked = looked + 1
-            local eye = enemy:get_eye_position()
-            local traced = eye ~= nil and trace_bullet(eye, head + vec3_t(0, 0, 6), enemy, local_player) or nil
-            if (traced ~= nil and traced.valid and (traced.damage or 0) > 0) then
-                h.on = true
-                break
-            end
-            if (looked >= 2) then
-                break
+    -- a netvar that comes in another shape than expected must not stop the callback (pcall)
+    pcall(function()
+        local origin, head = local_player:get_prop("m_vecAbsOrigin"), local_player:get_hitbox_pos(e_hitboxes.HEAD)
+        if (origin == nil or head == nil) then
+            return
+        end
+        local looked = 0
+        for _, enemy in pairs(entity_list_get_players(true) or {}) do
+            local o = enemy:is_alive() and not enemy:is_dormant() and enemy:get_prop("m_vecAbsOrigin") or nil
+            if (o ~= nil and origin.z - o.z > 5) then
+                looked = looked + 1
+                local eye = enemy:get_eye_position()
+                local traced = eye ~= nil and trace_bullet(eye, head + vec3_t(0, 0, 6), enemy, local_player) or nil
+                if (traced ~= nil and traced.valid and (traced.damage or 0) > 0) then
+                    h.on = true
+                    return
+                end
+                if (looked >= 2) then
+                    return
+                end
             end
         end
-    end
+    end)
     return h.on
 end
 
