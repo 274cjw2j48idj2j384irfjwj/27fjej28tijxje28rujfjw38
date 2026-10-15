@@ -302,7 +302,16 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   "a beta külön fájlt kapjon"): `primordial_builds` / `make_primordial_beta` in the bot cut everything between
   `-- [pm-resolver:begin]` and `-- [pm-resolver:end]` (the whole resolver logic) and put `PM_BETA_STUB` (same names, does
   nothing) there, before the comments are stripped. Keep the markers; nothing outside them may use the resolver's
-  internals (res_*, RES_*, resolver.update / freestand / ...). The script has no auth gate (it is also the #staff dev build).
+  internals (res_*, RES_*, resolver.update / freestand / ...).
+- Auth gate (owners, Oct 2026: "amint alapból a cloud scriptet töltik be ... kicrashel ... külön béta és nightlyra"):
+  the repo file `specter_primordial.lua` has NO gate (it is the #staff dev build, runs without a key). The bot prepends
+  `PM_AUTH_GATE` (`-- [pm-auth:begin]` / `-- [pm-auth:end]`) to the CUSTOMER builds in `primordial_builds` (pm_nightly +
+  pm_beta, after the comment stripping), so only the script on the server carries it. Like the gamesense gate: `server.js`
+  `/script` prepends the auth globals (for a pm plan `_auth_ts` reads the clock with `client.get_unix_time`, not
+  gamesense's `client.unix_time`), the gate checks `_auth_ok` / `_auth_alive` and a fresh `_auth_ts` (±30 s), wipes every
+  `_auth_*` / `_server_url` (keeps BUILD_VERSION, `info.plan` reads it) and else returns at the top so the chunk never
+  runs. Loaded standalone (no loader, the globals missing) or with a stale token the cloud file does not run. Obfuscate
+  the customer builds on top of this; `is_primordial_script` is checked on the RAW repo file (before the gate is added).
 - Primordial API: docs.primordial.dev is blocked from the cloud container; the leaked workshop luas
   (github.com/DuckOpenSourceFoundation/femordial-workshop-luas) show the calls. ANTIAIM ctx: set_yaw, set_pitch,
   set_desync (-1..1), set_invert_desync, set_fakelag, set_body_lean; desync side items: none, left, right, jitter, peek

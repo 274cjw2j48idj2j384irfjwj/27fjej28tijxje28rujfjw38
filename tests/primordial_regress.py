@@ -53,7 +53,8 @@ for gone in ("udp_connect", "auth.check_user", "send_logs", "sigmoid_adjustment"
 
 # the loader's two versions, built like the bot does (primordial_builds): beta has no resolver code at all
 tree = ast.parse(open(os.path.join(ROOT, "discord_bot.py"), encoding="utf-8").read())
-want = {"strip_lua_comments", "make_primordial_beta", "primordial_builds", "PM_BETA_STUB"}
+want = {"strip_lua_comments", "make_primordial_beta", "primordial_builds", "PM_BETA_STUB", "PM_AUTH_GATE",
+        "is_primordial_script"}
 body = [n for n in tree.body if (isinstance(n, ast.FunctionDef) and n.name in want)
         or (isinstance(n, ast.Assign) and any(getattr(t, "id", "") in want for t in n.targets))]
 ns = {"re": re}
@@ -65,6 +66,35 @@ for plan in ("pm_nightly", "pm_beta"):
 check("resolver.update = function" in builds["pm_nightly"] and "resolver.update = function" not in builds["pm_beta"]
       and "RES_NOCHOKE" not in builds["pm_beta"] and "lets_resolve = function() end" in builds["pm_beta"],
       "pm_beta: the resolver code is cut out (a stub with the same names), pm_nightly keeps it")
+
+# auth gate (owners, Oct 2026: "amint alapból a cloud scriptet töltik be ... kicrashel"): the customer builds
+# (pm_nightly / pm_beta) carry it, the repo file / #staff dev build never do (it runs without a key)
+check("[pm-auth:begin]" in builds["pm_nightly"] and "[pm-auth:begin]" in builds["pm_beta"]
+      and "[pm-auth:begin]" not in SRC and ns["is_primordial_script"](SRC)
+      and not ns["is_primordial_script"](builds["pm_nightly"]),
+      "auth gate: in both customer builds, not in the repo file / dev build")
+# with the loader (the server sets _auth_ok / _auth_alive / a fresh _auth_ts) the script runs; standalone (nothing set)
+# or with a stale token it returns at once
+GATE = ns["PM_AUTH_GATE"]
+gl = L.LuaRuntime(unpack_returned_tuples=True)
+gl.execute("NOW = 1000 client = { get_unix_time = function() return NOW end, log = function() end }")
+def run_gate(setup):
+    return gl.eval("""(function()
+        _auth_ok, _auth_alive, _auth_ts, _auth_key, _server_url, RAN = nil, nil, nil, nil, nil, false
+        %s
+        local fn = assert(loadstring(GATE .. "\\nRAN = true\\nreturn _auth_ok, _auth_key, _server_url"))
+        fn()
+        return RAN, _auth_ok, _auth_key, _server_url
+    end)()""" % setup)
+gl.globals().GATE = GATE
+ran_ok = run_gate('_auth_ok, _auth_alive, _auth_ts, _auth_key, _server_url = true, true, 995, "k", "u"')
+ran_none = run_gate('')
+ran_stale = run_gate('_auth_ok, _auth_alive, _auth_ts = true, true, 900')
+ran_future = run_gate('_auth_ok, _auth_alive, _auth_ts = true, true, 1010')
+check(tuple(ran_ok) == (True, None, None, None) and ran_none[0] is False
+      and ran_stale[0] is False and ran_future[0] is False,
+      "auth gate: loader + fresh token runs and wipes the globals; standalone / stale / future token stops (%s %s %s %s)"
+      % (ran_ok[0], ran_none[0], ran_stale[0], ran_future[0]))
 
 # ── menu: four main points, the pages of the active one ───────────────
 
