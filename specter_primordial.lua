@@ -4572,7 +4572,7 @@ resolver.record = function(snap, hit_ok, reason)
 end
 -- the rows in a fixed order: { name, n, hit, rate (0..100), miss = { { label, count } by count }, hyp = { { name, n, hit } } }
 resolver.stat_rows = function()
-    local order, rows = { "stand", "slow", "move", "duck", "cmove", "air", "jitter" }, {}
+    local order, rows = { "stand", "slow", "move", "duck", "cmove", "air", "airduck", "jitter" }, {}
     for _, name in ipairs(order) do
         local r = resolver.stats[name]
         if (r ~= nil and r.n > 0) then
@@ -4618,7 +4618,7 @@ end
 --   Disablers + At disabler: while one of them holds, the resolver is off / head safe point / keeps resolving
 local RES_NOCHOKE = 8                      -- updates without a choked tick in a row: no desync possible, nothing forced
 local RES_FS_TICKS = 8                     -- freestanding traces once per this many ticks per player
-local RES_STATE_NUM = { stand = 1, slow = 2, move = 3, duck = 4, cmove = 5, air = 6, jitter = 7 }
+local RES_STATE_NUM = { stand = 1, slow = 2, move = 3, duck = 4, cmove = 5, air = 6, jitter = 7, airduck = 8 }
 local RES_SCOPE_CFG = { 0, 1, 2, 6 }
 local RES_SAFE_CFG = { 0, 2, 3, 7 }
 
@@ -4689,7 +4689,7 @@ end
 resolver.state_of = function(ent)
     local flags = tonumber(ent:get_prop("m_fFlags")) or 0
     if (bit.band(flags, 1) == 0) then
-        return "air"
+        return bit.band(flags, 2) ~= 0 and "airduck" or "air"
     end
     local velocity = ent:get_prop("m_vecVelocity")
     local speed = velocity and math.vec_length2d(velocity) or 0
@@ -4777,6 +4777,21 @@ end
 resolver.NCAND = 9
 resolver.PRIOR = { 0.14, 0.02, 0.08, 0.00, -0.03, 0.0, 0.0, 0.0, 0.0 }
 -- opt.skip[i] = the hypothesis does not apply now, opt.bonus[i] = what the situation says for it before any result
+-- what the common anti-aims do in each state (read from the Primordial workshop builders: Formal Yaw, Anti-Aim Builder, Destroy,
+-- T1ny, Star-Project): standing = a held side / inverter with a near full body yaw (the side hint and the LBY feet model are
+-- right); walking, running, crouch walking = the desync flips every tick / delay with the yaw jitter (the half size and the
+-- jitter pattern pay); in the air = the largest jitter and a flipping desync, the feet lag (half size + pattern, no feet model);
+-- crouched still = held like standing, but the limit is smaller. Added to the candidate bonus: a prior, the results overrule it
+resolver.STATE_PRIOR = {
+    stand = { [1] = 0.04, [6] = 0.04 },
+    slow = { [1] = 0.02, [3] = 0.03, [6] = 0.02, [8] = 0.03 },
+    move = { [3] = 0.04, [8] = 0.05 },
+    duck = { [1] = 0.03, [3] = 0.02, [6] = 0.04 },
+    cmove = { [3] = 0.04, [6] = 0.01, [8] = 0.04 },
+    air = { [3] = 0.05, [8] = 0.06 },
+    airduck = { [3] = 0.05, [8] = 0.06 },
+}
+
 resolver.choose = function(mem, confidence, allow_half, opt)
     local best, score = 1, -math.huge
     local skip, bonus = opt and opt.skip or {}, opt and opt.bonus or {}
@@ -5283,6 +5298,9 @@ resolver.update = function(local_player, ent)
         opt.skip[6], opt.skip[7] = true, true
     else
         opt.bonus[6] = 0.12 * prof.rel
+    end
+    for i, v in pairs(resolver.STATE_PRIOR[state] or {}) do
+        opt.bonus[i] = (opt.bonus[i] or 0) + v
     end
     if (nx == nil) then
         opt.skip[8], opt.skip[9] = true, true

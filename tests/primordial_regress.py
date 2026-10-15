@@ -590,6 +590,19 @@ check(r[0] == "lby" and r[1] == 1 and abs(r[2] - 0.25) < 1e-6 and r[3] == "eye" 
       "state profile: the LBY phase is fully trusted once the feet model converged, the eye phase (moving / air) less, a "
       "fresh model little, the steps are counted (%s)" % (r,))
 
+# per state priors: every state the owners listed has one, air / moving lean on the half size + jitter pattern, standing on the
+# side hint + feet model
+r = F("""
+local n = 0
+for _, st in ipairs({ "stand", "slow", "move", "duck", "cmove", "air", "airduck" }) do
+    if resolver.STATE_PRIOR[st] ~= nil then n = n + 1 end
+end
+local P = resolver.STATE_PRIOR
+return n, P.stand[6] > (P.air[6] or 0) and 1 or 0, P.air[8] > (P.stand[8] or 0) and 1 or 0
+""")
+check(r[0] == 7 and r[1] == 1 and r[2] == 1,
+      "state priors: all 7 states have one, standing trusts the feet model more than air, air the jitter pattern more than standing (%s)" % (r,))
+
 # jitter period / phase
 r = F("""
 local a, pa, ca = resolver.run_predict({ 3, 3, 3 }, 3, 1)       -- delay 3: the run reached it: switches now
