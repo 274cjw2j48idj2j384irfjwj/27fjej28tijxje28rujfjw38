@@ -212,8 +212,41 @@ hl = L.LuaRuntime(unpack_returned_tuples=True)
 hl.execute("string_format = string.format\npresence = {}\n" + gs_hash.replace("local function hash", "function GSHASH")
            + chunk("presence.hash = function(s)", "-- Steam64 must never pass through a Lua double"))
 h = hl.eval("function(sid) return GSHASH(sid), presence.hash(sid) end")("76561198012345678")
-check(h[0] == h[1] and len(h[0]) == 16 and "/presence?t=gs&q=&me=" in GS_SRC,
+check(h[0] == h[1] and len(h[0]) == 16 and "/presence?t=gs&q=" in GS_SRC,
       "gs user: the gamesense lua and the Primordial lua hash a steam64 text the same way, the heartbeat has tag gs (%s)" % (list(h),))
+
+# ... and the gamesense lua lists the users of its game: "you", a gs user and a prim user, nobody else
+mod = GS_SRC[GS_SRC.index("miscellaneous.presence = {} do"):GS_SRC.index("miscellaneous.clantag = {} do")]
+gl = L.LuaRuntime(unpack_returned_tuples=True)
+gl.execute("""
+string_format = string.format
+_auth_data = { server_url = "https://x" }
+miscellaneous, config = {}, { miscellaneous = {} }
+REQ, ROWS = {}, nil
+config.miscellaneous.presence = { get = function() return true end }
+config.miscellaneous.users = { get_ref = function() return "ref" end }
+ui = { update = function(_, rows) ROWS = rows end }
+globals = { realtime = function() return 100 end }
+IDS = { [1] = "76561198000000001", [2] = "76561198000000002", [3] = "76561198000000003", [4] = "bad" }
+entity = { get_local_player = function() return 1 end, get_steam64 = function(i) return IDS[i] end,
+    get_players = function() return { 1, 2, 3, 4 } end, get_player_name = function(i) return "p" .. i end }
+http = { get = function(url, cb) REQ[#REQ + 1] = url; CB = cb end }
+json = { parse = function() return ON end }
+""" + mod.replace("\n            miscellaneous.clantag", ""))
+G = gl.eval("function(code) return assert(loadstring(code))() end")
+r = G("""
+local hash = function(s) local h1, h2 = 5381, 52711 s = "specter|" .. s
+  for i = 1, #s do local c = s:byte(i) h1 = (h1 * 33 + c) % 4294967296 h2 = (h2 * 31 + c * 7) % 4294967296 end
+  return string.format("%08x%08x", h1, h2) end
+ON = { on = { [hash(IDS[1])] = "gs", [hash(IDS[2])] = "gs", [hash(IDS[3])] = "beta" } }
+miscellaneous.presence:run()
+CB(true, { body = "x" })
+local asked = REQ[1]:match("q=([^&]*)")
+local n = 0 for _ in asked:gmatch("[^,]+") do n = n + 1 end
+return table.concat(ROWS, "|"), n, REQ[1]:find("t=gs", 1, true) ~= nil
+""")
+check(r[0] == "p2 ~ gs user|p3 ~ prim user (beta)|you ~ gs user" and r[1] == 3 and r[2],
+      "gs lua list: you, a gs user and a prim user are listed, a bad steam id is not asked (%s)" % (list(r),))
 
 # the loader's beta version (BUILD_VERSION pm_beta): no Resolver page and no resolver groups, the helpers stay
 beta = L.LuaRuntime()

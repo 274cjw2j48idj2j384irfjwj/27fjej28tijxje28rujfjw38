@@ -11379,6 +11379,9 @@ LPH_NO_VIRTUALIZE(function ()
                 :record("miscellaneous", "presence")
                 :save()
 
+            config.miscellaneous.users = menu.new_item(ui.new_listbox, "AA", "Anti-aimbot angles", "\nspecter_users", {})
+                :config_ignore()
+
             config.miscellaneous.clantag_style = menu.new_item(ui.new_combobox, "AA", "Anti-aimbot angles", "•  Style\nclantag", {"Scrolling", "Glitch"})
                 :record("miscellaneous", "clantag_style")
                 :save()
@@ -11580,22 +11583,55 @@ LPH_NO_VIRTUALIZE(function ()
                 end
 
                 -- the 17 digit steam64 as TEXT: a number would lose its last digits and the hash would not match
-                local function own_id()
-                    local me = entity.get_local_player()
-                    if not me then return nil end
-                    local ok, sid = pcall(entity.get_steam64, me)
+                local function id_of(idx)
+                    local ok, sid = pcall(entity.get_steam64, idx)
                     sid = ok and sid ~= nil and tostring(sid) or ""
                     return sid:match("^7656119%d%d%d%d%d%d%d%d%d%d$")
                 end
 
+                local KIND = { gs = "gs user", dev = "prim user (dev)", beta = "prim user (beta)", nightly = "prim user (nightly)" }
+                local shown = ""
+
+                -- also asks which of the players here run Specter (up to 64 hashes) and lists them like the Primordial lua's
+                -- "Specter Revealer": "name ~ gs user" runs this lua, "name ~ prim user (version)" the Primordial one
                 function miscellaneous.presence:run()
                     if not config.miscellaneous.presence:get() or http == nil or SERVER == "" then return end
                     local now = globals.realtime()
                     if now < next_at and now > next_at - 60 then return end
                     next_at = now + 30
-                    local sid = own_id()
+                    local me = entity.get_local_player()
+                    local sid = me and id_of(me)
                     if not sid then return end
-                    http.get(SERVER .. "/presence?t=gs&q=&me=" .. hash(sid), function() end)
+                    local mine = hash(sid)
+                    local asked, list = { [mine] = "you" }, { mine }
+                    for _, idx in ipairs(entity.get_players(false) or {}) do
+                        local other = idx ~= me and #list < 64 and id_of(idx)
+                        if other then
+                            local h = hash(other)
+                            if asked[h] == nil then
+                                local ok, name = pcall(entity.get_player_name, idx)
+                                asked[h] = (ok and tostring(name) or "?"):gsub("[^\32-\126]", "?"):sub(1, 20)
+                                list[#list + 1] = h
+                            end
+                        end
+                    end
+                    http.get(SERVER .. "/presence?t=gs&q=" .. table.concat(list, ",") .. "&me=" .. mine, function(ok, resp)
+                        local body = type(resp) == "table" and resp.body or resp
+                        local good, data = pcall(json.parse, ok and body or "")
+                        if not (good and type(data) == "table" and type(data.on) == "table") then return end
+                        local rows = {}
+                        for h, name in pairs(asked) do
+                            local kind = KIND[data.on[h]]
+                            if kind then rows[#rows + 1] = name .. " ~ " .. kind end
+                        end
+                        table.sort(rows)
+                        if #rows == 0 then rows[1] = "nobody found here" end
+                        local joined = table.concat(rows, "\n")
+                        if joined ~= shown then
+                            shown = joined
+                            ui.update(config.miscellaneous.users:get_ref(), rows)
+                        end
+                    end)
                 end
             end
 
@@ -14581,6 +14617,7 @@ LPH_NO_VIRTUALIZE(function ()
                 M.clantag:display()
                 if M.clantag:get() then M.clantag_style:display() end
                 M.presence:display()
+                if M.presence:get() then M.users:display() end
                 M.cheat_tweaks:display()
                 if M.cheat_tweaks:get() then M.cheat_tweaks_list:display() end
                 M.trashtalk:display()

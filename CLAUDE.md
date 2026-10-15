@@ -371,7 +371,9 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   "Show as Specter user", on in `settings.recommended()`, `GET /presence?t=gs&q=&me=<hash>` every 30 s, only with the server url
   and gamesense/http): the same hash ("specter|" .. the 17 digit steam64 as TEXT, a double would lose digits) and tag `gs` (server.js
   accepts it). The Primordial lua lists such a player as "name ~ gs user" (moon on the scoreboard, Revealer row, notification
-  "(gs)"), its own kind as "name ~ prim user (dev|nightly|beta)". The gamesense lua does not ask for others yet. If
+  "(gs)"), its own kind as "name ~ prim user (dev|nightly|beta)". The gamesense lua asks too (owners: "ugyanilyen boxot
+  gs-be is"): its heartbeat carries `q=` the hashes of the players here (64 at most) and the list box under the checkbox
+  ("name ~ gs user" / "name ~ prim user (version)", "you" for ourselves, "nobody found here"; not saved in configs). If
   `entity.get_steam64` does not give the 17 digit text, the gamesense lua sends nothing (not confirmed in game).
 - Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";
   Primordial only, the gamesense lua has no user detection to build on): Misc > "Servers" (page 15). "Share my server" (default
