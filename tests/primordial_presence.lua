@@ -105,8 +105,9 @@ check(first.url:find(p.hash(other_sid), 1, true) ~= nil
     and first.url:find(p.hash("[U:1:24691]"), 1, true) ~= nil,
     "queries cover both canonical identities and legacy primary strings")
 reply(first, { [p.hash(own_sid)] = "dev", [p.hash(other_sid)] = "nightly" })
-check(icons[1] and icons[2] and #list == 1 and env.esp.sync_user[1] == other_sid,
-    "own badge renders without own sidebar row; peers use canonical sync identity")
+check(icons[1] and icons[2] and #list == 2 and tostring(list[1]):find("(you)", 1, true) ~= nil
+    and #env.esp.sync_user == 1 and env.esp.sync_user[1] == other_sid,
+    "own badge and own sidebar row (first, marked you; owners: \"my name didn't appear\"); peers use canonical sync identity")
 check(not icons[2].ready, "fallback badge is used while icon download is unavailable")
 check(#requests == 2 and requests[2].url:find("&q=&me=" .. p.hash("[U:1:12345]"), 1, true),
     "legacy visibility is registered while migrating older clients")

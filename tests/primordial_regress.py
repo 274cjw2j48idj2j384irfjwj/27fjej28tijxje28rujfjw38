@@ -353,7 +353,8 @@ jr.execute("""RES_FS_TICKS = 16 SIM = 0
 resolver = { data = {}, misses = {}, mem = {}, previous = {}, active = false }
 resolver.state_of = function() return "stand" end
 resolver.fast_target = function() return false end
-globals = { real_time = function() return SIM end }
+TICKS = 0
+globals = { real_time = function() return SIM end, tick_count = function() TICKS = TICKS + 1 return TICKS end }
 local function item(v) return { get = function() return v end } end
 ui = { ragebot = { logic_reso = item(false), smart_baim = item(true),
     smart_baim_hp = item(40), smart_baim_lethal = item(true), resolver = { shot_pred = item(4) } } }
@@ -465,7 +466,7 @@ check('perf.add(e_callbacks.PAINT, "PAINT"' in SRC and "perf.span(\"watermark\",
 
 # body hits (owners, Oct 2026: "nagyon sok a body hit"): Multipoint correction pushes the head first when it is
 # shootable, the body only when Smart body aim took the head out
-DP = chunk("dmg_prediction = function(ctx, cmd, unpredicted_data)", "--- @endregion")
+DP = chunk("-- HITSCAN runs per command and target", "--- @endregion")
 dp = L.LuaRuntime(unpack_returned_tuples=True)
 dp.execute("""
 local function item(v) return { get = function() return v end } end
@@ -477,7 +478,9 @@ e_hitboxes = { HEAD = "head", CHEST = "chest", PELVIS = "stomach" }
 e_hitscan_groups = { HEAD = 0, CHEST = 1, STOMACH = 2 }
 damage = { calculate = function(_, _, box) return ({ head = 300, chest = 80, stomach = 100 })[box] end }
 get_dmg = function() return 40 end
-trace_bullet = function(_, pos) return { valid = true, hitgroup = pos } end
+TICK, TRACES = 0, 0
+globals = { tick_count = function() return TICK end }
+trace_bullet = function(_, pos) TRACES = TRACES + 1 return { valid = true, hitgroup = pos } end
 client_get_hitgroup_name = function(g) return g end
 resolver = { safe = {}, fast_target = function() return false end }
 ENEMY = { get_index = function() return 5 end, get_hitbox_pos = function(_, b) return b end,
@@ -492,10 +495,44 @@ function RUNDP()
     return c.hc[1], #c.on
 end""")
 r = [tuple(dp.eval("RUNDP()")) for _ in range(20)]
+same_tick = dp.eval("TRACES")
+dp.execute("TICK = 1")
+dp.eval("RUNDP()")
+next_tick = dp.eval("TRACES")
 dp.execute("resolver.safe[5] = 3")
 r2 = dp.eval("RUNDP()")
-check(all(x == (0, 1) for x in r) and tuple(r2) == (1, 1),
-      "Multipoint correction: the head first every time, the chest when Smart body aim took the head out (%s %s)" % (r[0], r2))
+check(all(x == (0, 1) for x in r) and tuple(r2) == (1, 1) and same_tick == 1 and next_tick == 2,
+      "Multipoint correction: the head first every time, the chest when Smart body aim took the head out, one trace "
+      "per tick and target however many commands (double tap) (%s %s %s %s)" % (r[0], r2, same_tick, next_tick))
+
+# DT lag (owners, Oct 2026: "lagging only in mid mirage with dt"): the on peek defensive check traces each enemy at
+# most once per 4 ticks and 2 enemies per frame, however many commands double tap runs in one frame
+PV = chunk("builder.peek_seen, builder.peek_budget = {}", "run_antiaim = function(")
+pv = L.LuaRuntime(unpack_returned_tuples=True)
+r = pv.eval("""(function()
+    builder = {}
+    TICK, FRAME, TRACES = 100, 1, 0
+    globals = { tick_count = function() return TICK end, interval_per_tick = function() return 1 / 64 end }
+    global_vars_frame_count = function() return FRAME end
+    e_hitboxes = { BODY = 3 }
+    vec3_t = function(x, y, z) return { x = x, y = y, z = z } end
+    trace_bullet = function() TRACES = TRACES + 1 return { valid = true, damage = 30 } end
+    """ + PV + """
+    local function enemy(i) return { get_index = function() return i end, get_prop = function() return { x = 1, y = 0, z = 0 } end,
+        get_eye_position = function() return setmetatable({}, { __add = function(a) return a end }) end,
+        get_hitbox_pos = function() return {} end } end
+    local origin = setmetatable({}, { __add = function(a) return a end })
+    local E = { enemy(1), enemy(2), enemy(3), enemy(4), enemy(5) }
+    for _ = 1, 14 do for _, e in ipairs(E) do builder.peek_visible({}, e, origin, {}) end end
+    local one_frame = TRACES
+    for f = 2, 4 do FRAME = f for _, e in ipairs(E) do builder.peek_visible({}, e, origin, {}) end end
+    local three_more = TRACES
+    TICK, FRAME = 104, 5
+    for _, e in ipairs(E) do builder.peek_visible({}, e, origin, {}) end
+    return one_frame, three_more, TRACES, builder.peek_visible({}, E[1], origin, {})
+end)()""")
+check(r[0] == 4 and r[1] == 10 and r[2] == 14 and r[3] == True,
+      "on peek defensive: 14 commands x 5 enemies in one frame = 2 enemies traced, every enemy once per 4 ticks (%s)" % (r,))
 
 # Adaptive AA (owners, Oct 2026: "nagyon advanced aa improve ... unhittable"): a Thompson sampling bandit over AA profiles
 # per state group. Only the deciding maths here (the game decides how good a profile is): draws stay in 0..1, the

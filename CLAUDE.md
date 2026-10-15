@@ -239,7 +239,11 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   colour materials and the jumpshot autostrafer / in-air autostop are written only on change. Profiler (dev build):
   Utils "Profile 10 s (dev)" times every callback (`perf.add` instead of callbacks.add) and the PAINT parts (`perf.span`)
   with QueryPerformanceCounter, prints ms per frame and sends a `kind` "perf" line to shotlogs/primordial/. Find the
-  next FPS problem with it, not by guessing.
+  next FPS problem with it, not by guessing. DT lag (owners, Oct 2026: "lagging only in mid mirage with dt"): Primordial
+  runs ANTIAIM / HITSCAN once per command and double tap runs many commands in one frame; on an open map every enemy is
+  in view and the bullet traces are long. The on peek defensive check (`builder.peek_visible`) traces an enemy at most
+  once per 4 ticks and 2 enemies per frame; Multipoint correction (`dmg_prediction_pick`) and `resolver.body_damage`
+  trace once per tick and target. Any new per-command trace needs the same.
 - Circles: Primordial's `render_circle_filled` / `render_circle` take an int radius (a fraction stopped the PAINT
   callback in `sky`); the script wraps both and rounds the radius.
 - Menu (owners, Oct 2026, chose the "buttons" mock-up): four main buttons (Config, Ragebot, Anti-Aim, Misc), under them
@@ -263,10 +267,15 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   `libs.tools.js`, image `file://{images}/icons/specter_moon.png`, downloaded once from `GET /moon.png` into
   csgo/materials/panorama/images/icons/), a row "name ~ version" in Specter Revealer, a notification once per name,
   `esp.sync_user` (talk back / chat mention). With Shared ESP on our own row gets the moon too (owners: "ha csak én vagyok
-  fent ... nem jelzi"; our hash goes into `q` as well, icon only, no list row / notification). The dead azura sync socket is gone.
-  Shared ESP is this user detection only (the old azura's was too: no positions are shared). "Refresh players" says why
-  nothing shows (owners, Oct 2026: "a shared esp nem működik"): no answer from the server / nobody else in the game (N
-  players asked, whether we are visible).
+  fent ... nem jelzi"; our hash goes into `q` as well; our row is also the first Revealer row, "name (you) ~ version" (owners: "my name didn't
+  appear"), never announced, not in `esp.sync_user`). The dead azura sync socket is gone.
+  Shared ESP is this user detection only (the old azura's was too: no positions are shared). "Refresh players" (only the
+  button: `on_shared_players(true)`; the round start / connect refreshes say nothing) says why nothing shows (owners, Oct
+  2026: "a shared esp nem működik"): no answer from the server / nobody else in the game (N players asked, whether we
+  are visible).
+- Steam http lib (`libs.httpcreator`, minified): its passes run on `global_vars_real_time()` (curtime starts again on every
+  server: after a switch to a younger map no request was answered); a finished request leaves the list before its
+  callback and is not timed out in the same pass (its callback ran twice, the request after it was dropped).
 - Cloud configs (owners, Oct 2026: "a cloud cfg ... nem működik"; it was the dead azura.uno socket): the `cloud` module
   talks to OUR license server like the gamesense lua, `lua=pm` keeps the two apart (server.js `config_lua`: the gs list /
   dedup / delete never see a pm config and the other way round). `GET /configs?lua=pm` = the list without the data
