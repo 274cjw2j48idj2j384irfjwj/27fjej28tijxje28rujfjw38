@@ -278,6 +278,52 @@ return out[1], out[2], out[3], out[4], out[5], out[6], out[7], out[8], out[9], o
 check(list(r) == ["equip", "equip", None, None, None, "fire", None, "fire", None, "restore", None, "restore", None, True],
       "zeus vs rushers: equips against a knife / zeus rusher, fires at the range edge (wider standing), needs a clear line, puts it away (%s)" % (list(r),))
 
+# cheat revealer: known cheats are read from the clan tag (also a typed part of an animated one), others / Specter's own are not
+RV = chunk("reveal = { found = {}", "-- server list (owners, Oct 2026")
+rl = L.LuaRuntime(unpack_returned_tuples=True)
+rl.execute("""
+NOW = 100
+globals = { real_time = function() return NOW end }
+UI, NOTES, UPD, REM, PLAYERS, TAGS, SHOWN = true, {}, {}, {}, {}, {}, {}
+ui = { utils = { cheat_reveal = { get = function() return UI end } } }
+notifications = { types = { information = 1 }, create = function(_, t) NOTES[#NOTES + 1] = t end }
+check_conditions = function() return true end
+libs = { filesystem = { exists = function() return true end, create_directory = function() end },
+  tools = { http = {}, js = { update = function(i, p, r, sid) UPD[#UPD + 1] = i .. ":" .. p end, remove = function(i) REM[#REM + 1] = i end } } }
+presence = { server = "https://x", shown = SHOWN, steamid = function(p) return p.sid end }
+player_resource_get_prop = function(_, idx) return TAGS[idx] end
+local function mk(idx, name) return { get_index = function() return idx end, get_name = function() return name end, sid = "7656119800000000" .. idx } end
+PLAYERS = { mk(1, "me"), mk(2, "ann"), mk(3, "bob"), mk(4, "cat") }
+entity_list_get_local_player = function() return PLAYERS[1] end
+entity_list_get_players = function() return PLAYERS end
+entity_list_get_entity = function(i) return PLAYERS[i] end
+""" + RV)
+V = rl.eval("function(code) return assert(loadstring(code))() end")
+r = V("""
+local d = {}
+local function name(t) local s = reveal.detect(t) return s and s.key or "-" end
+d[1] = name("gamesense") .. name("GAMESENSE ") .. name("g a m e s e n s e") .. name("gamese") .. name("Neverlose.cc") .. name("nixware")
+    .. name("primordial") .. name("onetap") .. name("specter.prim") .. name("game") .. name("") .. name(nil)
+TAGS = { [2] = "nixware", [3] = "gamesen", [4] = "hello" }
+reveal.update()
+d[2] = #NOTES .. " " .. #UPD .. " " .. UPD[1] .. " " .. UPD[2]
+NOW = 102; reveal.update()                      -- again: nothing new announced, still shown
+d[3] = #NOTES
+NOW = 130; TAGS = {}; reveal.update()           -- tags gone but within the 120 s memory: kept
+d[4] = #REM
+NOW = 260; reveal.update()                      -- past it: removed
+d[5] = #REM
+SHOWN[2] = true; TAGS = { [2] = "nixware" }; NOW = 300; reveal.update()   -- a Specter user: the moon stays, no badge
+d[6] = #UPD
+UI = false; NOW = 310; reveal.update()
+d[7] = next(reveal.found) == nil
+return d[1], d[2], d[3], d[4], d[5], d[6], d[7]
+""")
+check(r[0] == "gsgsgsgsnlnixprimot----" and r[1] == "2 2 2:file://{images}/icons/specter_reveal_nix.png 3:file://{images}/icons/specter_reveal_gs.png"
+      and r[2] == 2 and r[3] == 0 and r[4] == 2 and r[5] == 6 and r[6],
+      "cheat revealer: clan tags name the cheat (typed prefixes too, Specter / short / empty ones not), badges + one notification each, "
+      "kept 2 minutes, a Specter user keeps the moon (%s)" % (list(r),))
+
 # the loader's beta version (BUILD_VERSION pm_beta): no Resolver page and no resolver groups, the helpers stay
 beta = L.LuaRuntime()
 beta.execute(MENU_MOCK.replace('info = { beta_build = true', 'info = { plan = "beta", beta_build = true'))

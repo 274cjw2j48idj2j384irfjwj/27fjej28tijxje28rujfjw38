@@ -30,10 +30,12 @@ class Panel {
     }
     GetAttributeString(key, fallback) { return this.attrs[key] || fallback; }
     DeleteAsync() { this.valid = false; for (const child of this.children) child.DeleteAsync(); }
+    GetParent() { return this.parent; }
+    MoveChildBefore(child, before) { this.moved = (this.moved || 0) + 1; }
     SetImage(path) { this.image = path; this.writes = (this.writes || 0) + 1; }
 }
 let context = new Panel("hud");
-const xuids = { 1: "76561197960278073", 2: "76561197960290419" };
+const xuids = { 1: "76561197960278073", 2: "76561197960290419", 3: "76561197960301234" };
 let nextEvent = 0;
 const events = new Map();
 const api = vm.runInNewContext("(function() {" + match[1] + "})()", {
@@ -84,6 +86,18 @@ check(badge.FindChild("specter-image").writes === 1, "unchanged image is not rel
 let mine = row(xuids[1], false);
 api.update(1, "moon", true, xuids[1]);
 check(mine.FindChild("specter-presence-" + xuids[1]), "rankless scoreboard rows receive a badge");
+// the country flag: the badge takes its place and the flag comes back with it
+const flagged = new Panel("row-" + xuids[3], board);
+flagged.cls = "sb-row"; flagged.attrs.xuid = xuids[3];
+const cell = new Panel("flag-cell", flagged);
+const flag = new Panel("FlagImg", cell);
+api.update(3, "reveal", true, xuids[3]);
+const flag_badge = cell.FindChild("specter-presence-" + xuids[3]);
+check(flag_badge && flag.visible === false && cell.moved === 1,
+    "the badge replaces the country flag (flag hidden, badge in its cell)");
+api.remove(3);
+check(!flag_badge.IsValid() && flag.visible === true, "removing a badge gives the country flag back");
+flagged.DeleteAsync();
 board.DeleteAsync();
 board = new Panel("Scoreboard", container);
 other = row(xuids[2]);
