@@ -777,6 +777,24 @@ resolver.advanced.observe(bad, mover, 0 / 0)
 return f.x > p.advanced.last.x + 10, f.blocked == false, w.blocked == true, w.x < f.x, #p.advanced.records, bad.advanced == nil,
     resolver.advanced.forecast(nil, mover, 10) == nil
 """)
+# a 2D netvar vector (indexing .z raises in Primordial) must not stop the callback: z comes from "name[2]" or is 0
+r2 = U("""
+local two = function(x, y) return setmetatable({ x = x, y = y }, { __index = function() error("not a numeric type") end }) end
+local ent = { get_prop = function(_, n)
+    if n == "m_vecOrigin" then return two(5, 6) end
+    if n == "m_vecVelocity" then return two(100, 0) end
+    if n == "m_vecVelocity[2]" then return -20 end
+    if n == "m_flSimulationTime" then return 50 end
+    if n == "m_fFlags" then return 1 end
+    return 0
+end }
+local rec = resolver.advanced.read(ent, "m_vecVelocity")
+local org = resolver.advanced.read(ent, "m_vecOrigin")
+local p = {}
+resolver.advanced.observe(p, ent, 10)
+return rec.z, org.z, p.advanced ~= nil and p.advanced.last.vz, resolver.advanced.read({ get_prop = function() return 5 end }, "x") == nil
+""")
+check(r2[0] == -20 and r2[1] == 0 and r2[2] == -20 and r2[3], "2D netvar vectors: z from the [2] element or 0, no error (%s)" % (list(r2),))
 check(all(bool(v) for v in list(r)[:4]) and r[4] == 6 and r[5] and r[6],
       "movement forecast: a runner is predicted ahead along its velocity, a wall stops it, garbage netvars and no data give nothing (%s)" % (list(r),))
 r = U("""
