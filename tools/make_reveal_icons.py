@@ -1,7 +1,7 @@
 """Cheat revealer badges: assets/reveal/<key>.png (32 x 32) and the base64 block of server.js (GET /reveal/<key>.png).
 
 They are our own monogram badges (letters on a rounded square in the colour people connect with the software), NOT the logos of
-those programs. To use real logos put a 32 x 32 PNG with the same name into assets/reveal/ and run this script again: it draws
+those programs. To use real logos put a PNG (any size) with the same name into assets/reveal/ and run this script again: it draws
 only the missing PNGs and always writes all of them into server.js (the license server's Docker image has no assets folder).
 Usage: python3 tools/make_reveal_icons.py
 """
@@ -52,6 +52,14 @@ def main():
         path = os.path.join(OUT, key + ".png")
         if not os.path.exists(path):
             draw(key).save(path, optimize=True)
+        else:
+            # a logo put here by hand can be any size: it is scaled down (aspect kept, centred, transparent padding) to 32 x 32
+            img = Image.open(path).convert("RGBA")
+            if img.size != (32, 32):
+                img.thumbnail((32, 32), Image.LANCZOS)
+                canvas = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
+                canvas.paste(img, ((32 - img.width) // 2, (32 - img.height) // 2), img)
+                canvas.save(path, optimize=True)
     rows = []
     for key in BADGES:
         with open(os.path.join(OUT, key + ".png"), "rb") as f:
