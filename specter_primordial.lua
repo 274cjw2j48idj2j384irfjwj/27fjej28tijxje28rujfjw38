@@ -909,6 +909,8 @@ local groups = {
 
 
     statistics = libs.eui.create("Statistics", 2),
+
+    servers = libs.eui.create("Servers", 2),
     
 
     ragebot = libs.eui.create("Ragebot", 3),
@@ -1056,7 +1058,7 @@ local defensive = {
 
 local ui = {
     nav = {
-        slider = groups.nav:slider("Specter | tee hee!<3", 0, 14),
+        slider = groups.nav:slider("Specter | tee hee!<3", 0, 15),
 
         text = groups.nav:text("Welcome, " .. info.user .. "!"),
         sep0 = menu_add_separator("Home | Specter v" .. client_version .. "" .. info.beta_text2),
@@ -1085,6 +1087,15 @@ local ui = {
 
     statistics = {
         list = groups.statistics:list("Your personal statistics", {})
+    },
+
+    -- raw menu items, not eui ones: eui exports every checkbox into the configs, and an imported (cloud) config must never
+    -- switch "Share my server" on. Off at every start.
+    servers = {
+        share = menu_add_checkbox("Servers", "Share my server", false),
+        list = menu_add_list("Servers", "Specter users on servers", {}, 8),
+        connect = menu_add_button("Servers", "Connect to the selected", function() servers.connect() end),
+        refresh = menu_add_button("Servers", "Refresh the list", function() servers.update(true) end),
     },
 
     ragebot = {
@@ -1635,7 +1646,7 @@ local nav_pages = {
     { name = "Config", subs = { { "Configs", 1 }, { "Statistics", 2 } } },
     { name = "Ragebot", subs = { { "Resolver", 3 }, { "Aimbot", 10 }, { "Tickbase", 11 }, { "Exploits", 5 } } },
     { name = "Anti-Aim", subs = { { "Builder", 4 }, { "Yaw / Jitter", 12 }, { "Desync", 13 }, { "Defensive", 14 } } },
-    { name = "Misc", subs = { { "Visuals", 6 }, { "Player", 7 }, { "Movement", 8 }, { "Utils", 9 } } },
+    { name = "Misc", subs = { { "Visuals", 6 }, { "Player", 7 }, { "Movement", 8 }, { "Utils", 9 }, { "Servers", 15 } } },
 }
 if (info.plan == "beta") then
     table.remove(nav_pages[2].subs, 1)
@@ -3288,8 +3299,116 @@ on_chatsync = function(event)
     end
 end
 
+-- server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni"):
+-- the "Servers" page lists the Specter users who switched "Share my server" on (their server's ip:port, name, map, players) and
+-- connects to the selected one. Opt in, off at every start; our own address is read from the net channel (GetAddress) and goes
+-- to the license server (/servers) only while the box is on. The address of a row is checked before "connect" (a server list
+-- is somebody else's text: never a console command)
+servers = { next = 0, rows = {}, labels = "", sharing = false }
+servers.valid = function(srv)
+    if (type(srv) ~= "string") then return false end
+    local a, b, c, d, port = srv:match("^(%d+)%.(%d+)%.(%d+)%.(%d+):(%d+)$")
+    if (a == nil) then return false end
+    a, b, c, d, port = tonumber(a), tonumber(b), tonumber(c), tonumber(d), tonumber(port)
+    if (a > 255 or b > 255 or c > 255 or d > 255 or port < 1 or port > 65535) then return false end
+    return not (a == 0 or a == 10 or a == 127 or a >= 224 or (a == 192 and b == 168) or (a == 172 and b >= 16 and b <= 31)
+        or (a == 169 and b == 254) or (a == 100 and b >= 64 and b <= 127))
+end
+servers.address = function()
+    local ok, text = pcall(function()
+        local iface = memory_create_interface("engine.dll", "VEngineClient014")
+        local get_channel = ffi.cast("void*(__thiscall*)(void*)", memory_get_vfunc(iface, 78))
+        local channel = get_channel(ffi.cast("void***", iface))
+        local address = tonumber(ffi.cast("unsigned long", channel))
+        if (address == nil or address == 0) then return nil end
+        local get_address = ffi.cast("const char*(__thiscall*)(void*)", memory_get_vfunc(address, 1))
+        local raw = get_address(ffi.cast("void***", channel))
+        return raw ~= nil and ffi.string(raw) or nil
+    end)
+    return ok and servers.valid(text) and text or nil
+end
+servers.me = function()
+    local own = presence.identity(entity_list_get_local_player())
+    return own ~= nil and presence.hash(own.sid) or nil
+end
+servers.send = function(query, done)
+    local version = presence.version == "beta" and "beta" or presence.version == "nightly" and "nightly" or "dev"
+    pcall(libs.tools.http.get, libs.tools.http, presence.server .. "/servers?t=" .. version .. query, done or function() end)
+end
+servers.show = function(list)
+    local rows, labels = {}, {}
+    for _, row in ipairs(list) do
+        if (type(row) == "table" and servers.valid(row.srv)) then
+            local label = string.format("%s ~ %s ~ %d pl ~ %s", tostring(row.name):sub(1, 20), tostring(row.map):sub(1, 32),
+                tonumber(row.players) or 0, row.srv)
+            rows[label] = row
+            labels[#labels + 1] = label
+        end
+    end
+    servers.rows = rows
+    local joined = table.concat(labels, "\n")
+    if (joined ~= servers.labels) then
+        servers.labels = joined
+        pcall(ui.servers.list.set_items, ui.servers.list, labels)
+    end
+end
+servers.update = function(force)
+    local now = globals.real_time()
+    local share, open = ui.servers.share:get(), ui.nav.slider:get() == 15
+    if (servers.sharing and not share) then
+        servers.sharing = false
+        local me = servers.me()
+        if (me ~= nil) then servers.send("&me=" .. me .. "&off=1") end
+    end
+    if (not force and not share and not open) then return end
+    if (servers.busy ~= nil and now >= servers.busy and now - servers.busy < 15) then return end
+    if (not force and now < servers.next and now > servers.next - 60) then return end
+    servers.next = now + 20
+    local query = ""
+    local me = check_conditions() and servers.me() or nil
+    local address = share and me ~= nil and servers.address() or nil
+    if (address ~= nil) then
+        local name = tostring(entity_list_get_local_player():get_name() or "user"):gsub(" ", "_"):gsub("[^%w_%-]", "")
+        local map = tostring(engine_get_level_name_short and engine_get_level_name_short() or "?"):gsub("[^%w_]", "")
+        local players = 0
+        for _ in pairs(entity_list_get_players() or {}) do players = players + 1 end
+        query = "&me=" .. me .. "&srv=" .. address .. "&nm=" .. name:sub(1, 20) .. "&mp=" .. (map ~= "" and map or "?") .. "&pl=" .. players
+        servers.sharing = true
+    elseif (me ~= nil) then
+        query = "&me=" .. me
+    end
+    servers.busy = now
+    servers.send(query, function(response)
+        servers.busy = nil
+        local ok, data = pcall(libs.json.parse, response and response.body or "")
+        if (ok and type(data) == "table" and data.ok == true and type(data.list) == "table") then
+            servers.show(data.list)
+        elseif (force) then
+            notifications.create("Specter", "Server list: no answer from the server.", notifications.types.warning)
+        end
+    end)
+end
+servers.connect = function()
+    local ok, label = pcall(ui.servers.list.get_active_item_name, ui.servers.list)
+    local row = ok and label and servers.rows[label] or nil
+    if (row == nil or not servers.valid(row.srv)) then
+        notifications.create("Specter", "Select a server in the list first.", notifications.types.warning)
+        return
+    end
+    notifications.create("Specter", "Connecting to " .. row.name .. " (" .. row.srv .. ")", notifications.types.information)
+    engine_execute_cmd("connect " .. row.srv)
+end
+servers.leave = function()
+    if (servers.sharing) then
+        servers.sharing = false
+        local me = servers.me()
+        if (me ~= nil) then servers.send("&me=" .. me .. "&off=1") end
+    end
+end
+
 lets_sync = function()
     presence.update(false)
+    servers.update(false)
 end
 
 run_clantag = function()
@@ -8932,6 +9051,7 @@ menu_handle = function()
         groups.movement:depend({page == 8})
         groups.utils:depend({page == 9})
         groups.sync:depend({page == 9})
+        groups.servers:depend({page == 15})
 
         if (ui.nav.slider:get() == 0) then
             menu_set_group_column("Home | Specter v" .. client_version .. "" .. info.beta_text2, 2)
@@ -9726,6 +9846,7 @@ end
 
 callbacks.add(e_callbacks.SHUTDOWN, function()
     print("restoring configuration..")
+    servers.leave()
 
     client_set_clantag("")
     menu_find("antiaim", "main", "general", "ladder antiaim"):set(auto_cfg.ladder_antiaim)
@@ -9993,6 +10114,7 @@ setup = function()
         groups.reso_cfg:depend({false})
         groups.utils:depend({false})
         groups.sync:depend({false})
+        groups.servers:depend({false})
         groups.yaw:depend({false})
         groups.jitter:depend({false})
         groups.desync:depend({false})

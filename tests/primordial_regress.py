@@ -145,10 +145,10 @@ EXPECT = {  # page -> (main point, groups that show)
     4: ("Anti-Aim", {"settings", "antiaim", "features"}), 12: ("Anti-Aim", {"settings", "yaw", "jitter"}),
     13: ("Anti-Aim", {"settings", "desync"}), 14: ("Anti-Aim", {"settings", "defensive"}),
     6: ("Misc", {"visuals", "customization"}), 7: ("Misc", {"player", "communication"}), 8: ("Misc", {"misc", "movement"}),
-    9: ("Misc", {"utils", "sync"}),
+    9: ("Misc", {"utils", "sync"}), 15: ("Misc", {"servers"}),
 }
 SUBS = {"Config": {"Configs", "Statistics"}, "Ragebot": {"Resolver", "Aimbot", "Tickbase", "Exploits"},
-        "Anti-Aim": {"Builder", "Yaw / Jitter", "Desync", "Defensive"}, "Misc": {"Visuals", "Player", "Movement", "Utils"}}
+        "Anti-Aim": {"Builder", "Yaw / Jitter", "Desync", "Defensive"}, "Misc": {"Visuals", "Player", "Movement", "Utils", "Servers"}}
 for page, (main, want) in sorted(EXPECT.items()):
     lua.execute("PAGE = %d; SHOWN = {}; menu_handle()" % page)
     shown = {k.split(":", 1)[1] for k, v in dict(lua.globals().SHOWN).items() if v}
@@ -156,6 +156,54 @@ for page, (main, want) in sorted(EXPECT.items()):
     buttons = {b[2:] for b in shown if b.startswith("› ")}
     check(groups_shown == want and buttons == SUBS[main],
           "menu page %2d (%s): groups %s, pages %s" % (page, main, sorted(groups_shown), sorted(buttons)))
+
+# server list: only a public ip:port is ever listed or connected to (never console text), rows come from the list, our own
+# address is only read while sharing is on
+SV = chunk("servers = { next = 0, rows = {}, labels = \"\", sharing = false }", "lets_sync = function()")
+sv = L.LuaRuntime(unpack_returned_tuples=True)
+sv.execute("""
+SENT, CMDS, NOTES, ITEMS = {}, {}, {}, nil
+engine_execute_cmd = function(c) CMDS[#CMDS + 1] = c end
+notifications = { types = { warning = 1, information = 2 }, create = function(_, t) NOTES[#NOTES + 1] = t end }
+SEL = nil
+ui = { servers = { share = { get = function() return SHARE end }, list = { set_items = function(_, i) ITEMS = i end,
+    get_active_item_name = function() return SEL end } }, nav = { slider = { get = function() return PAGE end } } }
+SHARE, PAGE = false, 0
+presence = { server = "https://x", version = "dev", identity = function() return { sid = "1" } end, hash = function() return "00ff00ff00ff00ff" end }
+libs = { tools = { http = { get = function(_, url) SENT[#SENT + 1] = url end } }, json = { parse = function() return {} end } }
+check_conditions = function() return false end
+entity_list_get_local_player = function() return nil end
+globals = { real_time = function() return 100 end }
+""" + SV)
+S = sv.eval("function(code) return assert(loadstring(code))() end")
+r = S("""
+local ok = servers.valid("8.8.8.8:27015") and servers.valid("185.23.4.5:1")
+local bad = servers.valid("10.0.0.1:27015") or servers.valid("192.168.1.2:27015") or servers.valid("127.0.0.1:27015")
+    or servers.valid("1.2.3.4:27015;quit") or servers.valid("1.2.3.4") or servers.valid("1.2.3.4:70000") or servers.valid("999.1.1.1:5")
+    or servers.valid("1.2.3.4:27015 ") or servers.valid(nil) or servers.valid("172.20.0.1:5") or servers.valid("224.0.0.1:5")
+servers.show({ { name = "ann", map = "de_mirage", srv = "8.8.8.8:27015", players = 7 }, { name = "evil", map = "x", srv = "1.1.1.1:5;quit", players = 1 } })
+local listed = ITEMS ~= nil and #ITEMS
+SEL = ITEMS[1]
+servers.connect()
+SEL = "evil ~ x ~ 1 pl ~ 1.1.1.1:5;quit"
+servers.connect()
+SEL = nil
+servers.connect()
+PAGE = 0; servers.update(false)             -- page closed, not sharing: no request
+local quiet = #SENT
+PAGE = 15; servers.update(false)            -- page open: asks for the list
+return ok, bad, listed, CMDS[1], #CMDS, #NOTES, quiet, #SENT
+""")
+check(r[0] and not r[1] and r[2] == 1 and r[3] == "connect 8.8.8.8:27015" and r[4] == 1 and r[5] == 3 and r[6] == 0 and r[7] == 1,
+      "server list: only a public ip:port is listed / connected to, a bad row or nothing selected only warns, no request while the "
+      "page is closed and sharing is off (%s)" % (list(r),))
+# the same check on the license server
+import subprocess
+JS = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "server.js")).read()
+fn = re.search(r"const public_srv = srv => \{.*?\n\}\n", JS, re.S).group(0)
+out = subprocess.run(["node", "-e", fn + "console.log(JSON.stringify([public_srv('8.8.8.8:27015'), public_srv('10.1.1.1:1'), public_srv('1.2.3.4:27015;quit'), public_srv('1.2.3.4:0'), public_srv('172.31.1.1:9'), public_srv('172.32.1.1:9')]))"],
+                     capture_output=True, text=True).stdout.strip()
+check(out == "[true,false,false,false,false,true]", "server.js /servers: only public ip:port addresses are accepted (%s)" % out)
 
 # the loader's beta version (BUILD_VERSION pm_beta): no Resolver page and no resolver groups, the helpers stay
 beta = L.LuaRuntime()
