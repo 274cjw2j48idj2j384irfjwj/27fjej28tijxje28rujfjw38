@@ -85,7 +85,13 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   the panels of the new channels at once (`sync_panels`). The #updates changelog carries the logo too, but every version is a
   new post and the old ones stay (owners: the history stays there). A new
   specter_loader.lua of `CLOUD_BRANCH` goes to #loader-download the same way every `RELEASE_MINUTES` (`sync_loader`, the
-  post's SHA-256 field says which one is out; only `is_customer_loader`). /post_* and /post_loader replace the old post too
+  post's SHA-256 field says which one is out; only `is_customer_loader`). /post_* and /post_loader replace the old post too.
+  The Primordial loader the same way (owners, Oct 2026: "ahhoz is csinálj egy külön csatornát ... cloudrol tudja
+  bepótolni"): `LOADERS` (gamesense / primordial: file, channel, check, install steps), `/post_loader lua:Primordial`
+  (from GitHub `CLOUD_BRANCH` when no file is attached), `sync_loader` posts both every RELEASE_MINUTES.
+  specter_primordial_loader.lua goes to #primordial-loader (category "🔜 Specter·Primordial", access
+  `primordial_readonly`: the Primordial role reads, Staff writes; /setup_channels adds it to a running server); only
+  `is_pm_customer_loader` (`_specter_pm_loader_loaded`, never specter_primordial.lua: it runs everything without a key)
   Logo (`logo()`): `assets/specter_icon.png` (thumbnails) / `assets/specter_logo.png` (the big image of the prices) go with
   the messages as attachments (`Dockerfile.bot` copies assets/); `SPECTER_LOGO_URL` overrides them with a lasting link.
   Which lua a post is about (owners, Oct 2026: "rakjon elé egy Primo logót vagy egy GS logot"): `lua_badge` puts
