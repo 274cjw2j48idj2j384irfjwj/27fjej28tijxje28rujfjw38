@@ -143,7 +143,7 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   Distort / Random hold (+- 18-32 deg: the owner's own yaw was +- 10-25, wider shows the head to the sides), a small lua
   jitter, Random desync 60, Smart defensive (Random up/down or Sway pitch, Random side / Distort / Jitter flick yaw),
   Phases anti brute, Fakelag variance; Fakelag / Manual / Freestand as the owner had them. Defensive (owners, Oct 2026: "csak
-  air és peeknél, tehát movingnál"): Smart only in Move (trigger Peek), Air and Air duck (trigger Air); Off in Global, Stand,
+  air és peeknél, tehát movingnál"): Smart only in Move (trigger Peek) and Air (trigger Air); Off in Global, Air duck, Stand,
   Slow walk, Duck, Duck move, Freestand (and Fakelag / Manual as before). "Apply advanced preset" sets the
   same values (the regress checks they match).
 - AA stats (owners, Oct 2026: "melyikkel hányszor találnak el"): `builder.aa_record` counts per "state · yaw mode" (the
