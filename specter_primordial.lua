@@ -5100,12 +5100,10 @@ lets_resolve = function()
 
     resolver.active = on and mode ~= 1
     resolver.safe_all = mode == 2
-    local requested = resolver.active
-    local target = resolver.data[resolver.previous.target]
-    local fallback = requested and (resolver.network().high
-        or (target ~= nil and not resolver.fresh(target)))
-    local override = requested and not fallback
-    resolver.native(override, fallback)
+    -- no fallback to Primordial's resolver at any ping (owners, Oct 2026: "mindig a sima Primo resot használja": the shot
+    -- logs, 120-160 ms ping, were all native = true, High ping protection had switched ours off)
+    local override = resolver.active
+    resolver.native(override, false)
     if (local_player == nil) then
         return
     end

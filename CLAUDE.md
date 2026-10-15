@@ -182,7 +182,8 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   OUR resolver is the default (owners, Oct 2026: "a Primo resolver outdated és rosszul működik"): `lets_resolve` runs it
   for every non-beta plan with no resolver toggle needed (freestanding hint, jitter side, the learned candidates from
   hits / misses always on), writing the side into the animstate and switching Primordial's "Resolve Antiaim" off; that
-  one is only the FALLBACK while our ping is high (`resolver.network().high`) or the target's data is stale. The menu
+  one is never used as a fallback (owners, Oct 2026: "mindig a sima Primo resot használja": the first version fell back to
+  it at a high ping or on stale target data, and the real logs at 120-160 ms ping were all `native` true). The menu
   toggles (Logic / Improve / Pose / Custom resolver, "Lua side override") no longer switch it on or off, Custom resolver
   only tunes it (pred_sel, calc_box, shot_pred, disablers). Not proven in game: judge it by the shot logs (`native`
   false = ours, miss reasons resolver / jitter).
