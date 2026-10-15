@@ -3720,11 +3720,11 @@ resolver.network = function()
         and ping >= ui.ragebot.latency_limit:get()
     return { outgoing = outgoing, incoming = incoming, ping = ping, high = guarded }
 end
-resolver.fast_target = function(ent)
+resolver.fast_target = function(ent, ignore_peek)
     if (ent == nil or not ui.ragebot.fast_peek:get()) then return false end
     local flags = tonumber(ent:get_prop("m_fFlags")) or 0
     local p = resolver.data[ent:get_index()]
-    local peek = ragebot_get_autopeek_pos()
+    local peek = not ignore_peek and ragebot_get_autopeek_pos()
     return bit.band(flags, 2) ~= 0 or (peek ~= nil and peek ~= false)
         or resolver.network().high
         or (p ~= nil and (p.defensive_until or 0) > globals.real_time())
@@ -5873,12 +5873,12 @@ resolver.hitscan = function(ctx)
     -- no shot carrying a safe point, because this was gated behind resolver.active
     local fresh = resolver.fresh(p)
     local jitter = fresh and p.jitter == true and (p.confidence or 0) >= 0.65
-    local jitter_safe = jitter
+    local jitter_safe = jitter and not resolver.fast_target(ent, true)
     -- safe_all (a disabler set to "head safe point") forces safety even on a fast peek, as before
     local safe = resolver.active and resolver.safe_all == true
-    -- a jittering target keeps its safe point on a fast peek too (owners' shot logs, Oct 2026: 40 of 46 resolver / jitter misses
-    -- of our resolver carried none, the head hit 62 % against 86 % on the body)
-    safe = safe or jitter
+    -- our auto peek alone does not take a jittering target's safe point away (owners' shot logs, Oct 2026: 40 of 46 resolver /
+    -- jitter misses of our resolver carried none, the head hit 62 % against 86 % on the body)
+    safe = safe or jitter_safe
     if (not fast) then
         if (resolver.active) then
             safe = safe or misses >= 2

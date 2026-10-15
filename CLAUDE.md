@@ -159,7 +159,12 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   "max 1-2 jitter 20-30 lövésenként"): the "jitter" / "resolver" miss reasons are PRIMORDIAL's resolver (it resolves
   whatever the lua toggles say; the api gives no way to tell its aimbot the side). What the lua decides is where it may
   shoot: ALWAYS (every resolver toggle off too, not beta) a jittering target gets head + chest safe points, a target after a
-  resolver / jitter miss a head safe point until a hit. The jitter safe point (`resolver.hitscan`) is NOT gated by
+  resolver / jitter miss a head safe point until a hit. Our own auto peek no longer takes the jitter safe point away
+  (`fast_target(ent, true)`; a crouched target, a high ping and a defensive still do; owners' 792 real shots, Oct 2026: 40 of 46
+  resolver / jitter misses of our resolver carried none, head 62 % hit against 86 % on the body). Layer 6 (movement)
+  playback rate and weight of the target at the shot are in the shot log as `l6` / `l6w` (read only, `resolver.capture`): the
+  res_fix_att_712 resolver (s0daa repo) reads the side from that rate alone, not adopted without proof: compare `l6` with the
+  side of `vl` on hits, add it as a hypothesis only if it correlates. The jitter safe point (`resolver.hitscan`) is NOT gated by
   `resolver.active` (owners, Oct 2026: "statikus resolvernél vannak problémák a jitternel"; the real shot logs, 86 shots,
   had jitter the top miss cause 16/32 with `sp` None on 83, because it used to need a resolver toggle on). The after-miss
   head safe point (misses >= 2) and the Custom resolver options (duck / peek / HP) stay behind `resolver.active`; `safe_all`
