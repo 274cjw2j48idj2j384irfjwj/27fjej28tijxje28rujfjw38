@@ -194,6 +194,11 @@ for _, c in pairs(seen) do kinds = kinds + 1; minc = math.min(minc, c) end
 return kinds, rep, lo, hi, minc""")
 check(xw[0] == 5 and xw[1] == 0 and xw[2] == -40 and xw[3] == 60 and xw[4] == 400,
       "X-Way: 5 positions over centre +- range, each once a round, never twice in a row (%s)" % (xw,))
+g = R("""local nan = 0 / 0
+local st, a, b = {}, builder.adv.def_yaw({}, 11, 30, 0, false, 0, builder.rnd), builder.adv.def_yaw({}, 11, 30, 0, false, 1, builder.rnd)
+return builder.adv.norm(nan), builder.adv.norm(math.huge), builder.adv.norm(190), builder.rnd(nan, 5) == 0 or builder.rnd(nan, 5) == 5, a, b""")
+check(g[0] == 0 and g[1] == 0 and g[2] == -170 and g[3] and g[4] == -g[5],
+      "AA numbers: NaN / inf give 0, the defensive jitter flick follows the packet parity and flips every sent packet (%s)" % (list(g),))
 hold = R("""local st, run, worst, prev = {}, 0, 0, nil
 for n = 1, 3000 do local v = builder.adv.xway(st, 3, 30, 0, 4, builder.rnd)
   if v == prev then run = run + 1 else run = 1 end; worst = math.max(worst, run); prev = v end
