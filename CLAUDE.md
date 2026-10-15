@@ -237,6 +237,14 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   convergence factor (`p.feet_steps` records seen, 6 = converged, min 0.25); `zero` = the body yaw under which the model says
   "no desync" (20 still, 12 moving). It sets the feet model hypotheses' bonus (`0.12 * rel`) and when they are skipped. The
   shot logs carry `ph` (phase) and `rl` (rel). Judge it by the per state stats and these, not by the sims; not proven in game.
+- State priors (owners, Oct 2026: "minden statere külön resolver logika ... ami a legvalószínűbb hogy azt használják"): read
+  from the workshop builders (Formal Yaw, Anti-Aim Builder, Destroy, T1ny, Star-Project; their conditions are Standing /
+  Walking / Slow walk / Ducking / Air / Crouching air, e.g. Formal Yaw: moving jitter 71 desync 88-94 %, air 65 / 69-80 %,
+  crouched air 62 / 60 %): standing and crouched-still hold a side with a near full body yaw, moving and the air flip the
+  desync with the yaw jitter. `resolver.STATE_PRIOR[state]` adds a small bonus (0.01-0.06) per hypothesis (stand: side hint +
+  feet model, moving / crouch walk / air: half size + jitter pattern); the results overrule it. States: stand, slow, move,
+  duck, cmove, air, airduck (new: in the air crouched), "state fs" and "jitter" keep their own memory. Prior only: the
+  workshop luas are not what the enemies on the real servers run, judge it by the per state stats.
 - Backtrack: Primordial's (its records, the tick count of its shot). The old "Improve backtrack" wrote cmd.tick_count on
   every command from the enemy nearest the crosshair minus "dynamic ticks": the server rewound to a time the aimbot did
   not aim at. Now Improve backtrack sets Primordial's fake ping amount (100 ms, Extended backtrack 200 ms; the server takes
