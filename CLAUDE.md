@@ -392,13 +392,12 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   players (`m_szClan`) is matched against `reveal.SOFT` (gamesense / skeet, primordial, nixware, neverlose, onetap, fatality, aimware,
   pandora; a typed prefix of 5+ letters counts, a hit is kept 120 s because animated tags show the word only part of the time):
   the player gets that cheat's badge on the scoreboard (not a Specter user: the moon wins) and one notification. Passive, only the
-  public clan tag: a player with another / no tag is not seen. The badges are OUR monogram badges (letters on a coloured rounded
-  square, `tools/make_reveal_icons.py` -> `assets/reveal/<key>.png` and the `REVEAL_PNG` block of server.js, served at
-  `GET /reveal/<key>.png`, downloaded once into csgo/materials/panorama/images/icons/specter_reveal_<key>.png), NOT the logos of those
-  programs, EXCEPT the ones the owners sent (Oct 2026, the MIT licensed "p2c-icons" set, licence text in assets/reveal/LICENSE-p2c-icons):
-  gs, prim, nix, nl, ot, fat, pan, ev (ev0lve) are those icons scaled to 32 x 32; aw (aimware) is still our own badge. To change one put
-  a PNG of any size with the same name into assets/reveal/, run the script (it scales to 32 x 32 and embeds it), commit assets/reveal +
-  server.js.
+  public clan tag: a player with another / no tag is not seen. The badges are the pictures of the software (the owners' MIT licensed "p2c-icons" set, Oct 2026, any size, kept in
+  assets/reveal/src/<key>.png with its licence text; aw (aimware) has none and is a plain monogram) on a dark glass tile with a rim light,
+  a glow in the picture's own colour, shadow and specular ("dark" premium style the owners chose): `tools/make_reveal_icons.py` writes the
+  64 x 64 `assets/reveal/<key>.png` and the `REVEAL_PNG` block of server.js, served at `GET /reveal/<key>.png`, downloaded once into
+  csgo/materials/panorama/images/icons/specter_reveal_<key>.png. To change one: replace its file in assets/reveal/src/, run the script,
+  commit assets/reveal + server.js.
 - Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";
   Primordial only, the gamesense lua has no user detection to build on): Misc > "Servers" (page 15). "Share my server" (default
   OFF, a RAW `menu_add_checkbox`, not an eui item: eui exports every checkbox into the configs, and an imported / cloud config must
