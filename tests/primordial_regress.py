@@ -248,6 +248,36 @@ return table.concat(ROWS, "|"), n, REQ[1]:find("t=gs", 1, true) ~= nil
 check(r[0] == "p2 ~ gs user|p3 ~ prim user (beta)|you ~ gs user" and r[1] == 3 and r[2],
       "gs lua list: you, a gs user and a prim user are listed, a bad steam id is not asked (%s)" % (list(r),))
 
+# zeus vs rushers: a knife / zeus holder running at us makes us take the zeus out, it is fired at the edge of its range (closer to
+# the edge standing than moving), put away when the threat is gone
+ZS = chunk("zeus = { RANGE = 182", "zeus_rush = function(cmd)")
+zl = L.LuaRuntime(unpack_returned_tuples=True)
+zl.execute(ZS)
+Z = zl.eval("function(code) return assert(loadstring(code))() end")
+r = Z("""
+local function enemy(dist, closing, holds, see) return { dist = dist, closing = closing, holds = holds, see = function() return see ~= false end } end
+local function st(o) o.speed = o.speed or 0 o.weapon = o.weapon or "ak47" o.taken = o.taken or false o.has_zeus = true
+  o.equip_at = o.equip_at or 0 o.threat_at = o.threat_at or 0 o.enemies = o.enemies or {} return o end
+local out = {}
+out[1] = zeus.decide(st{ enemies = { enemy(300, 200, "knife") } }, 10)                       -- knife rusher: equip
+out[2] = zeus.decide(st{ enemies = { enemy(400, 150, "taser") } }, 10)                        -- zeus holder: equip too
+out[3] = zeus.decide(st{ enemies = { enemy(300, -100, "knife") } }, 10)                       -- walking away: nothing
+out[4] = zeus.decide(st{ enemies = { enemy(300, 200, "ak47") } }, 10)                         -- a rifle: nothing
+out[5] = zeus.decide(st{ enemies = { enemy(300, 200, "knife") }, equip_at = 9.8 }, 10)       -- just tried: wait
+local a, t = zeus.decide(st{ weapon = "taser", enemies = { enemy(175, 100, "knife") } }, 10)
+out[6] = a                                                                                   -- standing: 175 <= 180 fires
+out[7] = zeus.decide(st{ weapon = "taser", speed = 250, enemies = { enemy(175, 100, "knife") } }, 10)   -- moving: edge is 170, wait
+out[8] = zeus.decide(st{ weapon = "taser", speed = 250, enemies = { enemy(165, 100, "knife") } }, 10)
+out[9] = zeus.decide(st{ weapon = "taser", enemies = { enemy(175, 100, "knife", false) } }, 10)        -- behind a wall: no
+out[10] = zeus.decide(st{ weapon = "taser", taken = true, threat_at = 5, enemies = {} }, 10)           -- threat gone: put away
+out[11] = zeus.decide(st{ weapon = "taser", taken = true, threat_at = 9.5, enemies = {} }, 10)         -- just gone: keep
+out[12] = zeus.decide(st{ weapon = "taser", taken = true, clip = 0, enemies = { enemy(100, 0, "knife") } }, 10)  -- fired: put away
+out[13] = zeus.decide(st{ weapon = "taser", taken = false, threat_at = 0, enemies = {} }, 10)          -- not ours: leave it
+return out[1], out[2], out[3], out[4], out[5], out[6], out[7], out[8], out[9], out[10], out[11], out[12], out[13], t ~= nil
+""")
+check(list(r) == ["equip", "equip", None, None, None, "fire", None, "fire", None, "restore", None, "restore", None, True],
+      "zeus vs rushers: equips against a knife / zeus rusher, fires at the range edge (wider standing), needs a clear line, puts it away (%s)" % (list(r),))
+
 # the loader's beta version (BUILD_VERSION pm_beta): no Resolver page and no resolver groups, the helpers stay
 beta = L.LuaRuntime()
 beta.execute(MENU_MOCK.replace('info = { beta_build = true', 'info = { plan = "beta", beta_build = true'))
