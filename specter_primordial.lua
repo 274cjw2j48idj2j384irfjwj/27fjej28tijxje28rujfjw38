@@ -889,7 +889,7 @@ local builder = { misses = 0, invert_defensive = false, old_defensive = false, i
 local indicator = { font = render_get_default_font(), shot_count = 0, data = {}, pos = vec2_t(100, 100), size = vec2_t(200, 100), difference = vec2_t(0, 0), dragging = false }
 local console_material = { "vgui_white", "vgui/hud/800corner1", "vgui/hud/800corner2", "vgui/hud/800corner3", "vgui/hud/800corner4" }
 local esp = { sync_user = {}, unsync_user = {}, sync_update = 0 }
-local resolver = { data = {}, mem = {}, previous = {}, misses = {}, trust = { fs = 0, jitter = 0 }, shots = {}, epoch = 0 }
+local resolver = { data = {}, mem = {}, previous = {}, misses = {}, trust = { fs = 0, jitter = 0 }, shots = {}, epoch = 0, stats = {} }
 local delay = { tick_delay = client_time_to_ticks(1), last_tick = globals.tick_count() }
 local animation = { alpha = 0, appearing = 0 }
 local toss = { target_angles = vec3_t(0, 0, 0) }
@@ -1452,6 +1452,17 @@ ui.utils.aa_stats = groups.utils:checkbox("AA stats", true)
 ui.utils.aa_stats_reset = groups.utils:button("Reset AA stats", function()
     builder.aa_stats = {}
     notifications.create("Specter", "Anti-aim stats have been reset!", notifications.types.success)
+end)
+ui.utils.res_stats = groups.utils:checkbox("Resolver stats", true)
+ui.utils.res_stats_reset = groups.utils:button("Reset resolver stats", function()
+    resolver.stats = {}
+    notifications.create("Specter", "Resolver stats have been reset!", notifications.types.success)
+end)
+ui.utils.res_stats_print = groups.utils:button("Resolver stats to console", function()
+    local lines = resolver.stat_lines()
+    print("resolver stats per state:")
+    for _, line in ipairs(lines) do print(line) end
+    if (#lines == 0) then print("no shots yet") end
 end)
 ui.utils.profile = groups.utils:button("Profile 10 s (dev)", function()
     perf.start()
@@ -4522,6 +4533,72 @@ end
 
 --- @endregion
 
+-- Statistics per state of the target (owners, Oct 2026: "/state, hogy megnézzük mire missel a legtöbbet, és könnyebb
+-- lenne fixálni a resolvert mint egybe az egészet"): shots, hits, the miss reasons (a shot spoiled by a defensive shift /
+-- a lag break is relabelled "defensive" / "lag break": Primordial reports it as "jitter" / "resolver") and how often
+-- each hypothesis was used and hit. The row "jitter" counts the shots at a jittering target in any state
+resolver.HYP = { "side", "-side", "side/2", "-side/2", "none", "feet", "-feet", "next", "-next" }
+resolver.record = function(snap, hit_ok, reason)
+    local label
+    if (not hit_ok) then
+        label = tostring(reason or "?")
+        if (label == "resolver" or label == "jitter") then
+            label = snap.defensive and "defensive" or snap.lagbreak and "lag break" or label
+        end
+    end
+    local function add(name)
+        local r = resolver.stats[name]
+        if (r == nil) then
+            r = { name = name, n = 0, hit = 0, why = {}, hyp = {} }
+            resolver.stats[name] = r
+        end
+        r.n = r.n + 1
+        if (hit_ok) then
+            r.hit = r.hit + 1
+        else
+            r.why[label] = (r.why[label] or 0) + 1
+        end
+        if (snap.candidate ~= nil) then
+            local h = r.hyp[snap.candidate] or { n = 0, hit = 0 }
+            r.hyp[snap.candidate] = h
+            h.n = h.n + 1
+            h.hit = h.hit + (hit_ok and 1 or 0)
+        end
+    end
+    add(snap.state or "?")
+    if (snap.key == "jitter") then
+        add("jitter")
+    end
+end
+-- the rows in a fixed order: { name, n, hit, rate (0..100), miss = { { label, count } by count }, hyp = { { name, n, hit } } }
+resolver.stat_rows = function()
+    local order, rows = { "stand", "slow", "move", "duck", "air", "jitter" }, {}
+    for _, name in ipairs(order) do
+        local r = resolver.stats[name]
+        if (r ~= nil and r.n > 0) then
+            local miss, hyp = {}, {}
+            for label, count in pairs(r.why) do miss[#miss + 1] = { label, count } end
+            table.sort(miss, function(a, b) return a[2] > b[2] or (a[2] == b[2] and a[1] < b[1]) end)
+            for i, h in pairs(r.hyp) do hyp[#hyp + 1] = { resolver.HYP[i] or tostring(i), h.n, h.hit } end
+            table.sort(hyp, function(a, b) return a[2] > b[2] or (a[2] == b[2] and a[1] < b[1]) end)
+            rows[#rows + 1] = { name = name, n = r.n, hit = r.hit, rate = math.floor(r.hit / r.n * 100 + 0.5), miss = miss, hyp = hyp }
+        end
+    end
+    return rows
+end
+resolver.stat_lines = function()
+    local lines = {}
+    for _, r in ipairs(resolver.stat_rows()) do
+        local miss, hyp = {}, {}
+        for _, m in ipairs(r.miss) do miss[#miss + 1] = m[1] .. " " .. m[2] end
+        for i, h in ipairs(r.hyp) do
+            if (i <= 4) then hyp[#hyp + 1] = string.format("%s %d/%d", h[1], h[3], h[2]) end
+        end
+        lines[#lines + 1] = string.format("%s: %d shots, %d%% hit | miss: %s | hypotheses (hit/used): %s", r.name, r.n, r.rate,
+            #miss > 0 and table.concat(miss, ", ") or "-", #hyp > 0 and table.concat(hyp, ", ") or "-")
+    end
+    return lines
+end
 --- @info: resolver: side from freestanding / jitter, learned per player and state from hits and misses
 --- @region: resolver
 -- [pm-resolver:begin] the loader's beta version is built without this part (make_primordial_beta in discord_bot.py)
@@ -4741,12 +4818,9 @@ resolver.capture = function(shot)
         s.candidate, s.desync = prev.candidate, prev.m_flDesync
         s.model, s.nxt = prev.model, prev.nxt
     end
-    -- fired while the target shifted its tickbase (defensive) or broke lag compensation: the server tests the shot against
-    -- a record we never saw (lag comp), a miss says nothing about the body yaw we gave. Hits still count
-    if (p ~= nil) then
-        s.defensive = (p.def_until or 0) > now or nil
-        s.lagbreak = (p.lc_until or 0) > now or nil
-    end
+    -- classified at the result (resolver.spoiled): the round trip and the state of the target at the shot
+    s.rtt = resolver.network().ping / 1000
+    s.state = resolver.state_of(shot.player)
     resolver.shots[#resolver.shots + 1] = s
     if (#resolver.shots > 128) then table.remove(resolver.shots, 1) end
 end
@@ -4822,9 +4896,33 @@ resolver.K = {
     change_keep = 0.35, -- the same when its yaw pattern changed
     change = 10,        -- records in a row with another pattern = the pattern changed
     forget = 0.97,      -- every counted result pulls all hypotheses of that situation back toward the start
-    def_window = 0.4,   -- seconds after a tickbase shift update in which a shot at him counts as a shot at a defensive target
-    lc_window = 0.5,    -- the same after a broken lag compensation (a teleport)
+    lc_window = 0.5,    -- seconds a broken lag compensation (a teleport) spoils the shots fired after it
+    ev_margin = 0.06,   -- timing slack (s) of the shot / event matching
+    ev_keep = 3,        -- seconds the observed shift / lag break events are kept
 }
+
+-- Defensive / lag break events of a target, as WE observe them (p.events, newest last). A shot is tested by the server
+-- against the target's state when it arrives there, but we see the target's packets one way latency late, so the shift
+-- that spoils a shot fired at t is observed about one round trip LATER, inside [t + rtt - dur, t + rtt]: dur = how long
+-- the shift lasts (the size of the sim time step back, like defensive:is_active) or the lag comp window. So a shot is
+-- classified when its RESULT arrives, from the events seen since it was fired
+resolver.event = function(p, now, dur)
+    p.events = p.events or {}
+    p.events[#p.events + 1] = { obs = now, dur = dur }
+    while (#p.events > 0 and now - p.events[1].obs > resolver.K.ev_keep) do
+        table.remove(p.events, 1)
+    end
+end
+-- true when an event of that kind spoils a shot fired at t_fire with a round trip of rtt, the result arriving at now
+resolver.spoiled = function(p, t_fire, rtt, now, kind)
+    local m = resolver.K.ev_margin
+    for _, ev in ipairs(p.events or {}) do
+        if (ev.kind == kind and ev.obs >= t_fire + rtt - ev.dur - m and ev.obs <= now + m) then
+            return true
+        end
+    end
+    return false
+end
 
 -- steam id of an entity: the learning follows the player, not the slot
 resolver.sid = function(ent)
@@ -5047,7 +5145,8 @@ resolver.track = function(ent, eye)
     if (p ~= nil and sim < p.sim and p.sim - sim <= resolver.K.shift
         and (spawn == nil or p.spawn == nil or spawn == p.spawn)) then
         p.defensive_until, p.nochoke = now + 0.25, 0
-        p.def_until, p.shifts = now + resolver.K.def_window, (p.shifts or 0) + 1
+        resolver.event(p, now, math.min(p.sim - sim, 1))
+        p.events[#p.events].kind = "def"
         return p
     end
     if (p == nil or sim < p.sim or sim - p.sim > 1
@@ -5069,8 +5168,7 @@ resolver.track = function(ent, eye)
         p = { sim = sim, eye = eye, nochoke = 0, jd = {}, jy = {}, dir = 1,
             jitter = false, fs = 0, fs_tick = -RES_FS_TICKS, confidence = 0,
             spawn = spawn, samples = 0, choke = 0, state = state, sid = sid, rec_n = 0,
-            updated = now, defensive_until = rewind and now + 0.25 or 0,
-            def_until = rewind and now + resolver.K.def_window or 0, lc_until = 0 }
+            updated = now, defensive_until = rewind and now + 0.25 or 0, events = {} }
         resolver.data[idx] = p
         return p
     end
@@ -5090,7 +5188,8 @@ resolver.track = function(ent, eye)
             if (p.last_o ~= nil and ticks <= 32) then
                 local dx, dy, dz = o.x - p.last_o[1], o.y - p.last_o[2], (o.z or 0) - p.last_o[3]
                 if (dx * dx + dy * dy + dz * dz > 4096) then
-                    p.lc_until = now + resolver.K.lc_window
+                    resolver.event(p, now, resolver.K.lc_window)
+                    p.events[#p.events].kind = "lc"
                 end
             end
             p.last_o = { o.x, o.y, o.z or 0 }
@@ -5202,13 +5301,19 @@ resolver.update = function(local_player, ent)
     prev.candidate, prev.confidence = applied and candidate or nil, confidence
     prev.model, prev.nxt = c, nx
 end
-resolver.on_result = function(target, hit_ok, resolver_miss, event)
+resolver.on_result = function(target, hit_ok, resolver_miss, event, reason)
     local snapshot = target and resolver.take_shot(event, target:get_index()) or nil
     resolver.last_result = snapshot
     if (snapshot == nil or snapshot.track == nil or snapshot.track ~= resolver.data[snapshot.idx]) then return end
+    -- a shot that the server tested against a target in a defensive shift / a broken lag comp: a miss says nothing about
+    -- the body yaw we gave (it is lag comp), and Primordial reports it as "jitter" / "resolver". Hits still count
+    local now = globals.real_time()
+    snapshot.defensive = resolver.spoiled(snapshot.track, snapshot.time, snapshot.rtt or 0, now, "def") or nil
+    snapshot.lagbreak = resolver.spoiled(snapshot.track, snapshot.time, snapshot.rtt or 0, now, "lc") or nil
     if (not hit_ok and (snapshot.defensive or snapshot.lagbreak)) then
         resolver_miss = false
     end
+    resolver.record(snapshot, hit_ok, reason)
     if (target ~= nil) then
         local idx = target:get_index()
         if (hit_ok) then
@@ -5597,7 +5702,7 @@ shotlog.result = function(shot, hit)
     if (snap ~= nil and snap.idx == idx) then
         row.rk, row.cd, row.vl = snap.key, snap.candidate, shotlog.num(snap.desync, 1)
         row.md, row.nx = shotlog.num(snap.model, 1), snap.nxt
-        row.df, row.lb = snap.defensive, snap.lagbreak
+        row.df, row.lb, row.sx = snap.defensive, snap.lagbreak, snap.state
     end
     if (hit) then
         row.hg, row.dmg = shot.hitgroup, shotlog.num(shot.damage)
@@ -8081,13 +8186,57 @@ notifications.render = function()
     end
 end
 
--- AA stats panel: one pill per state / yaw mode that was shot at, hits and evaded bullets and the hit rate
-hud.aa_drag = libs.etr.new('aa_stats', vec2_t(50, screen_size.y / 2 + 160), vec2_t(0, 0))
-hud.aa_h, hud.aa_w = 0, 0
-
-draw_aa_stats = function()
+-- a draggable pill panel: a header and one pill per row { label, right, dot = { r, g, b } }; panel = { drag, w, h } (the
+-- size is animated). Used by the AA stats and the resolver stats
+hud.pill_panel = function(panel, title, rows, empty_text)
+    if (#rows == 0 and not menu_is_open()) then
+        return
+    end
     local ft = globals.frame_time()
     local accent = ui.accent_color:get()
+    local HEAD, RH, GAP = 28, 26, 5
+    local need = 220
+    for _, row in ipairs(rows) do
+        need = math.max(need, 22 + render_get_text_size(hud.bold, row.label).x + 18 + render_get_text_size(hud.font, row.right).x + 12)
+    end
+    panel.w = panel.w == 0 and need or hud.lerp(panel.w, need, ft * 12)
+    local total = HEAD + (#rows == 0 and 26 or #rows * (RH + GAP))
+    panel.h = panel.h == 0 and total or hud.lerp(panel.h, total, ft * 14)
+    local w = math.floor(panel.w + 0.5)
+
+    panel.drag.size = vec2_t(w, math.floor(panel.h + 0.5))
+    panel.drag:update()
+    local x, y = math.floor(panel.drag.pos.x + 0.5), math.floor(panel.drag.pos.y + 0.5)
+
+    hud.header(x, y, w, 1, title, accent, true, function(cx, cy, c)
+        render_line(vec2_t(cx - 5, cy - 6), vec2_t(cx + 5, cy - 6), c)
+        render_line(vec2_t(cx + 5, cy - 6), vec2_t(cx + 5, cy + 1), c)
+        render_line(vec2_t(cx + 5, cy + 1), vec2_t(cx, cy + 7), c)
+        render_line(vec2_t(cx, cy + 7), vec2_t(cx - 5, cy + 1), c)
+        render_line(vec2_t(cx - 5, cy + 1), vec2_t(cx - 5, cy - 6), c)
+    end)
+
+    local ry = y + HEAD + GAP
+    for _, row in ipairs(rows) do
+        local cyr = ry + math.floor(RH / 2)
+        hud.box(x, ry, w, RH, 7, hud.PILL[1], hud.PILL[2], hud.PILL[3], 200)
+        hud.outline(x, ry, w, RH, 7, 255, 255, 255, 20)
+        render_circle_filled(vec2_t(x + 12, cyr), 3, hud.col(row.dot[1], row.dot[2], row.dot[3], 255))
+        local th = render_get_text_size(hud.bold, row.label).y
+        render_text(hud.bold, row.label, vec2_t(x + 22, cyr - math.floor(th / 2)), hud.col(hud.W[1], hud.W[2], hud.W[3], 255))
+        local rs = render_get_text_size(hud.font, row.right)
+        render_text(hud.font, row.right, vec2_t(x + w - 12 - rs.x, cyr - math.floor(rs.y / 2)), hud.col(hud.DIM[1], hud.DIM[2], hud.DIM[3], 255))
+        ry = ry + RH + GAP
+    end
+    if (#rows == 0) then
+        render_text(hud.font, empty_text, vec2_t(x + math.floor(w / 2), y + HEAD + 14), hud.col(130, 130, 140, 200), true)
+    end
+end
+
+-- AA stats panel: one pill per state / yaw mode that was shot at, hits and evaded bullets and the hit rate
+hud.aa_panel = { drag = libs.etr.new('aa_stats', vec2_t(50, screen_size.y / 2 + 160), vec2_t(0, 0)), w = 0, h = 0 }
+
+draw_aa_stats = function()
     local list = {}
     for _, row in pairs(builder.aa_stats) do
         list[#list + 1] = row
@@ -8098,57 +8247,34 @@ draw_aa_stats = function()
         end
         return p.label < q.label
     end)
-    if (#list == 0 and not menu_is_open()) then
-        return
-    end
-
-    local HEAD, RH, GAP = 28, 26, 5
-    local need = 220
+    local rows = {}
     for _, row in ipairs(list) do
         local shots = row.hit + row.evaded
-        row.rate = shots > 0 and math.floor(row.hit / shots * 100 + 0.5) or 0
-        row.right = string.format("%d hit · %d evaded · %d%%", row.hit, row.evaded, row.rate)
-        need = math.max(need, 22 + render_get_text_size(hud.bold, row.label).x + 18 + render_get_text_size(hud.font, row.right).x + 12)
-    end
-    hud.aa_w = hud.aa_w == 0 and need or hud.lerp(hud.aa_w, need, ft * 12)
-    local total = HEAD + (#list == 0 and 26 or #list * (RH + GAP))
-    hud.aa_h = hud.aa_h == 0 and total or hud.lerp(hud.aa_h, total, ft * 14)
-    local w = math.floor(hud.aa_w + 0.5)
-
-    hud.aa_drag.size = vec2_t(w, math.floor(hud.aa_h + 0.5))
-    hud.aa_drag:update()
-    local x, y = math.floor(hud.aa_drag.pos.x + 0.5), math.floor(hud.aa_drag.pos.y + 0.5)
-
-    hud.header(x, y, w, 1, "AA stats", accent, true, function(cx, cy, c)
-        render_line(vec2_t(cx - 5, cy - 6), vec2_t(cx + 5, cy - 6), c)
-        render_line(vec2_t(cx + 5, cy - 6), vec2_t(cx + 5, cy + 1), c)
-        render_line(vec2_t(cx + 5, cy + 1), vec2_t(cx, cy + 7), c)
-        render_line(vec2_t(cx, cy + 7), vec2_t(cx - 5, cy + 1), c)
-        render_line(vec2_t(cx - 5, cy + 1), vec2_t(cx - 5, cy - 6), c)
-    end)
-
-    local ry = y + HEAD + GAP
-    for _, row in ipairs(list) do
-        local cyr = ry + math.floor(RH / 2)
-        hud.box(x, ry, w, RH, 7, hud.PILL[1], hud.PILL[2], hud.PILL[3], 200)
-        hud.outline(x, ry, w, RH, 7, 255, 255, 255, 20)
+        local rate = shots > 0 and math.floor(row.hit / shots * 100 + 0.5) or 0
         -- the dot: green under 25 % hit, yellow under 50 %, red above
-        local r, g, b = 120, 220, 140
-        if (row.rate >= 50) then
-            r, g, b = 255, 110, 110
-        elseif (row.rate >= 25) then
-            r, g, b = 255, 200, 100
+        rows[#rows + 1] = { label = row.label, right = string.format("%d hit · %d evaded · %d%%", row.hit, row.evaded, rate),
+            dot = rate >= 50 and { 255, 110, 110 } or rate >= 25 and { 255, 200, 100 } or { 120, 220, 140 } }
+    end
+    hud.pill_panel(hud.aa_panel, "AA stats", rows, "nobody shot at you yet")
+end
+
+-- resolver stats panel (owners: "/state, hogy megnézzük mire missel a legtöbbet"): one pill per state of the target we shot
+-- at: shots, hit rate and the two most frequent miss reasons (a shot spoiled by a defensive shift / lag break is
+-- shown as "defensive" / "lag break"). The full lines (all reasons, the hypotheses) are in "Resolver stats to console"
+hud.res_panel = { drag = libs.etr.new('res_stats', vec2_t(50, screen_size.y / 2 - 80), vec2_t(0, 0)), w = 0, h = 0 }
+
+draw_res_stats = function()
+    local rows = {}
+    for _, r in ipairs(resolver.stat_rows()) do
+        local miss = {}
+        for i = 1, math.min(2, #r.miss) do
+            miss[#miss + 1] = r.miss[i][1] .. " " .. r.miss[i][2]
         end
-        render_circle_filled(vec2_t(x + 12, cyr), 3, hud.col(r, g, b, 255))
-        local th = render_get_text_size(hud.bold, row.label).y
-        render_text(hud.bold, row.label, vec2_t(x + 22, cyr - math.floor(th / 2)), hud.col(hud.W[1], hud.W[2], hud.W[3], 255))
-        local rs = render_get_text_size(hud.font, row.right)
-        render_text(hud.font, row.right, vec2_t(x + w - 12 - rs.x, cyr - math.floor(rs.y / 2)), hud.col(hud.DIM[1], hud.DIM[2], hud.DIM[3], 255))
-        ry = ry + RH + GAP
+        -- the dot: green from 60 % hit, yellow from 40 %, red under
+        rows[#rows + 1] = { label = r.name, dot = r.rate >= 60 and { 120, 220, 140 } or r.rate >= 40 and { 255, 200, 100 } or { 255, 110, 110 },
+            right = string.format("%d shots · %d%%%s", r.n, r.rate, #miss > 0 and (" · " .. table.concat(miss, ", ")) or "") }
     end
-    if (#list == 0) then
-        render_text(hud.font, "nobody shot at you yet", vec2_t(x + math.floor(w / 2), y + HEAD + 14), hud.col(130, 130, 140, 200), true)
-    end
+    hud.pill_panel(hud.res_panel, "Resolver stats", rows, "no shots yet")
 end
 
 draw_indicator = function()
@@ -8705,7 +8831,7 @@ do_aimmiss = function()
         local target = miss.player
         if (target == nil) then return end
         cl_logs.add_log("misses")
-        resolver.on_result(target, false, reason == "resolver" or reason == "jitter", miss)
+        resolver.on_result(target, false, reason == "resolver" or reason == "jitter", miss, reason)
         pcall(shotlog.result, miss, false)
         -- Host-reported reason is authoritative. Movement since the shot,
         -- hurt timing and backtrack age are diagnostics, not miss causes.
@@ -9231,6 +9357,9 @@ do_paint = function()
         end
         if (ui.utils.aa_stats:get() and engine_is_in_game()) then
             perf.span("aa stats", draw_aa_stats)
+        end
+        if (ui.utils.res_stats:get() and engine_is_in_game()) then
+            perf.span("resolver stats", draw_res_stats)
         end
 
         perf.span("game handle", game_handle)

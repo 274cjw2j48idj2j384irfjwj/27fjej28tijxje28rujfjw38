@@ -12,7 +12,7 @@ local function control(value)
     return { get = function() return value end, set = function(_, v) value = v end }
 end
 local resolver = { data = {}, mem = {}, previous = {}, misses = {}, safe = {},
-    shots = {}, epoch = 0, trust = { fs = 0, jitter = 0 } }
+    shots = {}, epoch = 0, trust = { fs = 0, jitter = 0 }, stats = {} }
 local builder = { speed = 0 }
 local controls = { adaptive = control(true), enable = control(true),
     anti_brute = control(true), ab_mode = control(1) }
@@ -72,6 +72,7 @@ end
 section("resolver.network = function", "safe_defensive = function")
 section("local backtrack = {", "local RES_NOCHOKE = 8", "\nexport_backtrack = backtrack")
 env.backtrack = env.export_backtrack
+section("resolver.HYP = {", "--- @info: resolver: side from freestanding")
 section("local RES_NOCHOKE = 8", "local shotlog = {")
 section("builder.lerp = function", "builder.apply_preset = function")
 local passed = 0

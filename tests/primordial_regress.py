@@ -727,12 +727,14 @@ return same, kept, grace, fresh ~= p, resolver.mem[3] == nil
 check(tuple(r) == (True, True, True, True, True),
       "tickbase shift: the target and what was learned stay with a short grace window, a big jump back starts over (%s)" % (r,))
 
-# defensive / lag break detector (owners: "nem lesz defensive detectorunk?"): a miss on a shot fired while the target
-# shifted its tickbase or broke lag compensation is not a resolver miss and teaches nothing, a hit still counts
+# defensive / lag break detector (owners: "nem lesz defensive detectorunk?", the ENEMY's): the shift that spoils a shot fired
+# at t is observed about a round trip later, inside [t + rtt - duration, t + rtt]; such a miss is no resolver miss and
+# teaches nothing, a hit still counts; the stats show it as "defensive" / "lag break" per state
 DF = chunk("resolver.memory = function(idx, key, kind)", "resolver.shot_id = function(event)") + \
      chunk("resolver.shot_id = function(event)", "local RES_JIT_N = 12") + \
+     chunk("resolver.HYP = {", "--- @info: resolver: side from freestanding") + \
      chunk("local RES_JIT_N = 12", "resolver.update = function(local_player, ent)") + \
-     chunk("resolver.on_result = function(target, hit_ok, resolver_miss, event)", "resolver.body_damage = function(ent)")
+     chunk("resolver.on_result = function(target, hit_ok, resolver_miss, event, reason)", "resolver.body_damage = function(ent)")
 dm = L.LuaRuntime(unpack_returned_tuples=True)
 dm.execute("""
 RES_FS_TICKS = 16
@@ -745,8 +747,9 @@ SIM, NOW, ORIGIN = 0, 0, { x = 0, y = 0, z = 0 }
 globals = { real_time = function() return NOW end }
 local function item(v) return { get = function() return v end } end
 ui = { ragebot = { resolver = { shot_pred = item(15) } } }
-resolver = { data = {}, mem = {}, previous = {}, misses = {}, shots = {}, epoch = 0 }
+resolver = { data = {}, mem = {}, previous = {}, misses = {}, shots = {}, epoch = 0, stats = {} }
 resolver.state_of = function() return "stand" end
+resolver.network = function() return { ping = 100 } end
 ENT = { get_index = function() return 3 end, get_hitbox_pos = function() return 0 end,
     get_prop = function(_, n)
         if n == "m_flSimulationTime" then return SIM end
@@ -755,64 +758,70 @@ ENT = { get_index = function() return 3 end, get_hitbox_pos = function() return 
         return 0
     end }
 function REC(eye) SIM, NOW = SIM + 2 / 64, NOW + 2 / 64 return resolver.track(ENT, eye) end
-function FIRE(id) resolver.capture({ player = ENT, id = id }) end
+function RESULT(id, hit, rr, reason, between)
+    resolver.capture({ player = ENT, id = id })                  -- the shot is fired
+    NOW = NOW + 0.1                                               -- a round trip later ...
+    if between then between() end                                 -- ... what we observe of the target meanwhile
+    resolver.on_result(ENT, hit, rr, { id = id }, reason)
+    return resolver.last_result
+end
 """ + DF)
 D = dm.eval("function(code) return assert(loadstring(code))() end")
 r = D("""
 for i = 1, 6 do REC(i % 2 == 0 and 30 or -30) end
 local p = resolver.data[3]
--- the situation the shots are credited to
 resolver.previous[3] = { key = "jitter", kind = "jitter", candidate = 1, m_flDesync = 20, rel = 1 }
 local mem = resolver.memory(3, "jitter")
-local function miss(id, reason_resolver, fired_when)
-    FIRE(id)
-    resolver.on_result(ENT, false, reason_resolver, { id = id })
-end
 -- 1. a plain resolver miss counts
-miss(1, true)
-local plain = resolver.misses[3] == 1 and mem.candidates[1].bad > 1
--- 2. fired during a tickbase shift (sim goes back 0.1 s): not counted
+local s1 = RESULT(1, false, true, "resolver")
+local plain = resolver.misses[3] == 1 and mem.candidates[1].bad > 1 and not s1.defensive and s1.state == "stand"
+-- 2. the target shifts its tickbase 0.1 s while the shot is on its way: observed a round trip after the shot
 local bad, misses = mem.candidates[1].bad, resolver.misses[3]
-SIM = SIM - 0.1
-resolver.track(ENT, 30)
-local flagged = p.def_until > NOW
-FIRE(2)
-local snap = resolver.shots[#resolver.shots]
-resolver.on_result(ENT, false, true, { id = 2 })
-local def_ignored = snap.defensive == true and resolver.misses[3] == misses and mem.candidates[1].bad == bad
--- 3. a HIT during the same window still counts
-FIRE(3)
+local back = p.sim
+local s2 = RESULT(2, false, true, "jitter", function() SIM = back - 0.1 resolver.track(ENT, 30) end)
+local ev = p.events[#p.events]
+local def_ignored = s2.defensive == true and ev.kind == "def" and math.abs(ev.dur - 0.1) < 1e-9
+    and resolver.misses[3] == misses and mem.candidates[1].bad == bad
+SIM = back
+-- 3. a HIT in that window still counts
 local good = mem.candidates[1].good
-resolver.on_result(ENT, true, false, { id = 3 })
+RESULT(3, true, false, nil)
 local hit_counts = mem.candidates[1].good > good and resolver.misses[3] == 0
--- 4. the window ends: counted again
+-- 4. a shift long before the shot spoils nothing
 NOW = NOW + 1
 SIM = SIM + 0.3
 REC(30)
-miss(4, true)
-local after = resolver.misses[3] == 1
--- 5. lag break: 100 units between two records
+local s4 = RESULT(4, false, true, "resolver")
+local old_ok = not s4.defensive and resolver.misses[3] == 1
+-- 5. a teleport observed while the shot is on its way
 NOW = NOW + 1
 ORIGIN = { x = 0, y = 0, z = 0 }
 REC(-30)
-ORIGIN = { x = 100, y = 0, z = 0 }
-REC(30)
-local lb = p.lc_until > NOW
-local bad2, m2 = mem.candidates[1].bad, resolver.misses[3]
-FIRE(5)
-local s5 = resolver.shots[#resolver.shots]
-resolver.on_result(ENT, false, true, { id = 5 })
-local lb_ignored = s5.lagbreak == true and resolver.misses[3] == m2 and mem.candidates[1].bad == bad2
--- 6. walking normally (a few units) is no lag break
-NOW = NOW + 1
+local s5 = RESULT(5, false, true, "jitter", function() ORIGIN = { x = 100, y = 0, z = 0 } REC(30) end)
+local lb = s5.lagbreak == true and s5.defensive == nil and resolver.misses[3] == 1
+-- 6. walking a few units is no lag break
+local n_ev = #p.events
 ORIGIN = { x = 105, y = 0, z = 0 }
 REC(-30)
-local walk = p.lc_until <= NOW
-return plain, flagged, def_ignored, hit_counts, after, lb, lb_ignored, walk
+local walk = #p.events == n_ev
+-- 7. a spread miss during a shift keeps its reason; the shift event after the result flags nothing
+local s7 = RESULT(7, false, false, "spread")
+local rows = resolver.stat_rows()
+local stand = rows[1]
+local why = {}
+for _, m in ipairs(stand.miss) do why[m[1]] = m[2] end
+local stats = { rows[1].name, stand.n, stand.hit, why.resolver, why.defensive, why["lag break"], why.spread, why.jitter,
+    rows[2] and rows[2].name, rows[2] and rows[2].n }
+local line = resolver.stat_lines()[1]
+local text = line:find("stand: 6 shots, 17% hit", 1, true) ~= nil and line:find("defensive 1", 1, true) ~= nil
+    and line:find("side 1/", 1, true) ~= nil
+return plain, def_ignored, hit_counts, old_ok, lb, walk, table.concat({ tostring(stats[1]), stats[2], stats[3], stats[4], stats[5],
+    stats[6], stats[7], tostring(stats[8]), tostring(stats[9]), tostring(stats[10]) }, ","), text
 """)
-check(tuple(r) == (True,) * 8,
-      "defensive / lag break detector: a tickbase shift or a 100 unit jump flags the shots fired in the window, such a miss "
-      "is no resolver miss and teaches nothing, a hit still counts, normal walking flags nothing (%s)" % (r,))
+check(tuple(r[:6]) == (True,) * 6 and r[6] == "stand,6,1,2,1,1,1,nil,jitter,6" and r[7] is True,
+      "enemy defensive / lag break: the shift observed a round trip after the shot flags it, such a miss is no resolver miss "
+      "and teaches nothing, a hit still counts, an old shift / walking flags nothing, the stats per state show it as "
+      "defensive / lag break (%s)" % (r,))
 
 # what was learned stays with the PLAYER: a dormant phase / respawn keeps it, another player in the slot does not
 r = J("""
