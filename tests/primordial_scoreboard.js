@@ -95,8 +95,9 @@ api.update(3, "reveal", true, xuids[3]);
 const flag_badge = cell.FindChild("specter-presence-" + xuids[3]);
 check(flag_badge && flag.visible === false && cell.moved === 1,
     "the badge replaces the country flag (flag hidden, badge in its cell)");
-api.remove(3);
-check(!flag_badge.IsValid() && flag.visible === true, "removing a badge gives the country flag back");
+delete xuids[3];
+api.apply();
+check(!flag_badge.IsValid() && flag.visible === true, "a badge that goes away gives the country flag back");
 flagged.DeleteAsync();
 board.DeleteAsync();
 board = new Panel("Scoreboard", container);
