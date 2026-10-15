@@ -142,7 +142,9 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   engine (owners, Oct 2026: "csináld meg a legjobb configot ezzel"), the rest stays the owner's: states 1-8 tight X-Way /
   Distort / Random hold (+- 18-32 deg: the owner's own yaw was +- 10-25, wider shows the head to the sides), a small lua
   jitter, Random desync 60, Smart defensive (Random up/down or Sway pitch, Random side / Distort / Jitter flick yaw),
-  Phases anti brute, Fakelag variance; Fakelag / Manual / Freestand as the owner had them. "Apply advanced preset" sets the
+  Phases anti brute, Fakelag variance; Fakelag / Manual / Freestand as the owner had them. Defensive (owners, Oct 2026: "csak
+  air és peeknél, tehát movingnál"): Smart only in Move (trigger Peek), Air and Air duck (trigger Air); Off in Global, Stand,
+  Slow walk, Duck, Duck move, Freestand (and Fakelag / Manual as before). "Apply advanced preset" sets the
   same values (the regress checks they match).
 - AA stats (owners, Oct 2026: "melyikkel hányszor találnak el"): `builder.aa_record` counts per "state · yaw mode" (the
   builder entry in use, `aa_snapshot`) the hits an enemy made on us (player_hurt, attacker an enemy) and the bullets that
@@ -306,8 +308,8 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   an own set_yaw overrode it). The "Sideways" defensive yaw takes our last desync side (`direct.last_left`), Primordial's
   menu side is always left. What stays Primordial's: making the desync / fakelag (the lua api has no send packet
   control) and the tickbase shift of defensive (its double tap). The Freestand state of default.cfg / "Apply advanced
-  preset" was a static yaw with the desync always "Right" and no defensive: now Random desync, a small lua jitter (8) and
-  Smart defensive (Peek / Shot at / Threat aim); Move and Air also trigger on Threat aim.
+  preset" was a static yaw with the desync always "Right" and no defensive: now Random desync and a small lua jitter (8),
+  still no defensive (it is Off there).
 - Adaptive AA (Settings "Adaptive AA", default.cfg + "Apply advanced preset" on; owners, Oct 2026: "az aa sokkal jobb
   volt [the old azura] ... nagyon advanced aa improve ami tényleg unhittable"). The old azura (the owner's asd.cfg) played
   "delay jitter": left / right every Delay (+ fluctuation) ticks with the DESYNC ON THE YAW SIDE; ours made the desync a
