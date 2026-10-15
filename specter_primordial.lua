@@ -5110,6 +5110,13 @@ resolver.capture = function(shot)
     end
     -- classified at the result (resolver.spoiled): the round trip and the state of the target at the shot
     s.rtt = resolver.network().ping / 1000
+    -- animation layer 6 (movement) of the target at the shot: logged next to the body yaw we gave, to find out from the real
+    -- logs whether its playback rate tells the side (res_fix_att does that from the rate alone); read only, nil when missing
+    local okl, rate, weight = pcall(function()
+        local layer = get_anim_layer(get_entity_address(idx), 6)
+        return layer.m_flPlaybackRate, layer.m_flWeight
+    end)
+    if (okl) then s.l6, s.l6w = rate, weight end
     s.state = resolver.state_of(shot.player)
     resolver.shots[#resolver.shots + 1] = s
     if (#resolver.shots > 128) then table.remove(resolver.shots, 1) end
@@ -5866,11 +5873,13 @@ resolver.hitscan = function(ctx)
     -- no shot carrying a safe point, because this was gated behind resolver.active
     local fresh = resolver.fresh(p)
     local jitter = fresh and p.jitter == true and (p.confidence or 0) >= 0.65
-    local jitter_safe = jitter and not fast
+    local jitter_safe = jitter
     -- safe_all (a disabler set to "head safe point") forces safety even on a fast peek, as before
     local safe = resolver.active and resolver.safe_all == true
+    -- a jittering target keeps its safe point on a fast peek too (owners' shot logs, Oct 2026: 40 of 46 resolver / jitter misses
+    -- of our resolver carried none, the head hit 62 % against 86 % on the body)
+    safe = safe or jitter
     if (not fast) then
-        safe = safe or jitter
         if (resolver.active) then
             safe = safe or misses >= 2
         end
@@ -6170,6 +6179,7 @@ shotlog.result = function(shot, hit)
         row.md, row.nx = shotlog.num(snap.model, 1), snap.nxt
         row.df, row.lb, row.sx = snap.defensive, snap.lagbreak, snap.state
         row.ph, row.rl = snap.phase, shotlog.num(snap.reliab, 2)
+        row.l6, row.l6w = shotlog.num(snap.l6, 6), shotlog.num(snap.l6w, 4)
     end
     if (hit) then
         row.hg, row.dmg = shot.hitgroup, shotlog.num(shot.damage)
