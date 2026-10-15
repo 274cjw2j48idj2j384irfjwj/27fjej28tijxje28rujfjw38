@@ -131,8 +131,8 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 ## specter_primordial.lua (Primordial, was azura.lua)
 - The owner's own older PRIMORDIAL script "azura.uno" (author e0n3x, default user matehun111), renamed to Specter (owners,
   Oct 2026: "minden azurat írj át specterre", it will be sold as Specter for primordial). Not gamesense, nothing to do with
-  Specter's gamesense code. Every text says Specter (menu, watermark, notifications, console, killsay, a "specter" clantag
-  of the same 45 frames), configs in csgo/specter/ (the old csgo/azura/ ones are not read). Edited directly (no generator). The bot posts it to #staff like the dev build (`RELEASE_FILES`).
+  Specter's gamesense code. Every text says Specter (menu, watermark, notifications, console, killsay, a "specter.prim" clantag
+  of the same 45 frames; the gamesense lua's is "specter.gs", owners Oct 2026), configs in csgo/specter/ (the old csgo/azura/ ones are not read). Edited directly (no generator). The bot posts it to #staff like the dev build (`RELEASE_FILES`).
   That #staff file IS the Primordial dev build: no dev loader for it (owners, Oct 2026: "a devnek nem kell loader elég a
   sima lua"; a server-side dev loader was made and taken out again).
 - Offline (owners, Oct 2026): the azura.uno login / HWID check, stats upload and cloud / sync sockets are gone; settings.json
