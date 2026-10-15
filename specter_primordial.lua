@@ -5222,16 +5222,16 @@ resolver.track = function(ent, eye)
         -- lag compensation broken: more than 64 units between two records = the server keeps no old record of him
         -- (teleport / lag break), the aimbot can only shoot the newest one extrapolated: a miss on it is about the
         -- position, not the angle
-        local o = ent:get_prop("m_vecOrigin")
-        if (type(o) ~= "number" and o ~= nil and type(o.x) == "number") then
+        local o = resolver.advanced.read(ent, "m_vecOrigin")
+        if (o ~= nil) then
             if (p.last_o ~= nil and ticks <= 32) then
-                local dx, dy, dz = o.x - p.last_o[1], o.y - p.last_o[2], (o.z or 0) - p.last_o[3]
+                local dx, dy, dz = o.x - p.last_o[1], o.y - p.last_o[2], o.z - p.last_o[3]
                 if (dx * dx + dy * dy + dz * dz > 4096) then
                     resolver.event(p, now, resolver.K.lc_window)
                     p.events[#p.events].kind = "lc"
                 end
             end
-            p.last_o = { o.x, o.y, o.z or 0 }
+            p.last_o = { o.x, o.y, o.z }
         end
         p.choke = res_clamp(ticks - 1, 0, 64)
         p.nochoke = (ticks == 1) and (p.nochoke + 1) or 0
@@ -5403,7 +5403,8 @@ end
 resolver.advanced.base_track = resolver.track
 resolver.track = function(ent,eye)
     local p=resolver.advanced.base_track(ent,eye)
-    if p then resolver.advanced.observe(p,ent,eye) end
+    -- the forecast is an extra: whatever goes wrong in it must not stop the NET_UPDATE callback
+    if p then pcall(resolver.advanced.observe,p,ent,eye) end
     return p
 end
 
