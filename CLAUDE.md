@@ -230,6 +230,13 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   marks a shot fired inside a window (`defensive` / `lagbreak`), `on_result` then does not count its MISS (no resolver
   miss, no bad for the hypothesis; a hit still counts), the shot log carries `df` / `lb`. Not done: predicting WHEN a
   target will use a defensive (the double tap recharge is not readable), the aimbot's own extrapolation is Primordial's.
+- Per state resolver (owners, Oct 2026: "minden statere külön resolver logic"): `resolver.state_of` has stand / slow / move /
+  duck (crouched, still) / cmove (crouched, walking) / air; every state has its own memory, hit rate row (`stat_rows`) and
+  `RES_STATE_NUM`. `resolver.profile(speed, air, steps, crouch)` is how the feet model is read there: phase "lby" (still: the
+  feet follow the LBY, full trust) or "eye" (moving / air: the feet lag behind the eye yaw, rel 0.35, crouched 0.5), x a
+  convergence factor (`p.feet_steps` records seen, 6 = converged, min 0.25); `zero` = the body yaw under which the model says
+  "no desync" (20 still, 12 moving). It sets the feet model hypotheses' bonus (`0.12 * rel`) and when they are skipped. The
+  shot logs carry `ph` (phase) and `rl` (rel). Judge it by the per state stats and these, not by the sims; not proven in game.
 - Backtrack: Primordial's (its records, the tick count of its shot). The old "Improve backtrack" wrote cmd.tick_count on
   every command from the enemy nearest the crosshair minus "dynamic ticks": the server rewound to a time the aimbot did
   not aim at. Now Improve backtrack sets Primordial's fake ping amount (100 ms, Extended backtrack 200 ms; the server takes

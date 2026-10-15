@@ -4572,7 +4572,7 @@ resolver.record = function(snap, hit_ok, reason)
 end
 -- the rows in a fixed order: { name, n, hit, rate (0..100), miss = { { label, count } by count }, hyp = { { name, n, hit } } }
 resolver.stat_rows = function()
-    local order, rows = { "stand", "slow", "move", "duck", "air", "jitter" }, {}
+    local order, rows = { "stand", "slow", "move", "duck", "cmove", "air", "jitter" }, {}
     for _, name in ipairs(order) do
         local r = resolver.stats[name]
         if (r ~= nil and r.n > 0) then
@@ -4618,7 +4618,7 @@ end
 --   Disablers + At disabler: while one of them holds, the resolver is off / head safe point / keeps resolving
 local RES_NOCHOKE = 8                      -- updates without a choked tick in a row: no desync possible, nothing forced
 local RES_FS_TICKS = 8                     -- freestanding traces once per this many ticks per player
-local RES_STATE_NUM = { stand = 1, slow = 2, move = 3, duck = 4, air = 6, jitter = 7 }
+local RES_STATE_NUM = { stand = 1, slow = 2, move = 3, duck = 4, cmove = 5, air = 6, jitter = 7 }
 local RES_SCOPE_CFG = { 0, 1, 2, 6 }
 local RES_SAFE_CFG = { 0, 2, 3, 7 }
 
@@ -4691,11 +4691,12 @@ resolver.state_of = function(ent)
     if (bit.band(flags, 1) == 0) then
         return "air"
     end
-    if (bit.band(flags, 2) ~= 0) then
-        return "duck"
-    end
     local velocity = ent:get_prop("m_vecVelocity")
     local speed = velocity and math.vec_length2d(velocity) or 0
+    if (bit.band(flags, 2) ~= 0) then
+        -- a crouched player who walks has the eye-following feet and the small crouch limit: its own state
+        return speed > 5 and "cmove" or "duck"
+    end
     if (speed > 100) then
         return "move"
     elseif (speed > 5) then
@@ -4817,6 +4818,7 @@ resolver.capture = function(shot)
         s.key, s.kind, s.rel = prev.key, prev.kind, prev.rel
         s.candidate, s.desync = prev.candidate, prev.m_flDesync
         s.model, s.nxt = prev.model, prev.nxt
+        s.phase, s.reliab = prev.phase, prev.reliab
     end
     -- classified at the result (resolver.spoiled): the round trip and the state of the target at the shot
     s.rtt = resolver.network().ping / 1000
@@ -4952,6 +4954,17 @@ resolver.approach = function(target, cur, step)
     return res_norm(cur + (d > 0 and step or -step))
 end
 
+-- how the feet model is read per state (owners: "minden statere külön resolver logic"). The feet follow the LBY while the target
+-- stands (phase "lby": the model is built on it, full trust) and the eye yaw while it moves or is in the air (phase "eye": the
+-- feet lag behind a changing yaw, so the model is trusted less). rel also grows with the records the model has seen (it starts
+-- from the first record's yaw, a few records are needed to converge); zero = below this body yaw the model says "no desync"
+resolver.profile = function(speed, air, steps, crouch)
+    local eye = air or speed > 5
+    local conv = res_clamp((steps or 0) / 6, 0.25, 1)
+    local base = eye and (crouch and 0.5 or 0.35) or 1
+    return { phase = eye and "eye" or "lby", rel = base * conv, zero = eye and 12 or resolver.K.zero }
+end
+
 -- one record at tick t (the arrival tick: a shifted update's sim time says nothing about how long the server animated)
 resolver.feet_step = function(p, eye, lby, speed, air, maxd, t, interval)
     local moving = speed > 5 or air
@@ -4967,6 +4980,7 @@ resolver.feet_step = function(p, eye, lby, speed, air, maxd, t, interval)
     p.feet_t = t
     local rate = moving and (30 + 20 * res_clamp((speed - 70) / 65, 0, 1)) or 100
     p.feet = resolver.approach(target, p.feet, rate * dt)
+    p.feet_steps = (p.feet_steps or 0) + 1
     local d = res_norm(eye - p.feet)
     if (d > maxd) then
         p.feet = res_norm(eye - maxd)
@@ -5248,11 +5262,11 @@ resolver.update = function(local_player, ent)
     end
 
     -- the computed body yaw of the newest record (the server's feet logic on netvars)
+    local vel = ent:get_prop("m_vecVelocity")
+    local speed = vel and math.vec_length2d(vel) or 0
+    local flags = tonumber(ent:get_prop("m_fFlags")) or 0
     if (p.feet_n ~= p.rec_n) then
         p.feet_n = p.rec_n
-        local vel = ent:get_prop("m_vecVelocity")
-        local speed = vel and math.vec_length2d(vel) or 0
-        local flags = tonumber(ent:get_prop("m_fFlags")) or 0
         local lby = ent:get_prop("m_flLowerBodyYawTarget")
         lby = (type(lby) == "number" and lby == lby and math.abs(lby) <= 1e6) and lby or nil
         resolver.feet_step(p, eye, lby, speed, bit.band(flags, 1) == 0,
@@ -5263,12 +5277,12 @@ resolver.update = function(local_player, ent)
     local confidence = kind == "jitter" and p.confidence or kind == "fs" and 0.55 or 0.25
     local c = p.model
     local nx = kind == "jitter" and p.next_side or nil
+    local prof = resolver.profile(speed, bit.band(flags, 1) == 0, p.feet_steps, bit.band(flags, 2) ~= 0)
     local opt = { skip = {}, bonus = {} }
-    if (c == nil or math.abs(c) < resolver.K.zero) then
+    if (c == nil or math.abs(c) < prof.zero) then
         opt.skip[6], opt.skip[7] = true, true
     else
-        -- standing the feet follow the LBY (what the model is built on); moving / in the air they lag behind the eye yaw
-        opt.bonus[6] = 0.12 * (state == "stand" and 1 or state == "slow" and 0.7 or state == "duck" and 0.7 or 0.4)
+        opt.bonus[6] = 0.12 * prof.rel
     end
     if (nx == nil) then
         opt.skip[8], opt.skip[9] = true, true
@@ -5300,6 +5314,7 @@ resolver.update = function(local_player, ent)
     prev.rel = value ~= 0 and res_sign(value * hint) or 0
     prev.candidate, prev.confidence = applied and candidate or nil, confidence
     prev.model, prev.nxt = c, nx
+    prev.phase, prev.reliab = prof.phase, prof.rel
 end
 resolver.on_result = function(target, hit_ok, resolver_miss, event, reason)
     local snapshot = target and resolver.take_shot(event, target:get_index()) or nil
@@ -5703,6 +5718,7 @@ shotlog.result = function(shot, hit)
         row.rk, row.cd, row.vl = snap.key, snap.candidate, shotlog.num(snap.desync, 1)
         row.md, row.nx = shotlog.num(snap.model, 1), snap.nxt
         row.df, row.lb, row.sx = snap.defensive, snap.lagbreak, snap.state
+        row.ph, row.rl = snap.phase, shotlog.num(snap.reliab, 2)
     end
     if (hit) then
         row.hg, row.dmg = shot.hitgroup, shotlog.num(shot.damage)
