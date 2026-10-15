@@ -395,8 +395,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   public clan tag: a player with another / no tag is not seen. The badges are OUR monogram badges (letters on a coloured rounded
   square, `tools/make_reveal_icons.py` -> `assets/reveal/<key>.png` and the `REVEAL_PNG` block of server.js, served at
   `GET /reveal/<key>.png`, downloaded once into csgo/materials/panorama/images/icons/specter_reveal_<key>.png), NOT the logos of those
-  programs (owners asked for the real ones; they have to come from the owners: put a PNG of any size with the same name into
-  assets/reveal/, the script scales it to 32 x 32 and embeds it, then commit assets/reveal + server.js).
+  programs, EXCEPT the ones the owners sent (Oct 2026, the MIT licensed "p2c-icons" set, licence text in assets/reveal/LICENSE-p2c-icons):
+  gs, prim, nix, nl, ot, fat, pan, ev (ev0lve) are those icons scaled to 32 x 32; aw (aimware) is still our own badge. To change one put
+  a PNG of any size with the same name into assets/reveal/, run the script (it scales to 32 x 32 and embeds it), commit assets/reveal +
+  server.js.
 - Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";
   Primordial only, the gamesense lua has no user detection to build on): Misc > "Servers" (page 15). "Share my server" (default
   OFF, a RAW `menu_add_checkbox`, not an eui item: eui exports every checkbox into the configs, and an imported / cloud config must

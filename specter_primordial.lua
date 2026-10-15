@@ -3350,6 +3350,7 @@ reveal.SOFT = {
     { key = "fat", name = "fatality", words = { "fatality" } },
     { key = "aw", name = "aimware", words = { "aimware" } },
     { key = "pan", name = "pandora", words = { "pandora" } },
+    { key = "ev", name = "ev0lve", words = { "ev0lve" } },
 }
 -- the clan tag of a typing / scrolling animation shows a part of the word: a prefix of 5+ letters counts as well
 reveal.detect = function(tag)
