@@ -6238,6 +6238,10 @@ builder.adv = {}
 
 -- a random integer of [a, b] in either order (a slider can give b < a)
 builder.rnd = function(a, b)
+    a, b = tonumber(a) or 0, tonumber(b) or 0
+    if (a ~= a or b ~= b or math.abs(a) > 1e6 or math.abs(b) > 1e6) then
+        a, b = 0, 0
+    end
     a, b = math.floor(a + 0.5), math.floor(b + 0.5)
     if (b < a) then
         a, b = b, a
@@ -6247,6 +6251,9 @@ end
 
 -- a yaw in -180 .. 180
 builder.adv.norm = function(yaw)
+    if (type(yaw) ~= "number" or yaw ~= yaw or math.abs(yaw) > 1e9) then
+        return 0
+    end
     yaw = (yaw + 180) % 360 - 180
     return math.max(-180, math.min(180, yaw))
 end
@@ -6334,7 +6341,8 @@ builder.adv.def_pitch = function(st, mode, v1, v2, fresh, t, rnd)
 end
 
 -- defensive yaw (yaw add): 9 "Opposite" = 180 from the yaw now, 10 "Random side" = 90 .. 150 to a random side, picked at
--- each defensive start, 11 "Jitter flick" = +- value every tick, 12 "Distort" = creeping to random targets in +- value
+-- each defensive start, 11 "Jitter flick" = +- value, flipped every SENT packet (`tick` = its parity: the game tick would stay on one
+-- side when the choke is even), 12 "Distort" = creeping to random targets in +- value
 builder.adv.def_yaw = function(st, mode, value, yaw, fresh, tick, rnd)
     local v = math.abs(value)
     if (mode == 9) then
@@ -6778,6 +6786,9 @@ end
 builder.own_fs = { side = 0, tick = -100, yaw = nil }
 -- the freestanding yaw (absolute), nil when no wall covers one side; traces every 4 ticks
 builder.own_freestand = function(local_player)
+    if (local_player == nil) then
+        return nil
+    end
     local fs, tick = builder.own_fs, globals.tick_count()
     if (tick - fs.tick < 4 and tick >= fs.tick) then
         return fs.yaw
@@ -6786,7 +6797,7 @@ builder.own_freestand = function(local_player)
     fs.yaw = nil
     local head = local_player:get_hitbox_pos(e_hitboxes.HEAD)
     local view = engine_get_view_angles()
-    if (head == nil or view == nil) then
+    if (head == nil or view == nil or type(view.y) ~= "number") then
         return nil
     end
     -- the threat: the enemy nearest the crosshair
@@ -6794,8 +6805,8 @@ builder.own_freestand = function(local_player)
     for _, enemy in pairs(entity_list_get_players(true) or {}) do
         if (enemy:is_alive() and not enemy:is_dormant()) then
             local o = enemy:get_render_origin()
-            local off = math.abs(builder.adv.norm(math.deg(math.atan2(o.y - head.y, o.x - head.x)) - view.y))
-            if (best == nil or off < best) then
+            local off = o ~= nil and math.abs(builder.adv.norm(math.deg(math.atan2(o.y - head.y, o.x - head.x)) - view.y))
+            if (off and (best == nil or off < best)) then
                 threat, best = enemy, off
             end
         end
@@ -6805,12 +6816,19 @@ builder.own_freestand = function(local_player)
         return nil
     end
     local eye = threat:get_eye_position()
+    if (eye == nil) then
+        return nil
+    end
     local to = math.atan2(eye.y - head.y, eye.x - head.x)
     local w = 24
     local lx, ly = math.cos(to + math.pi / 2) * w, math.sin(to + math.pi / 2) * w
     -- walls only (0x400B, no player models: our own body would count as a wall)
-    local left = trace_line(eye, vec3_t(head.x + lx, head.y + ly, head.z), threat, 0x400B).fraction
-    local right = trace_line(eye, vec3_t(head.x - lx, head.y - ly, head.z), threat, 0x400B).fraction
+    local left = trace_line(eye, vec3_t(head.x + lx, head.y + ly, head.z), threat, 0x400B)
+    local right = trace_line(eye, vec3_t(head.x - lx, head.y - ly, head.z), threat, 0x400B)
+    left, right = left and left.fraction, right and right.fraction
+    if (type(left) ~= "number" or type(right) ~= "number" or left ~= left or right ~= right) then
+        return nil
+    end
     fs.side = builder.adv.fs_pick(left, right, fs.side)
     if (fs.side ~= 0) then
         fs.yaw = builder.adv.norm(math.deg(to) + 90 * fs.side)
@@ -7306,7 +7324,7 @@ run_antiaim = function(ctx, cmd, unpredicted)
                         refs.desyncside:set(builder.goal_yaw < 0 and 3 or 2)
                     elseif (anti_aim.defensive_yaw:get() >= 9) then
                         refs.yawadd:set(builder.adv.def_yaw(builder.def_st, anti_aim.defensive_yaw:get(), anti_aim.defensive_yaw_val:get(),
-                            builder.yaw_now(), def_fresh, globals.tick_count(), builder.rnd))
+                            builder.yaw_now(), def_fresh, builder.yaw_flip and 0 or 1, builder.rnd))
                     end
                 end
         

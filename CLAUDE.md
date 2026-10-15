@@ -252,6 +252,13 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   record). The advanced prediction (peek check) aims its look-ahead trace at that point instead of velocity x time; the beta
   stub has no `resolver.advanced`, so the call site checks it. The lag break limit of `track` stays 32 ticks (their 64 would
   call a runner's normal 250 u/s a teleport).
+- AA hardening (the owners' "combined" file, Oct 2026, taken in part): `builder.rnd` / `builder.adv.norm` give a number for NaN /
+  inf / nil, `builder.own_freestand` returns nil on a missing player / origin / eye / trace instead of an error, and the
+  defensive "Jitter flick" flips every SENT packet (`builder.yaw_flip`) instead of the game tick's parity (an even choke sent
+  every packet on the same parity = one side). NOT taken: their `arm_group` (one group per state split the bandit's learning
+  over 11 groups instead of 4), their `brain_learn` (body hits taught the profiles, the design says they teach nothing) and
+  the wrappers around `builder.adv.*` at the end of the file (a second copy of the logic that the tests do not see); their
+  simpler forecast duplicated the module that is already in.
 - Backtrack: Primordial's (its records, the tick count of its shot). The old "Improve backtrack" wrote cmd.tick_count on
   every command from the enemy nearest the crosshair minus "dynamic ticks": the server rewound to a time the aimbot did
   not aim at. Now Improve backtrack sets Primordial's fake ping amount (100 ms, Extended backtrack 200 ms; the server takes
