@@ -375,6 +375,15 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   gs-be is"): its heartbeat carries `q=` the hashes of the players here (64 at most) and the list box under the checkbox
   ("name ~ gs user" / "name ~ prim user (version)", "you" for ourselves, "nobody found here"; not saved in configs). If
   `entity.get_steam64` does not give the 17 digit text, the gamesense lua sends nothing (not confirmed in game).
+- Zeus vs rushers (owners, Oct 2026: "ha valaki jön felém késsel akkor zeust vesz elő és lezeusolja, ha valaki zeussal akkor is,
+  ha egy helyben állsz hamarabb lő a zeus"): Misc "Zeus vs rushers" (on in default.cfg), `zeus_rush` in the setup command next
+  to the knifebot helper. An enemy with a knife (450 units) or a zeus (520) that runs at us (closing > 40 u/s, or within 220)
+  makes us `use weapon_taser` (every 0.6 s; if no zeus came out the try waits 4 s); with the zeus out the lua aims at the
+  enemy's chest (cmd.viewangles) and presses attack when the enemy is inside the zeus range (182) with a clear wall trace:
+  standing the edge is 180, moving 170 (the "sooner" when still). The zeus WE took out is put away with `lastinv` after the
+  shot (clip 0) or 1.5 s without a threat; one we took ourselves is left alone. The decision is the pure `zeus.decide`
+  (tested). Not proven in game: the server checks the range on the lag compensated enemy, so firing "earlier" than the range
+  edge would only miss.
 - Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";
   Primordial only, the gamesense lua has no user detection to build on): Misc > "Servers" (page 15). "Share my server" (default
   OFF, a RAW `menu_add_checkbox`, not an eui item: eui exports every checkbox into the configs, and an imported / cloud config must
