@@ -187,6 +187,26 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   toggles (Logic / Improve / Pose / Custom resolver, "Lua side override") no longer switch it on or off, Custom resolver
   only tunes it (pred_sel, calc_box, shot_pred, disablers). Not proven in game: judge it by the shot logs (`native`
   false = ours, miss reasons resolver / jitter).
+  What it decides with (owners, Oct 2026: "mindegyiket csináld meg ... AA stealer"; the GS aa_stealer only reads the
+  eye yaw pattern, the desync is not networked, so nothing can read it, only infer it): per player and situation
+  (`resolver.mem[idx][key]`: state / "state fs" / "jitter") 9 hypotheses (`resolver.NCAND`), each a Beta(good, bad) that
+  the results update, chosen by `resolver.choose` (mean + exploration + a prior): 1 / 2 the side hint (freestanding /
+  jitter side) full size as is / mirrored, 3 / 4 half size, 5 none, 6 / 7 the FEET MODEL (`resolver.feet_step`: the
+  server's feet logic on netvars, a port of the GS lua's `feet_update`: standing the feet go to the LBY target at 100
+  deg/s, moving they follow the eye yaw at 30-50, never further than `feet_limit` (58 shrunk by speed / duck) from it;
+  eye - feet = the computed body yaw `p.model`, value = -model / +model; skipped under `K.zero` 20 deg: no visible
+  desync; a standing target gets a prior bonus, moving less), 8 / 9 the side the jitter PATTERN predicts for the next
+  record (`resolver.run_predict`: the last runs of one side, a fixed period = delay jitter switches exactly when the run
+  reaches it, else the run-length statistics of the GS `jitter_of`; `p.next_side` / `p.period` / `p.period_conf`,
+  bonus by the confidence). Every counted result pulls all hypotheses of the situation 3 % back toward the start
+  (`K.forget`). A tickbase shift (sim time back by < `K.shift` 0.5 s) is not a reset any more: the target and what was
+  learned stay, 0.25 s grace. Relearning: `resolver.new_round` (round_start; it was `reset`, a full wipe every round)
+  keeps the learning per STEAM ID, halved (`K.round_keep`); it is also kept over a dormant phase and a respawn (it was
+  wiped at every one: `lets_resolve` for every dormant / dead enemy, `track` at every restart; a dead player's waits in
+  `resolver.carry`, another player in the slot gets none), and a jitterer whose yaw pattern (`resolver.pattern`: yaw
+  positions + span, only while the jitter detector holds) changed for `K.change` records in a row has it cut to
+  `K.change_keep`. The shot logs carry `rk` (situation), `cd` (hypothesis), `vl` (the body yaw written), `md` (the feet
+  model's), `nx` (predicted next side): tune the priors / the hypotheses by the hit rate per `cd`.
 - Backtrack: Primordial's (its records, the tick count of its shot). The old "Improve backtrack" wrote cmd.tick_count on
   every command from the enemy nearest the crosshair minus "dynamic ticks": the server rewound to a time the aimbot did
   not aim at. Now Improve backtrack sets Primordial's fake ping amount (100 ms, Extended backtrack 200 ms; the server takes
