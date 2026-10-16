@@ -49,7 +49,7 @@ local env = setmetatable({
     time_to_ticks = function(v) return math.floor(v * 64 + 0.5) end,
     ui = {
         ragebot = { logic_reso = control(true), smart_baim = control(true),
-            smart_baim_hp = control(40), smart_baim_lethal = control(true), moving_baim = control(false),
+            smart_baim_hp = control(40), smart_baim_lethal = control(true), head_conf = control(false),
             latency_guard = control(true), latency_limit = control(80), fast_peek = control(true),
             backtrack = { prediction = control(true), enable_backtrack = control(true),
                 extended_backtrack = control(false) },
@@ -330,23 +330,35 @@ test("health threshold is strict and configurable", function()
     assert(ctx.groups[1] == false)
     env.ui.ragebot.smart_baim_hp:set(40)
 end)
-test("body aim on moving targets: only a mover, only with the option", function()
+test("head confidence: air head is shot, a ground mover goes body, live results and exploring bring the head back", function()
     target.hp = 100
-    local old = target.velocity
-    target.velocity = { x = 120, y = 0, z = 0 }
+    local old, oldf = target.velocity, target.flags
+    target.flags, target.velocity = 1, { x = 200, y = 0, z = 0 }
     local ctx = context(target)
     resolver.hitscan(ctx)
-    assert(ctx.groups[1] == nil)
-    env.ui.ragebot.moving_baim:set(true)
+    assert(ctx.groups[1] == nil)                                  -- option off: nothing
+    env.ui.ragebot.head_conf:set(true)
+    resolver.conf.data, resolver.conf.explore = {}, {}
     ctx = context(target)
     resolver.hitscan(ctx)
-    assert(ctx.groups[1] == false and ctx.groups[2] == true)
-    target.velocity = { x = 2, y = 0, z = 0 }
+    assert(ctx.groups[1] == false and ctx.groups[2] == true)      -- running on the ground: head 31 %, body 81 %
+    target.flags = 0
     ctx = context(target)
     resolver.hitscan(ctx)
-    assert(ctx.groups[1] == nil)
-    env.ui.ragebot.moving_baim:set(false)
-    target.velocity = old
+    assert(ctx.groups[1] == nil)                                  -- in the air: head 88 %
+    target.flags = 1
+    resolver.conf.explore[target.idx] = true
+    ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == nil)                                  -- exploring: the head is tried
+    resolver.conf.explore[target.idx] = nil
+    for _ = 1, 100 do resolver.conf.add("move", true, true) end
+    ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == nil)                                  -- the head hit 100 of 100 here: sure now
+    resolver.conf.data = {}
+    env.ui.ragebot.head_conf:set(false)
+    target.velocity, target.flags = old, oldf
 end)
 test("zero threshold disables HP-forced body aim", function()
     env.ui.ragebot.smart_baim_hp:set(0)
