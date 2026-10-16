@@ -567,7 +567,7 @@ TICKS = 0
 globals = { real_time = function() return SIM end, tick_count = function() TICKS = TICKS + 1 return TICKS end, interval_per_tick = function() return 1 / 64 end }
 local function item(v) return { get = function() return v end } end
 ui = { ragebot = { logic_reso = item(false), smart_baim = item(true),
-    smart_baim_hp = item(40), smart_baim_lethal = item(true), moving_baim = item(false), resolver = { shot_pred = item(4) } } }
+    smart_baim_hp = item(40), smart_baim_lethal = item(true), head_conf = item(false), resolver = { shot_pred = item(4) } } }
 HP = 100
 damage = { calculate = function(_, _, box) return box == "chest" and 70 or 87 end }
 res_custom = function() return false end
@@ -987,7 +987,8 @@ check(tuple(r) == (True, True, True, True, True),
 # defensive / lag break detector (owners: "nem lesz defensive detectorunk?", the ENEMY's): the shift that spoils a shot fired
 # at t is observed about a round trip later, inside [t + rtt - duration, t + rtt]; such a miss is no resolver miss and
 # teaches nothing, a hit still counts; the stats show it as "defensive" / "lag break" per state
-DF = chunk("resolver.memory = function(idx, key, kind)", "resolver.shot_id = function(event)") + \
+DF = chunk("resolver.conf = {", "resolver.state_of = function(ent)") + \
+     chunk("resolver.memory = function(idx, key, kind)", "resolver.shot_id = function(event)") + \
      chunk("resolver.shot_id = function(event)", "local RES_JIT_N = 12") + \
      chunk("resolver.HYP = {", "--- @info: resolver: side from freestanding") + \
      chunk("local RES_JIT_N = 12", "resolver.update = function(local_player, ent)") + \

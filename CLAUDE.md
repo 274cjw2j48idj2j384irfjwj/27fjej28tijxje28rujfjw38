@@ -168,11 +168,17 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   `resolver.active` (owners, Oct 2026: "statikus resolvernél vannak problémák a jitternel"; the real shot logs, 86 shots,
   had jitter the top miss cause 16/32 with `sp` None on 83, because it used to need a resolver toggle on). The after-miss
   head safe point (misses >= 2) and the Custom resolver options (duck / peek / HP) stay behind `resolver.active`; `safe_all`
-  (a disabler set to head safe point) forces safety even on a fast peek. Body aim on moving targets (Resolver page, under Smart body aim, on in default.cfg; owners, Oct 2026: "fel kéne tornászni 80-85 százalékra"):
-  a target moving 10+ u/s is shot in the body (head group off, `resolver.safe` 3) - 828 real shots: moving head 44 % against 83 % standing,
-  the moving body 80 %, the head safe point on movers 17-41 %; the non-resolver misses (our death, spread, occlusion) are 12 %, so ~88 % is
-  the ceiling. Note: `cm` in the shot log is written AFTER the miss is counted, so `cm >= 1` rows are the misses themselves, not a
-  predictor. Smart body aim (Resolver page, default on; owners, Oct 2026: "ha nem
+  (a disabler set to head safe point) forces safety even on a fast peek. Body aim when the head is unsure (Resolver page, under Smart body aim, on in default.cfg; owners, Oct 2026: "ha 100%-ban biztos vagy
+  85 akkor fejre, ha nem éri el a 85-öt és a test biztosabb, akkor testre", a blanket "movers go body" was refused: a fully open
+  peek must still get the head when it is sure): `resolver.conf` keeps per state of the target (air / stand / slow / move / duck /
+  cmove) the hit rate of our head and body shots (a result counts when it hit, or missed for the resolver / jitter reason; not a
+  spoiled shot), started from the real shots (828, Oct 2026, prior weight 12: air head 88 % / body 93 %, ground head 31-48 % / body
+  81-86 %) and moved by every result; the head is shot at 85 % or when the body is not 8 points surer, else the body; 1 shot in 5
+  per target tries the head anyway (`TRY`), so a state that got better is noticed. The shot log carries `pc` (the head rate used).
+  Per target history does NOT predict a mover's next head shot (55 / 54 / 58 / 46 % by the posterior), so the state rate is the
+  estimate; the weak spot is every GROUND target (head ~37 %), not only the movers: improve the ground resolver (rk / cd / l6).
+  The non-resolver misses (our death, spread, occlusion) are 12 %, so ~88 % is the ceiling. Note: `cm` in the shot log is written
+  AFTER the miss is counted, so `cm >= 1` rows are the misses themselves, not a predictor. Smart body aim (Resolver page, default on; owners, Oct 2026: "ha nem
   100% biztos a fejbe inkább safepointos vagy testre lő ... de ha 100 a kövi hitnél akkor ne test legyen"; a version that
   turned the head off after every miss was "faszság", almost no head shots): the head is sure when the target does not
   jitter and has no miss since the last hit; not sure -> body (head group off) only when a body hit kills (HP <= the weaker
