@@ -99,6 +99,22 @@ delete xuids[3];
 api.apply();
 check(!flag_badge.IsValid() && flag.visible === true, "a badge that goes away gives the country flag back");
 flagged.DeleteAsync();
+// a flag whose id only says "flag" / "country" (the CS:GO scoreboard ids are "id-sb-name__*"), deeper in the row: found by the id walk
+xuids[3] = "76561197960301234";
+const deep = new Panel("row-deep", board);
+deep.cls = "sb-row"; deep.attrs.xuid = xuids[3];
+const name_cell = new Panel("id-sb-name", deep);
+const avatar = new Panel("id-sb-name__avatar", name_cell);
+const country = new Panel("id-sb-name__Country-Flag", name_cell);
+api.update(3, "reveal", true, xuids[3]);
+check(country.visible === false && avatar.visible === true && name_cell.FindChild("specter-presence-" + xuids[3]),
+    "a flag found by its id (flag / country, any depth): hidden, the badge in its cell");
+const text = api.dump();
+check(typeof text === "string" && text.length > 0 && text.includes("<?>"), "the dump lists the first row (id, type) as text");
+delete xuids[3];
+api.apply();
+check(country.visible === true, "the deep flag comes back too");
+deep.DeleteAsync();
 board.DeleteAsync();
 board = new Panel("Scoreboard", container);
 other = row(xuids[2]);

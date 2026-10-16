@@ -1332,5 +1332,52 @@ check(r[0] == "https://srv/configs?lua=pm" and r[1] == "ann ~ new|bob ~ hvh"
       "cloud configs: list newest first, Use imports, upload in 3 parts (0 first), refresh after, no key = nothing sent, the "
       "dev build shares as dev=1 + user (%s)" % (r[:6] + (r[11],),))
 
+# the config used last comes back at the start (owners, Oct 2026: "when you reload it, it automatically puts up the last config you used"):
+# Use / Save remember the name in settings.json, the start loads it quietly (no notifications), nothing when it is gone / default
+LC = chunk("configs.load_named = function(cur, quiet)", "--- @endregion\n\n--- @info: lua network, clantag [sync]")
+lc = L.LuaRuntime(unpack_returned_tuples=True)
+r = lc.eval("""(function()
+    NOTES, IMPORTED, STORE, N, FILES = {}, {}, {}, 0, { ["specter/a.cfg"] = "RAW", ["specter/default.cfg"] = "RAW" }
+    config_version, config_build, settings_file = "1.0", "beta", "settings.json"
+    local active = "a.cfg"
+    notifications = { types = { success = "s", warning = "w", failure = "f", information = "i" },
+        create = function(_, body) NOTES[#NOTES + 1] = body end }
+    libs = {
+        json = { parse = function(b) if b == "DEC" then return { System = { { "version", "1.0" }, { "build", "beta" } } } end
+                    return STORE[b] end,
+                 encode = function(t) N = N + 1 STORE["J" .. N] = t return "J" .. N end },
+        base64 = { decode = function(x) return "DEC" end, encode = function(x) return "ENC" end },
+        eui = { import = function(x) IMPORTED[#IMPORTED + 1] = x end, export = function() return "{}" end },
+        filesystem = { exists = function(f) return FILES[f] ~= nil end,
+                       read = function(f) return FILES[f] end,
+                       write = function(f, d) FILES[f] = d end },
+    }
+    read_settings = function() local t = STORE[FILES["settings.json"] or ""] return type(t) == "table" and t or {} end
+    get_accent_color, get_text_color = function() return nil end, function() return nil end
+    configs = { dir = "specter/" }
+    ui = { nav = { slider = { get = function() return 3 end, ref = { set = function() end } } },
+           configs = { list = { ref = { get_active_item_name = function() return active end } } } }
+    menu_add_button = function(_, name, fn) return fn end
+    """ + LC + """
+    configs.restore_last()                                                     -- nothing remembered: nothing loaded
+    local none = #IMPORTED
+    configs.load_named("a.cfg", false)                                         -- Use: notified, remembered
+    local used = #IMPORTED == 1 and #NOTES == 1 and read_settings().last_config == "a.cfg"
+    IMPORTED, NOTES = {}, {}
+    configs.restore_last()                                                     -- the start: loaded, quiet
+    local back = #IMPORTED == 1 and #NOTES == 0
+    IMPORTED = {}
+    FILES["specter/a.cfg"] = nil                                               -- deleted since: nothing
+    configs.restore_last()
+    local gone = #IMPORTED == 0
+    local settings = read_settings()
+    settings.last_config = "default.cfg"                                       -- the default one is applied by the first start itself
+    FILES["settings.json"] = libs.json.encode(settings)
+    configs.restore_last()
+    return none == 0, used, back, gone, #IMPORTED == 0
+end)()""")
+check(tuple(r) == (True, True, True, True, True),
+      "last config: Use remembers it, the start loads it quietly, nothing when it is gone / the default one (%s)" % (tuple(r),))
+
 print("\n%d failed" % len(FAILS) if FAILS else "\nall passed")
 sys.exit(1 if FAILS else 0)
