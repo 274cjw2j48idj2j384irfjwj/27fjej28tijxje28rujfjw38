@@ -4822,11 +4822,17 @@ backtrack.update = function(local_player)
         -- Added fake latency must fit inside the desired TOTAL RTT budget.
         want = (backtrack.high_until or 0) > now and 0 or math.max(0, math.floor(want - net.ping))
     end
+    -- a value the user set by hand wins: we only write when the slider still holds what we wrote last, else it is
+    -- theirs now (kept as the floor, so the round change / no enemy / knife never drops it)
+    local cur = backtrack.ping:get()
+    if (backtrack.saved == nil or (backtrack.amount ~= nil and cur ~= backtrack.amount)) then
+        backtrack.saved = cur
+    end
+    if (backtrack.saved ~= nil and backtrack.saved > want and (backtrack.high_until or 0) <= globals.real_time()) then
+        want = backtrack.saved
+    end
     if (backtrack.cap ~= nil and want > backtrack.cap) then want = backtrack.cap end
     if (want ~= backtrack.amount) then
-        if (backtrack.saved == nil) then
-            backtrack.saved = backtrack.ping:get()
-        end
         backtrack.ping:set(want)
         if (want > 200 and backtrack.ping:get() < want) then
             backtrack.cap = backtrack.ping:get()
