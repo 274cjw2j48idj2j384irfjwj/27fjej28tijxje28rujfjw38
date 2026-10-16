@@ -255,6 +255,15 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   marks a shot fired inside a window (`defensive` / `lagbreak`), `on_result` then does not count its MISS (no resolver
   miss, no bad for the hypothesis; a hit still counts), the shot log carries `df` / `lb`. Not done: predicting WHEN a
   target will use a defensive (the double tap recharge is not readable), the aimbot's own extrapolation is Primordial's.
+- Miss credibility (owners' friend, Oct 2026: "nem is jitter miss, csak a saját resolverje minősíti annak ... a primo nem tudja pontosan mit
+  misselt"): Primordial's "jitter" / "resolver" miss reasons are ITS guess, and with our resolver on its own is off. Real shots
+  (857, Oct 2026): only 3 of 35 "jitter" misses of ours were on a target our own detector called a jitterer (33 of 69 over all
+  rows), 12 of 124 at a standing target, and the share of the label rose with the ping (9 % under 40 ms, 18 % over 130; hit
+  rate 78 % -> 64 %): lag shows up as "jitter". So `resolver.on_result` gives a "jitter" miss on a target that is not a
+  detected jitterer a `credit` of 0.4 (0.2 above 100 ms ping), the "resolver" reason and a miss on a detected jitterer 1, hits
+  always 1: the credit goes into `resolver.misses` (the head safe point / lethal body rule), the hypothesis' `bad` and the head /
+  body rates of `resolver.conf`. The "Lua side override (experimental)" checkbox did nothing (no code read it) and is gone: our
+  resolver always runs, Primordial's own is off while it does.
 - Per state resolver (owners, Oct 2026: "minden statere külön resolver logic"): `resolver.state_of` has stand / slow / move /
   duck (crouched, still) / cmove (crouched, walking) / air; every state has its own memory, hit rate row (`stat_rows`) and
   `RES_STATE_NUM`. `resolver.profile(speed, air, steps, crouch)` is how the feet model is read there: phase "lby" (still: the
