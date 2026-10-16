@@ -1075,9 +1075,18 @@ local defensive = {
         return mode and ret or self.db[idx].defensive_until > tickcount
     end,
 
-    trigger = function()
+    -- the shift empties the double tap, and the next one came as soon as it was charged again while the enemy was still in view: we
+    -- never had a shot (owners: "csak hátráltat"). So after a shift the next one waits (DEF_COOL ticks), unless we are being shot at
+    -- (urgent) and never on the tick we shoot ourselves
+    DEF_COOL = 38,
+    cool_until = 0,
+    trigger = function(self, urgent, shooting)
+        if (shooting == true) then return end
+        local tick = globals.tick_count()
+        if (not urgent and tick < self.cool_until) then return end
         if (refs.double_tap:get() and (exploits_get_charge() == exploits_get_max_charge())) then
             exploits.force_anti_exploit_shift()
+            self.cool_until = tick + self.DEF_COOL
         end
     end
 }
@@ -6721,6 +6730,18 @@ builder.adv.def_yaw = function(st, mode, value, yaw, fresh, tick, rnd)
 end
 
 -- does an enemy look at us: its eye yaw within `tol` degrees of the direction from it to us
+-- can this enemy fire a gun within `tol` seconds: a gun (no knife / grenade / bomb), a round in it, the next shot not further away
+builder.adv.armed = function(held, clip, ready_in, tol)
+    if (type(held) ~= "string" or held == "" or held:find("knife", 1, true) or held == "bayonet" or held == "c4"
+        or held:find("grenade", 1, true) or held == "flashbang" or held == "molotov" or held == "decoy" or held == "taser") then
+        return false
+    end
+    if (type(clip) == "number" and clip <= 0) then
+        return false
+    end
+    return type(ready_in) ~= "number" or ready_in <= (tol or 0.15)
+end
+
 builder.adv.aims_at = function(eye_yaw, dx, dy, tol)
     if (type(eye_yaw) ~= "number" or eye_yaw ~= eye_yaw or (dx == 0 and dy == 0)) then
         return false
@@ -7307,9 +7328,12 @@ builder.direct_apply = function(ctx, local_player)
     end
 end
 
--- the on peek defensive check: can this enemy shoot us 3 ticks from now, or we him. Two bullet traces per enemy, and
--- Primordial runs the anti-aim once per command: double tap sends many commands in one frame (owners, Oct 2026: "lagging
--- only in mid mirage with dt": an open map with every enemy in view and long traces). Each enemy is traced at most once
+-- the on peek defensive check = an UNSAFE peek (owners, Oct 2026: "ha unsafe a peek akkor kapcsolja be ... jelenleg a defensive nem
+-- segít semmit, csak hátráltat"): an enemy that can really shoot us - a gun with a round in it that is ready to fire - and whose
+-- bullet reaches our head or chest 3 ticks from now. It was "he can hit our feet OR we can hit him", so a peek the enemy could do
+-- nothing about (his gun empty / knife out / wall at our head) shifted the double tap and left us without a shot. Two bullet traces
+-- per enemy, and Primordial runs the anti-aim once per command: double tap sends many commands in one frame (owners, Oct 2026:
+-- "lagging only in mid mirage with dt": an open map with every enemy in view and long traces). Each enemy is traced at most once
 -- per 4 ticks, at most 2 enemies per frame; meanwhile its last result stays
 builder.peek_seen, builder.peek_budget = {}, { frame = -1, left = 0 }
 builder.peek_visible = function(local_player, player, abs_origin, localmod)
@@ -7326,13 +7350,25 @@ builder.peek_visible = function(local_player, player, abs_origin, localmod)
         return seen ~= nil and seen.visible
     end
     budget.left = budget.left - 1
-    local vel, origin = player:get_prop("m_vecVelocity"), player:get_eye_position()
     local visible = false
-    if (vel ~= nil and origin ~= nil) then
+    local weapon = player:get_active_weapon()
+    local ready = true
+    if (weapon ~= nil) then
+        local next_shot = tonumber(weapon:get_prop("m_flNextPrimaryAttack"))
+        ready = builder.adv.armed(weapon:get_name(), tonumber(weapon:get_prop("m_iClip1")),
+            next_shot and next_shot - globals.cur_time() or nil)
+    end
+    local vel, origin = player:get_prop("m_vecVelocity"), player:get_eye_position()
+    local head = local_player:get_eye_position()
+    if (ready and vel ~= nil and origin ~= nil and head ~= nil) then
         local ahead = globals.interval_per_tick() * 3
-        local traced = trace_bullet(origin + vec3_t(vel.x * ahead, vel.y * ahead, vel.z * ahead), abs_origin, local_player, player)
-        local tracent = trace_bullet(abs_origin + localmod, player:get_hitbox_pos(e_hitboxes.BODY), local_player, player)
-        visible = (traced.valid and traced.damage > 3) or (tracent.valid and tracent.damage > 3)
+        local from = origin + vec3_t(vel.x * ahead, vel.y * ahead, vel.z * ahead)
+        local at_head = trace_bullet(from, head + localmod, local_player, player)
+        visible = at_head.valid and at_head.damage > 3
+        if (not visible) then
+            local at_body = trace_bullet(from, abs_origin + localmod + vec3_t(0, 0, 40), local_player, player)
+            visible = at_body.valid and at_body.damage > 3
+        end
     end
     builder.peek_seen[idx] = { tick = tick, visible = visible }
     return visible
@@ -7653,15 +7689,16 @@ run_antiaim = function(ctx, cmd, unpredicted)
                     builder.rand_next = tick + 8
                     builder.rand_on = math.random(100) <= 30
                 end
-                if ((smart:get(1) and visible) or (smart:get(2) and tick - (builder.shot_at_tick or -100000) < time_to_ticks(1.5))
+                local shot_at = smart:get(2) and tick - (builder.shot_at_tick or -100000) < time_to_ticks(1.5)
+                if (shot_at or (smart:get(1) and visible)
                     or (smart:get(3) and (global.current_state_number == 7 or global.current_state_number == 8))
                     or (smart:get(4) and threat) or (smart:get(5) and builder.rand_on)) then
-                    defensive:trigger()
+                    defensive:trigger(shot_at, cmd:has_button(e_cmd_buttons.ATTACK))
                 end
             elseif (anti_aim.trigger_defensive:get() == 2 and visible) then
-                defensive:trigger()
+                defensive:trigger(false, cmd:has_button(e_cmd_buttons.ATTACK))
             elseif (anti_aim.trigger_defensive:get() > 2) then
-                defensive:trigger()
+                defensive:trigger(false, cmd:has_button(e_cmd_buttons.ATTACK))
             end
         
             if (not (should_safe == 1)) then
