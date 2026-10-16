@@ -432,6 +432,8 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   in base64 through `/configs/upload_part` (3000 char parts, part 0 first: it starts the upload), Delete only the own ones.
   Listing and Use need nothing; sharing needs the key the Primordial loader saved in csgo/specter/key.txt and the
   loader's HWID (`cloud.hwid` = the loader's `get_hwid`, keep them the same), else a "log in once with the loader" note.
+  The dev build (`info.plan == "dev"`, no key) shares and deletes too (owners, Oct 2026: "fix that dev can upload to cloud too"): `cloud.auth`
+  gives `&dev=1&who=<user>` instead of key + hwid (see the server note under Cloud loadouts).
 - Loader + versions (owners, Oct 2026: "beta és nightly ... a bétaba nincs resolver, a ragebot Helper maradhat"):
   `specter_primordial_loader.lua` (key text input + Login, the key saved in csgo/specter/key.txt and used at the next
   start, HWID = hash of the C: volume serial + computer name, steam http + filesystem libs copied from the script):
@@ -669,6 +671,12 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   the loadout named in the box (else the current config under that name) through `/configs/upload_part`; "☁ Refresh cloud".
   The author is the key's note, else `user-` + 6 hex of its SHA-256 (`config_author` in server.js; it was the key's last
   6 chars, public). `_server_url` is `PUBLIC_URL`, else the host the script was downloaded from.
+  The dev build (no key) shares / deletes too (owners, Oct 2026: "fix that dev can upload to cloud too"; before: "sharing / deleting needs
+  a key + HWID, so not from the dev build"): `cloud_auth()` sends `dev=1&who=<player name>` (or `dev`) instead of key + hwid, both luas.
+  server.js (`dev_request` / `dev_license` / `dev_rate_ok` / `dev_cap`, `/configs/upload_part` and `/configs/delete`): author
+  `dev-<who>` (A-Za-z0-9_ .- , 16 chars), plan `dev`, 200 requests per IP in 10 minutes, at most 40 dev configs on the list (the oldest
+  DEV ones go first, never a customer's), a dev request deletes only plan `dev` configs. The repo is public, so this is an open door by
+  design: `who` is not proof of anybody.
   `python3 tests/cloud_loadouts.py` (mock http; `tests/perf/mock.lua` takes `opts.libs`)
 
 ## Recommended config
