@@ -359,6 +359,16 @@ test("head confidence: air head is shot, a ground mover goes body, live results 
     resolver.hitscan(ctx)
     assert(ctx.groups[1] == nil)                                  -- exploring: the head is tried
     resolver.conf.explore[target.idx] = nil
+    resolver.conf.hot[target.idx] = env.globals.real_time()       -- a head hit on this target a moment ago: the resolver has its angle
+    tick = tick + 1
+    ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == nil)
+    resolver.conf.hot[target.idx] = env.globals.real_time() - 10  -- ... but not for ever
+    tick = tick + 1
+    ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == false)
     for _ = 1, 100 do resolver.conf.add("move", true, true) end
     ctx = context(target)
     resolver.hitscan(ctx)

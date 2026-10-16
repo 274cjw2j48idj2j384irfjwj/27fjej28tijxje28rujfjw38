@@ -183,6 +183,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   spoiled shot), started from the real shots (828, Oct 2026, prior weight 12: air head 88 % / body 93 %, ground head 31-48 % / body
   81-86 %) and moved by every result; the head is shot at 85 % or when the body is not 8 points surer, else the body; 1 shot in 5
   per target tries the head anyway (`TRY`), so a state that got better is noticed. The shot log carries `pc` (the head rate used).
+  A head HIT on a target keeps the head for 6 s (`resolver.conf.hot`, `HOT`; owners, Oct 2026: "ha egyszer fejbe lőtte, már tudja az
+  angle-jét"), until a head shot at him misses for the resolver / jitter reason. The real shots do not prove it (only 12 head shots
+  within 8 s after a head hit: 67 %, a head miss before: 66 %, ground movers 3 samples), so it is the owners' call, judge it by `pc`
+  and the hit rate of the head shots after a hit.
   The head is only taken away while the body can be hit (`resolver.body_damage >= 1`): the head group off and nothing else reachable
   leaves the aimbot no point and it does not shoot at all (owners' friend, Oct 2026: "elvileg egyáltalán nem lőtt", a head peeking over
   cover). Safe points can do the same (no point safe on both desync sides = no shot): the jitter safe point stays on a fast peek since
