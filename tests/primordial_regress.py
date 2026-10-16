@@ -1271,6 +1271,7 @@ cl.execute("""
 ffi = require("ffi")
 GETS, PENDING, NOTES, BUTTONS, IMPORTED, KEY = {}, {}, {}, {}, nil, "abc-key"
 presence = { server = "https://srv" }
+info = { plan = "nightly", user = "bob x" }
 config_version, config_build, settings_file = "1.0", "beta", "settings.json"
 notifications = { types = { success = "s", warning = "w", failure = "f", information = "i" },
     create = function(_, body) NOTES[#NOTES + 1] = body end }
@@ -1316,14 +1317,20 @@ r = cl.eval("""(function()
     KEY = nil
     PENDING = {}
     BUTTONS["Delete"]()
-    return list_url, rows, get_url, imported, first, after, up0, up1, refreshed, #PENDING, NOTES[#NOTES]
+    local nothing, note = #PENDING, NOTES[#NOTES]
+    -- the dev build (no key, no loader) shares as dev=1 + its user name (owners, Oct 2026: "dev can upload to cloud too")
+    info.plan = "dev"
+    BUTTONS["Delete"]()
+    local dev_url = PENDING[1] and PENDING[1].url
+    return list_url, rows, get_url, imported, first, after, up0, up1, refreshed, nothing, note, dev_url
 end)()""")
 check(r[0] == "https://srv/configs?lua=pm" and r[1] == "ann ~ new|bob ~ hvh"
       and r[2] == "https://srv/configs/get?lua=pm&name=hvh&author=bob" and r[3] == "CFG:Zm9v"
       and r[4] == 1 and r[5] == 2 and "upload_part?lua=pm&key=abc-key&hwid=PM-" in r[6] and "&name=hvh&total=3&idx=0&data=" in r[6]
-      and "&idx=1&" in r[7] and r[8] == "https://srv/configs?lua=pm" and r[9] == 0 and "Log in once" in r[10],
-      "cloud configs: list newest first, Use imports, upload in 3 parts (0 first), refresh after, no key = nothing sent (%s)"
-      % (r[:6],))
+      and "&idx=1&" in r[7] and r[8] == "https://srv/configs?lua=pm" and r[9] == 0 and "Log in once" in r[10]
+      and r[11] == "https://srv/configs/delete?lua=pm&dev=1&who=bob%20x&name=hvh",
+      "cloud configs: list newest first, Use imports, upload in 3 parts (0 first), refresh after, no key = nothing sent, the "
+      "dev build shares as dev=1 + user (%s)" % (r[:6] + (r[11],),))
 
 print("\n%d failed" % len(FAILS) if FAILS else "\nall passed")
 sys.exit(1 if FAILS else 0)

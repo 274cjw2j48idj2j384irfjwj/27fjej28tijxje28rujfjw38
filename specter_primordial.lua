@@ -2557,6 +2557,10 @@ cloud.auth = function()
         local ok2, text = pcall(libs.filesystem.read, "specter/key.txt")
         key = ok2 and tostring(text):match("^%s*(.-)%s*$") or ""
     end
+    if (key == "" and info.plan == "dev") then
+        -- the dev build has no key: the server takes it as dev=1 + the user name (owners, Oct 2026: "dev can upload to cloud too")
+        return "&dev=1&who=" .. cloud.url(info.user)
+    end
     if (key == "") then
         notifications.create("Specter", "Log in once with the Specter loader to share configs (your key is saved then).",
             notifications.types.warning)

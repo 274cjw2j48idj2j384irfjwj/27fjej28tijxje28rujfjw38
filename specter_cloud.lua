@@ -13475,6 +13475,15 @@ LPH_NO_VIRTUALIZE(function ()
                 return (tostring(v or ""):gsub("[%c]", ""):sub(1, n))
             end
 
+            -- the query that says who shares: key + hwid, or the dev build (no key) as dev=1 + its player name (owners, Oct 2026: "dev can
+            -- upload to cloud too"; the server keeps dev uploads small and apart)
+            local function cloud_auth()
+                if KEY ~= "" then return "key=" .. url_encode(KEY) .. "&hwid=" .. url_encode(HWID) end
+                if not perf.dev then return nil end
+                local ok, who = pcall(function() return entity.get_player_name(entity.get_local_player()) end)
+                return "dev=1&who=" .. url_encode(ok and type(who) == "string" and who or "dev")
+            end
+
             local function cloud_ready()
                 if not http then cloud_status("subscribe to gamesense/http for the cloud"); return false end
                 if SERVER == "" then cloud_status("no server set"); return false end
@@ -13654,7 +13663,8 @@ LPH_NO_VIRTUALIZE(function ()
                 if name == "" or name:find("^No loadouts yet") then cloud_status("type a name first"); return end
                 if #name > 32 then cloud_status("name too long (max 32)"); return end
                 if picked_cloud() then cloud_status("that one is already in the cloud"); return end
-                if KEY == "" then cloud_status("log in with your key to share"); return end
+                local auth = cloud_auth()
+                if not auth then cloud_status("log in with your key to share"); return end
                 if not cloud_ready() then return end
 
                 local preset = antiaim_presets.lookup(name)
@@ -13666,7 +13676,7 @@ LPH_NO_VIRTUALIZE(function ()
                 for i = 1, #encoded, CHUNK do parts[#parts + 1] = encoded:sub(i, i + CHUNK - 1) end
                 if #parts > 150 then cloud_status("loadout too large"); return end
 
-                local base = SERVER .. "/configs/upload_part?key=" .. url_encode(KEY) .. "&hwid=" .. url_encode(HWID)
+                local base = SERVER .. "/configs/upload_part?" .. auth
                     .. "&name=" .. url_encode(name) .. "&total=" .. #parts
                 cloud_busy = true
                 local function send(i)
@@ -13701,10 +13711,11 @@ LPH_NO_VIRTUALIZE(function ()
 
             -- the server deletes only the user's own uploads
             function antiaim_presets.cloud_delete(cfg)
-                if KEY == "" then cloud_status("log in with your key to delete"); return end
+                local auth = cloud_auth()
+                if not auth then cloud_status("log in with your key to delete"); return end
                 if not cloud_ready() then return end
                 cloud_busy = true
-                local url = SERVER .. "/configs/delete?key=" .. url_encode(KEY) .. "&hwid=" .. url_encode(HWID) .. "&name=" .. url_encode(cfg.name)
+                local url = SERVER .. "/configs/delete?" .. auth .. "&name=" .. url_encode(cfg.name)
                 http.get(url, function(ok, resp)
                     cloud_busy = false
                     local answer = cloud_answer(ok, resp)

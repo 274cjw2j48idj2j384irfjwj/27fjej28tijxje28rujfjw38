@@ -452,6 +452,37 @@ function config_author(license, key) {
     return license.note || 'user-' + sha256(key).slice(0, 6)
 }
 
+// The dev build has no key (owners, Oct 2026: "fix that dev can upload to cloud too"): its config upload / delete come with
+// dev=1 and who=<name> instead of key + hwid, the author is "dev-<name>", the plan "dev". The repo is public, so this is an open
+// door and is kept small: a rate per IP, at most DEV_CFG_MAX dev configs on the list (the oldest DEV ones go first, never a
+// customer's), and a dev request can only delete dev configs
+const DEV_CFG_MAX  = 40
+const DEV_CFG_RATE = 200                        // upload parts + deletes per IP in 10 minutes
+const dev_cfg_rate = new Map()                  // ip -> { n, since }
+setInterval(() => {
+    const now = Date.now()
+    for (const [ip, r] of dev_cfg_rate) if (now - r.since > 600000) dev_cfg_rate.delete(ip)
+}, 60000).unref()
+const dev_request = req => !req.query.key && !req.query.hwid && req.query.dev === '1'
+function dev_license(req) {
+    const who = String(req.query.who || '').replace(/[^A-Za-z0-9_ .-]/g, '').trim().slice(0, 16)
+    return { plan: 'dev', note: 'dev-' + (who || 'dev') }
+}
+function dev_rate_ok(req) {
+    const ip  = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '?').split(',')[0].trim()
+    const now = Date.now()
+    let r = dev_cfg_rate.get(ip)
+    if (!r || now - r.since > 600000) { r = { n: 0, since: now }; dev_cfg_rate.set(ip, r) }
+    return ++r.n <= DEV_CFG_RATE
+}
+// keeps at most DEV_CFG_MAX configs of the dev plan, the oldest first
+function dev_cap(configs) {
+    const dev = configs.filter(c => c.plan === 'dev')
+    if (dev.length <= DEV_CFG_MAX) return configs
+    const drop = new Set(dev.sort((a, b) => (a.ts || 0) - (b.ts || 0)).slice(0, dev.length - DEV_CFG_MAX))
+    return configs.filter(c => !drop.has(c))
+}
+
 // ── GET /configs ──────────────────────────────────────────────────────────
 // Returns all public cloud configs
 // ?lua=pm: the Primordial lua's configs (name / author / time only, the data through /configs/get); without it the
@@ -525,25 +556,32 @@ setInterval(() => {
 
 app.get('/configs/upload_part', async (req, res) => {
     const { key, hwid } = req.query
+    const dev   = dev_request(req)
     const name  = typeof req.query.name === 'string' ? req.query.name.trim() : ''
     const part  = req.query.data
     const idx   = parseInt(req.query.idx, 10)
     const total = parseInt(req.query.total, 10)
-    if (!key || !hwid || !name || typeof part !== 'string' || !part)
+    if ((!dev && (!key || !hwid)) || !name || typeof part !== 'string' || !part)
         return res.status(400).json({ ok: false, reason: 'missing_params' })
     if (name.length < 1 || name.length > 32)
         return res.status(400).json({ ok: false, reason: 'invalid_name' })
     if (!Number.isInteger(idx) || !Number.isInteger(total) || total < 1 || total > 150 || idx < 0 || idx >= total || part.length > 6000)
         return res.status(400).json({ ok: false, reason: 'invalid_part' })
 
-    const db = await db_read()
-    const license = db[key]
-    if (!license || license.revoked) return res.status(403).json({ ok: false, reason: 'invalid_key' })
-    if (license.expires_at && Date.now() > license.expires_at) return res.status(403).json({ ok: false, reason: 'expired' })
-    if (license.hwid !== hwid) return res.status(403).json({ ok: false, reason: 'hwid_mismatch' })
+    let license
+    if (dev) {
+        if (!dev_rate_ok(req)) return res.status(429).json({ ok: false, reason: 'rate' })
+        license = dev_license(req)
+    } else {
+        const db = await db_read()
+        license = db[key]
+        if (!license || license.revoked) return res.status(403).json({ ok: false, reason: 'invalid_key' })
+        if (license.expires_at && Date.now() > license.expires_at) return res.status(403).json({ ok: false, reason: 'expired' })
+        if (license.hwid !== hwid) return res.status(403).json({ ok: false, reason: 'hwid_mismatch' })
+    }
 
     // the first part always starts a fresh upload, so an abandoned one cannot mix into the next
-    const id = `${key}|${name}|${config_lua(req.query.lua)}`
+    const id = `${dev ? 'dev:' + license.note : key}|${name}|${config_lua(req.query.lua)}`
     let u = uploads.get(id)
     if (!u || idx === 0 || u.total !== total) {
         u = { total, parts: new Array(total).fill(null), ts: Date.now() }
@@ -567,6 +605,7 @@ app.get('/configs/upload_part', async (req, res) => {
         if (configs.length >= 200) configs = configs.slice(-199)
         configs.push(lua === 'pm' ? { name, author, data, plan: license.plan, ts: Date.now(), lua }
                                   : { name, author, data, plan: license.plan, ts: Date.now() })
+        if (dev) configs = dev_cap(configs)
         await redis.set('specter:configs', configs)
         console.log(`[CONFIG UPLOAD] ${name} by ${author} (${total} parts, ${lua})`)
         res.json({ ok: true, done: true, name, author })
@@ -622,18 +661,25 @@ app.post('/configs', async (req, res) => {
 // ── GET /configs/delete — user deletes own config ────────────────────────
 app.get('/configs/delete', async (req, res) => {
     const { key, hwid, name } = req.query
-    if (!key || !hwid || !name)
+    const dev = dev_request(req)
+    if ((!dev && (!key || !hwid)) || !name)
         return res.status(400).json({ ok: false, reason: 'missing_params' })
-    const db = await db_read()
-    const license = db[key]
-    if (!license || license.revoked) return res.status(403).json({ ok: false, reason: 'invalid_key' })
-    if (license.hwid !== hwid) return res.status(403).json({ ok: false, reason: 'hwid_mismatch' })
+    let license
+    if (dev) {
+        if (!dev_rate_ok(req)) return res.status(429).json({ ok: false, reason: 'rate' })
+        license = dev_license(req)
+    } else {
+        const db = await db_read()
+        license = db[key]
+        if (!license || license.revoked) return res.status(403).json({ ok: false, reason: 'invalid_key' })
+        if (license.hwid !== hwid) return res.status(403).json({ ok: false, reason: 'hwid_mismatch' })
+    }
     const author = config_author(license, key)
     const lua = config_lua(req.query.lua)
     try {
         let configs = await redis.get('specter:configs') || []
         const before = configs.length
-        configs = configs.filter(c => !(c.name === name && c.author === author && (c.lua || 'gs') === lua))
+        configs = configs.filter(c => !(c.name === name && c.author === author && (c.lua || 'gs') === lua && (!dev || c.plan === 'dev')))
         if (configs.length === before) return res.json({ ok: false, reason: 'not_found' })
         await redis.set('specter:configs', configs)
         console.log(`[CONFIG DELETE] ${name} by ${author}`)
