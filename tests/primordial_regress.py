@@ -567,7 +567,7 @@ TICKS = 0
 globals = { real_time = function() return SIM end, tick_count = function() TICKS = TICKS + 1 return TICKS end, interval_per_tick = function() return 1 / 64 end }
 local function item(v) return { get = function() return v end } end
 ui = { ragebot = { logic_reso = item(false), smart_baim = item(true),
-    smart_baim_hp = item(40), smart_baim_lethal = item(true), head_conf = item(false), resolver = { shot_pred = item(4) } } }
+    smart_baim_hp = item(40), smart_baim_lethal = item(true), resolver = { shot_pred = item(4) } } }
 HP = 100
 damage = { calculate = function(_, _, box) return box == "chest" and 70 or 87 end }
 res_custom = function() return false end
@@ -987,8 +987,7 @@ check(tuple(r) == (True, True, True, True, True),
 # defensive / lag break detector (owners: "nem lesz defensive detectorunk?", the ENEMY's): the shift that spoils a shot fired
 # at t is observed about a round trip later, inside [t + rtt - duration, t + rtt]; such a miss is no resolver miss and
 # teaches nothing, a hit still counts; the stats show it as "defensive" / "lag break" per state
-DF = chunk("resolver.conf = {", "resolver.state_of = function(ent)") + \
-     chunk("resolver.memory = function(idx, key, kind)", "resolver.shot_id = function(event)") + \
+DF = chunk("resolver.memory = function(idx, key, kind)", "resolver.shot_id = function(event)") + \
      chunk("resolver.shot_id = function(event)", "local RES_JIT_N = 12") + \
      chunk("resolver.HYP = {", "--- @info: resolver: side from freestanding") + \
      chunk("local RES_JIT_N = 12", "resolver.update = function(local_player, ent)") + \
@@ -1109,28 +1108,6 @@ return back, other, revived, p1.sid == "76561198000000042"
 """)
 check(tuple(r) == (True, True, True, True),
       "learning follows the player (steam id): kept over a dormant phase and a respawn, not given to another player in the slot (%s)" % (r,))
-
-# a "jitter" miss on a target that does not jitter is only believed 0.4 (0.2 over 100 ms): the label is Primordial's guess (owners' friend)
-r = D("""
-resolver.data, resolver.mem, resolver.carry = {}, {}, {}
-SIM, NOW = 0, 0
-for i = 1, 6 do REC(i % 2 == 0 and 30 or -30) end
-resolver.misses[3] = 0
-resolver.previous[3] = { key = "stand", kind = "state", candidate = 1, m_flDesync = 20, rel = 1 }
-local mem = resolver.memory(3, "stand")
-local bad0, hp0 = mem.candidates[1].bad, select(2, resolver.conf.rates("stand"))
-RESULT(30, false, true, "jitter")                                    -- no jitterer: 0.4
-local weak = resolver.misses[3]
-resolver.previous[3] = { key = "stand", kind = "state", candidate = 1, m_flDesync = 20, rel = 1 }
-RESULT(31, false, true, "resolver")                                  -- the resolver reason: 1
-local after_resolver = resolver.misses[3]
-resolver.previous[3] = { key = "jitter", kind = "jitter", candidate = 1, m_flDesync = 20, rel = 1 }
-RESULT(32, false, true, "jitter")                                    -- a detected jitterer: 1
-local after_jitterer = resolver.misses[3]
-return weak, after_resolver, after_jitterer, mem.candidates[1].bad - bad0
-""")
-check(abs(r[0] - 0.4) < 1e-9 and abs(r[1] - 1.4) < 1e-9 and abs(r[2] - 2.4) < 1e-9 and r[3] > 1.3,
-      "miss credibility: a jitter miss on a non-jitterer counts 0.4, the resolver reason and a detected jitterer 1 (%s)" % (tuple(r),))
 
 # DT lag (owners, Oct 2026: "lagging only in mid mirage with dt"): the on peek defensive check traces each enemy at
 # most once per 4 ticks and 2 enemies per frame, however many commands double tap runs in one frame
