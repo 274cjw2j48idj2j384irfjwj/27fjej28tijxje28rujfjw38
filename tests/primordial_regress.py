@@ -1379,5 +1379,29 @@ end)()""")
 check(tuple(r) == (True, True, True, True, True),
       "last config: Use remembers it, the start loads it quietly, nothing when it is gone / the default one (%s)" % (tuple(r),))
 
+# an EVENT callback that errors unloads the script (owners, Oct 2026: "attempt to index local 'hit_player' (a nil value)" in on_brute): the
+# hurt / death events of a player who is already gone (no entity for the userid) and no local player must not error
+OB = chunk("on_brute = function(event)", "\n--- @endregion\n\n--- @info: repeats everyone's message")
+ob = L.LuaRuntime(unpack_returned_tuples=True)
+r = ob.eval("""(function()
+    ui = { utils = { event_logs = { get = function() return true end } } }
+    evades = { backtrack_poses = {}, player_list = {}, add_player = function() end }
+    local enemy = { is_player = function() return true end, is_enemy = function() return true end, get_index = function() return 5 end,
+        is_valid = function() return true end }
+    local USERS = { [1] = enemy }                                   -- the attacker is there, the one who was hurt / died is not
+    entity_list_get_player_from_userid = function(id) return USERS[id] end
+    LOCAL = nil
+    entity_list_get_local_player = function() return LOCAL end
+    global_vars_tick_count = function() return 1 end
+    """ + OB + """
+    local ok = {}
+    ok[1] = pcall(on_brute, { name = "player_hurt", attacker = 1, userid = 9 })      -- hurt player gone
+    ok[2] = pcall(on_brute, { name = "player_death", userid = 1 })                    -- no local player
+    ok[3] = pcall(on_brute, { name = "player_hurt", attacker = 1, userid = 1 })       -- no local player
+    ok[4] = pcall(on_brute, { name = "bullet_impact", userid = 1, x = 0, y = 0, z = 0 })
+    return ok[1], ok[2], ok[3], ok[4]
+end)()""")
+check(tuple(r) == (True, True, True, True), "on_brute: a missing hurt player / local player is no error (%s)" % (tuple(r),))
+
 print("\n%d failed" % len(FAILS) if FAILS else "\nall passed")
 sys.exit(1 if FAILS else 0)
