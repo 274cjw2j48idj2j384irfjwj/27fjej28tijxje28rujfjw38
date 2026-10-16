@@ -5983,7 +5983,9 @@ resolver.hitscan = function(ctx)
             local cls = resolver.conf.class(resolver.state_of(ent))
             local ph, pb = resolver.conf.rates(cls)
             resolver.conf.last[idx] = ph
-            body = not resolver.conf.head_ok(ph, pb, resolver.conf.explore[idx])
+            -- never take the head away while the body can not be hit: with the head group off and nothing else reachable the aimbot has
+            -- no point at all and does not shoot (owners' friend, Oct 2026: "elvileg egyáltalán nem lőtt")
+            body = not resolver.conf.head_ok(ph, pb, resolver.conf.explore[idx]) and resolver.body_damage(ent) >= 1
         end
     end
 

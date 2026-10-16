@@ -183,6 +183,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   spoiled shot), started from the real shots (828, Oct 2026, prior weight 12: air head 88 % / body 93 %, ground head 31-48 % / body
   81-86 %) and moved by every result; the head is shot at 85 % or when the body is not 8 points surer, else the body; 1 shot in 5
   per target tries the head anyway (`TRY`), so a state that got better is noticed. The shot log carries `pc` (the head rate used).
+  The head is only taken away while the body can be hit (`resolver.body_damage >= 1`): the head group off and nothing else reachable
+  leaves the aimbot no point and it does not shoot at all (owners' friend, Oct 2026: "elvileg egyáltalán nem lőtt", a head peeking over
+  cover). Safe points can do the same (no point safe on both desync sides = no shot): the jitter safe point stays on a fast peek since
+  the Oct 2026 change, watch for a target that is never shot at.
   Per target history does NOT predict a mover's next head shot (55 / 54 / 58 / 46 % by the posterior), so the state rate is the
   estimate; the weak spot is every GROUND target (head ~37 %), not only the movers: improve the ground resolver (rk / cd / l6).
   The non-resolver misses (our death, spread, occlusion) are 12 %, so ~88 % is the ceiling. Note: `cm` in the shot log is written
