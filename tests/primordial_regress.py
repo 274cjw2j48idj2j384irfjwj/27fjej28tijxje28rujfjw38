@@ -1110,6 +1110,28 @@ return back, other, revived, p1.sid == "76561198000000042"
 check(tuple(r) == (True, True, True, True),
       "learning follows the player (steam id): kept over a dormant phase and a respawn, not given to another player in the slot (%s)" % (r,))
 
+# a "jitter" miss on a target that does not jitter is only believed 0.4 (0.2 over 100 ms): the label is Primordial's guess (owners' friend)
+r = D("""
+resolver.data, resolver.mem, resolver.carry = {}, {}, {}
+SIM, NOW = 0, 0
+for i = 1, 6 do REC(i % 2 == 0 and 30 or -30) end
+resolver.misses[3] = 0
+resolver.previous[3] = { key = "stand", kind = "state", candidate = 1, m_flDesync = 20, rel = 1 }
+local mem = resolver.memory(3, "stand")
+local bad0, hp0 = mem.candidates[1].bad, select(2, resolver.conf.rates("stand"))
+RESULT(30, false, true, "jitter")                                    -- no jitterer: 0.4
+local weak = resolver.misses[3]
+resolver.previous[3] = { key = "stand", kind = "state", candidate = 1, m_flDesync = 20, rel = 1 }
+RESULT(31, false, true, "resolver")                                  -- the resolver reason: 1
+local after_resolver = resolver.misses[3]
+resolver.previous[3] = { key = "jitter", kind = "jitter", candidate = 1, m_flDesync = 20, rel = 1 }
+RESULT(32, false, true, "jitter")                                    -- a detected jitterer: 1
+local after_jitterer = resolver.misses[3]
+return weak, after_resolver, after_jitterer, mem.candidates[1].bad - bad0
+""")
+check(abs(r[0] - 0.4) < 1e-9 and abs(r[1] - 1.4) < 1e-9 and abs(r[2] - 2.4) < 1e-9 and r[3] > 1.3,
+      "miss credibility: a jitter miss on a non-jitterer counts 0.4, the resolver reason and a detected jitterer 1 (%s)" % (tuple(r),))
+
 # DT lag (owners, Oct 2026: "lagging only in mid mirage with dt"): the on peek defensive check traces each enemy at
 # most once per 4 ticks and 2 enemies per frame, however many commands double tap runs in one frame
 PV = chunk("builder.adv.armed = function", "builder.adv.aims_at = function") + chunk("builder.peek_seen, builder.peek_budget = {}", "run_antiaim = function(")
