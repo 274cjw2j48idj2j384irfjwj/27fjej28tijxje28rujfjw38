@@ -339,6 +339,13 @@ test("head confidence: air head is shot, a ground mover goes body, live results 
     assert(ctx.groups[1] == nil)                                  -- option off: nothing
     env.ui.ragebot.head_conf:set(true)
     resolver.conf.data, resolver.conf.explore = {}, {}
+    trace_handler = function() return { valid = false, damage = 0 } end   -- the body can not be hit (only the head shows): the head stays
+    tick = tick + 1
+    ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == nil)
+    trace_handler = function() return { valid = true, damage = 60, hitgroup = 3 } end
+    tick = tick + 1
     ctx = context(target)
     resolver.hitscan(ctx)
     assert(ctx.groups[1] == false and ctx.groups[2] == true)      -- running on the ground: head 31 %, body 81 %
@@ -358,6 +365,8 @@ test("head confidence: air head is shot, a ground mover goes body, live results 
     assert(ctx.groups[1] == nil)                                  -- the head hit 100 of 100 here: sure now
     resolver.conf.data = {}
     env.ui.ragebot.head_conf:set(false)
+    trace_handler = nil
+    tick = tick + 1
     target.velocity, target.flags = old, oldf
 end)
 test("zero threshold disables HP-forced body aim", function()
