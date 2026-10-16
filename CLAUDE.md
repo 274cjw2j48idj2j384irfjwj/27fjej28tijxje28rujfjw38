@@ -146,6 +146,14 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   air és peeknél, tehát movingnál"): Smart only in Move (trigger Peek) and Air (trigger Air); Off in Global, Air duck, Stand,
   Slow walk, Duck, Duck move, Freestand (and Fakelag / Manual as before). "Apply advanced preset" sets the
   same values (the regress checks they match).
+- Defensive rework (owners, Oct 2026: "ha unsafe a peek akkor kapcsolja be ... jelenleg a defensive nem segít semmit, csak hátráltat"):
+  the "Peek" trigger (smart trigger 1 and the old "On peek") is now an UNSAFE peek (`builder.peek_visible`): an enemy that can shoot -
+  a gun (`builder.adv.armed`: no knife / grenade / bomb / zeus, a round in it, the next shot within 0.15 s) whose bullet, from his eye
+  3 ticks ahead, reaches our head or chest (it used to be "he can hit our feet OR we can hit him", so an empty or knife enemy, or
+  our own advantage, shifted the double tap). `defensive:trigger(urgent, shooting)`: after a shift the next one waits `DEF_COOL` 38
+  ticks (it came as soon as the double tap was charged again while the enemy stayed in view: we never had a shot), "Shot at" (HP
+  dropped) is urgent and ignores that, and no shift on the tick we press attack. Same trace budget as before (2 traces per enemy per
+  4 ticks, 2 enemies per frame; the body trace is skipped when the head one hits).
 - AA stats (owners, Oct 2026: "melyikkel hányszor találnak el"): `builder.aa_record` counts per "state · yaw mode" (the
   builder entry in use, `aa_snapshot`) the hits an enemy made on us (player_hurt, attacker an enemy) and the bullets that
   passed the head (on_miss < 50 units, not counted when we were hurt in the last 8 ticks). Utils "AA stats" (default on):

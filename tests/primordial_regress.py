@@ -1112,32 +1112,72 @@ check(tuple(r) == (True, True, True, True),
 
 # DT lag (owners, Oct 2026: "lagging only in mid mirage with dt"): the on peek defensive check traces each enemy at
 # most once per 4 ticks and 2 enemies per frame, however many commands double tap runs in one frame
-PV = chunk("builder.peek_seen, builder.peek_budget = {}", "run_antiaim = function(")
+PV = chunk("builder.adv.armed = function", "builder.adv.aims_at = function") + chunk("builder.peek_seen, builder.peek_budget = {}", "run_antiaim = function(")
 pv = L.LuaRuntime(unpack_returned_tuples=True)
 r = pv.eval("""(function()
-    builder = {}
+    builder = { adv = {} }
     TICK, FRAME, TRACES = 100, 1, 0
     globals = { tick_count = function() return TICK end, interval_per_tick = function() return 1 / 64 end }
     global_vars_frame_count = function() return FRAME end
     e_hitboxes = { BODY = 3 }
     vec3_t = function(x, y, z) return { x = x, y = y, z = z } end
-    trace_bullet = function() TRACES = TRACES + 1 return { valid = true, damage = 30 } end
+    trace_bullet = function() TRACES = TRACES + 1 return { valid = true, damage = TRACES % 2 == 1 and 0 or 30 } end   -- head blocked, body open
+    cur = 0
+    globals.cur_time = function() return cur end
     """ + PV + """
-    local function enemy(i) return { get_index = function() return i end, get_prop = function() return { x = 1, y = 0, z = 0 } end,
+    local GUN = { get_name = function() return "ssg08" end, get_prop = function(_, n) return n == "m_iClip1" and 5 or 0 end }
+    local EMPTY = { get_name = function() return "ssg08" end, get_prop = function() return 0 end }
+    LOCAL = { get_eye_position = function() return setmetatable({}, { __add = function(a) return a end }) end }
+    local function enemy(i, w) return { get_index = function() return i end, get_active_weapon = function() return w or GUN end,
+        get_prop = function() return { x = 1, y = 0, z = 0 } end,
         get_eye_position = function() return setmetatable({}, { __add = function(a) return a end }) end,
         get_hitbox_pos = function() return {} end } end
     local origin = setmetatable({}, { __add = function(a) return a end })
     local E = { enemy(1), enemy(2), enemy(3), enemy(4), enemy(5) }
-    for _ = 1, 14 do for _, e in ipairs(E) do builder.peek_visible({}, e, origin, {}) end end
+    for _ = 1, 14 do for _, e in ipairs(E) do builder.peek_visible(LOCAL, e, origin, {}) end end
     local one_frame = TRACES
-    for f = 2, 4 do FRAME = f for _, e in ipairs(E) do builder.peek_visible({}, e, origin, {}) end end
+    for f = 2, 4 do FRAME = f for _, e in ipairs(E) do builder.peek_visible(LOCAL, e, origin, {}) end end
     local three_more = TRACES
     TICK, FRAME = 104, 5
-    for _, e in ipairs(E) do builder.peek_visible({}, e, origin, {}) end
-    return one_frame, three_more, TRACES, builder.peek_visible({}, E[1], origin, {})
+    for _, e in ipairs(E) do builder.peek_visible(LOCAL, e, origin, {}) end
+    TICK, FRAME = 110, 6
+    local before = TRACES
+    local empty = builder.peek_visible(LOCAL, enemy(9, EMPTY), origin, {})          -- an empty gun is no threat and costs no trace
+    return one_frame, three_more, before, builder.peek_visible(LOCAL, E[1], origin, {}) and not empty and TRACES == before + 2
 end)()""")
 check(r[0] == 4 and r[1] == 10 and r[2] == 14 and r[3] == True,
       "on peek defensive: 14 commands x 5 enemies in one frame = 2 enemies traced, every enemy once per 4 ticks (%s)" % (r,))
+
+# Defensive rework (owners, Oct 2026: "ha unsafe a peek akkor kapcsolja be ... csak hátráltat"): only an enemy that can shoot counts as an
+# unsafe peek, and a shift is not repeated while the double tap recharges (urgent = being shot at ignores that; our own shot blocks it)
+r = R("""
+local a = builder.adv.armed
+return a("ssg08", 5, 0), a("ssg08", 0, 0), a("knife", nil, 0), a("hegrenade", 1, 0), a("awp", 3, 0.5), a("awp", 3, 0.1), a("", 1, 0), a("taser", 1, 0)
+""")
+check(tuple(r) == (True, False, False, False, False, True, False, False),
+      "unsafe peek: a gun with a round that is ready counts, an empty gun / knife / grenade / a gun half a second from firing does not (%s)" % (tuple(r),))
+DT = chunk("local defensive = {", "local ui = {")
+dtl = L.LuaRuntime(unpack_returned_tuples=True)
+r = dtl.eval("""(function()
+    local TICK, shifts, charged = 100, 0, true
+    globals = { tick_count = function() return TICK end }
+    refs = { double_tap = { get = function() return true end } }
+    exploits_get_charge = function() return charged and 14 or 0 end
+    exploits_get_max_charge = function() return 14 end
+    exploits = { force_anti_exploit_shift = function() shifts = shifts + 1 end }
+    client_time_to_ticks = function(t) return t end
+    """ + DT + """
+    defensive:trigger()                          -- 1: shifts
+    TICK = 101 defensive:trigger()               -- cooling down: nothing
+    TICK = 120 defensive:trigger()               -- still cooling down
+    TICK = 120 defensive:trigger(true)           -- shot at: at once
+    TICK = 200 defensive:trigger(false, true)    -- we shoot this tick: nothing
+    local after_shot = shifts
+    TICK = 200 defensive:trigger()               -- cooled down: shifts
+    charged = false TICK = 300 defensive:trigger()   -- not charged: nothing
+    return shifts, after_shot
+end)()""")
+check(tuple(r) == (3, 2), "defensive trigger: one shift, a cool down of 38 ticks, urgent (shot at) ignores it, never on the tick we shoot (%s)" % (tuple(r),))
 
 # Adaptive AA (owners, Oct 2026: "nagyon advanced aa improve ... unhittable"): a Thompson sampling bandit over AA profiles
 # per state group. Only the deciding maths here (the game decides how good a profile is): draws stay in 0..1, the
