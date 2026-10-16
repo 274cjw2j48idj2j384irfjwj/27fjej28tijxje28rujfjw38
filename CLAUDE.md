@@ -386,7 +386,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   makes us `use weapon_taser` ONLY with a scout or an awp in hand (owners, Oct 2026: "csak akkor valtson ha scout vagy awp van a kezembe"; `zeus.SNIPERS`) (every 0.6 s; if no zeus came out the try waits 4 s); with the zeus out the lua aims at the
   enemy's chest (cmd.viewangles) and presses attack when the enemy is inside the zeus range (182) with a clear wall trace:
   standing the edge is 180, moving 170 (the "sooner" when still). The zeus WE took out is put away with `lastinv` after the
-  shot (clip 0) or 1.5 s without a threat; one we took ourselves is left alone. The decision is the pure `zeus.decide`
+  shot (clip 0) or 1.5 s without a threat; one we took ourselves is left alone. Misc "Disable DT with zeus" (on in default.cfg; owners, Oct 2026: "ha zeusz van nálam automatikusan kikapcsolja a dt-t"): `zeus_dt`
+  (RUN_COMMAND after `safe_recharge`, which would give the recharge back) empties the charge and blocks the recharge while `taser`
+  is the active weapon (`exploits.force_uncharge` + `block_recharge`, the knifebot helper's calls), `allow_recharge` once when another
+  weapon is out; the DT key itself is not touched. The decision is the pure `zeus.decide`
   (tested). Not proven in game: the server checks the range on the lag compensated enemy, so firing "earlier" than the range
   edge would only miss.
 - Scoreboard flag (owners, Oct 2026: "a specter hold írja felül az ország zászlaját"): the scoreboard badge (`libs.tools.js`) hides

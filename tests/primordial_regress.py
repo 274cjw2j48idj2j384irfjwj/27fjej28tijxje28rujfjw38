@@ -6,6 +6,7 @@ removed parts stay out, and the menu shows the right groups / page buttons on ev
 
 No simulations (owners, Oct 2026: the mock only confuses): resolver / anti-aim / backtrack decisions come from how
 Primordial and CS:GO work and from the game."""
+import json, base64, re
 import ast
 import os
 import re
@@ -279,6 +280,27 @@ return out[1], out[2], out[3], out[4], out[5], out[6], out[7], out[8], out[9], o
 """)
 check(list(r) == ["equip", "equip", None, None, None, "fire", None, "fire", None, "restore", None, "restore", None, True, "equip", None],
       "zeus vs rushers: equips (only from a scout / awp) against a knife / zeus rusher, fires at the range edge (wider standing), needs a clear line, puts it away (%s)" % (list(r),))
+
+# Disable DT with zeus: the charge is emptied and kept empty while the zeus is out, given back with the next weapon
+ZD = chunk("zeus.dt_off = false", "--- @endregion\n\non_knifebot")
+zd = L.LuaRuntime(unpack_returned_tuples=True)
+zr = zd.execute("""
+log = {}
+exploits_force_uncharge = function() log[#log + 1] = "unch" end
+exploits_block_recharge = function() log[#log + 1] = "block" end
+exploits_allow_recharge = function() log[#log + 1] = "allow" end
+zeus = {}
+local on, wname, alive = true, "taser", true
+ui = { misc = { zeus_dt = { get = function() return on end } } }
+entity_list_get_local_player = function() return { is_alive = function() return alive end, get_prop = function() return 1 end } end
+entity_list_get_entity = function() return { get_name = function() return wname end } end
+""" + ZD + """
+zeus_dt() wname = "ssg08" zeus_dt() zeus_dt() on = false wname = "taser" zeus_dt()
+return table.concat(log, ",")
+""")
+check(zr == "unch,block,allow", "disable DT with zeus: uncharged while the zeus is out, given back once, nothing when the option is off (%s)" % (zr,))
+check(["Disable DT with zeus", True] in json.loads(base64.b64decode(re.search(r'configs\.default_config\s*=\s*"([^"]+)"', SRC).group(1)))["Misc"],
+      "disable DT with zeus is on in default.cfg")
 
 # the loader's beta version (BUILD_VERSION pm_beta): no Resolver page and no resolver groups, the helpers stay
 beta = L.LuaRuntime()
