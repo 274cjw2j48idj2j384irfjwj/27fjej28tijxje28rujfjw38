@@ -294,7 +294,7 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   desync. All four are on in default.cfg. The new options are at the END of the list (saved configs load).
 - Backtrack: Primordial's (its records, the tick count of its shot). The old "Improve backtrack" wrote cmd.tick_count on
   every command from the enemy nearest the crosshair minus "dynamic ticks": the server rewound to a time the aimbot did
-  not aim at. Now Improve backtrack sets Primordial's fake ping amount (100 ms, Extended backtrack 200 ms; the server takes
+  not aim at. Now Improve backtrack sets Primordial's fake ping amount (100 ms, Extended backtrack 500 ms (owners, Oct 2026: "nagyon nagyra, legalabb 40 tick"; `backtrack.cap` remembers what the slider really took and never asks for more); the server takes
   records within 0.2 s of real + fake latency) while an enemy is alive, 0 with a knife / grenade / bomb, the own value back
   when it goes off or on unload; the fake ping key itself stays the user's. Advanced prediction: each moving enemy's head
   after our latency + 4 ticks (stopped by walls); shootable there but not now = about to peek -> `ctx:prioritize_target`
@@ -423,6 +423,8 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   scoreboard luas). Still a guess: Home > "Dump scoreboard row" prints the first row's panels (id, type, data-stat) to the console
   (scoreboard open), send it when the flag stays. A cheat revealer (clan tag based, badges per cheat) was built and taken out again (owners, Oct 2026):
   the real ones read the voice packets, which the Primordial api does not give.
+- Flag, third try (owners, Oct 2026: still not covered): `find_flag` also takes an image panel whose source path says flag / country
+  (`GetImageSrc`), and the flag is hidden with width 0 + opacity 0 as well (given back on destroy). Send the "Dump scoreboard row" output if it stays.
 - Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";
   Primordial only, the gamesense lua has no user detection to build on): Misc > "Servers" (page 15). "Share my server" (default
   OFF, a RAW `menu_add_checkbox`, not an eui item: eui exports every checkbox into the configs, and an imported / cloud config must
