@@ -49,7 +49,7 @@ local env = setmetatable({
     time_to_ticks = function(v) return math.floor(v * 64 + 0.5) end,
     ui = {
         ragebot = { logic_reso = control(true), smart_baim = control(true),
-            smart_baim_hp = control(40), smart_baim_lethal = control(true), moving_baim = control(false),
+            smart_baim_hp = control(40), smart_baim_lethal = control(true),
             latency_guard = control(true), latency_limit = control(80), fast_peek = control(true),
             backtrack = { prediction = control(true), enable_backtrack = control(true),
                 extended_backtrack = control(false) },
@@ -329,24 +329,6 @@ test("health threshold is strict and configurable", function()
     resolver.hitscan(ctx)
     assert(ctx.groups[1] == false)
     env.ui.ragebot.smart_baim_hp:set(40)
-end)
-test("body aim on moving targets: only a mover, only with the option", function()
-    target.hp = 100
-    local old = target.velocity
-    target.velocity = { x = 120, y = 0, z = 0 }
-    local ctx = context(target)
-    resolver.hitscan(ctx)
-    assert(ctx.groups[1] == nil)
-    env.ui.ragebot.moving_baim:set(true)
-    ctx = context(target)
-    resolver.hitscan(ctx)
-    assert(ctx.groups[1] == false and ctx.groups[2] == true)
-    target.velocity = { x = 2, y = 0, z = 0 }
-    ctx = context(target)
-    resolver.hitscan(ctx)
-    assert(ctx.groups[1] == nil)
-    env.ui.ragebot.moving_baim:set(false)
-    target.velocity = old
 end)
 test("zero threshold disables HP-forced body aim", function()
     env.ui.ragebot.smart_baim_hp:set(0)
