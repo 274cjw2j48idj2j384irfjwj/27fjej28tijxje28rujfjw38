@@ -139,6 +139,9 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   settings.json (`last_config`, `configs.remember`), the start (`finish_up`, after `reload_configs`) loads it quietly
   (`configs.restore_last` -> `configs.load_named(name, true)`: no notifications, nothing when the file is gone or it is
   default.cfg, which the first start applies itself). A cloud config is not remembered.
+- A callback that errors UNLOADS the script in Primordial ("failed to run callback EVENT ... unloading script"): `on_brute` indexed the
+  player of a `player_hurt` that was already gone (`entity_list_get_player_from_userid` gives nil) and the local player (nil when
+  dead / not in game); every entity from a userid or the local player is nil checked now (owners, Oct 2026). Keep it that way in event code.
 - Offline (owners, Oct 2026): the azura.uno login / HWID check, stats upload and cloud / sync sockets are gone; settings.json
   and the logo PNGs that the old loader installed are optional; the
   lagcomp debug boxes are gone. default.cfg = the owner's config (`configs.default_config`), applied on the first start

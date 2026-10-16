@@ -4386,7 +4386,7 @@ on_brute = function(event)
                     local shooter_idx_str = tostring(shooter_idx)
             
                     local local_player = entity_list_get_local_player()
-                    if (local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
+                    if (local_player ~= nil and local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
                         for idx, lp_origin in pairs(evades.backtrack_poses) do
                             local box_min, box_max = local_player:get_bounds()
 
@@ -4442,7 +4442,7 @@ on_brute = function(event)
                                         local percentage = (hit / (hit + miss)) * 100
                                         local rounded_percentage = math.floor(percentage * 100) / 100
 
-                                        if (local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
+                                        if (local_player ~= nil and local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
                                             print("shot by ", get_text_color(), name, get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "state: ", specter_color_t(168, 168, 168), global.current_state, ", ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), bt_end, "t") -- specter_color_t(108, 108, 108), "total: ", specter_color_t(168, 168, 168), t_enm_data.shots.hit, "/", t_enm_data.shots.miss + t_enm_data.shots.hit, specter_color_t(108, 108, 108), " (", specter_color_t(168, 168, 168), rounded_percentage, "%%", specter_color_t(108, 108, 108), ")")
                                         end
                                     else
@@ -4465,7 +4465,7 @@ on_brute = function(event)
                                         local percentage = (hit / (hit + miss)) * 100
                                         local rounded_percentage = math.floor(percentage * 100) / 100
 
-                                        if (local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
+                                        if (local_player ~= nil and local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
                                             if (local_player:get_name() ~= name) then
                                                 print("evaded ", get_text_color(), name, specter_color_t(168, 168, 168), "'s shot", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "state: ", specter_color_t(168, 168, 168), global.current_state, ", ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), bt_end, "t") -- specter_color_t(108, 108, 108), "total: ", specter_color_t(168, 168, 168), t_enm_data.shots.hit, "/", t_enm_data.shots.miss + t_enm_data.shots.hit, specter_color_t(108, 108, 108), " (", specter_color_t(168, 168, 168), rounded_percentage, "%%", specter_color_t(108, 108, 108), ")")
                                                 evades.send_data = true
@@ -4501,8 +4501,8 @@ on_brute = function(event)
                     local hit_user_id = event.userid
                     local hit_player = entity_list_get_player_from_userid(hit_user_id)
             
-                    if (hit_player:is_valid() and hit_player:is_player()) then
-                        if (local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
+                    if (hit_player ~= nil and hit_player:is_valid() and hit_player:is_player()) then
+                        if (local_player ~= nil and local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
                             if (hit_player:get_index() == local_player:get_index()) then
                                 local user_idx = shooter:get_index()
                                 local user_idx_str = tostring(user_idx)
@@ -4539,7 +4539,7 @@ on_brute = function(event)
 
             if (dead_player ~= nil) then
                 if (dead_player:is_enemy()) then
-                    if (local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
+                    if (local_player ~= nil and local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
                         local enm_idx = dead_player:get_index()
                         if (local_player:get_index() == enm_idx) then
                             local time = global_vars_tick_count()
