@@ -1145,7 +1145,6 @@ local ui = {
         pose_reso = groups.resolver_beta:checkbox("Pose resolver"),
         resolver = {
             enable_resolver = groups.resolver_beta:checkbox("Custom resolver"),
-            unsafe_reso = groups.resolver_beta:checkbox("Lua side override (experimental)"),
             
             duck_mode = groups.resolver_beta:checkbox("Duck mode"),
             auto_duck = groups.resolver_beta:checkbox("Auto duck", true),
@@ -3730,11 +3729,11 @@ resolver.network = function()
         and ping >= ui.ragebot.latency_limit:get()
     return { outgoing = outgoing, incoming = incoming, ping = ping, high = guarded }
 end
-resolver.fast_target = function(ent, ignore_peek)
+resolver.fast_target = function(ent)
     if (ent == nil or not ui.ragebot.fast_peek:get()) then return false end
     local flags = tonumber(ent:get_prop("m_fFlags")) or 0
     local p = resolver.data[ent:get_index()]
-    local peek = not ignore_peek and ragebot_get_autopeek_pos()
+    local peek = ragebot_get_autopeek_pos()
     return bit.band(flags, 2) ~= 0 or (peek ~= nil and peek ~= false)
         or resolver.network().high
         or (p ~= nil and (p.defensive_until or 0) > globals.real_time())
@@ -4910,8 +4909,6 @@ end
 --   Improve resolver / Logic resolver / Pose resolver / Custom resolver: any of them turns the resolver layer on
 --   Logic resolver: head safe point after 2 resolver misses in a row on that player (Custom resolver: Hit sensitivity)
 --   Custom resolver: the options below it
---   Lua side override (experimental): Primordial's own resolver off and the side below forced into the animstate
---   (side from freestanding / jitter, max desync, learned from hits / misses); off by default, unproven in game
 --   Duck mode / Auto duck / Safe peek / Safe mode: head safe point on crouching targets / with Auto, AWP, Deagle, other /
 --   while we quick peek / on targets at or below that HP. Hit sensitivity: head safe point after that many misses in a row
 --   Prediction sel: the reduced desync size (% of max). Calculate box: freestanding trace width. Shot prediction: jitter step
@@ -5901,13 +5898,11 @@ resolver.hitscan = function(ctx)
     -- no shot carrying a safe point, because this was gated behind resolver.active
     local fresh = resolver.fresh(p)
     local jitter = fresh and p.jitter == true and (p.confidence or 0) >= 0.65
-    local jitter_safe = jitter and not resolver.fast_target(ent, true)
+    local jitter_safe = jitter and not fast
     -- safe_all (a disabler set to "head safe point") forces safety even on a fast peek, as before
     local safe = resolver.active and resolver.safe_all == true
-    -- our auto peek alone does not take a jittering target's safe point away (owners' shot logs, Oct 2026: 40 of 46 resolver /
-    -- jitter misses of our resolver carried none, the head hit 62 % against 86 % on the body)
-    safe = safe or jitter_safe
     if (not fast) then
+        safe = safe or jitter
         if (resolver.active) then
             safe = safe or misses >= 2
         end
@@ -9157,7 +9152,6 @@ menu_handle = function()
         ui.ragebot.smart_baim_hp:depend({ui.ragebot.smart_baim, true})
         ui.ragebot.smart_baim_lethal:depend({ui.ragebot.smart_baim, true})
         ui.ragebot.latency_limit:depend({ui.ragebot.latency_guard, true})
-        ui.ragebot.resolver.unsafe_reso:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
         ui.ragebot.resolver.duck_mode:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
         ui.ragebot.resolver.auto_duck:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
         ui.ragebot.resolver.safe_peek:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})

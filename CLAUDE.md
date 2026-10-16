@@ -167,9 +167,7 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   "max 1-2 jitter 20-30 lövésenként"): the "jitter" / "resolver" miss reasons are PRIMORDIAL's resolver (it resolves
   whatever the lua toggles say; the api gives no way to tell its aimbot the side). What the lua decides is where it may
   shoot: ALWAYS (every resolver toggle off too, not beta) a jittering target gets head + chest safe points, a target after a
-  resolver / jitter miss a head safe point until a hit. Our own auto peek no longer takes the jitter safe point away
-  (`fast_target(ent, true)`; a crouched target, a high ping and a defensive still do; owners' 792 real shots, Oct 2026: 40 of 46
-  resolver / jitter misses of our resolver carried none, head 62 % hit against 86 % on the body). Layer 6 (movement)
+  resolver / jitter miss a head safe point until a hit. A fast peek (our auto peek, a crouched target, a high ping, a defensive) skips the jitter safe point again (reverted, see below). Layer 6 (movement)
   playback rate and weight of the target at the shot are in the shot log as `l6` / `l6w` (read only, `resolver.capture`): the
   res_fix_att_712 resolver (s0daa repo) reads the side from that rate alone, not adopted without proof: compare `l6` with the
   side of `vl` on hits, add it as a hypothesis only if it correlates. The jitter safe point (`resolver.hitscan`) is NOT gated by
@@ -245,6 +243,15 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   marks a shot fired inside a window (`defensive` / `lagbreak`), `on_result` then does not count its MISS (no resolver
   miss, no bad for the hypothesis; a hit still counts), the shot log carries `df` / `lb`. Not done: predicting WHEN a
   target will use a defensive (the double tap recharge is not readable), the aimbot's own extrapolation is Primordial's.
+- Resolver changes of Oct 16 2026 REVERTED (owners: "resolver is missing so much rn, reverse every resolver improve that we made today"):
+  the jitter safe point on our auto peek (#125, only the safe point, the `l6` / `l6w` shot log fields stay), "Body aim on moving
+  targets" / "Body aim when the head is unsure" with `resolver.conf` (#128, #129), the miss credibility (#131), the body reachability
+  guard (#132), the hot head after a head hit (#133) and the safe head / stall body aim (#134). The resolver is back to the Oct 15 state
+  (Smart body aim by HP / lethal, the head safe point on jitter / after misses, no per state head rate). Defensive rework (#130) and
+  "Disable DT with zeus" (#127) are not resolver changes and stay. What the logs said (857 shots, Oct 2026), for the next try: ground
+  targets' head 31-48 % against air 88 % and the body 81-93 %; the "jitter" miss reason is Primordial's guess (3 of 35 on a detected
+  jitterer, its share grows with the ping); `cm` in the shot log is written after the miss is counted; the reverted code is in git
+  history (merge commits of #125 - #134). The "Lua side override (experimental)" checkbox did nothing and is gone.
 - Per state resolver (owners, Oct 2026: "minden statere külön resolver logic"): `resolver.state_of` has stand / slow / move /
   duck (crouched, still) / cmove (crouched, walking) / air; every state has its own memory, hit rate row (`stat_rows`) and
   `RES_STATE_NUM`. `resolver.profile(speed, air, steps, crouch)` is how the feet model is read there: phase "lby" (still: the
