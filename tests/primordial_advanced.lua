@@ -97,7 +97,6 @@ local function entity(idx)
     function e:is_dormant() return false end
     function e:is_enemy() return true end
     function e:get_name() return "test-target" end
-    function e:get_active_weapon() return self.weapon end
     return e
 end
 local target = entity(2)
@@ -379,65 +378,6 @@ test("head confidence: air head is shot, a ground mover goes body, live results 
     trace_handler = nil
     tick = tick + 1
     target.velocity, target.flags = old, oldf
-end)
-test("head confidence: safe head targets and a stalled aimbot go body at once", function()
-    target.hp = 100
-    local oldf, oldv = target.flags, target.velocity
-    env.ui.ragebot.head_conf:set(true)
-    resolver.conf.data, resolver.conf.explore, resolver.conf.hot, resolver.conf.watch, resolver.conf.baim_until = {}, {}, {}, {}, {}
-    trace_handler = function() return { valid = true, damage = 60, hitgroup = 3 } end
-    -- crouched in the air with a knife: a safe head, even where the head would be sure (air head 88 %)
-    target.flags, target.velocity = 2, { x = 0, y = 0, z = 0 }
-    target.weapon = { get_name = function() return "knife" end }
-    tick = tick + 1
-    local ctx = context(target)
-    resolver.hitscan(ctx)
-    assert(ctx.groups[1] == false)
-    target.weapon = { get_name = function() return "ssg08" end }
-    tick = tick + 1
-    clock = clock + 10
-    ctx = context(target)
-    resolver.hitscan(ctx)
-    assert(ctx.groups[1] == nil)                                  -- an ordinary air target keeps the head
-    -- a ground target the head is hot on (a head hit a moment ago): the head, until half a second passes without a shot
-    target.flags = 1
-    resolver.conf.hot[target.idx] = clock
-    local t0 = clock
-    for step = 0, 2 do
-        clock = t0 + step * 0.25
-        resolver.conf.hot[target.idx] = clock
-        tick = tick + 1
-        ctx = context(target)
-        resolver.hitscan(ctx)
-        assert(step < 2 and ctx.groups[1] == nil or step == 2 and ctx.groups[1] == false)
-    end
-    -- a shot at him starts it over, but the body stays for a few seconds
-    resolver.conf.fired(target.idx, clock)
-    resolver.conf.hot[target.idx] = clock
-    tick = tick + 1
-    ctx = context(target)
-    resolver.hitscan(ctx)
-    assert(ctx.groups[1] == false)
-    clock = clock + 4
-    resolver.conf.hot[target.idx] = clock
-    tick = tick + 1
-    ctx = context(target)
-    resolver.hitscan(ctx)
-    assert(ctx.groups[1] == nil)                                  -- the stay is over
-    -- a body that can not be hit is never forced
-    resolver.conf.watch, resolver.conf.baim_until = {}, {}
-    trace_handler = function() return { valid = false, damage = 0 } end
-    for step = 0, 3 do
-        clock = clock + 0.25
-        tick = tick + 1
-        ctx = context(target)
-        resolver.hitscan(ctx)
-        assert(ctx.groups[1] == nil)
-    end
-    env.ui.ragebot.head_conf:set(false)
-    trace_handler = nil
-    tick = tick + 1
-    target.flags, target.velocity, target.weapon = oldf, oldv, nil
 end)
 test("zero threshold disables HP-forced body aim", function()
     env.ui.ragebot.smart_baim_hp:set(0)

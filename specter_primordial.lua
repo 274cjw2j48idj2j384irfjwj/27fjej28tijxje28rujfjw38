@@ -4989,7 +4989,7 @@ end
 -- own head / body shots, started from the owners' 828 real shots (prior weight 12 shots) and moved by every result. A head the
 -- aimbot is 85 % sure of is always shot; else the body when it is clearly surer; every 5th shot at a target the head is tried anyway
 -- (explore) so a state that got better is noticed
-resolver.conf = { data = {}, last = {}, explore = {}, hot = {}, watch = {}, baim_until = {}, HOT = 6, STALL = 0.5, STICK = 3, N = 12, SURE = 0.85, GAP = 0.08, TRY = 0.2,
+resolver.conf = { data = {}, last = {}, explore = {}, hot = {}, HOT = 6, N = 12, SURE = 0.85, GAP = 0.08, TRY = 0.2,
     prior = {
         air = { 0.88, 0.93 }, stand = { 0.48, 0.85 }, slow = { 0.35, 0.82 }, move = { 0.31, 0.81 },
         duck = { 0.40, 0.90 }, cmove = { 0.48, 0.86 },
@@ -5004,32 +5004,6 @@ resolver.conf.rates = function(cls)
 end
 resolver.conf.head_ok = function(ph, pb, explore, hot)
     return explore == true or hot == true or ph >= resolver.conf.SURE or pb < ph + resolver.conf.GAP
-end
--- the target has a safe head (owners, Oct 2026: "ha valaki safeheadet használ, testre lőjön"): crouched in the air with a knife or a zeus
--- out, the same thing the safe head of our own anti-aim does. Nobody is talked into a head shot there
-resolver.conf.safe_head = function(state, weapon)
-    return state == "airduck" and type(weapon) == "string" and (weapon:find("knife", 1, true) ~= nil or weapon == "bayonet" or weapon == "taser")
-end
--- the aimbot has had this target in its scan for STALL seconds without a shot at him ("ha nem lő, mert fél másodpercen belül nem tudja
--- fejbe lőni, akkor instant baimel"): gaps over 0.3 s start a new look, a shot at him starts it over
-resolver.conf.seen = function(idx, now)
-    local w = resolver.conf.watch[idx]
-    if (w == nil or now - w.last > 0.3) then
-        w = { since = now, last = now }
-        resolver.conf.watch[idx] = w
-    end
-    w.last = now
-    return now - w.since >= resolver.conf.STALL
-end
--- a stalled target stays body for STICK seconds (the shot that ends the stall must not give the head back at once)
-resolver.conf.stalled = function(idx, now)
-    if (resolver.conf.seen(idx, now)) then
-        resolver.conf.baim_until[idx] = now + resolver.conf.STICK
-    end
-    return now < (resolver.conf.baim_until[idx] or 0)
-end
-resolver.conf.fired = function(idx, now)
-    resolver.conf.watch[idx] = { since = now, last = now }
 end
 -- a head HIT on this very target means the resolver has its angle right now (owners: "ha egyszer fejbe lőtte, már tudja az angle-jét"): the
 -- head stays for HOT seconds, until a head miss that counts
@@ -5191,7 +5165,6 @@ resolver.capture = function(shot)
     local now, idx = globals.real_time(), shot.player:get_index()
     resolver.prune_shots(now)
     local p, prev = resolver.data[idx], resolver.previous[idx]
-    resolver.conf.fired(idx, now)
     local s = { id = resolver.shot_id(shot), idx = idx, time = now,
         epoch = resolver.epoch, track = p, aimpos = shot.player:get_hitbox_pos(1) }
     if (prev ~= nil) then
@@ -6018,17 +5991,12 @@ resolver.hitscan = function(ctx)
         -- fejre, ha nem éri el a 85-öt és a test biztosabb, akkor testre"): the rates are the measured head / body hit rates of the
         -- target's state, learned live (resolver.conf)
         if (not body and hp > 0 and ui.ragebot.head_conf:get()) then
-            local state = resolver.state_of(ent)
-            local cls = resolver.conf.class(state)
+            local cls = resolver.conf.class(resolver.state_of(ent))
             local ph, pb = resolver.conf.rates(cls)
             resolver.conf.last[idx] = ph
-            local weapon = ent:get_active_weapon()
-            local forced = resolver.conf.stalled(idx, globals.real_time())
-                or resolver.conf.safe_head(state, weapon ~= nil and weapon:get_name() or nil)
             -- never take the head away while the body can not be hit: with the head group off and nothing else reachable the aimbot has
             -- no point at all and does not shoot (owners' friend, Oct 2026: "elvileg egyáltalán nem lőtt")
-            body = (forced or not resolver.conf.head_ok(ph, pb, resolver.conf.explore[idx], resolver.conf.is_hot(idx)))
-                and resolver.body_damage(ent) >= 1
+            body = not resolver.conf.head_ok(ph, pb, resolver.conf.explore[idx], resolver.conf.is_hot(idx)) and resolver.body_damage(ent) >= 1
         end
     end
 

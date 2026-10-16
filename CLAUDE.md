@@ -187,13 +187,6 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   angle-jét"), until a head shot at him misses for the resolver / jitter reason. The real shots do not prove it (only 12 head shots
   within 8 s after a head hit: 67 %, a head miss before: 66 %, ground movers 3 samples), so it is the owners' call, judge it by `pc`
   and the hit rate of the head shots after a hit.
-  Two more reasons for the body (owners, Oct 2026: "ha valaki safeheadet használ testre lőjön ... ha a lua nem lő, mert fél másodpercen
-  belül nem tudja fejbe lőni, akkor instant baimel"): a SAFE HEAD target (`resolver.conf.safe_head`: crouched in the air with a knife or
-  a zeus out, like our own safe head) and a STALLED aimbot (`resolver.conf.seen`: HITSCAN has asked about the target for `STALL` 0.5 s
-  without a shot at him, gaps over 0.3 s start a new look, `resolver.conf.fired` from `capture` starts it over); a stalled target stays
-  body for `STICK` 3 s. Both beat the hot head and the exploring shot, and both need a body that can be hit. The stall can also come
-  from a safe point nothing satisfies, or from a wall between us (HITSCAN may run for targets we can not see; the body trace needs
-  damage >= 1, a wall bang counts).
   The head is only taken away while the body can be hit (`resolver.body_damage >= 1`): the head group off and nothing else reachable
   leaves the aimbot no point and it does not shoot at all (owners' friend, Oct 2026: "elvileg egyáltalán nem lőtt", a head peeking over
   cover). Safe points can do the same (no point safe on both desync sides = no shot): the jitter safe point stays on a fast peek since
