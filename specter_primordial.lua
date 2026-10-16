@@ -172,7 +172,10 @@ const destroy_panel = function(xuid) {
     const panel = entity_panels[xuid];
     if (valid(panel)) {
         // the country flag we covered comes back
-        if (valid(panel.specter_flag)) panel.specter_flag.visible = true;
+        if (valid(panel.specter_flag)) {
+            panel.specter_flag.visible = true;
+            try { panel.specter_flag.style.width = null; panel.specter_flag.style.opacity = null; } catch (_) {}
+        }
         panel.DeleteAsync(0);
     }
     delete entity_panels[xuid];
@@ -213,6 +216,16 @@ const find_flag = function(row) {
         const id = String(panel.id || "").toLowerCase();
         if (id.indexOf("specter") === 0) return;
         if (id.indexOf("flag") >= 0 || id.indexOf("country") >= 0) found = panel;
+    });
+    if (found != null) return found;
+    // the flag is an image whose file lives in a flags folder, whatever its panel is called
+    walk(row, 0, function(panel) {
+        if (found != null) return;
+        const id = String(panel.id || "");
+        if (id.indexOf("specter") === 0) return;
+        let src = "";
+        try { src = String(panel.GetImageSrc ? panel.GetImageSrc() : (panel.src || "")).toLowerCase(); } catch (_) {}
+        if (src.indexOf("flag") >= 0 || src.indexOf("countr") >= 0) found = panel;
     });
     return found;
 };
@@ -274,6 +287,7 @@ const get_panel = function(xuid) {
     panel.specter_row = row;
     if (flag != null) {
         flag.visible = false;
+        try { flag.style.width = "0px"; flag.style.opacity = "0"; } catch (_) {}
         panel.specter_flag = flag;
         try { if (typeof parent.MoveChildBefore === "function") parent.MoveChildBefore(panel, flag); } catch (_) {}
     }
@@ -4796,7 +4810,7 @@ backtrack.update = function(local_player)
     if (weapon ~= nil and not backtrack.no_ping[weapon:get_name()]) then
         for _, enemy in pairs(entity_list_get_players(true) or {}) do
             if (enemy:is_alive()) then
-                want = ui.ragebot.backtrack.extended_backtrack:get() and 200 or 100
+                want = ui.ragebot.backtrack.extended_backtrack:get() and 500 or 100
                 break
             end
         end
@@ -4808,11 +4822,15 @@ backtrack.update = function(local_player)
         -- Added fake latency must fit inside the desired TOTAL RTT budget.
         want = (backtrack.high_until or 0) > now and 0 or math.max(0, math.floor(want - net.ping))
     end
+    if (backtrack.cap ~= nil and want > backtrack.cap) then want = backtrack.cap end
     if (want ~= backtrack.amount) then
         if (backtrack.saved == nil) then
             backtrack.saved = backtrack.ping:get()
         end
         backtrack.ping:set(want)
+        if (want > 200 and backtrack.ping:get() < want) then
+            backtrack.cap = backtrack.ping:get()
+        end
         backtrack.amount = want
     end
 end
