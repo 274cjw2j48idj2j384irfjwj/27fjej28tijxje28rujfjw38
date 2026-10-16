@@ -567,7 +567,7 @@ TICKS = 0
 globals = { real_time = function() return SIM end, tick_count = function() TICKS = TICKS + 1 return TICKS end, interval_per_tick = function() return 1 / 64 end }
 local function item(v) return { get = function() return v end } end
 ui = { ragebot = { logic_reso = item(false), smart_baim = item(true),
-    smart_baim_hp = item(40), smart_baim_lethal = item(true), resolver = { shot_pred = item(4) } } }
+    smart_baim_hp = item(40), smart_baim_lethal = item(true), moving_baim = item(false), resolver = { shot_pred = item(4) } } }
 HP = 100
 damage = { calculate = function(_, _, box) return box == "chest" and 70 or 87 end }
 res_custom = function() return false end
