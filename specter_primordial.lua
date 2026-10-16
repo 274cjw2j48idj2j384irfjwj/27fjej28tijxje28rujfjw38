@@ -205,7 +205,39 @@ const find_flag = function(row) {
         const list = row.FindChildrenWithClassTraverse(classes[i]) || [];
         if (list.length > 0 && valid(list[0])) return list[0];
     }
-    return null;
+    // the ids of the CS:GO scoreboard rows are "id-sb-name__*", "id-sb-skillgroup-image" ...: the flag is the panel whose id says flag / country
+    // (owners, Oct 2026: the flags stayed, the guesses above found nothing)
+    let found = null;
+    walk(row, 0, function(panel) {
+        if (found != null) return;
+        const id = String(panel.id || "").toLowerCase();
+        if (id.indexOf("specter") === 0) return;
+        if (id.indexOf("flag") >= 0 || id.indexOf("country") >= 0) found = panel;
+    });
+    return found;
+};
+// every panel under `panel` (depth 7 at most), parents first
+const walk = function(panel, depth, visit) {
+    if (!valid(panel) || depth > 7) return;
+    visit(panel);
+    const kids = typeof panel.Children === "function" ? (panel.Children() || []) : [];
+    for (let i = 0; i < kids.length; i++) walk(kids[i], depth + 1, visit);
+};
+// the first row of the scoreboard as text (id, type, classes of every panel): what the "Dump scoreboard row" button prints
+const dump = function() {
+    const board = scoreboard();
+    if (!valid(board)) return "no scoreboard (open it first)";
+    const rows = board.FindChildrenWithClassTraverse("sb-row") || [];
+    if (rows.length === 0) return "no rows";
+    const lines = [];
+    walk(rows[0], 0, function(panel) {
+        let depth = 0;
+        for (let p = panel; valid(p) && p !== rows[0] && depth < 12; p = p.GetParent()) depth++;
+        let stat = "";
+        try { stat = String(panel.GetAttributeString("data-stat", "")); } catch (_) {}
+        lines.push("  ".repeat(depth) + String(panel.id || "-") + " <" + String(panel.paneltype || "?") + ">" + (stat ? " data-stat=" + stat : ""));
+    });
+    return lines.join("\n");
 };
 const player_xuid = function(index) {
     try {
@@ -309,7 +341,7 @@ const create = function() {
     apply_data();
 };
 return { create: create, destroy: destroy, clear: clear, update: update,
-    destroy_panel: destroy_panels, apply: apply_data };
+    destroy_panel: destroy_panels, apply: apply_data, dump: dump };
 ]], "CSGOHud")()
 
 --- @endregion
@@ -1108,6 +1140,15 @@ local ui = {
         refresh_players = groups.nav:button("Refresh players",
             function()
                 on_shared_players(true)
+            end
+        ),
+        -- the first scoreboard row as text in the console (open the scoreboard first): the ids / types the badge looks for the country flag in
+        dump_scoreboard = groups.nav:button("Dump scoreboard row",
+            function()
+                local ok, text = pcall(libs.tools.js.dump)
+                for line in tostring(ok and text or "unable to read the scoreboard"):gmatch("[^\n]+") do
+                    print(line)
+                end
             end
         ),
         sep1 = menu_add_separator("Home | Specter v" .. client_version .. "" .. info.beta_text2),
@@ -2917,17 +2958,20 @@ ui.save_config = menu_add_button("Configs", "Save", function()
     
     config = libs.base64.encode(libs.json.encode(config_table))
     libs.filesystem.write(dir, config)
+    configs.remember(cur)
     
     notifications.create("Specter", "Config saved successfully!", notifications.types.success)
     print("config has been saved successfully.")
 end)
 
-ui.load_config = menu_add_button("Configs", "Use", function()
-    local cur = ui.configs.list.ref:get_active_item_name()
+-- loads a config file of csgo/specter/ (the Use button, and the start of the lua: the last config used comes back by itself, owners,
+-- Oct 2026: "when you reload it, it automatically puts up the last config you used"); quiet = no notifications at the start
+configs.load_named = function(cur, quiet)
+    local notify = quiet and function() end or notifications.create
     local dir = configs.dir .. cur
 
     if (not libs.filesystem.exists(dir)) then
-        notifications.create("Specter", "The specified config does not exist!", notifications.types.failure)
+        notify("Specter", "The specified config does not exist!", notifications.types.failure)
         print("config does not exist.")
         
         return
@@ -2935,7 +2979,7 @@ ui.load_config = menu_add_button("Configs", "Use", function()
 
     local config, read_error = libs.filesystem.read(dir)
     if (not config) then
-        notifications.create("Specter", "Unable to read config!", notifications.types.failure)
+        notify("Specter", "Unable to read config!", notifications.types.failure)
         print("failed to read config. (" .. read_error .. ")")
         
         return
@@ -2943,7 +2987,7 @@ ui.load_config = menu_add_button("Configs", "Use", function()
 
     local success, decoded_config = pcall(libs.base64.decode, config)
     if (not success) then
-        notifications.create("Specter", "Unable to decode the config!", notifications.types.failure)
+        notify("Specter", "Unable to decode the config!", notifications.types.failure)
         print("failed to decode config. (" .. decoded_data .. ")")
         
         return
@@ -2951,14 +2995,14 @@ ui.load_config = menu_add_button("Configs", "Use", function()
 
     success, config_table = pcall(libs.json.parse, decoded_config)
     if (not success) then
-        notifications.create("Specter", "Unable to parse the config!", notifications.types.failure)
+        notify("Specter", "Unable to parse the config!", notifications.types.failure)
         print("failed to parse config. (" .. config_table .. ")")
         
         return
     end
 
     if (type(config_table) ~= "table") then
-        notifications.create("Specter", "Config is not a valid table!", notifications.types.failure)
+        notify("Specter", "Config is not a valid table!", notifications.types.failure)
         print("config is not a valid table.")
         
         return
@@ -2966,7 +3010,7 @@ ui.load_config = menu_add_button("Configs", "Use", function()
 
     local system_data = config_table["System"]
     if (not system_data) then
-        notifications.create("Specter", "The config lacks build informations!", notifications.types.warning)
+        notify("Specter", "The config lacks build informations!", notifications.types.warning)
         print("config does not contain build informations.")
         
         return
@@ -2984,14 +3028,14 @@ ui.load_config = menu_add_button("Configs", "Use", function()
     end
 
     if (version ~= config_version) then
-        notifications.create("Specter", "Config version mismatch!", notifications.types.warning)
+        notify("Specter", "Config version mismatch!", notifications.types.warning)
         print("config version does not match.")
         
         return
     end
 
     if (build ~= config_build) then
-        notifications.create("Specter", "Config build mismatch!", notifications.types.warning)
+        notify("Specter", "Config build mismatch!", notifications.types.warning)
         print("config build does not match.")
         
         return
@@ -3001,20 +3045,43 @@ ui.load_config = menu_add_button("Configs", "Use", function()
     success, import_error = pcall(libs.eui.import, decoded_config)
 
     if (not success) then
-        notifications.create("Specter", "Unable to import the config!", notifications.types.failure)
+        notify("Specter", "Unable to import the config!", notifications.types.failure)
         print("failed to import config. (" .. import_error .. ")")
     else
-        notifications.create("Specter", "Config loaded successfully!", notifications.types.success)
+        notify("Specter", "Config loaded successfully!", notifications.types.success)
         print("config has been loaded successfully.")
 
         local settings = read_settings()
 
         settings.accent_color = get_accent_color() or settings.accent_color
         settings.text_color = get_text_color() or settings.text_color
+        settings.last_config = cur
 
         libs.filesystem.write(settings_file, libs.json.encode(settings))
         ui.nav.slider.ref:set(tmp)
     end
+end
+
+-- the last config that was loaded or saved is remembered in settings.json
+configs.remember = function(name)
+    local settings = read_settings()
+    if (settings.last_config ~= name) then
+        settings.last_config = name
+        libs.filesystem.write(settings_file, libs.json.encode(settings))
+    end
+end
+
+-- at the start: the config used last, when it is still there (the first start applies the default one, see reload_configs)
+configs.restore_last = function()
+    local name = read_settings().last_config
+    if (type(name) ~= "string" or name == "" or name == "default.cfg" or not libs.filesystem.exists(configs.dir .. name)) then
+        return
+    end
+    configs.load_named(name, true)
+end
+
+ui.load_config = menu_add_button("Configs", "Use", function()
+    configs.load_named(ui.configs.list.ref:get_active_item_name(), false)
 end)
 
 --- @endregion
@@ -10410,6 +10477,7 @@ setup = function()
 
     finish_up = function()
         configs.reload_configs()
+        configs.restore_last()
         configs.reload_cloud_configs()
 
         print("preparing lua..", get_text_color(), " (stage 100%%)")

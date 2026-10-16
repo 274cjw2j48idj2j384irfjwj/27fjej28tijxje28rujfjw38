@@ -135,6 +135,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   of the same 45 frames; the gamesense lua's is "specter.gs", owners Oct 2026), configs in csgo/specter/ (the old csgo/azura/ ones are not read). Edited directly (no generator). The bot posts it to #staff like the dev build (`RELEASE_FILES`).
   That #staff file IS the Primordial dev build: no dev loader for it (owners, Oct 2026: "a devnek nem kell loader elég a
   sima lua"; a server-side dev loader was made and taken out again).
+- Last config (owners, Oct 2026: "when you reload it, it automatically puts up the last config you used"): Use / Save write the name to
+  settings.json (`last_config`, `configs.remember`), the start (`finish_up`, after `reload_configs`) loads it quietly
+  (`configs.restore_last` -> `configs.load_named(name, true)`: no notifications, nothing when the file is gone or it is
+  default.cfg, which the first start applies itself). A cloud config is not remembered.
 - Offline (owners, Oct 2026): the azura.uno login / HWID check, stats upload and cloud / sync sockets are gone; settings.json
   and the logo PNGs that the old loader installed are optional; the
   lagcomp debug boxes are gone. default.cfg = the owner's config (`configs.default_config`), applied on the first start
@@ -410,7 +414,11 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - Scoreboard flag (owners, Oct 2026: "a specter hold írja felül az ország zászlaját"): the scoreboard badge (`libs.tools.js`) hides
   the row's country flag (`find_flag`: ids FlagImg / Flag / CountryFlag, classes sb-row__cell__flag ... of the CS:GO scoreboard; not
   confirmed in game: none found = the badge stays beside the rank as before) and sits in its place, the flag comes back when the
-  badge goes (`destroy_panel`). A cheat revealer (clan tag based, badges per cheat) was built and taken out again (owners, Oct 2026):
+  badge goes (`destroy_panel`). Owners, Oct 2026 (screenshot: "our logo doesn't override the flags"): the fixed ids / classes found
+  nothing in game, so `find_flag` also walks every panel of the row (depth 7, `walk`) and takes the first whose id says `flag` or
+  `country` (the CS:GO row ids are `id-sb-name__*`, `id-sb-skillgroup-image`, the rank cell is `data-stat="rank"`, from the other
+  scoreboard luas). Still a guess: Home > "Dump scoreboard row" prints the first row's panels (id, type, data-stat) to the console
+  (scoreboard open), send it when the flag stays. A cheat revealer (clan tag based, badges per cheat) was built and taken out again (owners, Oct 2026):
   the real ones read the voice packets, which the Primordial api does not give.
 - Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";
   Primordial only, the gamesense lua has no user detection to build on): Misc > "Servers" (page 15). "Share my server" (default
