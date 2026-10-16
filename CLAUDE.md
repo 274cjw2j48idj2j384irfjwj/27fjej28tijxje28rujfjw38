@@ -423,6 +423,9 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   scoreboard luas). Still a guess: Home > "Dump scoreboard row" prints the first row's panels (id, type, data-stat) to the console
   (scoreboard open), send it when the flag stays. A cheat revealer (clan tag based, badges per cheat) was built and taken out again (owners, Oct 2026):
   the real ones read the voice packets, which the Primordial api does not give.
+- Fake ping set by hand (owners, Oct 2026: "beallitom 400 fakepinget es ahogy elindul a kor leesik"): the lua wrote 0 / 100 / its own value
+  over it at the round change (no enemy alive, knife out). `backtrack.update` now treats a slider value it did not write as the user's
+  (`backtrack.saved`) and never goes below it (except in the high ping guard).
 - Flag, third try (owners, Oct 2026: still not covered): `find_flag` also takes an image panel whose source path says flag / country
   (`GetImageSrc`), and the flag is hidden with width 0 + opacity 0 as well (given back on destroy). Send the "Dump scoreboard row" output if it stays.
 - Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";
