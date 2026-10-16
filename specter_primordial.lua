@@ -4989,7 +4989,7 @@ end
 -- own head / body shots, started from the owners' 828 real shots (prior weight 12 shots) and moved by every result. A head the
 -- aimbot is 85 % sure of is always shot; else the body when it is clearly surer; every 5th shot at a target the head is tried anyway
 -- (explore) so a state that got better is noticed
-resolver.conf = { data = {}, last = {}, explore = {}, hot = {}, HOT = 6, N = 12, SURE = 0.85, GAP = 0.08, TRY = 0.2,
+resolver.conf = { data = {}, last = {}, explore = {}, N = 12, SURE = 0.85, GAP = 0.08, TRY = 0.2,
     prior = {
         air = { 0.88, 0.93 }, stand = { 0.48, 0.85 }, slow = { 0.35, 0.82 }, move = { 0.31, 0.81 },
         duck = { 0.40, 0.90 }, cmove = { 0.48, 0.86 },
@@ -5002,14 +5002,8 @@ resolver.conf.rates = function(cls)
     local n = resolver.conf.N
     return (p[1] * n + c[1]) / (n + c[2]), (p[2] * n + c[3]) / (n + c[4])
 end
-resolver.conf.head_ok = function(ph, pb, explore, hot)
-    return explore == true or hot == true or ph >= resolver.conf.SURE or pb < ph + resolver.conf.GAP
-end
--- a head HIT on this very target means the resolver has its angle right now (owners: "ha egyszer fejbe lőtte, már tudja az angle-jét"): the
--- head stays for HOT seconds, until a head miss that counts
-resolver.conf.is_hot = function(idx)
-    local at = resolver.conf.hot[idx]
-    return at ~= nil and globals.real_time() - at < resolver.conf.HOT
+resolver.conf.head_ok = function(ph, pb, explore)
+    return explore == true or ph >= resolver.conf.SURE or pb < ph + resolver.conf.GAP
 end
 -- head: the shot aimed at the head; landed: it hit something (any group); counted only when the result says something about the aim
 resolver.conf.add = function(cls, head, landed, weight)
@@ -5863,11 +5857,6 @@ resolver.on_result = function(target, hit_ok, resolver_miss, event, reason)
     end
     if (event ~= nil and (reason == nil or resolver_miss)) then
         resolver.conf.add(resolver.conf.class(snapshot.state), event.aim_hitgroup == 1, reason == nil, reason == nil and 1 or credit)
-        if (event.aim_hitgroup == 1 and reason == nil) then
-            resolver.conf.hot[snapshot.idx] = globals.real_time()
-        elseif (event.aim_hitgroup == 1) then
-            resolver.conf.hot[snapshot.idx] = nil
-        end
     end
     resolver.conf.explore[snapshot.idx] = math.random() < resolver.conf.TRY
     if (target ~= nil) then
@@ -5996,7 +5985,7 @@ resolver.hitscan = function(ctx)
             resolver.conf.last[idx] = ph
             -- never take the head away while the body can not be hit: with the head group off and nothing else reachable the aimbot has
             -- no point at all and does not shoot (owners' friend, Oct 2026: "elvileg egyáltalán nem lőtt")
-            body = not resolver.conf.head_ok(ph, pb, resolver.conf.explore[idx], resolver.conf.is_hot(idx)) and resolver.body_damage(ent) >= 1
+            body = not resolver.conf.head_ok(ph, pb, resolver.conf.explore[idx]) and resolver.body_damage(ent) >= 1
         end
     end
 
