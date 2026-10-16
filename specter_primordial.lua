@@ -1146,6 +1146,7 @@ local ui = {
         pose_reso = groups.resolver_beta:checkbox("Pose resolver"),
         resolver = {
             enable_resolver = groups.resolver_beta:checkbox("Custom resolver"),
+            unsafe_reso = groups.resolver_beta:checkbox("Lua side override (experimental)"),
             
             duck_mode = groups.resolver_beta:checkbox("Duck mode"),
             auto_duck = groups.resolver_beta:checkbox("Auto duck", true),
@@ -4910,6 +4911,8 @@ end
 --   Improve resolver / Logic resolver / Pose resolver / Custom resolver: any of them turns the resolver layer on
 --   Logic resolver: head safe point after 2 resolver misses in a row on that player (Custom resolver: Hit sensitivity)
 --   Custom resolver: the options below it
+--   Lua side override (experimental): Primordial's own resolver off and the side below forced into the animstate
+--   (side from freestanding / jitter, max desync, learned from hits / misses); off by default, unproven in game
 --   Duck mode / Auto duck / Safe peek / Safe mode: head safe point on crouching targets / with Auto, AWP, Deagle, other /
 --   while we quick peek / on targets at or below that HP. Hit sensitivity: head safe point after that many misses in a row
 --   Prediction sel: the reduced desync size (% of max). Calculate box: freestanding trace width. Shot prediction: jitter step
@@ -5006,16 +5009,15 @@ resolver.conf.head_ok = function(ph, pb, explore)
     return explore == true or ph >= resolver.conf.SURE or pb < ph + resolver.conf.GAP
 end
 -- head: the shot aimed at the head; landed: it hit something (any group); counted only when the result says something about the aim
-resolver.conf.add = function(cls, head, landed, weight)
+resolver.conf.add = function(cls, head, landed)
     local c = resolver.conf.data[cls]
     if (c == nil) then
         c = { 0, 0, 0, 0 }
         resolver.conf.data[cls] = c
     end
     local i = head and 1 or 3
-    weight = weight or 1
-    c[i + 1] = c[i + 1] + weight
-    if (landed) then c[i] = c[i] + weight end
+    c[i + 1] = c[i + 1] + 1
+    if (landed) then c[i] = c[i] + 1 end
 end
 
 resolver.state_of = function(ent)
@@ -5846,17 +5848,8 @@ resolver.on_result = function(target, hit_ok, resolver_miss, event, reason)
         resolver_miss = false
     end
     resolver.record(snapshot, hit_ok, reason)
-    -- how far a miss may be believed (owners' friend, Oct 2026: "nem is jitter miss, csak egy log shoot és a primo nem tudja pontosan
-    -- mit misselt"): Primordial's "jitter" reason is its guess, and with our resolver on its own is off. Real shots: only 3 of 35 "jitter"
-    -- misses of ours were on a target our own detector called a jitterer, 12 of 124 at a standing target, and the share of the label
-    -- grew with the ping (9 % under 40 ms, 18 % over 130). So a "jitter" miss on a target that does not jitter counts 0.4 (0.2 above
-    -- 100 ms), the "resolver" reason and a miss on a detected jitterer count 1. Hits always count 1
-    local credit = 1
-    if (not hit_ok and resolver_miss and reason == "jitter" and snapshot.key ~= "jitter") then
-        credit = resolver.network().ping > 100 and 0.2 or 0.4
-    end
     if (event ~= nil and (reason == nil or resolver_miss)) then
-        resolver.conf.add(resolver.conf.class(snapshot.state), event.aim_hitgroup == 1, reason == nil, reason == nil and 1 or credit)
+        resolver.conf.add(resolver.conf.class(snapshot.state), event.aim_hitgroup == 1, reason == nil)
     end
     resolver.conf.explore[snapshot.idx] = math.random() < resolver.conf.TRY
     if (target ~= nil) then
@@ -5864,7 +5857,7 @@ resolver.on_result = function(target, hit_ok, resolver_miss, event, reason)
         if (hit_ok) then
             resolver.misses[idx] = 0
         elseif (resolver_miss) then
-            resolver.misses[idx] = (resolver.misses[idx] or 0) + credit
+            resolver.misses[idx] = (resolver.misses[idx] or 0) + 1
         end
     end
     if (snapshot.key == nil or snapshot.candidate == nil) then
@@ -5885,9 +5878,9 @@ resolver.on_result = function(target, hit_ok, resolver_miss, event, reason)
         mem.last_failed = nil
         c.good = c.good + 1
     elseif (resolver_miss) then
-        mem.misses = mem.misses + credit
-        c.bad = c.bad + credit
-        mem.last_failed = credit >= 0.5 and snapshot.candidate or mem.last_failed
+        mem.misses = mem.misses + 1
+        c.bad = c.bad + 1
+        mem.last_failed = snapshot.candidate
     end
 end
 resolver.body_damage = function(ent)
@@ -9212,6 +9205,7 @@ menu_handle = function()
         ui.ragebot.smart_baim_lethal:depend({ui.ragebot.smart_baim, true})
         ui.ragebot.head_conf:depend({ui.ragebot.smart_baim, true})
         ui.ragebot.latency_limit:depend({ui.ragebot.latency_guard, true})
+        ui.ragebot.resolver.unsafe_reso:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
         ui.ragebot.resolver.duck_mode:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
         ui.ragebot.resolver.auto_duck:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
         ui.ragebot.resolver.safe_peek:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
