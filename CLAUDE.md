@@ -482,6 +482,13 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   250 ms). NOT done: the skeletal hitbox cross check (a bone setup per enemy per update, an FPS cost the owners complained about) and a low confidence ->
   body aim / safe point rule (the "body aim when the head is unsure" version was reverted by the owners; the jitter / after-miss head safe point and Smart body
   aim stay). Judge it by `cd` 8 / 9 hit rates and the jitter share of the misses in the next logs.
+- LBY / layers / lag comp prompt (owners, Oct 2026, the Hungarian "Klasszikus LBY Megtori Mintak" text): mostly in already. The feet model reads the REAL
+  `m_flLowerBodyYawTarget` of every record (so the 1.1 s / 0.22 s updates arrive as they happen, no timer to guess), the -58 / 0 / +58 weighting is the hypotheses 1-5
+  (full, half, none; `resolver.max_desync` 58 shrunk by speed / duck), layer 6 is read for the shot log (`l6` / `l6w`, not adopted without proof), the movement forecast
+  (`resolver.advanced`) is the linear extrapolation, the backtrack window is Primordial's, a miss lowers the failed hypothesis (`last_failed` -0.25) and the mirrored
+  ones take over, jitter / after-miss head safe points and Smart body aim exist. New: `p.lby_at` (when the LBY target last changed) and the shot log field `lbt` (its age
+  at the shot, s): check whether misses cluster right at an LBY update before building a predictor on it. NOT possible in the Primordial lua api: layer 3,
+  sequence activity, `InvalidateBoneCache` (no ffi / bone control).
 - hvh.gg servers (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg"; then "crashes the game after i refresh hvh.gg"):
   Misc > Servers has a second list "HvH servers (hvh.gg)" + "Connect to the selected hvh.gg server" / "Refresh hvh.gg" (`servers.hvh_*`). The lua
   does NOT ask hvh.gg itself (the first version did, through the steam http library, and a big page crashed the game): server.js `GET /hvhgg`
