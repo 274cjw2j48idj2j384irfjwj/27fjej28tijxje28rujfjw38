@@ -867,7 +867,10 @@ app.get('/servers', (req, res) => {
 // gets a small clean list { srv, name, map, players }. The shape of hvh.gg's answer is not known: a JSON list / object of servers
 // (an ip:port in addr / address / connect / server, or ip + port; name / map / players when there are) at any depth, else every
 // ip:port of the text. Only public addresses (public_srv).
-const HVH_SOURCES = ['https://hvh.gg/api/servers', 'https://hvh.gg/servers']
+// hvh.cat is the HvH server browser built on hvh.gg's data (its CS:GO page is /csgo); the real api behind it is not known yet:
+// /hvhgg?debug=1 shows what each source answered (status, size, the start of the text) to find it
+const HVH_SOURCES = ['https://hvh.gg/api/servers', 'https://hvh.gg/api/v1/servers', 'https://api.hvh.gg/servers', 'https://api.hvh.gg/v1/servers',
+    'https://hvh.gg/servers', 'https://hvh.cat/api/servers', 'https://hvh.cat/csgo']
 const hvh_addr = row => {
     for (const k of ['addr', 'address', 'ip_port', 'ipport', 'connect', 'server', 'endpoint']) {
         if (typeof row[k] === 'string') {
@@ -915,15 +918,26 @@ const hvh_parse = body => {
     return out.sort((a, b) => b.players - a.players)
 }
 const hvh = { at: 0, list: [], busy: null }
-const hvh_fetch = async () => {
+const hvh_fetch = async trace => {
     for (const url of HVH_SOURCES) {
+        const t = { url }
         try {
             const r = await fetch(url, { signal: AbortSignal.timeout(8000), redirect: 'follow',
                 headers: { 'user-agent': 'Mozilla/5.0 (compatible; Specter)', accept: 'application/json,text/html;q=0.8' } })
-            if (!r.ok || Number(r.headers.get('content-length') || 0) > 5000000) continue
-            const list = hvh_parse((await r.text()).slice(0, 1500000))
+            t.status = r.status
+            t.type = r.headers.get('content-type')
+            if (!r.ok || Number(r.headers.get('content-length') || 0) > 5000000) { if (trace) trace.push(t); continue }
+            const text = (await r.text()).slice(0, 1500000)
+            const list = hvh_parse(text)
+            t.bytes = text.length
+            t.found = list.length
+            if (trace) t.sample = text.slice(0, 1500)
+            if (trace) trace.push(t)
             if (list.length) return list
-        } catch (e) {}
+        } catch (e) {
+            t.error = String(e && e.message || e).slice(0, 120)
+            if (trace) trace.push(t)
+        }
     }
     return []
 }
@@ -934,6 +948,11 @@ app.get('/hvhgg', async (req, res) => {
     let r = hvh_rate.get(ip)
     if (!r || now - r.since > 600000) { r = { n: 0, since: now }; hvh_rate.set(ip, r) }
     if (++r.n > 60) return res.status(429).json({ ok: false, reason: 'rate' })
+    if (req.query.debug === '1') {
+        const trace = []
+        const list = await hvh_fetch(trace)
+        return res.json({ ok: true, found: list.length, trace })
+    }
     if (now - hvh.at > 60000) {
         if (!hvh.busy) hvh.busy = hvh_fetch().then(list => { hvh.list = list; hvh.at = Date.now() }).finally(() => { hvh.busy = null })
         await hvh.busy
