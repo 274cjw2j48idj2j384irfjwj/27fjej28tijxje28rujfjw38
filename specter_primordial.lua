@@ -3947,7 +3947,8 @@ end
 
 no_fall = function(cmd)
     if (ui.misc.nofall_dmg:get()) then
-        local velocity = entity_list_get_local_player():get_prop("m_vecVelocity").z
+        local fall = engine_prediction.vector(entity_list_get_local_player(), "m_vecVelocity")
+        local velocity = fall ~= nil and fall.z or 0
         local no_falldmg = nil
 
         if (velocity >= -500) then
@@ -5023,11 +5024,22 @@ engine_prediction.init = function()
     engine_prediction.state = "linked"
     return true
 end
+-- m_vecOrigin / m_vecVelocity come as a 2D vector in Primordial (indexing .z raises): z is the "name[2]" element or 0
+engine_prediction.vector = function(ent, name)
+    local v = ent:get_prop(name)
+    if (v == nil) then return nil end
+    local okx, x = pcall(function() return v.x end)
+    local oky, y = pcall(function() return v.y end)
+    local okz, z = pcall(function() return v.z end)
+    if (not okz or type(z) ~= "number") then z = tonumber(ent:get_prop(name .. "[2]")) or 0 end
+    if (not okx or not oky or type(x) ~= "number" or type(y) ~= "number") then return nil end
+    return { x = x, y = y, z = z }
+end
 -- the offsets must give back what the lua netvars say, else nothing is ever called
 engine_prediction.verify = function(player, base)
     local function near(a, b) return type(a) == "number" and type(b) == "number" and math.abs(a - b) < 0.5 end
     local o = engine_prediction.OFFSETS
-    local origin, velocity = player:get_prop("m_vecOrigin"), player:get_prop("m_vecVelocity")
+    local origin, velocity = engine_prediction.vector(player, "m_vecOrigin"), engine_prediction.vector(player, "m_vecVelocity")
     if (origin == nil or velocity == nil) then return false end
     local f, v, p, tb = ffi.cast("float*", base + o.origin), ffi.cast("float*", base + o.velocity), nil, nil
     local flags = tonumber(player:get_prop("m_fFlags"))
@@ -5180,10 +5192,14 @@ backtrack.predict = function(local_player)
     -- our own movement run through the game's prediction (experimental option); nil = the velocity estimate below
     local own_shift
     if (ui.ragebot.backtrack.engine_pred:get()) then
-        local origin = local_player:get_prop("m_vecOrigin")
-        local after = origin ~= nil and engine_prediction.origin_after(local_player,
-            backtrack.horizon(net, false) / globals.interval_per_tick()) or nil
-        if (after ~= nil) then
+        -- an error here would unload the script: the whole thing is guarded, a failure falls back to the velocity estimate
+        local okp, origin, after = pcall(function()
+            local here = engine_prediction.vector(local_player, "m_vecOrigin")
+            return here, here ~= nil and engine_prediction.origin_after(local_player,
+                backtrack.horizon(net, false) / globals.interval_per_tick()) or nil
+        end)
+        if (not okp) then origin, after = nil, nil end
+        if (after ~= nil and origin ~= nil) then
             backtrack.shift = backtrack.shift or {}
             backtrack.shift.x, backtrack.shift.y, backtrack.shift.z = after.x - origin.x, after.y - origin.y, after.z - origin.z
             own_shift = backtrack.shift
@@ -10177,7 +10193,7 @@ do_setupcmd = function()
             zeus_rush(cmd)
             local bt_player = entity_list_get_local_player()
             if (bt_player ~= nil and bt_player:is_alive()) then
-                engine_prediction.capture(cmd)
+                if (ui.ragebot.backtrack.engine_pred:get()) then pcall(engine_prediction.capture, cmd) end
                 backtrack.update(bt_player)
                 backtrack.predict(bt_player)
             end

@@ -517,6 +517,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   weapon spread (an offset that can not be verified against a netvar = a blind memory write), `InvalidateBoneCache` / a skeletal cross check (a bone setup per enemy per update, the FPS cost,
   and Primordial's own hitboxes are what the aimbot shoots), pelvis / spine rotation and slow walk animation overrides (client side animation only: the server hitboxes do not change, so no
   anti-aim gain), a faked LBY update (a game mechanic, not a memory write).
+- Engine prediction crash (owners, Oct 2026, console: "failed to run callback SETUP_COMMAND ... bad argument into 'float(const api::vec2_t&, int)'" in `verify`): `get_prop("m_vecOrigin")`
+  / `("m_vecVelocity")` are 2D vectors in Primordial, `.z` raises and an error in a callback UNLOADS the script. `engine_prediction.vector(ent, name)` reads x / y and takes z from
+  `name[2]` or 0 (also `no_fall`, which indexed `.z` the same way); the whole engine prediction call in `backtrack.predict` is in a `pcall`, `capture` runs only with the option on. Never index
+  `.z` of an origin / velocity netvar, use that helper.
 - hvh.gg servers (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg"; then "crashes the game after i refresh hvh.gg"):
   Misc > Servers has a second list "HvH servers (hvh.gg)" + "Connect to the selected hvh.gg server" / "Refresh hvh.gg" (`servers.hvh_*`). The lua
   does NOT ask hvh.gg itself (the first version did, through the steam http library, and a big page crashed the game): server.js `GET /hvhgg`
