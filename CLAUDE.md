@@ -426,6 +426,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - Fake ping set by hand (owners, Oct 2026: "beallitom 400 fakepinget es ahogy elindul a kor leesik"): the lua wrote 0 / 100 / its own value
   over it at the round change (no enemy alive, knife out). `backtrack.update` now treats a slider value it did not write as the user's
   (`backtrack.saved`) and never goes below it (except in the high ping guard).
+- default.cfg (owners' tester, Oct 2026: "kifagy a default confignal", "safe head nem jo zeusnal"): Safe head "Air zeus" is off in it (the
+  crouched zeus air pose is hit easily; the option stays in the menu), and the error paths of `configs.load_named` print with `tostring`
+  (`decoded_data` was an undefined name: a config that did not decode errored the Use callback = unloaded the script). The cause of
+  the freeze itself is not found: ask for the console line.
 - Flag, third try (owners, Oct 2026: still not covered): `find_flag` also takes an image panel whose source path says flag / country
   (`GetImageSrc`), and the flag is hidden with width 0 + opacity 0 as well (given back on destroy). Send the "Dump scoreboard row" output if it stays.
 - Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";
