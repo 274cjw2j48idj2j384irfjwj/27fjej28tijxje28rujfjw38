@@ -50,7 +50,7 @@ local env = setmetatable({
     ui = {
         ragebot = { logic_reso = control(true), smart_baim = control(true),
             smart_baim_hp = control(40), smart_baim_lethal = control(true),
-            latency_guard = control(true), latency_limit = control(80), fast_peek = control(true),
+            latency_guard = control(true), latency_limit = control(80), fast_peek = control(true), learn_rate = control(100),
             backtrack = { prediction = control(true), enable_backtrack = control(true),
                 extended_backtrack = control(false), ping_in_sight = control(false) },
             resolver = { enable_resolver = control(false) },

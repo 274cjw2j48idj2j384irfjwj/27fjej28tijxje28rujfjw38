@@ -1200,6 +1200,7 @@ local ui = {
         latency_guard = groups.resolver:checkbox("High ping protection", true),
         latency_limit = groups.resolver:slider("High ping threshold", 40, 250, 1, 0, "ms"),
         fast_peek = groups.resolver:checkbox("Fast crouch / peek scan", true),
+        learn_rate = groups.resolver:slider("Resolver learning", 0, 100, 1, 0, "%"),
         pose_reso = groups.resolver_beta:checkbox("Pose resolver"),
         resolver = {
             enable_resolver = groups.resolver_beta:checkbox("Custom resolver"),
@@ -6114,20 +6115,23 @@ resolver.on_result = function(target, hit_ok, resolver_miss, event, reason)
     local mem = resolver.memory(snapshot.idx, snapshot.key, snapshot.kind)
     local c = mem.candidates[snapshot.candidate]
     if (c == nil) then return end
+    -- "Resolver learning" (owners, Oct 2026): how much of a result goes into the hypotheses, 100 = full, 0 = the resolver learns nothing
+    local weight = res_clamp(ui.ragebot.learn_rate:get(), 0, 100) / 100
     if (hit_ok or resolver_miss) then
         -- a changing target is followed: every counted result pulls all hypotheses of the situation back toward the start
+        local keep = 1 - (1 - resolver.K.forget) * weight
         for _, h in ipairs(mem.candidates) do
-            h.good = 1 + (h.good - 1) * resolver.K.forget
-            h.bad = 1 + (h.bad - 1) * resolver.K.forget
+            h.good = 1 + (h.good - 1) * keep
+            h.bad = 1 + (h.bad - 1) * keep
         end
     end
     if (hit_ok) then
         mem.misses = 0
         mem.last_failed = nil
-        c.good = c.good + 1
+        c.good = c.good + weight
     elseif (resolver_miss) then
         mem.misses = mem.misses + 1
-        c.bad = c.bad + 1
+        c.bad = c.bad + weight
         mem.last_failed = snapshot.candidate
     end
 end
@@ -9472,6 +9476,7 @@ menu_handle = function()
         ui.ragebot.smart_baim_hp:depend({ui.ragebot.smart_baim, true})
         ui.ragebot.smart_baim_lethal:depend({ui.ragebot.smart_baim, true})
         ui.ragebot.latency_limit:depend({ui.ragebot.latency_guard, true})
+        ui.ragebot.learn_rate.ref:set(100)
         ui.ragebot.resolver.duck_mode:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
         ui.ragebot.resolver.auto_duck:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
         ui.ragebot.resolver.safe_peek:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
