@@ -1173,6 +1173,20 @@ r = ep.eval("function() local a = engine_prediction.origin_after({ get_index = f
             "return a == nil and b == nil, engine_prediction.state, printed end")()
 check(tuple(r) == (True, "bad", 1), "engine prediction: missing interfaces = nothing called, state bad, one console line (%s)" % (r,))
 
+# the engine prediction reads m_vecOrigin / m_vecVelocity as Primordial gives them: 2D vectors that raise on .z (the SETUP_COMMAND crash of Oct 17)
+r = ep.eval("""function()
+    local two = function(x, y) return setmetatable({ x = x, y = y }, { __index = function() error("not a numeric type") end }) end
+    local ent = { get_prop = function(_, n)
+        if n == "m_vecOrigin" then return two(5, 6) end
+        if n == "m_vecOrigin[2]" then return 64 end
+        if n == "m_vecVelocity" then return two(100, 0) end
+        return nil
+    end }
+    local o, v = engine_prediction.vector(ent, "m_vecOrigin"), engine_prediction.vector(ent, "m_vecVelocity")
+    return o.x == 5 and o.y == 6 and o.z == 64, v.x == 100 and v.z == 0, engine_prediction.vector({ get_prop = function() return nil end }, "x") == nil
+end""")()
+check(tuple(r) == (True, True, True), "engine prediction: a 2D origin / velocity netvar gives z from name[2] or 0, no error (%s)" % (r,))
+
 # "Resolver learning" slider (owners, Oct 2026): 0 % learns nothing, 50 % half a point per result, 100 % the full one
 r = D("""
 local out = {}
