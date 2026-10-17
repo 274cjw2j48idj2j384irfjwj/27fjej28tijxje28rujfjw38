@@ -38,7 +38,7 @@ local env = setmetatable({
         return result
     end,
     entity_list_get_local_player = function()
-        return { get_eye_position = function() return { x = 0, y = 0, z = 0 } end }
+        return { get_prop = function() return nil end, get_eye_position = function() return { x = 0, y = 0, z = 0 } end }
     end,
     trace_line = function() return { fraction = 1 } end,
     vec3_t = function(x, y, z) return { x = x, y = y, z = z } end,
