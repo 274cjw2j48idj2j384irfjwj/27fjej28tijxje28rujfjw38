@@ -1696,6 +1696,7 @@ local accent_color = color_t(222, 153, 185, 255)
 local text_color = color_t(140, 71, 247, 255)
 
 ui.quick_fall = groups.exploits:keybind(ui.exploits.quick_fall, "Rubberbang keybind")
+ui.air_stop = groups.movement:keybind(ui.misc.jumpshot, "Air stop keybind")
 ui.edge_yaw = groups.antiaim:keybind(ui.antiaim.builder.edge_yaw, "EdgeYaw keybind")
 
 ui.accent_color = groups.nav:color_picker(ui.nav.text, "Accent color", accent_color)
@@ -10184,12 +10185,19 @@ do_paint = function()
                 if (ui.misc.jumpshot:get()) then
                     -- written when the state (or the weapon group) changes, not every frame
                     local m_flags = local_player:get_prop("m_fFlags")
-                    -- only the autostrafer: the in-air autostop it used to switch on as well stopped us in the air the moment an
-                    -- enemy was seen, so the bunny hop was over (owners, Oct 2026: "ne stuckoljunk airbe ha lat valaki")
+                    -- the autostrafer follows the air state; the in-air autostop used to be switched on with it and stopped us in the air
+                    -- the moment an enemy was seen, so the bunny hop was over (owners, Oct 2026: "ne stuckoljunk airbe ha lat valaki")
                     local air = ent_speed_2d(local_player) > 10 and (m_flags == 256 or m_flags == 262)
                     if (air ~= jumpshot_state.air) then
                         jumpshot_state.air = air
                         menu_find("misc","main","movement","autostrafer"):set(air)
+                    end
+                    -- the in-air autostop is on the "Air stop keybind" (owners, Oct 2026: "azt bindelhetore kene tenni az airstoppot"),
+                    -- written when the key state or the weapon group changes
+                    local stop, weapon = ui.air_stop:get() == true, get_active_weapon()
+                    if (stop ~= jumpshot_state.stop or weapon ~= jumpshot_state.weapon) then
+                        jumpshot_state.stop, jumpshot_state.weapon = stop, weapon
+                        menu_find("aimbot",weapon,"accuracy","auostop options","In-Air")[3]:set(7, stop)
                     end
                 end
 
