@@ -8,6 +8,7 @@ local finish = assert(source:find("run_clantag = function", begin, true))
 local clock, enabled, map, local_index = 100, true, "de_dust2", 1
 local entities, requests, icons, notes, downloads = {}, {}, {}, {}, {}
 local list, saved_image, chats = {}, false, 0
+local party, lobby_me = {}, nil
 local p = { server = "https://test.invalid", version = "specter", epoch = 0, sequence = 0,
     next = 0, shown = {}, announced = {}, failures = 0, icon = "moon", icon_next = 0,
     icon_ready = false }
@@ -33,7 +34,13 @@ local env = setmetatable({
             end, clear = function() icons = {} end },
             js2 = { GameStateAPI = { GetPlayerXuidStringFromEntIndex = function(idx)
                 return entities[idx] and entities[idx].fallback
-            end } },
+            end },
+                PartyListAPI = { GetCount = function() return #party end,
+                    GetXuidByIndex = function(i) return party[i + 1].xuid end,
+                    GetFriendName = function(xuid)
+                        for _, m in ipairs(party) do if m.xuid == xuid then return m.name end end
+                    end },
+                MyPersonaAPI = { GetXuid = function() return lobby_me end } },
             http = {
                 get = function(_, url, callback)
                     requests[#requests + 1] = { url = url, callback = callback }
@@ -212,6 +219,27 @@ entities[1] = nil
 p.update(true)
 check(#list == 0 and next(icons) == nil, "disconnect clears rendered user data")
 check(p.connected == false and p.busy == nil, "disconnect invalidates pending HTTP requests")
+-- the lobby: no game, the party members are asked and our own badge is sent
+restart()
+lobby_me = own_sid
+party = { { xuid = own_sid, name = "me" }, { xuid = other_sid, name = "friend" } }
+p.lobby_next, p.lobby_busy = nil, nil
+p.update(true)
+check(#requests == 1 and requests[1].url:find("&q=" .. p.hash(other_sid), 1, true) ~= nil
+    and requests[1].url:find("&me=" .. p.hash(own_sid), 1, true) ~= nil
+    and not requests[1].url:find(other_sid, 1, true), "lobby heartbeat sends our hash and the party member hashes, no raw IDs")
+reply(requests[1], { [p.hash(other_sid)] = "nightly" })
+check(#list == 1 and list[1] == "friend ~ prim user (nightly)" and #notes == 1,
+    "a Specter user in the lobby is listed by name and announced")
+clock = clock + 5
+p.update(true)
+check(#requests == 1, "the lobby heartbeat keeps its 30 s rhythm")
+enabled = false
+party = {}
+clock = clock + 40
+p.update(true)
+check(#requests == 1, "no party and sharing off: nothing is sent in the lobby")
+enabled = true
 local paint = assert(source:find('perf.add(e_callbacks.PAINT, "PAINT"', 1, true))
 local presence_poll = assert(source:find('perf.span("presence", lets_sync)', paint, true))
 local condition = assert(source:find("if (check_conditions()) then", paint, true))
