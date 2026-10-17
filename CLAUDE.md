@@ -473,8 +473,8 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   reads `HVH_SOURCES` (fixed urls, 8 s, at most 1.5 MB, cached 60 s, 60 requests / IP / 10 min) and answers a clean list `{ srv, name, map, players }`
   (at most 100), the lua asks it every 60 s while the page is open and checks each row again (`servers.hvh_rows`, `servers.valid`). hvh.gg could not
   be reached from the build container, so the shape of its answer is NOT known: `hvh_parse` reads JSON objects (an ip:port in addr / address /
-  connect / server, or ip + port, with name / map / players) at any depth, else every ip:port of the text. If the list stays empty, send the real
-  api url / a sample answer and change `HVH_SOURCES`.
+  connect / server, or ip + port, with name / map / players) at any depth, else every ip:port of the text. If the list stays empty (Oct 2026: "hvh.gg: no server found"), open `<server>/hvhgg?debug=1` in a browser: it lists per source the status, size, content type
+  and the first 1500 characters of what hvh.gg / hvh.cat (the browser built on hvh.gg's data, `/csgo`) answered, send that and fix `HVH_SOURCES` from it.
 - Flag, third try (owners, Oct 2026: still not covered): `find_flag` also takes an image panel whose source path says flag / country
   (`GetImageSrc`), and the flag is hidden with width 0 + opacity 0 as well (given back on destroy). Send the "Dump scoreboard row" output if it stays.
 - Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";
