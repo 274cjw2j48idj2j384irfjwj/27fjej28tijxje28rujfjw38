@@ -52,7 +52,7 @@ local env = setmetatable({
             smart_baim_hp = control(40), smart_baim_lethal = control(true),
             latency_guard = control(true), latency_limit = control(80), fast_peek = control(true),
             backtrack = { prediction = control(true), enable_backtrack = control(true),
-                extended_backtrack = control(false) },
+                extended_backtrack = control(false), ping_in_sight = control(true) },
             resolver = { enable_resolver = control(false) },
             reso_cfg = { yaw_calc = control(3) } },
         antiaim = { builder = controls },
@@ -451,6 +451,32 @@ test("high ping does not receive added fake latency", function()
     env.backtrack.update(player)
     assert(ping:get() == 12)
     env.ui.ragebot.backtrack.enable_backtrack:set(true)
+end)
+test("fake ping only runs while an enemy is in sight, 1 s after, and always when the option is off", function()
+    local ping = control(0)
+    env.backtrack.ping, env.backtrack.saved, env.backtrack.amount, env.backtrack.seen_until = ping, nil, nil, nil
+    local player = { get_active_weapon = function() return { get_name = function() return "ssg08" end } end }
+    outgoing, incoming = 0.02, 0.02
+    local dormant = true
+    target.is_dormant = function() return dormant end
+    env.backtrack.update(player)
+    assert(ping:get() == 0)                         -- nobody in sight: no fake ping
+    dormant = false
+    clock = clock + 1
+    env.backtrack.update(player)
+    assert(ping:get() == 60)                        -- seen: on (the 100 ms budget minus the real 40)
+    dormant = true
+    clock = clock + 0.5
+    env.backtrack.update(player)
+    assert(ping:get() == 60)                        -- lost half a second ago: still on
+    clock = clock + 1
+    env.backtrack.update(player)
+    assert(ping:get() == 0)                         -- a second without a sight: off
+    env.ui.ragebot.backtrack.ping_in_sight:set(false)
+    env.backtrack.update(player)
+    assert(ping:get() == 60)                        -- option off: the old behaviour, an alive enemy is enough
+    env.ui.ragebot.backtrack.ping_in_sight:set(true)
+    target.is_dormant = function() return false end
 end)
 test("expired prediction priorities are ignored", function()
     env.backtrack.peekers, env.backtrack.peek_until = { 2 }, clock - 1
