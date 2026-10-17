@@ -467,12 +467,14 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   Improve backtrack delays what WE see, so running all the time we walked into enemies aiming at the corner; it now runs while an enemy is not dormant
   and 1 s after (`backtrack.seen_until`), 0 before. A fake ping slider set by hand still wins as the floor. The desync / yaw settings are untouched: the
   logs do not separate them (every setting 77-88 %). Judge by the head share per state and by `fp` in the next AA rows; to go back: untick the option.
-- hvh.gg servers (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg"): Misc > Servers has a second list "HvH servers
-  (hvh.gg)" + "Connect to the selected hvh.gg server" / "Refresh hvh.gg" (`servers.hvh_*`). The client asks `servers.HVH_URLS` (steam http,
-  while the page is open, every 60 s, the first url that gives an address wins). hvh.gg could not be reached from the build container, so
-  the shape of its answer is NOT known: `servers.hvh_parse` reads JSON objects (an ip:port in addr / address / connect / server, or ip + port,
-  with name / map / players) at any depth, else every ip:port of the text; only a public address (`servers.valid`) is shown and connected
-  to. If nothing shows, the url is wrong: send the real api url / a sample answer and change `HVH_URLS`.
+- hvh.gg servers (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg"; then "crashes the game after i refresh hvh.gg"):
+  Misc > Servers has a second list "HvH servers (hvh.gg)" + "Connect to the selected hvh.gg server" / "Refresh hvh.gg" (`servers.hvh_*`). The lua
+  does NOT ask hvh.gg itself (the first version did, through the steam http library, and a big page crashed the game): server.js `GET /hvhgg`
+  reads `HVH_SOURCES` (fixed urls, 8 s, at most 1.5 MB, cached 60 s, 60 requests / IP / 10 min) and answers a clean list `{ srv, name, map, players }`
+  (at most 100), the lua asks it every 60 s while the page is open and checks each row again (`servers.hvh_rows`, `servers.valid`). hvh.gg could not
+  be reached from the build container, so the shape of its answer is NOT known: `hvh_parse` reads JSON objects (an ip:port in addr / address /
+  connect / server, or ip + port, with name / map / players) at any depth, else every ip:port of the text. If the list stays empty, send the real
+  api url / a sample answer and change `HVH_SOURCES`.
 - Flag, third try (owners, Oct 2026: still not covered): `find_flag` also takes an image panel whose source path says flag / country
   (`GetImageSrc`), and the flag is hidden with width 0 + opacity 0 as well (given back on destroy). Send the "Dump scoreboard row" output if it stays.
 - Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";

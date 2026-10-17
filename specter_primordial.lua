@@ -3643,62 +3643,21 @@ servers.leave = function()
 end
 
 -- hvh.gg servers (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg"): the Servers page also lists the HvH
--- servers of hvh.gg and connects to the selected one. The site is asked from the client (steam http) while the page is open, every
--- 60 s; the first of HVH_URLS that gives an address wins. What comes back is read without knowing its shape: a JSON list / object
--- of servers (an "ip:port" in addr / address / connect / server, or ip + port, with name / map / players when there are) or, when
--- that finds nothing, every ip:port in the text (a plain page). Every address is checked by servers.valid before it is shown and
--- again before "connect"
-servers.HVH_URLS = { "https://hvh.gg/api/servers", "https://hvh.gg/servers" }
+-- servers of hvh.gg and connects to the selected one. The lua does NOT ask hvh.gg itself (a big page through the steam http library crashed
+-- the game after a refresh): our license server reads the site and answers a small clean list (`GET /hvhgg`), every 60 s while the page
+-- is open. Each row is checked again here (types, a public address by servers.valid) and before "connect"
 servers.hvh = { next = 0, rows = {}, labels = "" }
-servers.hvh_addr = function(row)
-    for _, key in ipairs({ "addr", "address", "ip_port", "ipport", "connect", "server", "endpoint" }) do
-        local value = row[key]
-        if (type(value) == "string") then
-            local found = value:match("(%d+%.%d+%.%d+%.%d+:%d+)")
-            if (found ~= nil) then return found end
-        end
-    end
-    local host, port = row.ip or row.host, tonumber(row.port)
-    if (type(host) == "string") then
-        if (host:match("^%d+%.%d+%.%d+%.%d+$") and port ~= nil and port == port and port >= 1 and port <= 65535) then
-            return host .. ":" .. math.floor(port)
-        end
-        return host:match("^(%d+%.%d+%.%d+%.%d+:%d+)$")
-    end
-    return nil
-end
-servers.hvh_parse = function(body)
-    local out, seen = {}, {}
-    local function add(srv, name, map, players)
-        if (#out < 100 and not seen[srv] and servers.valid(srv)) then
-            seen[srv] = true
-            if (type(players) == "table") then players = #players end
-            out[#out + 1] = { srv = srv, name = tostring(name or "hvh.gg"), map = tostring(map or "?"), players = tonumber(players) or 0 }
-        end
-    end
+servers.hvh_rows = function(body)
     local ok, data = pcall(libs.json.parse, body or "")
-    if (ok and type(data) == "table") then
-        local nodes = 0
-        local function walk(node, depth)
-            if (depth > 6 or nodes > 5000) then return end
-            nodes = nodes + 1
-            local srv = servers.hvh_addr(node)
-            if (srv ~= nil) then
-                add(srv, node.name or node.hostname or node.title, node.map or node.map_name, node.players or node.num_players
-                    or node.player_count or node.clients)
-            end
-            for _, child in pairs(node) do
-                if (type(child) == "table") then walk(child, depth + 1) end
-            end
-        end
-        walk(data, 0)
-    end
-    if (#out == 0 and type(body) == "string") then
-        for srv in body:gmatch("(%d+%.%d+%.%d+%.%d+:%d+)") do
-            add(srv)
+    local out = {}
+    if (not ok or type(data) ~= "table" or data.ok ~= true or type(data.list) ~= "table") then return nil end
+    for i, row in ipairs(data.list) do
+        if (i > 100) then break end
+        if (type(row) == "table" and servers.valid(row.srv)) then
+            out[#out + 1] = { srv = row.srv, name = tostring(row.name or "hvh.gg"):gsub("[^%w%s%-_.]", ""):sub(1, 24),
+                map = tostring(row.map or "?"):gsub("[^%w_]", ""):sub(1, 24), players = math.floor(tonumber(row.players) or 0) }
         end
     end
-    table.sort(out, function(a, b) return a.players > b.players end)
     return out
 end
 servers.hvh_show = function(list)
@@ -3722,29 +3681,19 @@ servers.hvh_update = function(force)
     if (hvh.busy ~= nil and now >= hvh.busy and now - hvh.busy < 20) then return end
     if (not force and now < hvh.next and now > hvh.next - 120) then return end
     hvh.next, hvh.busy = now + 60, now
-    local function try(i)
-        if (i > #servers.HVH_URLS) then
-            hvh.busy = nil
+    local sent = pcall(libs.tools.http.get, libs.tools.http, presence.server .. "/hvhgg", function(response)
+        hvh.busy = nil
+        local list = servers.hvh_rows(response and response.body or "")
+        if (list ~= nil and #list > 0) then
+            servers.hvh_show(list)
             if (force) then
-                notifications.create("Specter", "hvh.gg: no server found (no answer, or the page changed).", notifications.types.warning)
+                notifications.create("Specter", "hvh.gg: " .. #list .. " server(s).", notifications.types.information)
             end
-            return
+        elseif (force) then
+            notifications.create("Specter", "hvh.gg: no server found (no answer, or the page changed).", notifications.types.warning)
         end
-        local sent = pcall(libs.tools.http.get, libs.tools.http, servers.HVH_URLS[i], function(response)
-            local list = servers.hvh_parse(response and response.body or "")
-            if (#list > 0) then
-                hvh.busy = nil
-                servers.hvh_show(list)
-                if (force) then
-                    notifications.create("Specter", "hvh.gg: " .. #list .. " server(s).", notifications.types.information)
-                end
-            else
-                try(i + 1)
-            end
-        end)
-        if (not sent) then try(i + 1) end
-    end
-    try(1)
+    end)
+    if (not sent) then hvh.busy = nil end
 end
 servers.hvh_connect = function()
     local ok, label = pcall(ui.servers.hvh_list.get_active_item_name, ui.servers.hvh_list)

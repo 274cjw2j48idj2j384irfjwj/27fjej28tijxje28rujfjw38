@@ -861,6 +861,90 @@ app.get('/servers', (req, res) => {
     res.json({ ok: true, list: list.slice(0, 60).map(({ until, ...rest }) => rest) })
 })
 
+// ── GET /hvhgg — the HvH servers of hvh.gg (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg") ──
+// The lua used to ask hvh.gg itself and the game crashed after a refresh (a big page through the steam http library), so the server
+// asks the site: a fixed list of urls (nothing from a request goes into them), at most 1.5 MB read, cached 60 s, and the lua
+// gets a small clean list { srv, name, map, players }. The shape of hvh.gg's answer is not known: a JSON list / object of servers
+// (an ip:port in addr / address / connect / server, or ip + port; name / map / players when there are) at any depth, else every
+// ip:port of the text. Only public addresses (public_srv).
+const HVH_SOURCES = ['https://hvh.gg/api/servers', 'https://hvh.gg/servers']
+const hvh_addr = row => {
+    for (const k of ['addr', 'address', 'ip_port', 'ipport', 'connect', 'server', 'endpoint']) {
+        if (typeof row[k] === 'string') {
+            const m = /(\d+\.\d+\.\d+\.\d+:\d+)/.exec(row[k])
+            if (m) return m[1]
+        }
+    }
+    const host = row.ip ?? row.host, port = Number(row.port)
+    if (typeof host === 'string') {
+        if (/^\d+\.\d+\.\d+\.\d+$/.test(host) && Number.isInteger(port) && port >= 1 && port <= 65535) return host + ':' + port
+        const m = /^(\d+\.\d+\.\d+\.\d+:\d+)$/.exec(host)
+        if (m) return m[1]
+    }
+    return null
+}
+const hvh_parse = body => {
+    const out = [], seen = new Set()
+    const add = (srv, name, map, players) => {
+        if (out.length >= 100 || seen.has(srv) || !public_srv(srv)) return
+        seen.add(srv)
+        const pl = Array.isArray(players) ? players.length : Number(players)
+        out.push({
+            srv,
+            name: String(name ?? 'hvh.gg').replace(/[^\x20-\x7e]/g, '').replace(/[|~;"%\\]/g, '').trim().slice(0, 24) || 'hvh.gg',
+            map: /^[A-Za-z0-9_]{1,32}$/.test(String(map)) ? String(map) : '?',
+            players: Number.isFinite(pl) ? Math.max(0, Math.min(128, Math.floor(pl))) : 0,
+        })
+    }
+    let data = null
+    try { data = JSON.parse(body) } catch (e) {}
+    if (data && typeof data === 'object') {
+        let nodes = 0
+        const walk = (node, depth) => {
+            if (!node || typeof node !== 'object' || depth > 6 || nodes++ > 5000) return
+            const srv = hvh_addr(node)
+            if (srv) add(srv, node.name ?? node.hostname ?? node.title, node.map ?? node.map_name,
+                node.players ?? node.num_players ?? node.player_count ?? node.clients)
+            for (const v of Object.values(node)) walk(v, depth + 1)
+        }
+        walk(data, 0)
+    }
+    if (out.length === 0 && typeof body === 'string') {
+        for (const m of body.matchAll(/(\d+\.\d+\.\d+\.\d+:\d+)/g)) add(m[1])
+    }
+    return out.sort((a, b) => b.players - a.players)
+}
+const hvh = { at: 0, list: [], busy: null }
+const hvh_fetch = async () => {
+    for (const url of HVH_SOURCES) {
+        try {
+            const r = await fetch(url, { signal: AbortSignal.timeout(8000), redirect: 'follow',
+                headers: { 'user-agent': 'Mozilla/5.0 (compatible; Specter)', accept: 'application/json,text/html;q=0.8' } })
+            if (!r.ok || Number(r.headers.get('content-length') || 0) > 5000000) continue
+            const list = hvh_parse((await r.text()).slice(0, 1500000))
+            if (list.length) return list
+        } catch (e) {}
+    }
+    return []
+}
+const hvh_rate = new Map()
+app.get('/hvhgg', async (req, res) => {
+    const ip  = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '?').split(',')[0].trim()
+    const now = Date.now()
+    let r = hvh_rate.get(ip)
+    if (!r || now - r.since > 600000) { r = { n: 0, since: now }; hvh_rate.set(ip, r) }
+    if (++r.n > 60) return res.status(429).json({ ok: false, reason: 'rate' })
+    if (now - hvh.at > 60000) {
+        if (!hvh.busy) hvh.busy = hvh_fetch().then(list => { hvh.list = list; hvh.at = Date.now() }).finally(() => { hvh.busy = null })
+        await hvh.busy
+    }
+    res.json({ ok: true, list: hvh.list, at: hvh.at })
+})
+setInterval(() => {
+    const now = Date.now()
+    for (const [ip, r] of hvh_rate) if (now - r.since > 600000) hvh_rate.delete(ip)
+}, 60000).unref()
+
 // ── GET /moon.png — the scoreboard icon of a Specter user ─────────────────
 // the crescent of the watermark (accent 180 160 255), 64 x 64; the script saves it into the game's panorama icons
 const MOON_PNG = Buffer.from('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', 'base64')

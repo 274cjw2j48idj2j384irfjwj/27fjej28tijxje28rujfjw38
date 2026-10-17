@@ -203,26 +203,21 @@ check(r[0] and not r[1] and r[2] == 1 and r[3] == "connect 8.8.8.8:27015" and r[
       "server list: only a public ip:port is listed / connected to, a bad row or nothing selected only warns, no request while the "
       "page is closed and sharing is off (%s)" % (list(r),))
 
-# hvh.gg servers (owners: "add to the lua like server connectors, must get ips from hvh.gg"): the list is read without knowing its shape
-# (JSON objects with ip + port / addr, or any ip:port in a page), only public addresses are shown, the first url without a server is followed by
-# the next one, connect goes through the same check
+# hvh.gg servers (owners: "add to the lua like server connectors, must get ips from hvh.gg"): the lua never asks hvh.gg itself (the game crashed after a
+# refresh), it asks our license server (/hvhgg) for a small list; each row is checked again, only public addresses are shown / connected to
 r = S("""
-BODIES["J"] = { { name = "A", ip = "8.8.8.8", port = 27015, map = "de_mirage", players = 12 },
-    { addr = "1.1.1.1:27016", hostname = "B", players = { 1, 2, 3 } }, { ip = "10.0.0.1", port = 1 }, { addr = "9.9.9.9:5;quit" },
-    { ip = "8.8.8.8", port = 27015 } }
-BODIES["N"] = { data = { servers = { { server = "4.4.4.4:27015", title = "deep", num_players = 20 } } } }
-local a = servers.hvh_parse("J")
-local b = servers.hvh_parse("N")
-local c = servers.hvh_parse("<td>5.5.5.5:27015</td> <td>6.6.6.6:27016</td> <td>192.168.0.1:1</td> <td>5.5.5.5:27015</td>")
-local d = servers.hvh_parse("")
--- update: the first url answers nothing usable, the second has the page
+BODIES["L"] = { ok = true, list = { { srv = "8.8.8.8:27015", name = "A;quit", map = "de_mirage", players = 12 },
+    { srv = "10.0.0.1:27015", name = "private", players = 1 }, { srv = "9.9.9.9:5;quit", name = "evil" }, "junk",
+    { srv = "1.1.1.1:27016", name = "B", map = "x y", players = 3.7 } } }
+BODIES["BAD"] = { ok = false }
+local a = servers.hvh_rows("L")
+local bad = servers.hvh_rows("BAD")
+local garbage = servers.hvh_rows("<html>" .. string.rep("x", 100000))
 SENT, GETCB, PAGE = {}, {}, 15
 servers.hvh.next, servers.hvh.busy = 0, nil
 servers.hvh_update(false)
-local first = #SENT
-GETCB[1]({ body = "nothing here" })
-local second = #SENT
-GETCB[2]({ body = "<td>7.7.7.7:27015</td>" })
+local url = SENT[1]
+GETCB[1]({ body = "L" })
 local shown = HVH_ITEMS and #HVH_ITEMS
 HSEL = HVH_ITEMS[1]
 CMDS = {}
@@ -234,10 +229,26 @@ PAGE = 0
 servers.hvh.next, servers.hvh.busy = 0, nil
 local before = #SENT
 servers.hvh_update(false)                    -- the page is closed: no request
-return #a, a[1].srv, a[1].players, a[2].srv, a[2].players, #b, b[1].srv, b[1].players, #c, #d, first, second, shown, cmd, #CMDS, #SENT == before
+return #a, a[1].srv, a[1].name, a[1].players, a[2].srv, a[2].players, a[2].map, bad == nil, garbage == nil, url, shown, cmd, #CMDS, #SENT == before
 """)
-check(tuple(r) == (3, "8.8.8.8:27015", 12, "1.1.1.1:27016", 3, 1, "4.4.4.4:27015", 20, 2, 0, 1, 2, 1, "connect 7.7.7.7:27015", 1, True),
-      "hvh.gg servers: json (ip + port / addr, nested), plain text, only the clean public ip:port of a field (a trailing \";quit\" is dropped), the next url when one has none, a checked connect (%s)" % (tuple(r),))
+check(tuple(r) == (2, "8.8.8.8:27015", "Aquit", 12, "1.1.1.1:27016", 3, "xy", True, True, "https://x/hvhgg", 2, "connect 8.8.8.8:27015", 1, True),
+      "hvh.gg servers: the list comes from our server (/hvhgg), rows are re-checked (public address, clean text), a bad answer shows nothing, "
+      "a checked connect, no request while the page is closed (%s)" % (tuple(r),))
+# the license server reads hvh.gg: any json shape / a plain page, only public addresses, clean text
+import subprocess
+JS_SV = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "server.js")).read()
+fn1 = re.search(r"const public_srv = srv => \{.*?\n\}\n", JS_SV, re.S).group(0)
+fn2 = re.search(r"const hvh_addr = row => \{.*?\n\}\nconst hvh_parse = body => \{.*?\n\}\n", JS_SV, re.S).group(0)
+js = fn1 + fn2 + """
+const a = hvh_parse(JSON.stringify([{ name: 'A|~x', ip: '8.8.8.8', port: 27015, map: 'de_mirage', players: 12 },
+  { addr: '1.1.1.1:27016', hostname: 'B', players: [1, 2, 3] }, { ip: '10.0.0.1', port: 1 }, { addr: '9.9.9.9:5;quit' }, { ip: '8.8.8.8', port: 27015 }]))
+const b = hvh_parse(JSON.stringify({ data: { servers: [{ server: '4.4.4.4:27015', title: 'deep', num_players: 20 }] } }))
+const c = hvh_parse('<td>5.5.5.5:27015</td> <td>6.6.6.6:27016</td> <td>192.168.0.1:1</td> <td>5.5.5.5:27015</td>')
+console.log(JSON.stringify([a.length, a[0].srv, a[0].name, a[0].players, a[1].players, a[2].srv, b.length, b[0].srv, b[0].players, c.map(x => x.srv), hvh_parse('').length]))
+"""
+out = subprocess.run(["node", "-e", js], capture_output=True, text=True)
+check(out.stdout.strip() == '[3,"8.8.8.8:27015","Ax",12,3,"9.9.9.9:5",1,"4.4.4.4:27015",20,["5.5.5.5:27015","6.6.6.6:27016"],0]',
+      "server.js /hvhgg: json (ip + port / addr, nested), plain page, only public addresses, clean names (%s %s)" % (out.stdout.strip(), out.stderr.strip()[:200]))
 # the same check on the license server
 import subprocess
 JS = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "server.js")).read()
