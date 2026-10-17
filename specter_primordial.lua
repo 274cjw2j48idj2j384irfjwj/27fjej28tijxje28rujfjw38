@@ -5870,16 +5870,23 @@ resolver.update = function(local_player, ent)
     local candidate = resolver.choose(mem, confidence, ui.ragebot.reso_cfg.yaw_calc:get() == 3, opt)
     local half = res_custom() and res_clamp(ui.ragebot.resolver.pred_sel:get(), 25, 70) / 100 or 0.5
     local value = 0
-    local applied = p.samples >= 2 and p.nochoke < RES_NOCHOKE and resolver.fresh(p)
-    if (applied) then
-        value = resolver.hypothesis(candidate, hint, nx and -nx or 0, half, resolver.max_desync(st), c)
-        st.m_flGoalFeetYaw = res_norm(eye + value)
-    end
-
     local prev = resolver.previous[idx]
     if (prev == nil) then
         prev = {}
         resolver.previous[idx] = prev
+    end
+    local able = p.samples >= 2 and p.nochoke < RES_NOCHOKE
+    local applied = able and resolver.fresh(p)
+    if (applied) then
+        value = resolver.hypothesis(candidate, hint, nx and -nx or 0, half, resolver.max_desync(st), c)
+        st.m_flGoalFeetYaw = res_norm(eye + value)
+        prev.held, prev.held_candidate, prev.held_at = value, candidate, globals.real_time()
+    elseif (able and prev.held ~= nil and globals.real_time() - prev.held_at <= 0.6) then
+        -- no newer record than 0.12 s (a choking target updates every 8-15 ticks, a defensive shift is no record): the last
+        -- value stays (owners, Oct 2026: "nem jol meri fel a szoget ... jitternel", 59 % of the real shots had no value
+        -- at all, 0 deg, and hit 63 % against 84 % with one)
+        value, candidate, applied = prev.held, prev.held_candidate, true
+        st.m_flGoalFeetYaw = res_norm(eye + value)
     end
     prev.m_flDesync = value
     prev.m_flSide = value < 0 and -1 or 1

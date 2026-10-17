@@ -430,6 +430,11 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   crouched zeus air pose is hit easily; the option stays in the menu), and the error paths of `configs.load_named` print with `tostring`
   (`decoded_data` was an undefined name: a config that did not decode errored the Use callback = unloaded the script). The cause of
   the freeze itself is not found: ask for the console line.
+- Resolver value held (owners, Oct 2026: "nem jol meri fel a szoget ... jitternel", a miss with `∠ 0°`): in the real shot logs of Oct 15-17
+  59 % of our shots had NO value (`cd` missing, `vl` 0: `resolver.update` writes only when the target's newest record is under
+  0.12 s old, a choking target updates every 8-15 ticks and a defensive shift is no record) and hit 63 % against 84 % with one.
+  Now the last value (`prev.held`, with its hypothesis) stays for 0.6 s and is written again; a target with no choke for 8 updates
+  (no desync possible) still gets 0. Watch `cd` None / `vl` 0 in the next logs.
 - Flag, third try (owners, Oct 2026: still not covered): `find_flag` also takes an image panel whose source path says flag / country
   (`GetImageSrc`), and the flag is hidden with width 0 + opacity 0 as well (given back on destroy). Send the "Dump scoreboard row" output if it stays.
 - Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";
