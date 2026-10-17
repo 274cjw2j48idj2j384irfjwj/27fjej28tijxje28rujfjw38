@@ -499,11 +499,17 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   every yaw mode and direct control get it). NOT possible in the Primordial lua api: bone / pelvis / spine rotation, a faked LBY update, animation layer
   overrides (slow walk), a tick shift guard other than Primordial's own. The 3-point (head / shoulder / hip) freestand trace is not built: the head trace
   decides it, a shoulder trace would only cover a wall the head is already behind. Judge the noise by the AA rows (`kind:"aa"`) head share.
-- Prediction prompt (owners, Oct 2026: an engine prediction rewrite with CPrediction / SetupMove / curtime sync; answer: "primordial"): the Primordial lua api has no ffi and
-  no CPrediction / IGameMovement / globals access, so a movement prediction stack can not be written there, and the gamesense one was not started (blind vtable calls
-  can freeze the game). What the Primordial lua can do is the peek prediction (`backtrack.predict`, "Advanced prediction"): it already forecasts the enemy head (latency +
-  4 ticks, movement module, walls) and now also moves OUR eye by our own velocity over the same horizon (`own_velocity`, only when the step is not blocked by a wall),
-  so a peek of our own (auto peek, strafe) is counted. Tickbase shifts were already handled (an enemy rewind = `defensive_until` 0.25 s, no scan).
+- Prediction prompt (owners, Oct 2026: an engine prediction rewrite with CPrediction / SetupMove / curtime sync; answer: "primordial"): first answered WRONG that the Primordial
+  lua has no ffi (owners: "miaz hogy nincs ffi nezd meg ujra"): it has ffi and `memory_create_interface` / `memory_find_pattern` / `memory_get_vfunc` (the servers list,
+  the animation layers, the entity list and the chat already use them). The peek prediction (`backtrack.predict`, "Advanced prediction") moves OUR eye by our own velocity over the look-ahead
+  horizon (`own_velocity`). Tickbase shifts: an enemy rewind = `defensive_until` 0.25 s, no scan.
+  Tickbase page "Engine prediction (experimental)" (default OFF, not in default.cfg): `engine_prediction` (before `backtrack`) links `VClientPrediction001` (SetupMove vfunc 20,
+  FinishMove 21), `GameMovement001` (ProcessMovement 1) and the IMoveHelper (signature `8B 0D ? ? ? ? 8B 46 08 68`), runs `ticks` commands of our own `specter_usercmd_t` (the
+  input of the current command, `engine_prediction.capture` in SETUP_COMMAND) and reads the origin after them; the player's m_fFlags / m_vecVelocity / m_vecOrigin / m_aimPunchAngle / m_nTickBase are backed up and
+  restored every run. The 2018 netvar offsets (flags 0x104, velocity 0x114, origin 0x138, punch 0x303C, tickbase 0x3430) are checked against `get_prop` before the first call; a
+  difference or a missing interface = state "bad", one console line, nothing is called. NOT done: curtime / frametime sync (the globals pointer is not linked), `m_pCurrentCommand`, the predicted
+  random seed / spread. NOT confirmed in game: a wrong vtable index is a native crash that pcall can not catch, so it stays off until the owners try it ("Engine prediction" on, then
+  look at the console for "engine prediction off: ...").
 - hvh.gg servers (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg"; then "crashes the game after i refresh hvh.gg"):
   Misc > Servers has a second list "HvH servers (hvh.gg)" + "Connect to the selected hvh.gg server" / "Refresh hvh.gg" (`servers.hvh_*`). The lua
   does NOT ask hvh.gg itself (the first version did, through the steam http library, and a big page crashed the game): server.js `GET /hvhgg`

@@ -1157,6 +1157,22 @@ end""")()
 check(tuple(r) == ("cyclic", "random", None, "cyclic") or tuple(r[:3]) == ("cyclic", "random", None),
       "jitter levels: two recurring levels = cyclic, many scattered ones = random, too few records = none (%s)" % (r,))
 
+# engine prediction (experimental, off by default): with the interfaces missing it links nothing, calls nothing and says so once
+EP = chunk("engine_prediction = { state", "--- @endregion\n\nlocal backtrack = {")
+ep = L.LuaRuntime(unpack_returned_tuples=True)
+ep.execute("""
+ffi = { cdef = function() end }
+memory_create_interface = function() return nil end
+printed = 0
+print = function() printed = printed + 1 end
+entity = {}
+globals = { tick_count = function() return 1 end }
+""" + EP)
+r = ep.eval("function() local a = engine_prediction.origin_after({ get_index = function() return 1 end }, 4) "
+            "local b = engine_prediction.origin_after({ get_index = function() return 1 end }, 4) "
+            "return a == nil and b == nil, engine_prediction.state, printed end")()
+check(tuple(r) == (True, "bad", 1), "engine prediction: missing interfaces = nothing called, state bad, one console line (%s)" % (r,))
+
 # "Resolver learning" slider (owners, Oct 2026): 0 % learns nothing, 50 % half a point per result, 100 % the full one
 r = D("""
 local out = {}
