@@ -440,6 +440,9 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   `MyPersonaAPI`) are asked with the same `/presence` hashes every 30 s, our own badge goes out with `me=` when Shared ESP is on, the
   found ones are listed by name ("name ~ prim user (v)" / "gs user") and announced once; no scoreboard moon (no entity). Needs
   PAINT to run in the menu: not confirmed in game.
+- Users in the watermark row (owners, Oct 2026: "minden scoreboard cucc abba a sorba felul kene irnia", screenshot of the scoreboard with
+  no moon / flag change): the found Specter users (the Shared ESP list `shared_data`, lobby ones too, not ourselves) are a segment of the
+  watermark row: "Swify, EXC +1 specter" (2 names, then +N), shown only while somebody is found, no menu item.
 - Flag, third try (owners, Oct 2026: still not covered): `find_flag` also takes an image panel whose source path says flag / country
   (`GetImageSrc`), and the flag is hidden with width 0 + opacity 0 as well (given back on destroy). Send the "Dump scoreboard row" output if it stays.
 - Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";
