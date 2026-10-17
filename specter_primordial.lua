@@ -5472,6 +5472,31 @@ resolver.jit_returns = function(yaws)
     return returns
 end
 
+-- Deterministic against stochastic jitter (owners, Oct 2026): the eye yaws of the last records are grouped into levels (within
+-- RES_LEVEL_TOL). A cyclic AA keeps coming back to 2-3 levels that each recur, a random one spreads over many levels with no
+-- recurring centre. Returns "cyclic", "random" or nil (not enough records / in between)
+local RES_LEVEL_TOL = 3
+resolver.jit_levels = function(yaws)
+    if (#yaws < 8) then return nil end
+    local levels = {}
+    for _, y in ipairs(yaws) do
+        local found = false
+        for _, l in ipairs(levels) do
+            if (math.abs(res_norm(y - l.at)) <= RES_LEVEL_TOL) then
+                l.n, found = l.n + 1, true
+                break
+            end
+        end
+        if (not found) then levels[#levels + 1] = { at = y, n = 1 } end
+    end
+    local recurring = 0
+    for _, l in ipairs(levels) do
+        if (l.n >= 2) then recurring = recurring + 1 end
+    end
+    if (#levels <= 3 and recurring == #levels) then return "cyclic" end
+    if (#levels >= 6 and recurring <= 2) then return "random" end
+    return nil
+end
 resolver.jit_classify = function(steps, min, yaws)
     if (yaws ~= nil and resolver.jit_returns(yaws) >= RES_JIT_RETURNS) then
         return true
@@ -5496,6 +5521,8 @@ end
 resolver.K = {
     zero = 20,          -- |computed body yaw| below this: the feet model sees no desync (micromovement keeps the LBY on the eye yaw)
     shift = 0.5,        -- a sim time that goes back by less (s) is a tickbase shift (defensive), not a reset
+    idle = 2,           -- seconds a situation can go unused before its learning starts to fade
+    idle_tau = 8,       -- the fade: exp(-(unused - idle) / idle_tau)
     round_keep = 0.5,   -- how much of what was learned about a player stays into the next round
     change_keep = 0.35, -- the same when its yaw pattern changed
     change = 10,        -- records in a row with another pattern = the pattern changed
@@ -5723,7 +5750,10 @@ resolver.jit_record = function(p, delta, sim, min, eye)
     if (resolver.jit_classify(p.jd, min, p.jy)) then
         p.jit_sim = sim
     end
-    p.jitter = p.jit_sim ~= nil and sim - p.jit_sim >= 0 and sim - p.jit_sim <= RES_JIT_HOLD
+    -- a high ping shoots older records: the jitter flag is held longer by the one way latency
+    local ping = resolver.network and resolver.network() or nil
+    local hold = RES_JIT_HOLD + res_clamp(ping and ping.ping or 0, 0, 250) / 2000
+    p.jitter = p.jit_sim ~= nil and sim - p.jit_sim >= 0 and sim - p.jit_sim <= hold
     local big, flips, last, total, net = 0, 0, 0, 0, 0
     for _, d in ipairs(p.jd) do
         total, net = total + math.abs(d), net + d
@@ -5739,6 +5769,7 @@ resolver.jit_record = function(p, delta, sim, min, eye)
     if (resolver.jit_returns(p.jy) >= RES_JIT_RETURNS) then
         p.confidence = math.max(p.confidence, 0.75)
     end
+    p.jit_kind = resolver.jit_levels(p.jy)
     resolver.run_update(p)
     if (resolver.pattern_update(p)) then
         p.changed, p.runs, p.run_side, p.run_len = true, {}, nil, 0
@@ -6036,6 +6067,17 @@ resolver.update = function(local_player, ent)
     end
 
     local mem = resolver.memory(idx, key, kind)
+    -- a situation that was not seen for a while (a standing target that suddenly peeks) fades toward the start, exponentially,
+    -- instead of keeping a stale bias (owners, Oct 2026)
+    local now_t = globals.real_time()
+    if (mem.seen_at ~= nil and now_t - mem.seen_at > resolver.K.idle) then
+        local keep = math.exp(-(now_t - mem.seen_at - resolver.K.idle) / resolver.K.idle_tau)
+        for _, h in ipairs(mem.candidates) do
+            h.good = 1 + (h.good - 1) * keep
+            h.bad = 1 + (h.bad - 1) * keep
+        end
+    end
+    mem.seen_at = now_t
     local confidence = kind == "jitter" and p.confidence or kind == "fs" and 0.55 or 0.25
     local c = p.model
     local nx = kind == "jitter" and p.next_side or nil
@@ -6049,10 +6091,11 @@ resolver.update = function(local_player, ent)
     for i, v in pairs(resolver.STATE_PRIOR[state] or {}) do
         opt.bonus[i] = (opt.bonus[i] or 0) + v
     end
-    if (nx == nil) then
+    if (nx == nil or p.jit_kind == "random") then
+        -- a random jitter has no next side to read
         opt.skip[8], opt.skip[9] = true, true
     else
-        opt.bonus[8] = 0.15 * (p.period_conf or 0)
+        opt.bonus[8] = 0.15 * (p.period_conf or 0) + (p.jit_kind == "cyclic" and 0.04 or 0)
     end
     local candidate = resolver.choose(mem, confidence, ui.ragebot.reso_cfg.yaw_calc:get() == 3, opt)
     local half = res_custom() and res_clamp(ui.ragebot.resolver.pred_sel:get(), 25, 70) / 100 or 0.5

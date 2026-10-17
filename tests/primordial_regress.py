@@ -1144,6 +1144,19 @@ check(tuple(r[:6]) == (True,) * 6 and r[6] == "stand,6,1,2,1,1,1,nil,jitter,6" a
       "and teaches nothing, a hit still counts, an old shift / walking flags nothing, the stats per state show it as "
       "defensive / lag break (%s)" % (r,))
 
+# deterministic against stochastic jitter (owners, Oct 2026): a cyclic AA recurs on 2-3 levels, a random one spreads over many
+LV = L.LuaRuntime(unpack_returned_tuples=True)
+LV.execute("res_norm = function(v) return (v + 180) % 360 - 180 end\n" +
+           chunk("local RES_LEVEL_TOL = 3", "resolver.jit_classify = function(steps, min, yaws)").replace("resolver.jit_levels", "jit_levels"))
+r = LV.eval("""function()
+    local cyc, rnd = {}, {}
+    for i = 1, 12 do cyc[i] = (i % 2 == 0) and 40.5 or -39 end
+    for i = 1, 12 do rnd[i] = -170 + i * 28 + (i % 3) * 7 end
+    return jit_levels(cyc), jit_levels(rnd), jit_levels({ 1, 2, 3 }), jit_levels({ 10, 40, 10, 40, 100, 100, 10, 40 })
+end""")()
+check(tuple(r) == ("cyclic", "random", None, "cyclic") or tuple(r[:3]) == ("cyclic", "random", None),
+      "jitter levels: two recurring levels = cyclic, many scattered ones = random, too few records = none (%s)" % (r,))
+
 # "Resolver learning" slider (owners, Oct 2026): 0 % learns nothing, 50 % half a point per result, 100 % the full one
 r = D("""
 local out = {}

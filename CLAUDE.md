@@ -474,6 +474,14 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   counted result (`resolver.on_result`: a hit = +1 good, a resolver miss = +1 bad for the hypothesis used, plus the 3 % pull back toward the start). Resolver page
   "Resolver learning" (0-100 %, set to 100 at the start; new item at the END of the group): the weight of a result, 100 = as before, 50 = half a point and half the
   pull, 0 = the hypotheses never change (the miss counters and the stats still run). Not a model-fitting rate in the AI sense: there is no network, only these counts.
+- Resolver taxonomy prompt (owners, Oct 2026, the "Desync misclassification" text): most of it was already in (9 hypotheses per state, Beta feedback per hypothesis,
+  feet model envelope, jitter detector with small-jitter returns and a persistence rule, high ping fallback, jitter / after-miss safe points). Added: (1)
+  `resolver.jit_levels`: the last 12 eye yaws grouped into levels within 3 deg, 2-3 recurring levels = `p.jit_kind` "cyclic" (the next-side hypotheses 8 / 9 get
+  +0.04), 6+ scattered levels = "random" (8 / 9 skipped: no next side to read); (2) idle fade: a situation unused for `K.idle` 2 s fades toward the start by
+  exp(-(unused - 2) / `K.idle_tau` 8), so a standing target that suddenly peeks does not keep a stale bias; (3) the jitter hold grows with the ping (+ ping / 2000 s, up to
+  250 ms). NOT done: the skeletal hitbox cross check (a bone setup per enemy per update, an FPS cost the owners complained about) and a low confidence ->
+  body aim / safe point rule (the "body aim when the head is unsure" version was reverted by the owners; the jitter / after-miss head safe point and Smart body
+  aim stay). Judge it by `cd` 8 / 9 hit rates and the jitter share of the misses in the next logs.
 - hvh.gg servers (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg"; then "crashes the game after i refresh hvh.gg"):
   Misc > Servers has a second list "HvH servers (hvh.gg)" + "Connect to the selected hvh.gg server" / "Refresh hvh.gg" (`servers.hvh_*`). The lua
   does NOT ask hvh.gg itself (the first version did, through the steam http library, and a big page crashed the game): server.js `GET /hvhgg`
