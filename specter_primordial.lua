@@ -1186,6 +1186,9 @@ local ui = {
         list = menu_add_list("Servers", "Specter users on servers", {}, 8),
         connect = menu_add_button("Servers", "Connect to the selected", function() servers.connect() end),
         refresh = menu_add_button("Servers", "Refresh the list", function() servers.update(true) end),
+        hvh_list = menu_add_list("Servers", "HvH servers (hvh.gg)", {}, 8),
+        hvh_connect = menu_add_button("Servers", "Connect to the selected hvh.gg server", function() servers.hvh_connect() end),
+        hvh_refresh = menu_add_button("Servers", "Refresh hvh.gg", function() servers.hvh_update(true) end),
     },
 
     ragebot = {
@@ -3639,9 +3642,125 @@ servers.leave = function()
     end
 end
 
+-- hvh.gg servers (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg"): the Servers page also lists the HvH
+-- servers of hvh.gg and connects to the selected one. The site is asked from the client (steam http) while the page is open, every
+-- 60 s; the first of HVH_URLS that gives an address wins. What comes back is read without knowing its shape: a JSON list / object
+-- of servers (an "ip:port" in addr / address / connect / server, or ip + port, with name / map / players when there are) or, when
+-- that finds nothing, every ip:port in the text (a plain page). Every address is checked by servers.valid before it is shown and
+-- again before "connect"
+servers.HVH_URLS = { "https://hvh.gg/api/servers", "https://hvh.gg/servers" }
+servers.hvh = { next = 0, rows = {}, labels = "" }
+servers.hvh_addr = function(row)
+    for _, key in ipairs({ "addr", "address", "ip_port", "ipport", "connect", "server", "endpoint" }) do
+        local value = row[key]
+        if (type(value) == "string") then
+            local found = value:match("(%d+%.%d+%.%d+%.%d+:%d+)")
+            if (found ~= nil) then return found end
+        end
+    end
+    local host, port = row.ip or row.host, tonumber(row.port)
+    if (type(host) == "string") then
+        if (host:match("^%d+%.%d+%.%d+%.%d+$") and port ~= nil and port == port and port >= 1 and port <= 65535) then
+            return host .. ":" .. math.floor(port)
+        end
+        return host:match("^(%d+%.%d+%.%d+%.%d+:%d+)$")
+    end
+    return nil
+end
+servers.hvh_parse = function(body)
+    local out, seen = {}, {}
+    local function add(srv, name, map, players)
+        if (#out < 100 and not seen[srv] and servers.valid(srv)) then
+            seen[srv] = true
+            if (type(players) == "table") then players = #players end
+            out[#out + 1] = { srv = srv, name = tostring(name or "hvh.gg"), map = tostring(map or "?"), players = tonumber(players) or 0 }
+        end
+    end
+    local ok, data = pcall(libs.json.parse, body or "")
+    if (ok and type(data) == "table") then
+        local nodes = 0
+        local function walk(node, depth)
+            if (depth > 6 or nodes > 5000) then return end
+            nodes = nodes + 1
+            local srv = servers.hvh_addr(node)
+            if (srv ~= nil) then
+                add(srv, node.name or node.hostname or node.title, node.map or node.map_name, node.players or node.num_players
+                    or node.player_count or node.clients)
+            end
+            for _, child in pairs(node) do
+                if (type(child) == "table") then walk(child, depth + 1) end
+            end
+        end
+        walk(data, 0)
+    end
+    if (#out == 0 and type(body) == "string") then
+        for srv in body:gmatch("(%d+%.%d+%.%d+%.%d+:%d+)") do
+            add(srv)
+        end
+    end
+    table.sort(out, function(a, b) return a.players > b.players end)
+    return out
+end
+servers.hvh_show = function(list)
+    local rows, labels = {}, {}
+    for _, row in ipairs(list) do
+        local label = string.format("%s ~ %s ~ %d pl ~ %s", row.name:sub(1, 24), row.map:sub(1, 24), row.players, row.srv)
+        rows[label] = row
+        labels[#labels + 1] = label
+    end
+    servers.hvh.rows = rows
+    local joined = table.concat(labels, "\n")
+    if (joined ~= servers.hvh.labels) then
+        servers.hvh.labels = joined
+        pcall(ui.servers.hvh_list.set_items, ui.servers.hvh_list, labels)
+    end
+end
+servers.hvh_update = function(force)
+    local now = globals.real_time()
+    if (not force and ui.nav.slider:get() ~= 15) then return end
+    local hvh = servers.hvh
+    if (hvh.busy ~= nil and now >= hvh.busy and now - hvh.busy < 20) then return end
+    if (not force and now < hvh.next and now > hvh.next - 120) then return end
+    hvh.next, hvh.busy = now + 60, now
+    local function try(i)
+        if (i > #servers.HVH_URLS) then
+            hvh.busy = nil
+            if (force) then
+                notifications.create("Specter", "hvh.gg: no server found (no answer, or the page changed).", notifications.types.warning)
+            end
+            return
+        end
+        local sent = pcall(libs.tools.http.get, libs.tools.http, servers.HVH_URLS[i], function(response)
+            local list = servers.hvh_parse(response and response.body or "")
+            if (#list > 0) then
+                hvh.busy = nil
+                servers.hvh_show(list)
+                if (force) then
+                    notifications.create("Specter", "hvh.gg: " .. #list .. " server(s).", notifications.types.information)
+                end
+            else
+                try(i + 1)
+            end
+        end)
+        if (not sent) then try(i + 1) end
+    end
+    try(1)
+end
+servers.hvh_connect = function()
+    local ok, label = pcall(ui.servers.hvh_list.get_active_item_name, ui.servers.hvh_list)
+    local row = ok and label and servers.hvh.rows[label] or nil
+    if (row == nil or not servers.valid(row.srv)) then
+        notifications.create("Specter", "Select an hvh.gg server in the list first.", notifications.types.warning)
+        return
+    end
+    notifications.create("Specter", "Connecting to " .. row.name .. " (" .. row.srv .. ")", notifications.types.information)
+    engine_execute_cmd("connect " .. row.srv)
+end
+
 lets_sync = function()
     presence.update(false)
     servers.update(false)
+    servers.hvh_update(false)
 end
 
 run_clantag = function()
