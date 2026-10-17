@@ -449,6 +449,9 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - Jumpshot helper (owners, Oct 2026: "ne stuckoljunk airbe ha lat valaki hanem tovabb bhoppolhat"): it switched Primordial's In-Air autostop
   on while we were in the air, which stopped us the moment an enemy was in view. The autostrafer follows the air state; the in-air autostop is on
   its own keybind ("Air stop keybind" under the Jumpshot helper, owners: "azt bindelhetore kene tenni"): held / toggled on = on, else off.
+- Cloud config time (owners, Oct 2026: "a cloud confighoz betehetnel olyat hogy mikor lett frissitve hany orakor"): the list rows are
+  "author ~ name  10-17 14:05 (3h ago)" (`cloud.stamp`: the server's upload time `ts` in ms, shown in OUR local time: the time zone is
+  the difference between `client_get_local_time` and the UTC time of `client_get_unix_time`; the age is now / Nm / Nh / Nd ago).
 - Flag, third try (owners, Oct 2026: still not covered): `find_flag` also takes an image panel whose source path says flag / country
   (`GetImageSrc`), and the flag is hidden with width 0 + opacity 0 as well (given back on destroy). Send the "Dump scoreboard row" output if it stays.
 - Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";
