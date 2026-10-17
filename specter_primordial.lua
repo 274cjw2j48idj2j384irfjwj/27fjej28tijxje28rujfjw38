@@ -10184,12 +10184,12 @@ do_paint = function()
                 if (ui.misc.jumpshot:get()) then
                     -- written when the state (or the weapon group) changes, not every frame
                     local m_flags = local_player:get_prop("m_fFlags")
+                    -- only the autostrafer: the in-air autostop it used to switch on as well stopped us in the air the moment an
+                    -- enemy was seen, so the bunny hop was over (owners, Oct 2026: "ne stuckoljunk airbe ha lat valaki")
                     local air = ent_speed_2d(local_player) > 10 and (m_flags == 256 or m_flags == 262)
-                    local weapon = get_active_weapon()
-                    if (air ~= jumpshot_state.air or weapon ~= jumpshot_state.weapon) then
-                        jumpshot_state.air, jumpshot_state.weapon = air, weapon
+                    if (air ~= jumpshot_state.air) then
+                        jumpshot_state.air = air
                         menu_find("misc","main","movement","autostrafer"):set(air)
-                        menu_find("aimbot",weapon,"accuracy","auostop options","In-Air")[3]:set(7, air)
                     end
                 end
 
