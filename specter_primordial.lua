@@ -6062,6 +6062,10 @@ resolver.update = function(local_player, ent)
         p.feet_n = p.rec_n
         local lby = ent:get_prop("m_flLowerBodyYawTarget")
         lby = (type(lby) == "number" and lby == lby and math.abs(lby) <= 1e6) and lby or nil
+        -- when the LBY target last changed (it updates 1.1 s after the last move standing, 0.22 s while moving): the age is in the shot log
+        if (lby ~= nil and lby ~= p.lby_last) then
+            p.lby_last, p.lby_at = lby, globals.real_time()
+        end
         resolver.feet_step(p, eye, lby, speed, bit.band(flags, 1) == 0,
             resolver.feet_limit(speed, tonumber(ent:get_prop("m_flDuckAmount"))), globals.tick_count(), globals.interval_per_tick())
     end
@@ -6535,6 +6539,8 @@ shotlog.result = function(shot, hit)
     -- what our resolver did for this shot: situation (rk), hypothesis (cd, see resolver.NCAND), the body yaw it wrote (vl),
     -- the feet model's body yaw (md) and the side the jitter pattern predicted (nx)
     local snap = resolver.last_result
+    local pd = resolver.data[idx]
+    row.lbt = pd and pd.lby_at and shotlog.num(globals.real_time() - pd.lby_at, 2) or nil
     if (snap ~= nil and snap.idx == idx) then
         row.rk, row.cd, row.vl = snap.key, snap.candidate, shotlog.num(snap.desync, 1)
         row.md, row.nx = shotlog.num(snap.model, 1), snap.nxt
