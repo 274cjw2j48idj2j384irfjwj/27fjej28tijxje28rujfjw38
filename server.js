@@ -886,15 +886,34 @@ const hvh_addr = row => {
     }
     return null
 }
-const hvh_parse = body => {
+// which servers the owners want (Oct 2026: "only eu servers ... showing cs2 2018 and every server only csgo 2023"): the fields of a row are not known, so
+// by what the row says about itself - a row that names CS2 or the year 2018 is dropped, and when it names a region / country it has to be a
+// European one; a row that says nothing of a kind is kept (so a missing field never empties the list)
+const HVH_EU = new Set(['eu', 'europe', 'de', 'fr', 'nl', 'pl', 'se', 'no', 'fi', 'dk', 'es', 'it', 'pt', 'gb', 'uk', 'ie', 'at', 'ch', 'be',
+    'cz', 'sk', 'hu', 'ro', 'bg', 'gr', 'rs', 'hr', 'si', 'lt', 'lv', 'ee', 'ru', 'ua', 'tr', 'by', 'lu', 'is', 'md', 'ba', 'mk', 'al', 'me',
+    'germany', 'france', 'netherlands', 'poland', 'sweden', 'norway', 'finland', 'denmark', 'spain', 'italy', 'portugal', 'united kingdom',
+    'ireland', 'austria', 'switzerland', 'belgium', 'czechia', 'czech republic', 'slovakia', 'hungary', 'romania', 'bulgaria', 'greece',
+    'serbia', 'croatia', 'slovenia', 'lithuania', 'latvia', 'estonia', 'russia', 'ukraine', 'turkey', 'belarus', 'frankfurt', 'amsterdam',
+    'london', 'paris', 'stockholm', 'warsaw', 'moscow', 'helsinki', 'madrid', 'vienna', 'prague'])
+const hvh_wanted = flat => {
+    const vals = Object.values(flat)
+    if (vals.some(v => /\bcs\s?2\b|counter-strike 2/.test(v) || /\b2018\b/.test(v))) return false
+    const geo = Object.entries(flat).filter(([k]) => /region|country|continent|location|geo|^loc$|^cc$|datacenter|^dc$|city/.test(k)).map(([, v]) => v)
+    if (geo.length && !geo.some(v => HVH_EU.has(v.trim()) || /^eu[-_ ]|europe/.test(v.trim()))) return false
+    return true
+}
+const hvh_parse = (body, debug) => {
     const out = [], seen = new Set()
-    const add = (srv, name, map, players) => {
-        if (out.length >= 100 || seen.has(srv) || !public_srv(srv)) return
+    const add = (srv, name, map, players, flat) => {
+        if (out.length >= 20 || seen.has(srv) || !public_srv(srv)) return
+        const wanted = !flat || hvh_wanted(flat)
+        if (debug && flat && debug.length < 8) debug.push({ srv, kept: wanted, ...flat })
+        if (!wanted) return
         seen.add(srv)
         const pl = Array.isArray(players) ? players.length : Number(players)
         out.push({
             srv,
-            name: String(name ?? 'hvh.gg').replace(/[^\x20-\x7e]/g, '').replace(/[|~;"%\\]/g, '').trim().slice(0, 24) || 'hvh.gg',
+            name: String(name ?? 'hvh.gg').replace(/[^\x20-\x7e]/g, '').replace(/[|~;"%\\]/g, '').trim().slice(0, 32) || 'hvh.gg',
             map: /^[A-Za-z0-9_]{1,32}$/.test(String(map)) ? String(map) : '?',
             players: Number.isFinite(pl) ? Math.max(0, Math.min(128, Math.floor(pl))) : 0,
         })
@@ -906,13 +925,18 @@ const hvh_parse = body => {
         const walk = (node, depth) => {
             if (!node || typeof node !== 'object' || depth > 6 || nodes++ > 5000) return
             const srv = hvh_addr(node)
-            if (srv) add(srv, node.name ?? node.hostname ?? node.title, node.map ?? node.map_name,
-                node.players ?? node.num_players ?? node.player_count ?? node.clients)
+            if (srv) {
+                const flat = {}
+                for (const [k, v] of Object.entries(node).slice(0, 40))
+                    if (v !== null && typeof v !== 'object') flat[k.toLowerCase()] = String(v).toLowerCase().slice(0, 80)
+                add(srv, node.name ?? node.hostname ?? node.title, node.map ?? node.map_name,
+                    node.players ?? node.num_players ?? node.player_count ?? node.clients, flat)
+            }
             for (const v of Object.values(node)) walk(v, depth + 1)
         }
         walk(data, 0)
     }
-    if (out.length === 0 && typeof body === 'string') {
+    if (out.length === 0 && typeof body === 'string' && !data) {
         for (const m of body.matchAll(/(\d+\.\d+\.\d+\.\d+:\d+)/g)) add(m[1])
     }
     return out.sort((a, b) => b.players - a.players)
@@ -928,7 +952,9 @@ const hvh_fetch = async trace => {
             t.type = r.headers.get('content-type')
             if (!r.ok || Number(r.headers.get('content-length') || 0) > 5000000) { if (trace) trace.push(t); continue }
             const text = (await r.text()).slice(0, 1500000)
-            const list = hvh_parse(text)
+            const rows = []
+            const list = hvh_parse(text, rows)
+            t.rows = rows
             t.bytes = text.length
             t.found = list.length
             if (trace) t.sample = text.slice(0, 1500)

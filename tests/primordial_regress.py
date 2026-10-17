@@ -223,7 +223,7 @@ HSEL = HVH_ITEMS[1]
 CMDS = {}
 servers.hvh_connect()
 local cmd = CMDS[1]
-HSEL = "x ~ y ~ 1 pl ~ 7.7.7.7:5;quit"
+HSEL = "x  7.7.7.7:5;quit"
 servers.hvh_connect()
 PAGE = 0
 servers.hvh.next, servers.hvh.busy = 0, nil
@@ -238,16 +238,27 @@ check(tuple(r) == (2, "8.8.8.8:27015", "Aquit", 12, "1.1.1.1:27016", 3, "xy", Tr
 import subprocess
 JS_SV = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "server.js")).read()
 fn1 = re.search(r"const public_srv = srv => \{.*?\n\}\n", JS_SV, re.S).group(0)
-fn2 = re.search(r"const hvh_addr = row => \{.*?\n\}\nconst hvh_parse = body => \{.*?\n\}\n", JS_SV, re.S).group(0)
+fn2 = re.search(r"const hvh_addr = row => \{.*?(?=const hvh = \{ at: 0)", JS_SV, re.S).group(0)
 js = fn1 + fn2 + """
 const a = hvh_parse(JSON.stringify([{ name: 'A|~x', ip: '8.8.8.8', port: 27015, map: 'de_mirage', players: 12 },
   { addr: '1.1.1.1:27016', hostname: 'B', players: [1, 2, 3] }, { ip: '10.0.0.1', port: 1 }, { addr: '9.9.9.9:5;quit' }, { ip: '8.8.8.8', port: 27015 }]))
 const b = hvh_parse(JSON.stringify({ data: { servers: [{ server: '4.4.4.4:27015', title: 'deep', num_players: 20 }] } }))
 const c = hvh_parse('<td>5.5.5.5:27015</td> <td>6.6.6.6:27016</td> <td>192.168.0.1:1</td> <td>5.5.5.5:27015</td>')
-console.log(JSON.stringify([a.length, a[0].srv, a[0].name, a[0].players, a[1].players, a[2].srv, b.length, b[0].srv, b[0].players, c.map(x => x.srv), hvh_parse('').length]))
+const f = hvh_parse(JSON.stringify([
+  { name: 'eu csgo', ip: '1.2.3.4', port: 1, region: 'EU', game: 'csgo', version: '2023' },
+  { name: 'cs2', ip: '1.2.3.5', port: 1, region: 'EU', game: 'CS2' },
+  { name: 'old', ip: '1.2.3.6', port: 1, region: 'EU', updated: '2018-05-01' },
+  { name: 'us', ip: '1.2.3.7', port: 1, region: 'NA', game: 'csgo' },
+  { name: 'de', ip: '1.2.3.8', port: 1, country: 'DE' },
+  { name: 'nofields', ip: '1.2.3.9', port: 1 }]))
+const g = hvh_parse(JSON.stringify([{ name: 'us', ip: '1.2.3.7', port: 1, region: 'NA' }]))
+const dbg = []; hvh_parse(JSON.stringify([{ name: 'cs2', ip: '1.2.3.5', port: 1, game: 'CS2' }]), dbg)
+const many = hvh_parse(JSON.stringify(Array.from({ length: 50 }, (_, i) => ({ ip: '8.8.8.' + (i + 1), port: 27015 }))))
+console.log(JSON.stringify([a.length, a[0].srv, a[0].name, a[0].players, a[1].players, a[2].srv, b.length, b[0].srv, b[0].players, c.map(x => x.srv), hvh_parse('').length,
+  f.map(x => x.name).sort(), g.length, dbg.length, dbg[0].kept, many.length]))
 """
 out = subprocess.run(["node", "-e", js], capture_output=True, text=True)
-check(out.stdout.strip() == '[3,"8.8.8.8:27015","Ax",12,3,"9.9.9.9:5",1,"4.4.4.4:27015",20,["5.5.5.5:27015","6.6.6.6:27016"],0]',
+check(out.stdout.strip() == '[3,"8.8.8.8:27015","Ax",12,3,"9.9.9.9:5",1,"4.4.4.4:27015",20,["5.5.5.5:27015","6.6.6.6:27016"],0,["de","eu csgo","nofields"],0,1,false,20]',
       "server.js /hvhgg: json (ip + port / addr, nested), plain page, only public addresses, clean names (%s %s)" % (out.stdout.strip(), out.stderr.strip()[:200]))
 # the same check on the license server
 import subprocess
