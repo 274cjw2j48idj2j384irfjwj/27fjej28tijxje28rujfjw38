@@ -1415,5 +1415,26 @@ r = ob.eval("""(function()
 end)()""")
 check(tuple(r) == (True, True, True, True), "on_brute: a missing hurt player / local player is no error (%s)" % (tuple(r),))
 
+# an error in the anti-aim code must not unload the script (owners' logs: the enemies hit 80 % of the shots at us even with it running): the
+# ANTIAIM callback catches it, prints at most one line per 3 s and goes on (both the direct control and the old path)
+AF = chunk("builder.aa_errors, builder.aa_error_at = 0, -100", "do_antiaim = function()")
+af = L.LuaRuntime(unpack_returned_tuples=True)
+r = af.eval("""(function()
+    builder = {}
+    NOW, LINES = 100, 0
+    globals = { real_time = function() return NOW end }
+    print = function() LINES = LINES + 1 end
+    """ + AF + """
+    builder.aa_failed("a")
+    builder.aa_failed("b")                -- the same second: no second line
+    NOW = 104
+    builder.aa_failed("c")
+    return LINES, builder.aa_errors
+end)()""")
+cb = SRC[SRC.index('perf.add(e_callbacks.ANTIAIM, "ANTIAIM"'):]
+cb = cb[:cb.index("do_aimshoot = function()")]
+check(tuple(r) == (2, 3) and "error(err, 0)" not in cb and cb.count("builder.aa_failed(err)") == 2,
+      "anti-aim errors are caught and printed (max 1 per 3 s), the ANTIAIM callback never rethrows (%s)" % (tuple(r),))
+
 print("\n%d failed" % len(FAILS) if FAILS else "\nall passed")
 sys.exit(1 if FAILS else 0)
