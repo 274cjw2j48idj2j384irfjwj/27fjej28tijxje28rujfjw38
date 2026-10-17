@@ -1257,6 +1257,7 @@ local ui = {
             enable_backtrack = groups.tickbase:checkbox("Improve backtrack"),
             extended_backtrack = groups.tickbase:checkbox("Extended backtrack"),
             prediction = groups.tickbase:checkbox("Advanced prediction", true),
+            engine_pred = groups.tickbase:checkbox("Engine prediction (experimental)", false),
             ping_in_sight = groups.tickbase:checkbox("Fake ping only in sight", false),
         },
 
@@ -4961,6 +4962,118 @@ end
 -- crosshair minus extra "dynamic ticks", so a shot the aimbot left the tick count of went to a time it did not aim at.
 -- What a lua can add: more fake latency (the server takes records within 0.2 s of our real + fake latency, so older
 -- records become hittable) and the order the aimbot picks targets in.
+--- @region: engine prediction
+-- Our own movement run through the game's prediction (owners, Oct 2026: "miaz hogy nincs ffi nezd meg ujra"): the Primordial lua has ffi,
+-- memory_create_interface / memory_find_pattern / memory_get_vfunc, so CPrediction::SetupMove, CGameMovement::ProcessMovement and
+-- CPrediction::FinishMove can be called with a user command of our own. EXPERIMENTAL and off by default: the vtable indexes and
+-- the netvar offsets below are those of the 2018 CS:GO client, a wrong one is a native crash that pcall can not catch. So the
+-- offsets are checked against the lua netvars (get_prop) before the first run, and nothing is called when they differ.
+-- Only the OUTPUT is used: the predicted origin shifts our eye in the peek prediction (backtrack.predict); no state is kept.
+engine_prediction = { state = "off", max_ticks = 16, input = { forward = 0, side = 0, pitch = 0, yaw = 0, jump = false, duck = false },
+    result = { x = 0, y = 0, z = 0 } }
+engine_prediction.OFFSETS = { flags = 0x104, velocity = 0x114, origin = 0x138, punch = 0x303C, tickbase = 0x3430 }
+-- the layout of the backup buffer: flags 0, velocity 4, origin 16, punch 28, tickbase 40
+engine_prediction.SAVE = { flags = { 0, 4 }, velocity = { 4, 12 }, origin = { 16, 12 }, punch = { 28, 12 }, tickbase = { 40, 4 } }
+engine_prediction.fail = function(why)
+    if (engine_prediction.state ~= "bad") then
+        print("specter · engine prediction off: " .. tostring(why))
+    end
+    engine_prediction.state = "bad"
+    return false
+end
+engine_prediction.init = function()
+    if (engine_prediction.state == "ready") then return true end
+    if (engine_prediction.state == "bad") then return false end
+    local ok, err = pcall(function()
+        pcall(ffi.cdef, [[
+            typedef struct {
+                void* vtable; int command_number; int tick_count; float viewangles[3]; float aimdirection[3];
+                float forwardmove; float sidemove; float upmove; int buttons; unsigned char impulse;
+                int weaponselect; int weaponsubtype; int random_seed; short mousedx; short mousedy; bool predicted;
+            } specter_usercmd_t;
+        ]])
+        local prediction = memory_create_interface("client.dll", "VClientPrediction001")
+        local movement = memory_create_interface("client.dll", "GameMovement001")
+        local sig = memory_find_pattern("client.dll", "8B 0D ? ? ? ? 8B 46 08 68")
+        assert(prediction ~= nil and movement ~= nil and sig ~= nil, "interfaces not found")
+        local st = engine_prediction
+        st.prediction, st.movement = ffi.cast("void*", prediction), ffi.cast("void*", movement)
+        -- IMoveHelper* : "mov ecx, [address]"
+        st.helper = ffi.cast("void**", ffi.cast("uintptr_t*", ffi.cast("uintptr_t", sig) + 2)[0])[0]
+        assert(st.helper ~= nil, "move helper not found")
+        st.setup_move = ffi.cast("void(__thiscall*)(void*, void*, void*, void*, void*)", memory_get_vfunc(prediction, 20))
+        st.process_movement = ffi.cast("void(__thiscall*)(void*, void*, void*)", memory_get_vfunc(movement, 1))
+        st.finish_move = ffi.cast("void(__thiscall*)(void*, void*, void*, void*)", memory_get_vfunc(prediction, 21))
+        st.cmd = ffi.new("specter_usercmd_t[1]")
+        st.move_data = ffi.new("char[512]")
+        st.saved = ffi.new("char[64]")
+    end)
+    if (not ok) then return engine_prediction.fail(err) end
+    engine_prediction.state = "linked"
+    return true
+end
+-- the offsets must give back what the lua netvars say, else nothing is ever called
+engine_prediction.verify = function(player, base)
+    local function near(a, b) return type(a) == "number" and type(b) == "number" and math.abs(a - b) < 0.5 end
+    local o = engine_prediction.OFFSETS
+    local origin, velocity = player:get_prop("m_vecOrigin"), player:get_prop("m_vecVelocity")
+    if (origin == nil or velocity == nil) then return false end
+    local f, v, p, tb = ffi.cast("float*", base + o.origin), ffi.cast("float*", base + o.velocity), nil, nil
+    local flags = tonumber(player:get_prop("m_fFlags"))
+    local base_tick = tonumber(player:get_prop("m_nTickBase"))
+    if (not (near(f[0], origin.x) and near(f[1], origin.y) and near(f[2], origin.z)
+        and near(v[0], velocity.x) and near(v[1], velocity.y) and near(v[2], velocity.z)
+        and flags ~= nil and ffi.cast("int*", base + o.flags)[0] == flags
+        and base_tick ~= nil and ffi.cast("int*", base + o.tickbase)[0] == base_tick)) then
+        return false
+    end
+    return true
+end
+engine_prediction.capture = function(cmd)
+    local input = engine_prediction.input
+    input.forward, input.side = cmd.move.x, cmd.move.y
+    input.pitch, input.yaw = cmd.viewangles.x, cmd.viewangles.y
+    input.jump, input.duck = cmd:has_button(e_cmd_buttons.JUMP), cmd:has_button(e_cmd_buttons.DUCK)
+end
+-- runs `ticks` commands with the current input and returns the origin after them (a reused table), the player is restored
+engine_prediction.origin_after = function(player, ticks)
+    local st = engine_prediction
+    if (st.state == "bad" or not st.init()) then return nil end
+    local address = entity.get_address(player:get_index())
+    if (address == nil or address == 0) then return nil end
+    local base = ffi.cast("char*", address)
+    if (st.state ~= "ready") then
+        if (not st.verify(player, base)) then st.fail("offsets differ from the netvars") return nil end
+        st.state = "ready"
+    end
+    ticks = math.max(1, math.min(st.max_ticks, math.floor(ticks)))
+    local o, save = st.OFFSETS, st.SAVE
+    -- state backup (m_fFlags, m_vecVelocity, m_vecOrigin, m_aimPunchAngle, m_nTickBase)
+    for key, slot in pairs(save) do ffi.copy(st.saved + slot[1], base + o[key], slot[2]) end
+    local tickbase = ffi.cast("int*", base + o.tickbase)
+    local start_tick, now_tick = tickbase[0], globals.tick_count()
+    local input, uc = st.input, st.cmd[0]
+    local ok = pcall(function()
+        uc.viewangles[0], uc.viewangles[1], uc.viewangles[2] = input.pitch, input.yaw, 0
+        uc.forwardmove, uc.sidemove, uc.upmove = input.forward, input.side, 0
+        uc.buttons = (input.jump and 2 or 0) + (input.duck and 4 or 0)
+        for k = 1, ticks do
+            uc.command_number, uc.tick_count = now_tick + k, now_tick + k
+            tickbase[0] = start_tick + k - 1
+            ffi.fill(st.move_data, 512, 0)
+            st.setup_move(st.prediction, address, st.cmd, st.helper, st.move_data)
+            st.process_movement(st.movement, address, st.move_data)
+            st.finish_move(st.prediction, address, st.cmd, st.move_data)
+        end
+        local f = ffi.cast("float*", base + o.origin)
+        st.result.x, st.result.y, st.result.z = f[0], f[1], f[2]
+    end)
+    -- restore: the player must look untouched to everything after this
+    for key, slot in pairs(save) do ffi.copy(base + o[key], st.saved + slot[1], slot[2]) end
+    return ok and st.result or nil
+end
+--- @endregion
+
 local backtrack = { amount = nil, saved = nil, peekers = {}, predict_tick = 0,
     no_ping = { knife = true, bayonet = true, hegrenade = true, flashbang = true, smokegrenade = true, molotov = true,
                 incgrenade = true, decoy = true, c4 = true } }
@@ -5047,6 +5160,18 @@ backtrack.predict = function(local_player)
     if (eye == nil) then return end
     local net = resolver.network()
     local own_velocity = local_player:get_prop("m_vecVelocity")
+    -- our own movement run through the game's prediction (experimental option); nil = the velocity estimate below
+    local own_shift
+    if (ui.ragebot.backtrack.engine_pred:get()) then
+        local origin = local_player:get_prop("m_vecOrigin")
+        local after = origin ~= nil and engine_prediction.origin_after(local_player,
+            backtrack.horizon(net, false) / globals.interval_per_tick()) or nil
+        if (after ~= nil) then
+            backtrack.shift = backtrack.shift or {}
+            backtrack.shift.x, backtrack.shift.y, backtrack.shift.z = after.x - origin.x, after.y - origin.y, after.z - origin.z
+            own_shift = backtrack.shift
+        end
+    end
     local peekers, checked = {}, 0
     for _, enemy in pairs(entity_list_get_players(true) or {}) do
         if (checked >= 5) then
@@ -5088,8 +5213,9 @@ backtrack.predict = function(local_player)
                     and wall.fraction >= 0.98) then
                     -- we move too (auto peek, strafing): the shot leaves from where OUR eye will be, not from where it is now
                     local from = eye
-                    if (own_velocity ~= nil and math.vec_length2d(own_velocity) > 8) then
-                        local moved = vec3_t(eye.x + own_velocity.x * ahead, eye.y + own_velocity.y * ahead, eye.z)
+                    if (own_shift ~= nil or (own_velocity ~= nil and math.vec_length2d(own_velocity) > 8)) then
+                        local moved = own_shift ~= nil and vec3_t(eye.x + own_shift.x, eye.y + own_shift.y, eye.z + own_shift.z)
+                            or vec3_t(eye.x + own_velocity.x * ahead, eye.y + own_velocity.y * ahead, eye.z)
                         local step = trace_line(eye, moved, local_player, 0x400B)
                         if (step ~= nil and type(step.fraction) == "number" and step.fraction == step.fraction
                             and step.fraction >= 0.98) then
@@ -9573,6 +9699,7 @@ menu_handle = function()
     
         -- backtrack (ragebot)
         ui.ragebot.backtrack.extended_backtrack:depend({ui.ragebot.backtrack.enable_backtrack, true})
+        ui.ragebot.backtrack.engine_pred:depend({ui.ragebot.backtrack.enable_backtrack, true})
         ui.ragebot.backtrack.ping_in_sight:depend({ui.ragebot.backtrack.enable_backtrack, true})
     
         -- accuracy boost (ragebot)
@@ -10023,6 +10150,7 @@ do_setupcmd = function()
             zeus_rush(cmd)
             local bt_player = entity_list_get_local_player()
             if (bt_player ~= nil and bt_player:is_alive()) then
+                engine_prediction.capture(cmd)
                 backtrack.update(bt_player)
                 backtrack.predict(bt_player)
             end
