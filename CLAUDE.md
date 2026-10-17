@@ -510,6 +510,13 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   difference or a missing interface = state "bad", one console line, nothing is called. NOT done: curtime / frametime sync (the globals pointer is not linked), `m_pCurrentCommand`, the predicted
   random seed / spread. NOT confirmed in game: a wrong vtable index is a native crash that pcall can not catch, so it stays off until the owners try it ("Engine prediction" on, then
   look at the console for "engine prediction off: ...").
+- Things that needed ffi and were skipped as "not possible" (owners, Oct 2026: "akkor az osszes olyan dolgot add amihez eddig ffi kellett"): the Primordial lua HAS ffi, so
+  (1) layer 3 (stop / adjust) and the layer sequences are read at every shot like layer 6, logged as `l3` / `l3w` / `l3c` (rate, weight, cycle), `l3s` / `l6s` (sequence), read only; compare
+  them with the LBY updates (`lbt`) and the side before they decide anything; (2) the engine prediction also syncs g_pGlobals curtime / frametime to the predicted tick (the pointer from
+  `A1 ? ? ? ? 5F 8B 40 10`, used only when its tick count and interval read back what the lua api says) and restores them. NOT built, on purpose: `m_pCurrentCommand` and the predicted random seed /
+  weapon spread (an offset that can not be verified against a netvar = a blind memory write), `InvalidateBoneCache` / a skeletal cross check (a bone setup per enemy per update, the FPS cost,
+  and Primordial's own hitboxes are what the aimbot shoots), pelvis / spine rotation and slow walk animation overrides (client side animation only: the server hitboxes do not change, so no
+  anti-aim gain), a faked LBY update (a game mechanic, not a memory write).
 - hvh.gg servers (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg"; then "crashes the game after i refresh hvh.gg"):
   Misc > Servers has a second list "HvH servers (hvh.gg)" + "Connect to the selected hvh.gg server" / "Refresh hvh.gg" (`servers.hvh_*`). The lua
   does NOT ask hvh.gg itself (the first version did, through the steam http library, and a big page crashed the game): server.js `GET /hvhgg`
