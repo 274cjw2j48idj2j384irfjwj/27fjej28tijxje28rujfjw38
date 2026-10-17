@@ -489,6 +489,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   ones take over, jitter / after-miss head safe points and Smart body aim exist. New: `p.lby_at` (when the LBY target last changed) and the shot log field `lbt` (its age
   at the shot, s): check whether misses cluster right at an LBY update before building a predictor on it. NOT possible in the Primordial lua api: layer 3,
   sequence activity, `InvalidateBoneCache` (no ffi / bone control).
+  The owners sent the same text again ("make it"), so two small rules went in: after a resolver miss the MIRRORED hypothesis of the failed one (`resolver.MIRROR`)
+  gets +0.08 before the next shot, and a standing target (speed < 5, on the ground) gets +0.06 on "no desync" (hypothesis 5) within `K.lby_window` 0.1 s of the
+  LBY update clock (`p.lby_at` + n x `K.lby_period` 1.1 s). Both unproven in game: compare `cd` 5 hit rate by `lbt` and hit rate after a miss in the next logs, and
+  take them out if they cost hits.
 - hvh.gg servers (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg"; then "crashes the game after i refresh hvh.gg"):
   Misc > Servers has a second list "HvH servers (hvh.gg)" + "Connect to the selected hvh.gg server" / "Refresh hvh.gg" (`servers.hvh_*`). The lua
   does NOT ask hvh.gg itself (the first version did, through the steam http library, and a big page crashed the game): server.js `GET /hvhgg`
