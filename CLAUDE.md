@@ -493,6 +493,12 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   gets +0.08 before the next shot, and a standing target (speed < 5, on the ground) gets +0.06 on "no desync" (hypothesis 5) within `K.lby_window` 0.1 s of the
   LBY update clock (`p.lby_at` + n x `K.lby_period` 1.1 s). Both unproven in game: compare `cd` 5 hit rate by `lbt` and hit rate after a miss in the next logs, and
   take them out if they cost hits.
+- Anti-aim prompt ("Eliminating Structural Desync Predictability", owners, Oct 2026): X-Way / Distort / Random hold / 3-5 way native jitter, the Adaptive AA bandit,
+  the anti brute Phases (flipped desync side, own centre shift) on a bullet past the head or a hit, Smart defensive, the air states and the own freestand
+  (2 traces) were in already. Added: Settings "Switch noise" (default on, `builder.noise`: +-3..7 deg on the yaw at every sent packet, in `builder.yaw_now`, so
+  every yaw mode and direct control get it). NOT possible in the Primordial lua api: bone / pelvis / spine rotation, a faked LBY update, animation layer
+  overrides (slow walk), a tick shift guard other than Primordial's own. The 3-point (head / shoulder / hip) freestand trace is not built: the head trace
+  decides it, a shoulder trace would only cover a wall the head is already behind. Judge the noise by the AA rows (`kind:"aa"`) head share.
 - hvh.gg servers (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg"; then "crashes the game after i refresh hvh.gg"):
   Misc > Servers has a second list "HvH servers (hvh.gg)" + "Connect to the selected hvh.gg server" / "Refresh hvh.gg" (`servers.hvh_*`). The lua
   does NOT ask hvh.gg itself (the first version did, through the steam http library, and a big page crashed the game): server.js `GET /hvhgg`
