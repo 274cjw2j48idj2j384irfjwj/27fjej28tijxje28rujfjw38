@@ -452,6 +452,15 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - Cloud config time (owners, Oct 2026: "a cloud confighoz betehetnel olyat hogy mikor lett frissitve hany orakor"): the list rows are
   "author ~ name  10-17 14:05 (3h ago)" (`cloud.stamp`: the server's upload time `ts` in ms, shown in OUR local time: the time zone is
   the difference between `client_get_local_time` and the UTC time of `client_get_unix_time`; the age is now / Nm / Nh / Nd ago).
+- Anti-aim audit (owners, Oct 2026: "az antiaim nagyon hittelheto"; 1290 `kind:"aa"` rows of Oct 14-17): enemies hit 80 % of the events
+  (hit / hit + evaded) in EVERY state, yaw mode, jitter modifier, desync mode, profile, with / without defensive and anti brute phase
+  (77-88 %), so no setting of ours separates from another in those logs: judge a change by the per state head share, not by that ratio.
+  70 % of the hits are body (stomach 308, chest 158, head 302 of 1034), the head share is 26 % moving, 39 % in Air duck, 13-18 %
+  standing / ducked / Freestand, 20 % on de_mirage and 36-47 % on the aurorahvh maps. It also rises with the total ping (12 % under 40 ms,
+  21 / 29 / 30 % above, inside every day too): the total ping is mostly the fake ping of Improve backtrack (it fills up to 100 / 200 ms, `fp`
+  100 / 200 in the shot rows), so the fake ping may cost head hits. The AA rows now carry `fp` (the fake ping amount) and `spd` to tell it.
+  The anti-aim callback no longer rethrows (`builder.aa_failed`: the tick is skipped, a console line at most every 3 s); an error used to unload
+  the script = no anti-aim at all. `direct_base` is nil guarded (view angles / eye / render origin).
 - Flag, third try (owners, Oct 2026: still not covered): `find_flag` also takes an image panel whose source path says flag / country
   (`GetImageSrc`), and the flag is hidden with width 0 + opacity 0 as well (given back on destroy). Send the "Dump scoreboard row" output if it stays.
 - Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";

@@ -6286,6 +6286,9 @@ shotlog.aa = function(kind, snap, hitgroup, damage)
         st = snap.name, ym = snap.ym, jm = snap.jm, ds = snap.ds, def = snap.def or nil, ab = snap.ab or nil,
         dc = snap.dc or nil, arm = snap.arm,
         hg = hitgroup, dmg = shotlog.num(damage),
+        -- the fake ping we added (the total ping above is mostly that + the real one) and our speed: with them the next logs can
+        -- tell whether the head hits come with the fake ping (head hits were 12 % of the events under 40 ms and 24-30 % above)
+        fp = backtrack.amount, spd = shotlog.num(snap.speed),
     }
     local ok, line = pcall(libs.json.encode, row)
     if (ok and type(line) == "string") then
@@ -7068,6 +7071,11 @@ builder.aa_snapshot = function()
         dc = builder.direct_on(),
         arm = builder.brain_now,
         arm_index = builder.brain_index,
+        speed = (function()
+            local me = entity_list_get_local_player()
+            local vel = me ~= nil and me:get_prop("m_vecVelocity") or nil
+            return vel ~= nil and math.vec_length2d(vel) or nil
+        end)(),
         time = globals.real_time(),
     }
 end
@@ -7381,18 +7389,26 @@ builder.direct_base = function(local_player, mode)
         return nil
     end
     local view = engine_get_view_angles()
+    if (view == nil or type(view.y) ~= "number" or view.y ~= view.y) then
+        return nil
+    end
     if (mode == 2) then
         return view.y
     end
     local eye = local_player:get_eye_position()
+    if (eye == nil) then
+        return view.y
+    end
     local best, best_val
     for _, enemy in pairs(entity_list_get_players(true) or {}) do
         if (enemy:is_alive() and not enemy:is_dormant()) then
             local o = enemy:get_render_origin()
-            local yaw = math.deg(math.atan2(o.y - eye.y, o.x - eye.x))
-            local val = mode == 3 and math.abs(builder.adv.norm(yaw - view.y)) or ((o.x - eye.x) ^ 2 + (o.y - eye.y) ^ 2)
-            if (best_val == nil or val < best_val) then
-                best, best_val = yaw, val
+            if (o ~= nil) then
+                local yaw = math.deg(math.atan2(o.y - eye.y, o.x - eye.x))
+                local val = mode == 3 and math.abs(builder.adv.norm(yaw - view.y)) or ((o.x - eye.x) ^ 2 + (o.y - eye.y) ^ 2)
+                if (best_val == nil or val < best_val) then
+                    best, best_val = yaw, val
+                end
             end
         end
     end
@@ -9683,6 +9699,19 @@ do_aimmiss = function()
     end)
 end
 
+-- An error in the anti-aim code UNLOADS the whole script in Primordial and the anti-aim is gone for the rest of the game (the shot logs:
+-- the enemies hit 80 % of what they shoot at us even with it running). So the error is caught here: that tick Primordial's own anti-aim
+-- stays, the message goes to the console (at most one per 3 s) and the next tick tries again
+builder.aa_errors, builder.aa_error_at = 0, -100
+builder.aa_failed = function(err)
+    builder.aa_errors = builder.aa_errors + 1
+    local now = globals.real_time()
+    if (now - builder.aa_error_at >= 3 or now < builder.aa_error_at) then
+        builder.aa_error_at = now
+        print("anti-aim error (" .. builder.aa_errors .. " so far): " .. tostring(err))
+    end
+end
+
 do_antiaim = function()
     perf.add(e_callbacks.ANTIAIM, "ANTIAIM", function(ctx, cmd, unpredicted)
         if (check_conditions()) then
@@ -9703,12 +9732,17 @@ do_antiaim = function()
                     ok, err = pcall(builder.direct_apply, ctx, entity_list_get_local_player())
                 end
                 if (not ok) then
-                    error(err, 0)
+                    builder.aa_failed(err)
                 end
             else
-                run_antiaim(ctx, cmd, unpredicted)
-                run_exploit(ctx, cmd, unpredicted)
-                run_edgeyaw(ctx, cmd, unpredicted)
+                local ok, err = pcall(function()
+                    run_antiaim(ctx, cmd, unpredicted)
+                    run_exploit(ctx, cmd, unpredicted)
+                    run_edgeyaw(ctx, cmd, unpredicted)
+                end)
+                if (not ok) then
+                    builder.aa_failed(err)
+                end
             end
 
             if (ui.exploits.lag_on_shoot:get()) then
