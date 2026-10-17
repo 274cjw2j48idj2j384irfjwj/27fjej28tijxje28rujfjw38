@@ -168,10 +168,14 @@ engine_execute_cmd = function(c) CMDS[#CMDS + 1] = c end
 notifications = { types = { warning = 1, information = 2 }, create = function(_, t) NOTES[#NOTES + 1] = t end }
 SEL = nil
 ui = { servers = { share = { get = function() return SHARE end }, list = { set_items = function(_, i) ITEMS = i end,
-    get_active_item_name = function() return SEL end } }, nav = { slider = { get = function() return PAGE end } } }
+    get_active_item_name = function() return SEL end },
+    hvh_list = { set_items = function(_, i) HVH_ITEMS = i end, get_active_item_name = function() return HSEL end } },
+    nav = { slider = { get = function() return PAGE end } } }
+BODIES, HSEL, HVH_ITEMS, GETCB = {}, nil, nil, {}
 SHARE, PAGE = false, 0
 presence = { server = "https://x", version = "dev", identity = function() return { sid = "1" } end, hash = function() return "00ff00ff00ff00ff" end }
-libs = { tools = { http = { get = function(_, url) SENT[#SENT + 1] = url end } }, json = { parse = function() return {} end } }
+libs = { tools = { http = { get = function(_, url, cb) SENT[#SENT + 1] = url GETCB[#GETCB + 1] = cb end } },
+    json = { parse = function(b) local v = BODIES[b] if v ~= nil then return v end if type(b) == "string" and b:sub(1, 1) == "<" then error("not json") end return {} end } }
 check_conditions = function() return false end
 entity_list_get_local_player = function() return nil end
 globals = { real_time = function() return 100 end }
@@ -198,6 +202,42 @@ return ok, bad, listed, CMDS[1], #CMDS, #NOTES, quiet, #SENT
 check(r[0] and not r[1] and r[2] == 1 and r[3] == "connect 8.8.8.8:27015" and r[4] == 1 and r[5] == 3 and r[6] == 0 and r[7] == 1,
       "server list: only a public ip:port is listed / connected to, a bad row or nothing selected only warns, no request while the "
       "page is closed and sharing is off (%s)" % (list(r),))
+
+# hvh.gg servers (owners: "add to the lua like server connectors, must get ips from hvh.gg"): the list is read without knowing its shape
+# (JSON objects with ip + port / addr, or any ip:port in a page), only public addresses are shown, the first url without a server is followed by
+# the next one, connect goes through the same check
+r = S("""
+BODIES["J"] = { { name = "A", ip = "8.8.8.8", port = 27015, map = "de_mirage", players = 12 },
+    { addr = "1.1.1.1:27016", hostname = "B", players = { 1, 2, 3 } }, { ip = "10.0.0.1", port = 1 }, { addr = "9.9.9.9:5;quit" },
+    { ip = "8.8.8.8", port = 27015 } }
+BODIES["N"] = { data = { servers = { { server = "4.4.4.4:27015", title = "deep", num_players = 20 } } } }
+local a = servers.hvh_parse("J")
+local b = servers.hvh_parse("N")
+local c = servers.hvh_parse("<td>5.5.5.5:27015</td> <td>6.6.6.6:27016</td> <td>192.168.0.1:1</td> <td>5.5.5.5:27015</td>")
+local d = servers.hvh_parse("")
+-- update: the first url answers nothing usable, the second has the page
+SENT, GETCB, PAGE = {}, {}, 15
+servers.hvh.next, servers.hvh.busy = 0, nil
+servers.hvh_update(false)
+local first = #SENT
+GETCB[1]({ body = "nothing here" })
+local second = #SENT
+GETCB[2]({ body = "<td>7.7.7.7:27015</td>" })
+local shown = HVH_ITEMS and #HVH_ITEMS
+HSEL = HVH_ITEMS[1]
+CMDS = {}
+servers.hvh_connect()
+local cmd = CMDS[1]
+HSEL = "x ~ y ~ 1 pl ~ 7.7.7.7:5;quit"
+servers.hvh_connect()
+PAGE = 0
+servers.hvh.next, servers.hvh.busy = 0, nil
+local before = #SENT
+servers.hvh_update(false)                    -- the page is closed: no request
+return #a, a[1].srv, a[1].players, a[2].srv, a[2].players, #b, b[1].srv, b[1].players, #c, #d, first, second, shown, cmd, #CMDS, #SENT == before
+""")
+check(tuple(r) == (3, "8.8.8.8:27015", 12, "1.1.1.1:27016", 3, 1, "4.4.4.4:27015", 20, 2, 0, 1, 2, 1, "connect 7.7.7.7:27015", 1, True),
+      "hvh.gg servers: json (ip + port / addr, nested), plain text, only the clean public ip:port of a field (a trailing \";quit\" is dropped), the next url when one has none, a checked connect (%s)" % (tuple(r),))
 # the same check on the license server
 import subprocess
 JS = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "server.js")).read()
