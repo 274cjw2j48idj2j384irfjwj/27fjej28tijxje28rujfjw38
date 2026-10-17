@@ -5004,6 +5004,17 @@ engine_prediction.init = function()
         st.setup_move = ffi.cast("void(__thiscall*)(void*, void*, void*, void*, void*)", memory_get_vfunc(prediction, 20))
         st.process_movement = ffi.cast("void(__thiscall*)(void*, void*, void*)", memory_get_vfunc(movement, 1))
         st.finish_move = ffi.cast("void(__thiscall*)(void*, void*, void*, void*)", memory_get_vfunc(prediction, 21))
+        -- CGlobalVarsBase*: curtime 0x10, frametime 0x14, tickcount 0x1C, interval_per_tick 0x20; used only when it reads back the
+        -- tick count and the tick interval the lua api gives (else curtime / frametime are simply not synced)
+        local gsig = memory_find_pattern("client.dll", "A1 ? ? ? ? 5F 8B 40 10")
+        if (gsig ~= nil) then
+            local pointer = ffi.cast("char**", ffi.cast("uintptr_t*", ffi.cast("uintptr_t", gsig) + 1)[0])[0]
+            if (pointer ~= nil
+                and math.abs(ffi.cast("int*", pointer + 0x1C)[0] - globals.tick_count()) <= 2
+                and math.abs(ffi.cast("float*", pointer + 0x20)[0] - globals.interval_per_tick()) < 1e-6) then
+                st.globals = pointer
+            end
+        end
         st.cmd = ffi.new("specter_usercmd_t[1]")
         st.move_data = ffi.new("char[512]")
         st.saved = ffi.new("char[64]")
@@ -5053,6 +5064,10 @@ engine_prediction.origin_after = function(player, ticks)
     local tickbase = ffi.cast("int*", base + o.tickbase)
     local start_tick, now_tick = tickbase[0], globals.tick_count()
     local input, uc = st.input, st.cmd[0]
+    -- g_pGlobals->curtime / frametime follow the predicted tick (tickbase x interval), restored below
+    local times, interval = st.globals ~= nil and ffi.cast("float*", st.globals + 0x10) or nil, globals.interval_per_tick()
+    local old_curtime, old_frametime
+    if (times ~= nil) then old_curtime, old_frametime = times[0], times[1] end
     local ok = pcall(function()
         uc.viewangles[0], uc.viewangles[1], uc.viewangles[2] = input.pitch, input.yaw, 0
         uc.forwardmove, uc.sidemove, uc.upmove = input.forward, input.side, 0
@@ -5060,6 +5075,7 @@ engine_prediction.origin_after = function(player, ticks)
         for k = 1, ticks do
             uc.command_number, uc.tick_count = now_tick + k, now_tick + k
             tickbase[0] = start_tick + k - 1
+            if (times ~= nil) then times[0], times[1] = tickbase[0] * interval, interval end
             ffi.fill(st.move_data, 512, 0)
             st.setup_move(st.prediction, address, st.cmd, st.helper, st.move_data)
             st.process_movement(st.movement, address, st.move_data)
@@ -5068,7 +5084,8 @@ engine_prediction.origin_after = function(player, ticks)
         local f = ffi.cast("float*", base + o.origin)
         st.result.x, st.result.y, st.result.z = f[0], f[1], f[2]
     end)
-    -- restore: the player must look untouched to everything after this
+    -- restore: the player and the globals must look untouched to everything after this
+    if (times ~= nil) then times[0], times[1] = old_curtime, old_frametime end
     for key, slot in pairs(save) do ffi.copy(base + o[key], st.saved + slot[1], slot[2]) end
     return ok and st.result or nil
 end
@@ -5563,6 +5580,14 @@ resolver.capture = function(shot)
         return layer.m_flPlaybackRate, layer.m_flWeight
     end)
     if (okl) then s.l6, s.l6w = rate, weight end
+    -- layer 3 (the stop / adjust animation: it fires when the LBY updates or the target changes direction) and the sequences of
+    -- both layers: logged to see whether they tell an LBY break or the side (owners, Oct 2026), read only, nil when missing
+    local ok3, rate3, weight3, cycle3, seq3, seq6 = pcall(function()
+        local address = get_entity_address(idx)
+        local three, six = get_anim_layer(address, 3), get_anim_layer(address, 6)
+        return three.m_flPlaybackRate, three.m_flWeight, three.m_flCycle, three.m_nSequence, six.m_nSequence
+    end)
+    if (ok3) then s.l3, s.l3w, s.l3c, s.l3s, s.l6s = rate3, weight3, cycle3, seq3, seq6 end
     s.state = resolver.state_of(shot.player)
     resolver.shots[#resolver.shots + 1] = s
     if (#resolver.shots > 128) then table.remove(resolver.shots, 1) end
@@ -6700,6 +6725,8 @@ shotlog.result = function(shot, hit)
         row.df, row.lb, row.sx = snap.defensive, snap.lagbreak, snap.state
         row.ph, row.rl = snap.phase, shotlog.num(snap.reliab, 2)
         row.l6, row.l6w = shotlog.num(snap.l6, 6), shotlog.num(snap.l6w, 4)
+        row.l3, row.l3w, row.l3c = shotlog.num(snap.l3, 6), shotlog.num(snap.l3w, 4), shotlog.num(snap.l3c, 3)
+        row.l3s, row.l6s = shotlog.num(snap.l3s), shotlog.num(snap.l6s)
     end
     if (hit) then
         row.hg, row.dmg = shot.hitgroup, shotlog.num(shot.damage)
