@@ -1256,7 +1256,7 @@ local ui = {
             enable_backtrack = groups.tickbase:checkbox("Improve backtrack"),
             extended_backtrack = groups.tickbase:checkbox("Extended backtrack"),
             prediction = groups.tickbase:checkbox("Advanced prediction", true),
-            ping_in_sight = groups.tickbase:checkbox("Fake ping only in sight", true),
+            ping_in_sight = groups.tickbase:checkbox("Fake ping only in sight", false),
         },
 
         safe_defensive = groups.ragebot:checkbox("Defensive safepoint"),

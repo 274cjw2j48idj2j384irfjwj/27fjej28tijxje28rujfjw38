@@ -52,7 +52,7 @@ local env = setmetatable({
             smart_baim_hp = control(40), smart_baim_lethal = control(true),
             latency_guard = control(true), latency_limit = control(80), fast_peek = control(true),
             backtrack = { prediction = control(true), enable_backtrack = control(true),
-                extended_backtrack = control(false), ping_in_sight = control(true) },
+                extended_backtrack = control(false), ping_in_sight = control(false) },
             resolver = { enable_resolver = control(false) },
             reso_cfg = { yaw_calc = control(3) } },
         antiaim = { builder = controls },
@@ -458,6 +458,7 @@ test("fake ping only runs while an enemy is in sight, 1 s after, and always when
     local player = { get_active_weapon = function() return { get_name = function() return "ssg08" end } end }
     outgoing, incoming = 0.02, 0.02
     local dormant = true
+    env.ui.ragebot.backtrack.ping_in_sight:set(true)
     target.is_dormant = function() return dormant end
     env.backtrack.update(player)
     assert(ping:get() == 0)                         -- nobody in sight: no fake ping
@@ -475,7 +476,7 @@ test("fake ping only runs while an enemy is in sight, 1 s after, and always when
     env.ui.ragebot.backtrack.ping_in_sight:set(false)
     env.backtrack.update(player)
     assert(ping:get() == 60)                        -- option off: the old behaviour, an alive enemy is enough
-    env.ui.ragebot.backtrack.ping_in_sight:set(true)
+    env.ui.ragebot.backtrack.ping_in_sight:set(false)
     target.is_dormant = function() return false end
 end)
 test("expired prediction priorities are ignored", function()
