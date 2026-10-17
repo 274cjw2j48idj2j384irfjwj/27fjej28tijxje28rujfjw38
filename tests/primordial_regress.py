@@ -401,11 +401,12 @@ for i, vals in rows:
     p = ["G", "S", "M", "SW", "D", "DM", "A", "AD"][int(i) - 1]
     same = same and [get("Yaw", p + " | Yaw mode"), get("Yaw", p + " | Range"), get("Jitter", p + " | Modifier mode"),
                      get("Desync", p + " | Desync"), get("Defensive", p + " | Defensive")] == [v[0], v[3], v[9], 5,
-                                                                                       6 if p in ("M", "A") else 1]
+                                                                                       1]
 trig = lambda p: [n for n, on in get("Defensive", p + " | Smart triggers") if on]
 check(trig("M") == ["Peek"] and trig("A") == ["Air"] and trig("AD") == [] and trig("S") == [] and trig("FR") == []
-      and get("Defensive", "FR | Defensive") == 1 and "set(st.trigger_defensive, (i == 3 or i == 7) and 6 or 1)" in SRC,
-      "default.cfg: defensive only on peek while running and in the air (owners), off standing / crouched / slow walk / freestand")
+      and get("Defensive", "FR | Defensive") == 1 and get("Defensive", "M | Defensive") == 1 and get("Defensive", "A | Defensive") == 1
+      and "set(st.trigger_defensive, 1)" in SRC,
+      "default.cfg: defensive off in every state (the real AA rows: its events had the higher head share), the Peek / Air triggers stay set")
 check(same and get("Settings", "Anti brute mode") == 2 and get("Features", "Fakelag variance") is True
       and get("Settings", "Adaptive AA") is True and "set(b.adaptive, true)" in SRC
       and (get("Yaw", "M | Left"), get("Yaw", "M | Right"), get("Yaw", "M | Left randomization")) == (-10, 10, -18),

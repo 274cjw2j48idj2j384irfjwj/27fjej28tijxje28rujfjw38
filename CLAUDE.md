@@ -461,6 +461,12 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   100 / 200 in the shot rows), so the fake ping may cost head hits. The AA rows now carry `fp` (the fake ping amount) and `spd` to tell it.
   The anti-aim callback no longer rethrows (`builder.aa_failed`: the tick is skipped, a console line at most every 3 s); an error used to unload
   the script = no anti-aim at all. `direct_base` is nil guarded (view angles / eye / render origin).
+- Less hittable (owners, Oct 2026: "fix antiaim to be less hittable"), two changes from the 1290 AA rows (see the audit above): (1) the Defensive is
+  OFF in every state of default.cfg / "Apply advanced preset" (its events: head share 28 % against 22 % without it, and the shift costs the double
+  tap; the Smart triggers stay set, switch it on per state in the menu); (2) "Fake ping only in sight" (Tickbase page, default on): the fake ping of
+  Improve backtrack delays what WE see, so running all the time we walked into enemies aiming at the corner; it now runs while an enemy is not dormant
+  and 1 s after (`backtrack.seen_until`), 0 before. A fake ping slider set by hand still wins as the floor. The desync / yaw settings are untouched: the
+  logs do not separate them (every setting 77-88 %). Judge by the head share per state and by `fp` in the next AA rows; to go back: untick the option.
 - Flag, third try (owners, Oct 2026: still not covered): `find_flag` also takes an image panel whose source path says flag / country
   (`GetImageSrc`), and the flag is hidden with width 0 + opacity 0 as well (given back on destroy). Send the "Dump scoreboard row" output if it stays.
 - Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";
