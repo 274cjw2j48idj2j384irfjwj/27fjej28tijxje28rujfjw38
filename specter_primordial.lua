@@ -8527,6 +8527,10 @@ hud.seg_icon = function(kind, cx, cy, a)
     elseif (kind == "ping") then
         render_circle(vec2_t(cx, cy), 4.5, c)
         render_circle_filled(vec2_t(cx, cy), 1.5, c)
+    elseif (kind == "users") then
+        render_circle_filled(vec2_t(cx - 2, cy - 2), 2.2, c)
+        render_circle_filled(vec2_t(cx + 3, cy - 1), 1.8, c)
+        render_rect_filled(vec2_t(cx - 5, cy + 1), vec2_t(7, 4), c, 2)
     elseif (kind == "tick") then
         render_rect_filled(vec2_t(cx - 4, cy), vec2_t(8, 1), c)
         render_rect_filled(vec2_t(cx, cy - 4), vec2_t(1, 8), c)
@@ -8572,6 +8576,18 @@ draw_watermark = function()
     end
     if (ui.utils.watermark_fields:get(5)) then
         segs[#segs + 1] = { "time", string.format("%02d:%02d", h, m), "", W[1], W[2], W[3] }
+    end
+
+    -- the Specter users found here (owners, Oct 2026: "minden scoreboard cucc abba a sorba felul kene irnia": the scoreboard
+    -- moon / flag never showed): their names go into this row, no scoreboard panel needed
+    local others = {}
+    for _, row in ipairs(shared_data) do
+        local name = tostring(row):match("^(.-) ~ ")
+        if (name ~= nil and not name:find(" (you)", 1, true)) then others[#others + 1] = name:sub(1, 14) end
+    end
+    if (#others > 0) then
+        local text = others[1] .. (others[2] and (", " .. others[2]) or "") .. (#others > 2 and (" +" .. (#others - 2)) or "")
+        segs[#segs + 1] = { "users", text, " specter", accent.r, accent.g, accent.b }
     end
 
     local brand_size = render_get_text_size(hud.bold, "specter")
