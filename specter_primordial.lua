@@ -1270,6 +1270,7 @@ local ui = {
     },
 
     antiaim = {
+        switch_noise = groups.settings:checkbox("Switch noise", true),
         builder = {
             enable = groups.settings:checkbox("Custom antiaim"),
             edge_yaw = groups.settings:checkbox("Edge yaw"),
@@ -6778,6 +6779,8 @@ builder.new_packet = function()
         builder.packet_tick = tick
         builder.yaw_flip = not builder.yaw_flip
         builder.side_flip = math.random(2) == 1
+        -- bounded noise on every switch (owners, Oct 2026): 3-7 deg either way, so a brute force that steps through fixed angles does not land
+        builder.noise = (math.random(2) == 1 and 1 or -1) * (3 + math.random() * 4)
     end
 end
 
@@ -6874,6 +6877,9 @@ end
 
 builder.yaw_now = function()
     local yaw = (builder.base_yaw or refs.yawadd:get()) + (builder.jit_off or 0)
+    if (ui.antiaim.switch_noise:get()) then
+        yaw = yaw + (builder.noise or 0)
+    end
     if ((builder.ab_until or 0) > globals.tick_count()) then
         yaw = yaw + builder.ab_shift
     end
