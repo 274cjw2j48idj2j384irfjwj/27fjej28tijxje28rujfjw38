@@ -1270,6 +1270,9 @@ cl = L.LuaRuntime(unpack_returned_tuples=True)
 cl.execute("""
 ffi = require("ffi")
 GETS, PENDING, NOTES, BUTTONS, IMPORTED, KEY = {}, {}, {}, {}, nil, "abc-key"
+LOCAL_H = 12
+client_get_unix_time = function() return 1792240000 end
+client_get_local_time = function() return LOCAL_H, 26 end
 presence = { server = "https://srv" }
 info = { plan = "nightly", user = "bob x" }
 config_version, config_build, settings_file = "1.0", "beta", "settings.json"
@@ -1296,12 +1299,16 @@ menu_add_button = function(_, name, fn) BUTTONS[name] = fn return {} end
 read_settings = function() return {} end
 get_accent_color, get_text_color = function() return nil end, function() return nil end
 function ANSWER(body, value) local r = table.remove(PENDING, 1) JSON[body] = value r.cb({ body = body }) return r.url end
-""" + CLOUD)
+""" + CLOUD + "\nCLOUD_T = cloud\n")
 r = cl.eval("""(function()
     configs.reload_cloud_configs(true)
-    local list_url = ANSWER("L", { { name = "hvh", author = "bob", ts = 1 }, { name = "new", author = "ann", ts = 5 } })
+    local list_url = ANSWER("L", { { name = "hvh", author = "bob", ts = (1792240000 - 3 * 86400) * 1000 }, { name = "new", author = "ann", ts = (1792240000 - 3 * 3600) * 1000 } })
     local rows = table.concat(ui.configs.cloud_list.ref.items, "|")
-    ui.configs.cloud_list.ref.active = "bob ~ hvh"
+    -- the same upload time in a time zone 2 hours ahead of UTC: the clock reads 14:26 while UTC says 12:26
+    LOCAL_H = 14
+    local zoned = CLOUD_T.stamp((1792240000 - 3 * 3600) * 1000)
+    LOCAL_H = 12
+    ui.configs.cloud_list.ref.active = "bob ~ hvh  10-14 12:26 (3d ago)"
     BUTTONS["Use"]()
     local get_url = ANSWER("G", { ok = true, data = "Zm9v" })
     local imported = IMPORTED
@@ -1327,9 +1334,9 @@ r = cl.eval("""(function()
     info.plan = "dev"
     BUTTONS["Delete"]()
     local dev_url = PENDING[1] and PENDING[1].url
-    return list_url, rows, get_url, imported, first, after, up0, up1, refreshed, nothing, note, dev_url, json_imported
+    return list_url, rows, get_url, imported, first, after, up0, up1, refreshed, nothing, note, dev_url, json_imported, zoned
 end)()""")
-check(r[0] == "https://srv/configs?lua=pm" and r[1] == "ann ~ new|bob ~ hvh"
+check(r[0] == "https://srv/configs?lua=pm" and r[1] == "ann ~ new  10-17 09:26 (3h ago)|bob ~ hvh  10-14 12:26 (3d ago)" and r[13] == "10-17 11:26 (3h ago)"
       and r[2] == "https://srv/configs/get?lua=pm&name=hvh&author=bob" and r[3] == "CFG:Zm9v"
       and r[4] == 1 and r[5] == 2 and "upload_part?lua=pm&key=abc-key&hwid=PM-" in r[6] and "&name=hvh&total=3&idx=0&data=" in r[6]
       and "&idx=1&" in r[7] and r[8] == "https://srv/configs?lua=pm" and r[9] == 0 and "Log in once" in r[10]

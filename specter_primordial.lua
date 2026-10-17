@@ -2639,6 +2639,32 @@ cloud.selected = function()
     return ok and cloud.items[item] or nil
 end
 
+-- "10-17 14:05 (3h ago)" for the upload time `ms` of a cloud config (the server's clock in ms; the local hour from our own clock, the
+-- time zone is the difference between that and UTC)
+cloud.stamp = function(ms)
+    ms = tonumber(ms)
+    if (ms == nil or ms ~= ms or ms <= 0) then return nil end
+    local now, at = client_get_unix_time(), math.floor(ms / 1000)
+    local lh, lm = client_get_local_time()
+    local shift = (lh * 60 + lm) - math.floor((now % 86400) / 60)
+    shift = (shift + 720) % 1440 - 720
+    local local_at = at + shift * 60
+    local days, rest = math.floor(local_at / 86400), local_at % 86400
+    -- civil date from the day count (Howard Hinnant's algorithm)
+    local z = days + 719468
+    local era = math.floor(z / 146097)
+    local doe = z - era * 146097
+    local yoe = math.floor((doe - math.floor(doe / 1460) + math.floor(doe / 36524) - math.floor(doe / 146096)) / 365)
+    local doy = doe - (365 * yoe + math.floor(yoe / 4) - math.floor(yoe / 100))
+    local mp = math.floor((5 * doy + 2) / 153)
+    local day = doy - math.floor((153 * mp + 2) / 5) + 1
+    local month = mp < 10 and mp + 3 or mp - 9
+    local age = math.max(0, now - at)
+    local ago = age < 60 and "now" or age < 3600 and (math.floor(age / 60) .. "m ago")
+        or age < 86400 and (math.floor(age / 3600) .. "h ago") or (math.floor(age / 86400) .. "d ago")
+    return string.format("%02d-%02d %02d:%02d (%s)", month, day, math.floor(rest / 3600), math.floor(rest % 3600 / 60), ago)
+end
+
 configs.reload_cloud_configs = function(report)
     cloud.get("/configs?lua=pm", function(list)
         if (list == nil) then
@@ -2652,7 +2678,8 @@ configs.reload_cloud_configs = function(report)
         cloud.items = {}
         for _, c in ipairs(list) do
             if (type(c.name) == "string" and type(c.author) == "string") then
-                local row = c.author .. " ~ " .. c.name
+                local stamp = cloud.stamp(c.ts)
+                local row = c.author .. " ~ " .. c.name .. (stamp and ("  " .. stamp) or "")
                 cloud.items[row] = { name = c.name, author = c.author }
                 rows[#rows + 1] = row
             end
