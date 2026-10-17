@@ -3301,14 +3301,89 @@ presence.apply = function(on, asked)
             notifications.types.information)
     end
 end
+-- The lobby (owners, Oct 2026: "a shared esp ne csak meccsben mukodjon hanem lobbyba is"): outside a game the party members
+-- (PartyListAPI) are asked the same way, our own badge goes out with the same heartbeat (Shared ESP on), the found ones are listed
+-- by name (no entity, so no scoreboard moon) and announced once.
+presence.lobby_members = function()
+    local api = libs.tools.js2 and libs.tools.js2.PartyListAPI
+    local out = {}
+    if (api == nil) then return out end
+    local ok, count = pcall(function() return api.GetCount() end)
+    count = ok and tonumber(count) or 0
+    for i = 0, math.min(count, 10) - 1 do
+        local got, xuid = pcall(function() return api.GetXuidByIndex(i) end)
+        local sid = got and presence.normalize_id(xuid) or nil
+        if (sid ~= nil) then
+            local named, name = pcall(function() return api.GetFriendName(xuid) end)
+            out[#out + 1] = { sid = sid, name = named and tostring(name) or "player" }
+        end
+    end
+    return out
+end
+presence.lobby_own = function()
+    local api = libs.tools.js2 and libs.tools.js2.MyPersonaAPI
+    local ok, xuid = pcall(function() return api.GetXuid() end)
+    return ok and presence.normalize_id(xuid) or nil
+end
+presence.lobby = function()
+    local now, enabled = globals.real_time(), ui.utils.shared_esp:get()
+    if (presence.lobby_busy ~= nil) then
+        if (now >= presence.lobby_busy and now - presence.lobby_busy < 25) then return end
+        presence.lobby_busy = nil
+    end
+    if (presence.lobby_next ~= nil and now < presence.lobby_next and now > presence.lobby_next - 60) then return end
+    presence.lobby_next = now + 30
+    local own = presence.lobby_own()
+    local asked, list = {}, {}
+    for _, member in ipairs(presence.lobby_members()) do
+        if (member.sid ~= own) then
+            local hash = presence.hash(member.sid)
+            asked[hash] = member
+            list[#list + 1] = hash
+        end
+    end
+    if (not enabled and #list == 0) then return end
+    local version = presence.version == "beta" and "beta" or presence.version == "nightly" and "nightly" or "dev"
+    local url = presence.server .. "/presence?t=" .. version .. "&q=" .. table.concat(list, ",")
+    if (enabled and own ~= nil) then url = url .. "&me=" .. presence.hash(own) end
+    local epoch = presence.epoch
+    presence.lobby_busy = now
+    local sent = pcall(libs.tools.http.get, libs.tools.http, url, function(response)
+        presence.lobby_busy = nil
+        if (epoch ~= presence.epoch or presence.connected ~= false or check_conditions()) then return end
+        local ok, data = pcall(libs.json.parse, response and response.body or "")
+        if (not ok or type(data) ~= "table" or data.ok ~= true or type(data.on) ~= "table") then return end
+        local rows, names = {}, {}
+        for hash, member in pairs(asked) do
+            local kind = data.on[hash]
+            if (kind == "dev" or kind == "beta" or kind == "nightly" or kind == "gs") then
+                rows[#rows + 1] = member.name .. " ~ " .. presence.kind(kind)
+                if (not presence.announced[member.sid]) then
+                    presence.announced[member.sid] = true
+                    names[#names + 1] = member.name .. (kind == "gs" and " (gs)" or " (prim)")
+                end
+            end
+        end
+        table.sort(rows)
+        shared_data = rows
+        pcall(ui.nav.shared_esp.ref.set_items, ui.nav.shared_esp.ref, rows)
+        if (#names > 0) then
+            notifications.create("Specter", "Specter users in the lobby: " .. table.concat(names, ", "),
+                notifications.types.information)
+        end
+    end)
+    if (not sent) then presence.lobby_busy = nil end
+end
 presence.update = function(force)
     -- PAINT also calls this outside a match so disconnects invalidate late replies.
     local connected = check_conditions()
     if (not connected) then
         if (presence.connected ~= false) then presence.reset(false) end
         presence.connected = false
+        presence.lobby()
         return
     end
+    presence.lobby_next, presence.lobby_busy = nil, nil
     if (presence.connected == false) then presence.reset(false) end
     presence.connected = true
     local now, enabled = globals.real_time(), ui.utils.shared_esp:get()

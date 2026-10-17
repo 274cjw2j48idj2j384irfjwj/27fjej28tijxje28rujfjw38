@@ -435,6 +435,11 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   0.12 s old, a choking target updates every 8-15 ticks and a defensive shift is no record) and hit 63 % against 84 % with one.
   Now the last value (`prev.held`, with its hypothesis) stays for 0.6 s and is written again; a target with no choke for 8 updates
   (no desync possible) still gets 0. Watch `cd` None / `vl` 0 in the next logs.
+- Shared ESP in the lobby (owners, Oct 2026: "a shared esp ne csak meccsben mukodjon hanem lobbyba is"): outside a game `presence.update`
+  calls `presence.lobby` (PAINT polls it): the party members (`PartyListAPI`, up to 10, steam id from the xuid, our own from
+  `MyPersonaAPI`) are asked with the same `/presence` hashes every 30 s, our own badge goes out with `me=` when Shared ESP is on, the
+  found ones are listed by name ("name ~ prim user (v)" / "gs user") and announced once; no scoreboard moon (no entity). Needs
+  PAINT to run in the menu: not confirmed in game.
 - Flag, third try (owners, Oct 2026: still not covered): `find_flag` also takes an image panel whose source path says flag / country
   (`GetImageSrc`), and the flag is hidden with width 0 + opacity 0 as well (given back on destroy). Send the "Dump scoreboard row" output if it stays.
 - Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";
