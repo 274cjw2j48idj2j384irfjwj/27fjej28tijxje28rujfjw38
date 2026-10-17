@@ -1066,7 +1066,8 @@ time_to_ticks = function(t) return math.floor(t * 64 + 0.5) end
 SIM, NOW, ORIGIN = 0, 0, { x = 0, y = 0, z = 0 }
 globals = { real_time = function() return NOW end, interval_per_tick = function() return 1 / 64 end }
 local function item(v) return { get = function() return v end } end
-ui = { ragebot = { resolver = { shot_pred = item(15) } } }
+LEARN = 100
+ui = { ragebot = { learn_rate = { get = function() return LEARN end }, resolver = { shot_pred = item(15) } } }
 resolver = { data = {}, mem = {}, previous = {}, misses = {}, shots = {}, epoch = 0, stats = {} }
 resolver.state_of = function() return "stand" end
 resolver.network = function() return { ping = 100 } end
@@ -1142,6 +1143,23 @@ check(tuple(r[:6]) == (True,) * 6 and r[6] == "stand,6,1,2,1,1,1,nil,jitter,6" a
       "enemy defensive / lag break: the shift observed a round trip after the shot flags it, such a miss is no resolver miss "
       "and teaches nothing, a hit still counts, an old shift / walking flags nothing, the stats per state show it as "
       "defensive / lag break (%s)" % (r,))
+
+# "Resolver learning" slider (owners, Oct 2026): 0 % learns nothing, 50 % half a point per result, 100 % the full one
+r = D("""
+local out = {}
+for i, rate in ipairs({ 100, 50, 0 }) do
+    LEARN = rate
+    local key = "learn" .. i
+    resolver.previous[3] = { key = key, kind = "jitter", candidate = 1, m_flDesync = 20, rel = 1 }
+    local mem = resolver.memory(3, key)
+    local good = mem.candidates[1].good
+    RESULT(100 + rate, true, false, nil)
+    out[i] = mem.candidates[1].good - good
+end
+LEARN = 100
+return out[1] > 0.99 and out[1] < 1.01, out[2] > 0.49 and out[2] < 0.51, math.abs(out[3]) < 1e-9
+""")
+check(tuple(r) == (True, True, True), "Resolver learning: 100%% the full result, 50%% half, 0%% the hypotheses stay as they are (%s)" % (r,))
 
 # what was learned stays with the PLAYER: a dormant phase / respawn keeps it, another player in the slot does not
 r = J("""

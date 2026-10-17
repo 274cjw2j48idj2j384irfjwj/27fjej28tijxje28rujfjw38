@@ -470,6 +470,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   Default off (owners, Oct 2026: "eddig legalabb predict jo volt mostmar az se a resolver szar"): the logs of Oct 16 / 17 (278 shots) had the hit rate of shots that were
   not spoiled by an enemy defensive at 0.92 on Oct 16 and 0.75-0.77 on Oct 17 (the day it came in); the fake ping then starts only when an enemy shows, so the first
   shots have no old records to hit. 26 % of the shots are `df` (enemy defensive / lag break) and hit 0.39: that is the target's, not the resolver's.
+- Resolver learning slider (owners, Oct 2026: "a lovesekbol mennyire tanul a resolver? ... csuszkat hogy hany %ban tanuljon"): the resolver learns from every
+  counted result (`resolver.on_result`: a hit = +1 good, a resolver miss = +1 bad for the hypothesis used, plus the 3 % pull back toward the start). Resolver page
+  "Resolver learning" (0-100 %, set to 100 at the start; new item at the END of the group): the weight of a result, 100 = as before, 50 = half a point and half the
+  pull, 0 = the hypotheses never change (the miss counters and the stats still run). Not a model-fitting rate in the AI sense: there is no network, only these counts.
 - hvh.gg servers (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg"; then "crashes the game after i refresh hvh.gg"):
   Misc > Servers has a second list "HvH servers (hvh.gg)" + "Connect to the selected hvh.gg server" / "Refresh hvh.gg" (`servers.hvh_*`). The lua
   does NOT ask hvh.gg itself (the first version did, through the steam http library, and a big page crashed the game): server.js `GET /hvhgg`
