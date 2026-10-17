@@ -463,10 +463,13 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   the script = no anti-aim at all. `direct_base` is nil guarded (view angles / eye / render origin).
 - Less hittable (owners, Oct 2026: "fix antiaim to be less hittable"), two changes from the 1290 AA rows (see the audit above): (1) the Defensive is
   OFF in every state of default.cfg / "Apply advanced preset" (its events: head share 28 % against 22 % without it, and the shift costs the double
-  tap; the Smart triggers stay set, switch it on per state in the menu); (2) "Fake ping only in sight" (Tickbase page, default on): the fake ping of
+  tap; the Smart triggers stay set, switch it on per state in the menu); (2) "Fake ping only in sight" (Tickbase page, default OFF since Oct 17 2026, see below): the fake ping of
   Improve backtrack delays what WE see, so running all the time we walked into enemies aiming at the corner; it now runs while an enemy is not dormant
   and 1 s after (`backtrack.seen_until`), 0 before. A fake ping slider set by hand still wins as the floor. The desync / yaw settings are untouched: the
   logs do not separate them (every setting 77-88 %). Judge by the head share per state and by `fp` in the next AA rows; to go back: untick the option.
+  Default off (owners, Oct 2026: "eddig legalabb predict jo volt mostmar az se a resolver szar"): the logs of Oct 16 / 17 (278 shots) had the hit rate of shots that were
+  not spoiled by an enemy defensive at 0.92 on Oct 16 and 0.75-0.77 on Oct 17 (the day it came in); the fake ping then starts only when an enemy shows, so the first
+  shots have no old records to hit. 26 % of the shots are `df` (enemy defensive / lag break) and hit 0.39: that is the target's, not the resolver's.
 - hvh.gg servers (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg"; then "crashes the game after i refresh hvh.gg"):
   Misc > Servers has a second list "HvH servers (hvh.gg)" + "Connect to the selected hvh.gg server" / "Refresh hvh.gg" (`servers.hvh_*`). The lua
   does NOT ask hvh.gg itself (the first version did, through the steam http library, and a big page crashed the game): server.js `GET /hvhgg`
