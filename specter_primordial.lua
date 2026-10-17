@@ -5046,6 +5046,7 @@ backtrack.predict = function(local_player)
     local eye = local_player:get_eye_position()
     if (eye == nil) then return end
     local net = resolver.network()
+    local own_velocity = local_player:get_prop("m_vecVelocity")
     local peekers, checked = {}, 0
     for _, enemy in pairs(entity_list_get_players(true) or {}) do
         if (checked >= 5) then
@@ -5085,7 +5086,17 @@ backtrack.predict = function(local_player)
                 local wall = trace_line(head, to, enemy, 0x400B)
                 if (wall ~= nil and type(wall.fraction) == "number" and wall.fraction == wall.fraction
                     and wall.fraction >= 0.98) then
-                    local later = trace_bullet(eye, to, local_player, enemy)
+                    -- we move too (auto peek, strafing): the shot leaves from where OUR eye will be, not from where it is now
+                    local from = eye
+                    if (own_velocity ~= nil and math.vec_length2d(own_velocity) > 8) then
+                        local moved = vec3_t(eye.x + own_velocity.x * ahead, eye.y + own_velocity.y * ahead, eye.z)
+                        local step = trace_line(eye, moved, local_player, 0x400B)
+                        if (step ~= nil and type(step.fraction) == "number" and step.fraction == step.fraction
+                            and step.fraction >= 0.98) then
+                            from = moved
+                        end
+                    end
+                    local later = trace_bullet(from, to, local_player, enemy)
                     local current = trace_bullet(eye, head, local_player, enemy)
                     if (later ~= nil and later.valid and (later.damage or 0) > 0
                         and not (current ~= nil and current.valid and (current.damage or 0) > 0)) then
