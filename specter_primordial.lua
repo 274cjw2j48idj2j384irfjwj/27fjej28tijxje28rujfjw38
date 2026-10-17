@@ -1186,7 +1186,7 @@ local ui = {
         list = menu_add_list("Servers", "Specter users on servers", {}, 8),
         connect = menu_add_button("Servers", "Connect to the selected", function() servers.connect() end),
         refresh = menu_add_button("Servers", "Refresh the list", function() servers.update(true) end),
-        hvh_list = menu_add_list("Servers", "HvH servers (hvh.gg)", {}, 8),
+        hvh_list = menu_add_list("Servers", "HvH servers (hvh.gg)", {}, 20),
         hvh_connect = menu_add_button("Servers", "Connect to the selected hvh.gg server", function() servers.hvh_connect() end),
         hvh_refresh = menu_add_button("Servers", "Refresh hvh.gg", function() servers.hvh_update(true) end),
     },
@@ -3652,7 +3652,7 @@ servers.hvh_rows = function(body)
     local out = {}
     if (not ok or type(data) ~= "table" or data.ok ~= true or type(data.list) ~= "table") then return nil end
     for i, row in ipairs(data.list) do
-        if (i > 100) then break end
+        if (i > 20) then break end
         if (type(row) == "table" and servers.valid(row.srv)) then
             out[#out + 1] = { srv = row.srv, name = tostring(row.name or "hvh.gg"):gsub("[^%w%s%-_.]", ""):sub(1, 24),
                 map = tostring(row.map or "?"):gsub("[^%w_]", ""):sub(1, 24), players = math.floor(tonumber(row.players) or 0) }
@@ -3663,7 +3663,8 @@ end
 servers.hvh_show = function(list)
     local rows, labels = {}, {}
     for _, row in ipairs(list) do
-        local label = string.format("%s ~ %s ~ %d pl ~ %s", row.name:sub(1, 24), row.map:sub(1, 24), row.players, row.srv)
+        -- only the name and the address, short enough for the list to need no scrolling (owners, Oct 2026)
+        local label = string.format("%s  %s", row.name:sub(1, 28), row.srv)
         rows[label] = row
         labels[#labels + 1] = label
     end

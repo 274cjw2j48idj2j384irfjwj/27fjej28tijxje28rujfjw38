@@ -475,6 +475,12 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   be reached from the build container, so the shape of its answer is NOT known: `hvh_parse` reads JSON objects (an ip:port in addr / address /
   connect / server, or ip + port, with name / map / players) at any depth, else every ip:port of the text. If the list stays empty (Oct 2026: "hvh.gg: no server found"), open `<server>/hvhgg?debug=1` in a browser: it lists per source the status, size, content type
   and the first 1500 characters of what hvh.gg / hvh.cat (the browser built on hvh.gg's data, `/csgo`) answered, send that and fix `HVH_SOURCES` from it.
+- hvh.gg list filter (owners, Oct 2026: "change only to eu servers and dont scroll just show the name and ip ... showing cs2 2018 and every server only csgo
+  2023"): the list works now, the rows are `name  ip:port` (no map / players), at most 20 (the list shows 20 rows, no scrolling). The fields of a hvh.gg row
+  are NOT known (the build container can not reach it), so `hvh_wanted` (server.js) judges a row by what its own scalar fields say: a value naming CS2
+  or the year 2018 drops it, and when a region / country / continent / location field exists it has to be a European one (`HVH_EU`); a row that says
+  nothing of a kind stays. If it still shows the wrong ones, `/hvhgg?debug=1` now lists per source the first 8 rows with all their fields and
+  whether they were kept (`rows`): send that and the filter is made exact.
 - Flag, third try (owners, Oct 2026: still not covered): `find_flag` also takes an image panel whose source path says flag / country
   (`GetImageSrc`), and the flag is hidden with width 0 + opacity 0 as well (given back on destroy). Send the "Dump scoreboard row" output if it stays.
 - Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";
