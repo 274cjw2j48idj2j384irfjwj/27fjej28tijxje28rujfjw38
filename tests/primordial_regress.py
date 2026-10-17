@@ -1305,6 +1305,11 @@ r = cl.eval("""(function()
     BUTTONS["Use"]()
     local get_url = ANSWER("G", { ok = true, data = "Zm9v" })
     local imported = IMPORTED
+    -- the server keeps the config as JSON text (it decodes the uploaded base64 parts): that goes in as it is (owners, Oct 2026: nobody else
+    -- could load a shared config, the lua base64-decoded the JSON text)
+    BUTTONS["Use"]()
+    ANSWER("G2", { ok = true, data = '{"x":1}' })
+    local json_imported = IMPORTED
     -- Update (the selected one's name): 7000 chars = 3 parts, part 0 alone first, then 1 and 2 together
     BUTTONS["Update"]()
     local first = #PENDING
@@ -1322,13 +1327,13 @@ r = cl.eval("""(function()
     info.plan = "dev"
     BUTTONS["Delete"]()
     local dev_url = PENDING[1] and PENDING[1].url
-    return list_url, rows, get_url, imported, first, after, up0, up1, refreshed, nothing, note, dev_url
+    return list_url, rows, get_url, imported, first, after, up0, up1, refreshed, nothing, note, dev_url, json_imported
 end)()""")
 check(r[0] == "https://srv/configs?lua=pm" and r[1] == "ann ~ new|bob ~ hvh"
       and r[2] == "https://srv/configs/get?lua=pm&name=hvh&author=bob" and r[3] == "CFG:Zm9v"
       and r[4] == 1 and r[5] == 2 and "upload_part?lua=pm&key=abc-key&hwid=PM-" in r[6] and "&name=hvh&total=3&idx=0&data=" in r[6]
       and "&idx=1&" in r[7] and r[8] == "https://srv/configs?lua=pm" and r[9] == 0 and "Log in once" in r[10]
-      and r[11] == "https://srv/configs/delete?lua=pm&dev=1&who=bob%20x&name=hvh",
+      and r[11] == "https://srv/configs/delete?lua=pm&dev=1&who=bob%20x&name=hvh" and r[12] == '{"x":1}',
       "cloud configs: list newest first, Use imports, upload in 3 parts (0 first), refresh after, no key = nothing sent, the "
       "dev build shares as dev=1 + user (%s)" % (r[:6] + (r[11],),))
 

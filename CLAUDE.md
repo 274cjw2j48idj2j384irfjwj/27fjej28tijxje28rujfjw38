@@ -443,6 +443,9 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - Users in the watermark row (owners, Oct 2026: "minden scoreboard cucc abba a sorba felul kene irnia", screenshot of the scoreboard with
   no moon / flag change): the found Specter users (the Shared ESP list `shared_data`, lobby ones too, not ourselves) are a segment of the
   watermark row: "Swify, EXC +1 specter" (2 names, then +N), shown only while somebody is found, no menu item.
+- Cloud config Use (owners, Oct 2026: "mas is be tudja tolteni mondjuk az enyemet mert nem tudjak"): `/configs/upload_part` decodes the uploaded
+  base64 parts and stores the config as JSON TEXT, `/configs/get` returns that text, but Use base64-decoded it again = "Unable to import"
+  for every shared config. Use now imports text that starts with `{` as it is (an old base64 one is still decoded).
 - Flag, third try (owners, Oct 2026: still not covered): `find_flag` also takes an image panel whose source path says flag / country
   (`GetImageSrc`), and the flag is hidden with width 0 + opacity 0 as well (given back on destroy). Send the "Dump scoreboard row" output if it stays.
 - Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";

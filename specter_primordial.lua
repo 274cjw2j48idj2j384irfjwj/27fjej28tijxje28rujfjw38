@@ -2767,7 +2767,11 @@ ui.load_cloud_config = menu_add_button("Cloud configs", "Use",
                 notifications.create("Specter", "The config is not on the cloud any more.", notifications.types.failure)
                 return
             end
-            local ok, decoded = pcall(libs.base64.decode, res.data)
+            -- the server keeps the config as JSON text (it decodes the uploaded parts); an older one may still be base64
+            local ok, decoded = true, res.data
+            if (decoded:match("^%s*{") == nil) then
+                ok, decoded = pcall(libs.base64.decode, res.data)
+            end
             local tmp = ui.nav.slider:get()
             if (not ok or not pcall(libs.eui.import, decoded)) then
                 notifications.create("Specter", "Unable to import the config!", notifications.types.failure)
