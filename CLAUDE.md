@@ -447,8 +447,8 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   base64 parts and stores the config as JSON TEXT, `/configs/get` returns that text, but Use base64-decoded it again = "Unable to import"
   for every shared config. Use now imports text that starts with `{` as it is (an old base64 one is still decoded).
 - Jumpshot helper (owners, Oct 2026: "ne stuckoljunk airbe ha lat valaki hanem tovabb bhoppolhat"): it switched Primordial's In-Air autostop
-  on while we were in the air, which stopped us the moment an enemy was in view. It only toggles the autostrafer now (in the air = on);
-  the autostop option stays the user's.
+  on while we were in the air, which stopped us the moment an enemy was in view. The autostrafer follows the air state; the in-air autostop is on
+  its own keybind ("Air stop keybind" under the Jumpshot helper, owners: "azt bindelhetore kene tenni"): held / toggled on = on, else off.
 - Flag, third try (owners, Oct 2026: still not covered): `find_flag` also takes an image panel whose source path says flag / country
   (`GetImageSrc`), and the flag is hidden with width 0 + opacity 0 as well (given back on destroy). Send the "Dump scoreboard row" output if it stays.
 - Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";
