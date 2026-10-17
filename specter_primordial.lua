@@ -5355,6 +5355,7 @@ end
 -- 1 / 2 the side hint, full size, as is / mirrored; 3 / 4 the same, half size; 5 no desync; 6 / 7 the computed body
 -- yaw of the feet model, as is / mirrored; 8 / 9 the side the jitter pattern predicts for the NEXT record, as is / mirrored
 resolver.NCAND = 9
+resolver.MIRROR = { [1] = 2, [2] = 1, [3] = 4, [4] = 3, [6] = 7, [7] = 6, [8] = 9, [9] = 8 }
 resolver.PRIOR = { 0.14, 0.02, 0.08, 0.00, -0.03, 0.0, 0.0, 0.0, 0.0 }
 -- opt.skip[i] = the hypothesis does not apply now, opt.bonus[i] = what the situation says for it before any result
 -- what the common anti-aims do in each state (read from the Primordial workshop builders: Formal Yaw, Anti-Aim Builder, Destroy,
@@ -5521,6 +5522,8 @@ end
 resolver.K = {
     zero = 20,          -- |computed body yaw| below this: the feet model sees no desync (micromovement keeps the LBY on the eye yaw)
     shift = 0.5,        -- a sim time that goes back by less (s) is a tickbase shift (defensive), not a reset
+    lby_period = 1.1,   -- a standing target's LBY target updates this often (s)
+    lby_window = 0.1,   -- the share around the update where "no desync" gets a small bonus
     idle = 2,           -- seconds a situation can go unused before its learning starts to fade
     idle_tau = 8,       -- the fade: exp(-(unused - idle) / idle_tau)
     round_keep = 0.5,   -- how much of what was learned about a player stays into the next round
@@ -6100,6 +6103,18 @@ resolver.update = function(local_player, ent)
         opt.skip[8], opt.skip[9] = true, true
     else
         opt.bonus[8] = 0.15 * (p.period_conf or 0) + (p.jit_kind == "cyclic" and 0.04 or 0)
+    end
+    -- after a resolver miss the OPPOSITE side of the hypothesis that failed is preferred at once (owners, Oct 2026)
+    local mirror = mem.last_failed and resolver.MIRROR[mem.last_failed]
+    if (mirror ~= nil and not opt.skip[mirror]) then
+        opt.bonus[mirror] = (opt.bonus[mirror] or 0) + 0.08
+    end
+    -- a standing target's LBY target updates every 1.1 s: around that moment the feet swing to the eye yaw (no desync)
+    if (p.lby_at ~= nil and speed < 5 and bit.band(flags, 1) ~= 0) then
+        local phase = (globals.real_time() - p.lby_at) % resolver.K.lby_period
+        if (phase >= resolver.K.lby_period - resolver.K.lby_window or phase <= resolver.K.lby_window) then
+            opt.bonus[5] = (opt.bonus[5] or 0) + 0.06
+        end
     end
     local candidate = resolver.choose(mem, confidence, ui.ragebot.reso_cfg.yaw_calc:get() == 3, opt)
     local half = res_custom() and res_clamp(ui.ragebot.resolver.pred_sel:get(), 25, 70) / 100 or 0.5
