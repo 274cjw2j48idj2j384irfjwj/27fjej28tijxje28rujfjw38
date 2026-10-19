@@ -541,6 +541,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   somebody switches it on. Resolver page "Min confidence for head" (a head safe point below it) and "Force body below confidence" (body only below it); the confidence is
   `resolver.confidence(idx)` = the Beta mean (good / (good + bad), 0-100) of the hypothesis in use for that target and situation, nil while nothing is learned; shot logs carry it as `cf`.
   Judge them by the hit rate per `cf` band in the logs before using a value.
+- Pattern snippets the owners pasted (PlayerState cache, defensive detector, dual rate learning, confidence -> hitscan, dynamic max desync, choked micro jitter): the detector, the learning
+  (weight = Resolver learning), the confidence feedback and the micro noise were in already (`resolver.track` events, `resolver.on_result`, `resolver.confidence`, `builder.noise`).
+  New: a resolver miss at a low hit chance counts less (`on_result`: 0.5 at hc 0 up to 1 at hc 100 of a point), the spread is more likely there than the resolver. Not built: the cache (one
+  more copy of `resolver.data`), dynamic desync (the builder amounts are fractions of the engine limit; `antiaim_get_max_desync_range` is imported and unused).
 - hvh.gg servers (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg"; then "crashes the game after i refresh hvh.gg"):
   Misc > Servers has a second list "HvH servers (hvh.gg)" + "Connect to the selected hvh.gg server" / "Refresh hvh.gg" (`servers.hvh_*`). The lua
   does NOT ask hvh.gg itself (the first version did, through the steam http library, and a big page crashed the game): server.js `GET /hvhgg`
