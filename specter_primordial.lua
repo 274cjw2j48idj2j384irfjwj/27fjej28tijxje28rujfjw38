@@ -154,10 +154,10 @@ end)()
 
 -- the last load step reaches csgo/specter/load_trace.txt BEFORE the next one runs (owners, Oct 2026: the game froze at the load and the console stages
 -- could not be read): after a freeze the file names the part that never finished; "loaded" = the load went through
-libs.step = function(name)
+load_step = function(name)
     pcall(libs.filesystem.write, "load_trace.txt", tostring(name))
 end
-libs.step("libs ready")
+load_step("libs ready")
 
 libs.tools.http = libs.httpcreator.new(
     {
@@ -369,7 +369,7 @@ return { create: create, destroy: destroy, clear: clear, update: update,
 
 --- @info: shit codes
 --- @region: useful codes
-libs.step("region: useful codes")
+if (load_step) then load_step("region: useful codes") end
 
 ffi.cdef [[
     typedef struct {float x, y, z;}vec3_t;
@@ -623,7 +623,7 @@ local utilitize = {
 local get_entity_address = utilitize.this_call(ffi.cast("get_client_entity_t", utilitize.entity_list_003[0][3]), utilitize.entity_list_003)
 
 
-libs.step("hud / chat signatures")
+if (load_step) then load_step("hud / chat signatures") end
 local hud = find_sig("client.dll", "B9 ?? ?? ?? ?? 88 46 09", "void*", 1, 1)
 local hud_chat = find_sig("client.dll", "55 8B EC 53 8B 5D 08 56 57 8B F9 33 F6 39 77 28", "void***(__thiscall*)(void*, const char*)")(hud, "CHudChat")
 
@@ -636,11 +636,11 @@ local engine_client = ffi.cast(ffi.typeof("void***"), memory_create_interface("e
 local console_is_visible = ffi.cast("console_is_visible", engine_client[0][11])
 
 
-libs.step("fs_tesla signature")
+if (load_step) then load_step("fs_tesla signature") end
 local fs_tesla = ffi.cast("FX_TeslaFn", memory_find_pattern("client.dll", "55 8B EC 81 EC ? ? ? ? 56 57 8B F9 8B 47 18"))
 
 
-libs.step("clipboard vtable")
+if (load_step) then load_step("clipboard vtable") end
 local get_text_count = v_table_bind("vgui2.dll", "VGUI_System010", 7, "int(__thiscall*)(void*)")
 local set_clipboard = v_table_bind("vgui2.dll", "VGUI_System010", 9, "void(__thiscall*)(void*, const char*, int)")
 local get_clipboard = v_table_bind("vgui2.dll", "VGUI_System010", 11, "int(__thiscall*)(void*, int, const char*, int)")
@@ -726,7 +726,7 @@ end
 
 --- @info: authentication
 --- @region: main cloud
-libs.step("region: main cloud")
+if (load_step) then load_step("region: main cloud") end
 
 local loader = loader or {}
 
@@ -817,7 +817,7 @@ end
 
 --- @info: default values, settings etc
 --- @region: variables
-libs.step("region: variables")
+if (load_step) then load_step("region: variables") end
 
 local settings_file = "settings.json"
 local function read_settings()
@@ -1048,7 +1048,7 @@ end
 
 --- @info: ui management
 --- @region: menu style(s)
-libs.step("region: menu style(s)")
+if (load_step) then load_step("region: menu style(s)") end
 
 local states = {"Global", "Stand", "Move", "Slow walk", "Duck", "Duck move", "Air", "Air duck", "Fakelag", "Manual", "Freestand"}
 local shortstates = {"G", "S", "M", "SW", "D", "DM", "A", "AD", "F", "MN", "FR"}
@@ -1796,7 +1796,7 @@ end
 
 --- @info: advanced print
 --- @region: print
-libs.step("region: print")
+if (load_step) then load_step("region: print") end
 
 print = function(...)
     local args = {...}
@@ -1924,7 +1924,7 @@ end
 
 --- @info: lua helpers
 --- @region: useful thing(s)
-libs.step("region: useful thing(s)")
+if (load_step) then load_step("region: useful thing(s)") end
 
 -- configs funcs
 
@@ -2571,7 +2571,7 @@ end
 
 --- @info: config system
 --- @region: config
-libs.step("region: config")
+if (load_step) then load_step("region: config") end
 
 -- cloud based
 
@@ -3161,7 +3161,7 @@ end)
 
 --- @info: lua network, clantag [sync]
 --- @region: clantag
-libs.step("region: clantag")
+if (load_step) then load_step("region: clantag") end
 
 local clantag_prev
 clan_anim = function(indices)
@@ -3774,7 +3774,7 @@ end
 
 --- @info: advanced fast ladder with up and down selection
 --- @region: fastladder
-libs.step("region: fastladder")
+if (load_step) then load_step("region: fastladder") end
 
 fast_ladder = function(cmd)
     if (ui.player.fast_ladder:get(1) or ui.player.fast_ladder:get(2)) then
@@ -3865,7 +3865,7 @@ end
 
 --- @info: advanced super toss with multiple selection methods
 --- @region: super_toss
-libs.step("region: super_toss")
+if (load_step) then load_step("region: super_toss") end
 
 toss.ang_vec = function(ang)
     return vec3_t(math.cos(ang.x * math.pi / 180) * math.cos(ang.y * math.pi / 180), math.cos(ang.x * math.pi / 180) * math.sin(ang.y * math.pi / 180), -math.sin(ang.x * math.pi / 180))
@@ -3947,7 +3947,7 @@ end
 
 --- @info: nofall dmg when landing
 --- @region: nofall
-libs.step("region: nofall")
+if (load_step) then load_step("region: nofall") end
 
 calculate_fall = function(length)
     local local_player = entity_list_get_local_player()
@@ -4004,7 +4004,7 @@ end
 
 --- @info: defensive safepoint
 --- @region: safe def
-libs.step("region: safe def")
+if (load_step) then load_step("region: safe def") end
 
 -- Network budgets are measured in seconds; menu thresholds are milliseconds.
 resolver.network = function()
@@ -4048,7 +4048,7 @@ end
 
 --- @info: multipoint correction
 --- @region: dmg pred
-libs.step("region: dmg pred")
+if (load_step) then load_step("region: dmg pred") end
 
 local damage = {
     scale = {
@@ -4143,7 +4143,7 @@ end
 
 --- @info: boost the prediction time
 --- @region: accuracy boost
-libs.step("region: accuracy boost")
+if (load_step) then load_step("region: accuracy boost") end
 
 accuracy_boost = function(ctx, cmd, unpredicted_data)
     -- Preserve native accuracy requirements on latency-sensitive peeks.
@@ -4165,7 +4165,7 @@ end
 
 --- @info: anti afk
 --- @region: antiafk
-libs.step("region: antiafk")
+if (load_step) then load_step("region: antiafk") end
 
 antiafk = function(cmd)
     if (ui.misc.antiafk:get()) then
@@ -4206,7 +4206,7 @@ end
 
 --- @info: it will defuse at 5.1 or 10.1 sec
 --- @region: defuse bot
-libs.step("region: defuse bot")
+if (load_step) then load_step("region: defuse bot") end
 
 enemies_dead = function()
     for _, enemy in pairs(entity_list_get_players(true)) do
@@ -4264,7 +4264,7 @@ end
 
 --- @info: knifebot helper
 --- @region: knifebot
-libs.step("region: knifebot")
+if (load_step) then load_step("region: knifebot") end
 
 knifebot_helper = function(cmd)
     if (ui.misc.knifebot_helper:get()) then
@@ -4291,7 +4291,7 @@ end
 
 --- @info: zeus vs rushers
 --- @region: zeus rush
-libs.step("region: zeus rush")
+if (load_step) then load_step("region: zeus rush") end
 
 -- (owners, Oct 2026: "ha valaki jön felém késsel akkor zeust vesz elő és lezeusolja, és ha valaki zeussal akkor is zeust, ha
 -- egy helyben állsz hamarabb lő a zeus"): an enemy that runs at us with a knife or a zeus makes us take our own zeus out, and the
@@ -4455,7 +4455,7 @@ end
 
 --- @info: evade message
 --- @region: antibrute
-libs.step("region: antibrute")
+if (load_step) then load_step("region: antibrute") end
 
 for i = 1, 28 do
     evades.backtrack_poses[i] = vec3_t.new(0, 0, 0)
@@ -4806,7 +4806,7 @@ end
 
 --- @info: repeats everyone's message
 --- @region: talkback
-libs.step("region: talkback")
+if (load_step) then load_step("region: talkback") end
 
 on_talkback = function(event)
     if (ui.player.talk_back:get()) then
@@ -4848,7 +4848,7 @@ end
 
 --- @info: trash talk
 --- @region: killsay
-libs.step("region: killsay")
+if (load_step) then load_step("region: killsay") end
 
 local old_phrase = ""
 on_killsay = function(event)
@@ -4949,7 +4949,7 @@ end
 
 --- @info: fast weapon switch
 --- @region: fast switch
-libs.step("region: fast switch")
+if (load_step) then load_step("region: fast switch") end
 
 on_zeus = function(shot)
     if (ui.misc.fast_switch:get()) then
@@ -4992,7 +4992,7 @@ end
 
 --- @info: optimized backtrack
 --- @region: backtrack system
-libs.step("region: backtrack system")
+if (load_step) then load_step("region: backtrack system") end
 
 -- Backtracking itself is Primordial's: its records, and the tick count it sends with the shot (the server rewinds the
 -- players to that tick). The old code here wrote cmd.tick_count on every command from a record of the enemy nearest the
@@ -5000,7 +5000,7 @@ libs.step("region: backtrack system")
 -- What a lua can add: more fake latency (the server takes records within 0.2 s of our real + fake latency, so older
 -- records become hittable) and the order the aimbot picks targets in.
 --- @region: engine prediction
-libs.step("region: engine prediction")
+if (load_step) then load_step("region: engine prediction") end
 -- Our own movement run through the game's prediction (owners, Oct 2026: "miaz hogy nincs ffi nezd meg ujra"): the Primordial lua has ffi,
 -- memory_create_interface / memory_find_pattern / memory_get_vfunc, so CPrediction::SetupMove, CGameMovement::ProcessMovement and
 -- CPrediction::FinishMove can be called with a user command of our own. EXPERIMENTAL and off by default: the vtable indexes and
@@ -5391,7 +5391,7 @@ resolver.stat_lines = function()
 end
 --- @info: resolver: side from freestanding / jitter, learned per player and state from hits and misses
 --- @region: resolver
-libs.step("region: resolver")
+if (load_step) then load_step("region: resolver") end
 -- [pm-resolver:begin] the loader's beta version is built without this part (make_primordial_beta in discord_bot.py)
 
 -- Primordial's own resolver does the resolving (its animation fix and records; no workshop lua writes an enemy's feet
@@ -6707,7 +6707,7 @@ end
 --- (/shotlog, base64 parts) every 40 shots and at round start; the bot writes them to the "shotlogs" branch, folder
 --- shotlogs/primordial (the batch ids start with "pm"). No names: the target is a hash of its steam id with a salt of this load
 --- @region: shot logs
-libs.step("region: shot logs")
+if (load_step) then load_step("region: shot logs") end
 
 local shotlog = { server = presence.server, buf = {}, sending = false,
                   salt = tostring(client_get_unix_time()) .. tostring(math.random(1000000)) }
@@ -6988,7 +6988,7 @@ end
 
 --- @info: cool team animation with ffi animation
 --- @region: animation
-libs.step("region: animation")
+if (load_step) then load_step("region: animation") end
 
 team_animation = function()
     -- the old version wrote RANDOM numbers into the animation state of every enemy (a random "resolver" that fought the real one,
@@ -7001,7 +7001,7 @@ end
 
 --- @info: advanced antiaim (pasted from metaset)
 --- @region: antiaim
-libs.step("region: antiaim")
+if (load_step) then load_step("region: antiaim") end
 
 run_exploit = function(ctx, cmd, unpredicted)
     local weapon = entity_list_get_local_player():get_active_weapon()
@@ -8572,7 +8572,7 @@ end
 
 --- @info: rubberbang | no recharge until safe place | teleport back after shot | doubletap optimizer
 --- @region: quickfall | safe recharge | better hideshots | better doubletap
-libs.step("region: quickfall | safe recharge | better hideshots | better doubletap")
+if (load_step) then load_step("region: quickfall | safe recharge | better hideshots | better doubletap") end
 
 quick_fall = function(cmd, unpredicted_data)
     if (ui.exploits.quick_fall:get() and ui.quick_fall:get()) then
@@ -8738,7 +8738,7 @@ end
 
 --- @info: edge-yaw antiaim
 --- @region: edgeyaw
-libs.step("region: edgeyaw")
+if (load_step) then load_step("region: edgeyaw") end
 
 edgeyaw.fix_yaw = function(yaw)
     while (yaw > 180) do
@@ -8905,7 +8905,7 @@ end
 
 --- @info: hit and miss indicator
 --- @region: log indicator
-libs.step("region: log indicator")
+if (load_step) then load_step("region: log indicator") end
 
 handle_dragging = function()
     if (ui.utils.event_logs:get(1)) then
@@ -8959,7 +8959,7 @@ end
 
 --- @info: menu effect, watermark, keybinds spectator, crosshair indicator, gs indicator, china hat
 --- @region: visuals
-libs.step("region: visuals")
+if (load_step) then load_step("region: visuals") end
 
 lerp = function(time, a, b)
     return a * (1 - time) + b * time
@@ -9812,7 +9812,7 @@ end
 
 --- @info: handle menu
 --- @region: menu
-libs.step("region: menu")
+if (load_step) then load_step("region: menu") end
 
 materials_for_each(function(mat)
     for material = 1, #console_material do
@@ -10105,7 +10105,7 @@ end
 
 --- @info: main code
 --- @region: callbacks
-libs.step("region: callbacks")
+if (load_step) then load_step("region: callbacks") end
 
 do_player = function()
     perf.add(e_callbacks.PLAYER_ESP, "PLAYER_ESP", function(ctx)
@@ -10993,7 +10993,7 @@ end)
 
 --- @info: initialization of everything (so you wont crash)
 --- @region: init
-libs.step("region: init")
+if (load_step) then load_step("region: init") end
 
 print("preparing lua..")
 setup = function()
@@ -11175,77 +11175,77 @@ setup = function()
     end
 
     execute_tasks = function()
-        libs.step("execute_tasks: do_paint")
+        if (load_step) then load_step("execute_tasks: do_paint") end
         do_paint()
         print("preparing lua..", get_text_color(), " (stage 45%%)")
 
-        libs.step("execute_tasks: do_net")
+        if (load_step) then load_step("execute_tasks: do_net") end
         do_net()
         print("preparing lua..", get_text_color(), " (stage 50%%)")
 
-        libs.step("execute_tasks: do_event")
+        if (load_step) then load_step("execute_tasks: do_event") end
         do_event()
         print("preparing lua..", get_text_color(), " (stage 55%%)")
 
-        libs.step("execute_tasks: do_runcmd")
+        if (load_step) then load_step("execute_tasks: do_runcmd") end
         do_runcmd()
         print("preparing lua..", get_text_color(), " (stage 60%%)")
 
-        libs.step("execute_tasks: do_hitscan")
+        if (load_step) then load_step("execute_tasks: do_hitscan") end
         do_hitscan()
-        libs.step("execute_tasks: do_target")
+        if (load_step) then load_step("execute_tasks: do_target") end
         do_target()
         print("preparing lua..", get_text_color(), " (stage 65%%)")
 
-        libs.step("execute_tasks: do_setupcmd")
+        if (load_step) then load_step("execute_tasks: do_setupcmd") end
         do_setupcmd()
         print("preparing lua..", get_text_color(), " (stage 70%%)")
 
-        libs.step("execute_tasks: do_aimshoot")
+        if (load_step) then load_step("execute_tasks: do_aimshoot") end
         do_aimshoot()
         print("preparing lua..", get_text_color(), " (stage 75%%)")
 
-        libs.step("execute_tasks: do_antiaim")
+        if (load_step) then load_step("execute_tasks: do_antiaim") end
         do_antiaim()
         print("preparing lua..", get_text_color(), " (stage 80%%)")
 
-        libs.step("execute_tasks: do_aimmiss")
+        if (load_step) then load_step("execute_tasks: do_aimmiss") end
         do_aimmiss()
         print("preparing lua..", get_text_color(), " (stage 85%%)")
 
-        libs.step("execute_tasks: do_aimhit")
+        if (load_step) then load_step("execute_tasks: do_aimhit") end
         do_aimhit()
         print("preparing lua..", get_text_color(), " (stage 90%%)")
 
-        libs.step("execute_tasks: do_player")
+        if (load_step) then load_step("execute_tasks: do_player") end
         do_player()
         print("preparing lua..", get_text_color(), " (stage 95%%)")
     end
 
     finish_up = function()
-        libs.step("finish_up: reload_configs")
+        if (load_step) then load_step("finish_up: reload_configs") end
         configs.reload_configs()
-        libs.step("finish_up: restore_last")
+        if (load_step) then load_step("finish_up: restore_last") end
         configs.restore_last()
-        libs.step("finish_up: reload_cloud_configs")
+        if (load_step) then load_step("finish_up: reload_cloud_configs") end
         configs.reload_cloud_configs()
 
         print("preparing lua..", get_text_color(), " (stage 100%%)")
     end
 
-    libs.step("setup: imports (panorama js, moon icon)")
+    if (load_step) then load_step("setup: imports (panorama js, moon icon)") end
     imports_setup()
-    libs.step("setup: save_cfg")
+    if (load_step) then load_step("setup: save_cfg") end
     save_cfg()
-    libs.step("setup: fps_boost (cvars)")
+    if (load_step) then load_step("setup: fps_boost (cvars)") end
     fps_boost()
-    libs.step("setup: configure_groups")
+    if (load_step) then load_step("setup: configure_groups") end
     configure_groups()
-    libs.step("setup: execute_tasks (callbacks)")
+    if (load_step) then load_step("setup: execute_tasks (callbacks)") end
     execute_tasks()
-    libs.step("setup: finish_up (configs)")
+    if (load_step) then load_step("setup: finish_up (configs)") end
     finish_up()
-    libs.step("loaded")
+    if (load_step) then load_step("loaded") end
 
     collectgarbage("collect")
 
@@ -11258,7 +11258,7 @@ setup()
 
 --- @info: helper
 --- @region: search table(s)
-libs.step("region: search table(s)")
+if (load_step) then load_step("region: search table(s)") end
 
 table.insert(on_predict, false)
 table.contains = function(tbl, value)
