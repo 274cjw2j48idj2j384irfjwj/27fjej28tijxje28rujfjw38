@@ -545,6 +545,12 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   (weight = Resolver learning), the confidence feedback and the micro noise were in already (`resolver.track` events, `resolver.on_result`, `resolver.confidence`, `builder.noise`).
   New: a resolver miss at a low hit chance counts less (`on_result`: 0.5 at hc 0 up to 1 at hc 100 of a point), the spread is more likely there than the resolver. Not built: the cache (one
   more copy of `resolver.data`), dynamic desync (the builder amounts are fractions of the engine limit; `antiaim_get_max_desync_range` is imported and unused).
+- Native resolver check (owners pasted an analysis claiming `native=true` shots and a `resolver.native` bug, Oct 19 2026): checked against the logs in `shotlogs/primordial`: `native` true on
+  Oct 14 (357 of 490) and Oct 15 (161 of 338), the days before the "no fallback" fix, and 0 of 331 on Oct 16 / 17. The only path to Primordial's resolver left is the disabler mode "Disable"
+  (`resolver.active` false -> `resolver.native(false, false)` gives back the user's OWN "Resolve Antiaim" setting, `auto_cfg.resolve_antiaim`): intended, the owners chose "Disable".
+  What the logs (Oct 16 / 17, 331 shots) do show: in the air 27 of 62 shots have NO value (`vl` 0, `cd` None) and hit 0.48 against 0.66 with one (ground: 0.66 without, 0.72 with); the
+  fake ping 400 (the user's own slider) 121 shots, non-defensive hit 0.73 against 0.78 at fp 0 (not significant). New shot log field `vw` = why there is no fresh value: "few" records,
+  "nochoke" (no desync possible), "stale" (no record under 0.12 s and the held value older than 0.6 s), "held" (the last value written again); read it before changing the hold.
 - hvh.gg servers (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg"; then "crashes the game after i refresh hvh.gg"):
   Misc > Servers has a second list "HvH servers (hvh.gg)" + "Connect to the selected hvh.gg server" / "Refresh hvh.gg" (`servers.hvh_*`). The lua
   does NOT ask hvh.gg itself (the first version did, through the steam http library, and a big page crashed the game): server.js `GET /hvhgg`

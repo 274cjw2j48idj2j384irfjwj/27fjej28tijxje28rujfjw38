@@ -5590,6 +5590,7 @@ resolver.capture = function(shot)
         s.candidate, s.desync = prev.candidate, prev.m_flDesync
         s.model, s.nxt = prev.model, prev.nxt
         s.phase, s.reliab = prev.phase, prev.reliab
+        s.vw = prev.vwhy
     end
     -- classified at the result (resolver.spoiled): the round trip and the state of the target at the shot
     s.rtt = resolver.network().ping / 1000
@@ -6310,6 +6311,7 @@ resolver.update = function(local_player, ent)
     end
     local able = p.samples >= 2 and p.nochoke < RES_NOCHOKE
     local applied = able and resolver.fresh(p)
+    local fresh_value = applied
     if (applied) then
         value = resolver.hypothesis(candidate, hint, nx and -nx or 0, half, resolver.max_desync(st), c)
         st.m_flGoalFeetYaw = res_norm(eye + value)
@@ -6331,6 +6333,9 @@ resolver.update = function(local_player, ent)
     prev.kind = kind
     prev.rel = value ~= 0 and res_sign(value * hint) or 0
     prev.candidate, prev.confidence = applied and candidate or nil, confidence
+    -- why a shot would carry no value (shot log `vw`): "few" records, "nochoke" (no desync possible), "stale" (no record under 0.12 s and the
+    -- held value older than 0.6 s), "held" = the last value was written again, nil = a fresh one
+    prev.vwhy = fresh_value and nil or applied and "held" or (p.samples < 2 and "few") or (p.nochoke >= RES_NOCHOKE and "nochoke") or "stale"
     prev.model, prev.nxt = c, nx
     prev.phase, prev.reliab = prof.phase, prof.rel
 end
@@ -6774,6 +6779,7 @@ shotlog.result = function(shot, hit)
         row.md, row.nx = shotlog.num(snap.model, 1), snap.nxt
         row.df, row.lb, row.sx = snap.defensive, snap.lagbreak, snap.state
         row.ph, row.rl = snap.phase, shotlog.num(snap.reliab, 2)
+        row.vw = snap.vw
         row.l6, row.l6w = shotlog.num(snap.l6, 6), shotlog.num(snap.l6w, 4)
         row.l3, row.l3w, row.l3c = shotlog.num(snap.l3, 6), shotlog.num(snap.l3w, 4), shotlog.num(snap.l3c, 3)
         row.l3s, row.l6s = shotlog.num(snap.l3s), shotlog.num(snap.l6s)
