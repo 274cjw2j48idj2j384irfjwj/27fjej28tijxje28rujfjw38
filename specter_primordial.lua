@@ -5590,6 +5590,7 @@ resolver.capture = function(shot)
         s.candidate, s.desync = selected.candidate, selected.m_flDesync
         s.model, s.nxt = selected.model, selected.nxt
         s.phase, s.reliab = selected.phase, selected.reliab
+        s.dstate = selected.state
         s.vw = prev.vwhy
     end
     -- classified at the result (resolver.spoiled): the round trip and the state of the target at the shot
@@ -5609,7 +5610,23 @@ resolver.capture = function(shot)
         return three.m_flPlaybackRate, three.m_flWeight, three.m_flCycle, three.m_nSequence, six.m_nSequence
     end)
     if (ok3) then s.l3, s.l3w, s.l3c, s.l3s, s.l6s = rate3, weight3, cycle3, seq3, seq6 end
-    s.state = resolver.state_of(shot.player)
+        s.state = resolver.state_of(shot.player)
+    -- every animation layer that has weight at the moment of the shot (index:sequence:weight:cycle:rate), read only: the log is
+    -- how a layer is proven to tell the side before it is used for a decision
+    local okly, ly = pcall(function()
+        local address = get_entity_address(idx)
+        local parts = {}
+        for i = 0, 12 do
+            local layer = get_anim_layer(address, i)
+            local w = tonumber(layer.m_flWeight)
+            if (w ~= nil and w == w and w > 0.001) then
+                parts[#parts + 1] = string.format("%d:%d:%.2f:%.2f:%.3f", i, tonumber(layer.m_nSequence) or -1, w,
+                    tonumber(layer.m_flCycle) or 0, tonumber(layer.m_flPlaybackRate) or 0)
+            end
+        end
+        return table.concat(parts, ";")
+    end)
+    if (okly and type(ly) == "string") then s.ly = ly end
     s.conf = resolver.confidence(idx)
     s.sp, s.hd = resolver.safe and resolver.safe[idx] or nil, resolver.why and resolver.why[idx] or nil   -- the policy AT FIRE time
         s.misses = resolver.misses[idx] or 0
@@ -6275,7 +6292,7 @@ resolver.update = function(local_player, ent)
             resolver.feet_limit(speed, tonumber(ent:get_prop("m_flDuckAmount"))), globals.tick_count(), globals.interval_per_tick())
     end
 
-    local mem = resolver.memory(idx, key, kind)
+    local mem = resolver.memory(idx, (kind == "jitter" and key .. "@" .. state) or key, kind)   -- jitter is learned per movement state
     -- a situation that was not seen for a while (a standing target that suddenly peeks) fades toward the start, exponentially,
     -- instead of keeping a stale bias (owners, Oct 2026)
     local now_t = globals.real_time()
@@ -6336,7 +6353,7 @@ resolver.update = function(local_player, ent)
         prev.held_context = {
             key = key, kind = kind, rel = value ~= 0 and res_sign(value * hint) or 0,
             candidate = candidate, m_flDesync = value, model = c, nxt = nx,
-            phase = prof.phase, reliab = prof.rel,
+            phase = prof.phase, reliab = prof.rel, state = state,
         }
     elseif (able and prev.held ~= nil and globals.real_time() - prev.held_at <= 0.6) then
         -- no newer record than 0.12 s (a choking target updates every 8-15 ticks, a defensive shift is no record): the last
@@ -6389,7 +6406,8 @@ resolver.on_result = function(target, hit_ok, resolver_miss, event, reason)
     if (snapshot.key == nil or snapshot.candidate == nil) then
         return
     end
-    local mem = resolver.memory(snapshot.idx, snapshot.key, snapshot.kind)
+    local decided = snapshot.dstate or snapshot.state
+    local mem = resolver.memory(snapshot.idx, (snapshot.kind == "jitter" and type(decided) == "string") and (snapshot.key .. "@" .. decided) or snapshot.key, snapshot.kind)
     local c = mem.candidates[snapshot.candidate]
     if (c == nil) then return end
     -- "Resolver learning" (owners, Oct 2026): how much of a result goes into the hypotheses, 100 = full, 0 = the resolver learns nothing
@@ -6446,8 +6464,14 @@ end
 -- (Beta mean good / (good + bad) of its situation); nil while there is nothing learned / no value yet
 resolver.confidence = function(idx)
     local prev, all = resolver.previous[idx], resolver.mem[idx]
-    local mem = prev ~= nil and prev.key ~= nil and all ~= nil and all[prev.key] or nil
-    local c = mem ~= nil and mem.candidates[prev.candidate or mem.selected or 1] or nil
+    -- a held angle belongs to the situation it was decided in, not to the current one
+    local owner = prev ~= nil and ((prev.vwhy == "held" and prev.held_context) or prev) or nil
+    local slot = owner ~= nil and owner.key or nil
+    if (slot ~= nil and owner.kind == "jitter" and type(owner.state) == "string") then
+        slot = slot .. "@" .. owner.state   -- a detected jitterer is learned per movement state
+    end
+    local mem = slot ~= nil and all ~= nil and all[slot] or nil
+    local c = mem ~= nil and mem.candidates[owner.candidate or mem.selected or 1] or nil
     if (c == nil) then return nil end
     return 100 * c.good / math.max(1e-6, c.good + c.bad)
 end
@@ -6885,7 +6909,8 @@ shotlog.result = function(shot, hit)
         row.l6, row.l6w = shotlog.num(snap.l6, 6), shotlog.num(snap.l6w, 4)
         row.l3, row.l3w, row.l3c = shotlog.num(snap.l3, 6), shotlog.num(snap.l3w, 4), shotlog.num(snap.l3c, 3)
         row.l3s, row.l6s = shotlog.num(snap.l3s), shotlog.num(snap.l6s)
-        row.cf = shotlog.num(snap.conf, 0)
+                row.cf = shotlog.num(snap.conf, 0)
+        row.ly = snap.ly
     end
         local usable = (snap ~= nil and snap.idx == idx) and snap or nil
     local okx, dxv, dxc, dxd = pcall(shotlog.diagnose, row, usable, shot, hit)

@@ -1093,7 +1093,7 @@ r = D("""
 for i = 1, 6 do REC(i % 2 == 0 and 30 or -30) end
 local p = resolver.data[3]
 resolver.previous[3] = { key = "jitter", kind = "jitter", candidate = 1, m_flDesync = 20, rel = 1 }
-local mem = resolver.memory(3, "jitter")
+local mem = resolver.memory(3, "jitter@stand")
 -- 1. a plain resolver miss counts
 local s1 = RESULT(1, false, true, "resolver")
 local plain = resolver.misses[3] == 1 and mem.candidates[1].bad > 1 and not s1.defensive and s1.state == "stand"
@@ -1214,7 +1214,7 @@ for i, rate in ipairs({ 100, 50, 0 }) do
     LEARN = rate
     local key = "learn" .. i
     resolver.previous[3] = { key = key, kind = "jitter", candidate = 1, m_flDesync = 20, rel = 1 }
-    local mem = resolver.memory(3, key)
+    local mem = resolver.memory(3, key .. "@stand")
     local good = mem.candidates[1].good
     RESULT(100 + rate, true, false, nil)
     out[i] = mem.candidates[1].good - good
@@ -1222,7 +1222,7 @@ end
 -- a hit on the body (aim group not the head) counts half of a head hit
 LEARN = 100
 resolver.previous[3] = { key = "learn4", kind = "jitter", candidate = 1, m_flDesync = 20, rel = 1 }
-local mem4 = resolver.memory(3, "learn4")
+local mem4 = resolver.memory(3, "learn4@stand")
 local g4 = mem4.candidates[1].good
 resolver.capture({ player = ENT, id = 900 })
 NOW = NOW + 0.1
