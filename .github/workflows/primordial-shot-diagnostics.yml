@@ -1,0 +1,63 @@
+name: Primordial shot fault log
+on:
+  push:
+    branches:
+      - feature/primordial-shot-diagnostics
+  pull_request:
+    branches:
+      - main
+    paths:
+      - specter_primordial.lua
+      - tools/apply_primordial_diagnostics.py
+      - tests/primordial_diagnostics_regress.py
+      - .github/workflows/primordial-shot-diagnostics.yml
+permissions:
+  contents: write
+concurrency:
+  group: primordial-diagnostics-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+jobs:
+  validate-and-apply:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install LuaJIT test runtime
+        run: python -m pip install lupa==2.6
+      - name: Apply the fault logger fragments
+        run: |
+          python tools/apply_primordial_diagnostics.py --apply
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff --exit-code -- specter_primordial.lua
+          fi
+      - name: Fault logger tests
+        run: python tests/primordial_diagnostics_regress.py
+      - name: Earlier safety tests
+        run: python tests/primordial_safety_regress.py
+      - name: Primordial regressions
+        run: python tests/primordial_regress.py
+      - name: Advanced Lua harness
+        run: |
+          python - <<'PY'
+          from lupa.luajit21 import LuaRuntime
+          lua = LuaRuntime(unpack_returned_tuples=True)
+          lua.execute('arg = {}; dofile("tests/primordial_advanced.lua")')
+          PY
+      - name: Commit the validated Lua to the feature branch
+        if: github.event_name == 'push'
+        run: |
+          if git diff --quiet -- specter_primordial.lua; then
+            echo "Already applied; nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- specter_primordial.lua
+          git commit -m "Added per shot fault log" -m "- [PM] Every shot now names the most likely reason it missed"
+          git push origin HEAD:feature/primordial-shot-diagnostics
