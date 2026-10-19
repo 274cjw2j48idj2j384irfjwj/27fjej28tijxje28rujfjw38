@@ -979,3 +979,8 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - Load freeze report (owners, Oct 19 2026: "primo mindig egybol fagy, tegnap meg mukodott"): the diff of that day touches no load-time native code (no ffi, no signature, no panorama); the only
   change that runs while the menu is open at the start was `menu_handle` writing the "Resolver learning" and "Defensive lock ticks" sliders (`.ref:set`) on EVERY frame. They are set once now
   (`ui.slider_defaults_set`), which also lets the user move them. Not confirmed as the freeze cause: if it stays, the known good file is the Oct 17 version (`git show 8a97498:specter_primordial.lua`).
+- Load trace (owners, Oct 19 2026: "primo mindig egybol fagy ... nem latjuk hany szazalek, elhomalyosodik a kep"): the load freezes before the console can be read and
+  the diff of the day has no load-time native code. `load_step(name)` (a global, the tests extract blocks without it: every call is `if (load_step) then ... end`) writes the current step to `csgo/specter/load_trace.txt` (settings.json's folder, overwritten, one line) BEFORE the
+  step runs: at every `--- @region:` (col 0, from "useful codes" on), the three native signature groups at the top (hud / chat, fs_tesla, clipboard vtable), every `setup()` stage, every
+  `execute_tasks` callback registration and the three `finish_up` parts; the last line "loaded" = the load went through. After a freeze the file says which step never finished. Keep a new
+  top-level region marked with a `load_step` line, and remove the trace only when the freeze is found.

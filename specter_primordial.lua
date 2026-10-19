@@ -152,6 +152,13 @@ libs.panorama = (function()
     local a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z,A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z,_,a0,a1,a2,a3,a4,a5,a6,a7,a8,a9,aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar;a={_VERSION=1.7}setmetatable(a,{__call=function(self)return self._VERSION end,__tostring=function(self)return self._VERSION end})b=require('ffi')do local as=b;c,d,e,f,g=as.cast,as.typeof,as.new,as.string,as.metatype end;h=function()return error('Unsupported provider')end;i=function()return error('Unsupported provider')end;j=function()return print('WARNING: Cleanup before shutdown disabled')end;local at;while true do if _G==nil then if quick_maths==nil then if info.fatality==nil then at='ev0lve'break end;at='fa7ality'break end;at='rifk7'break end;if MatSystem~=nil then at='spirthack'break end;if file~=nil then at='legendware'break end;if GameEventManager~=nil then at='memesense'break end;if penetration~=nil then at='pandora'break end;if math_utils~=nil then at='legion'break end;if plist~=nil then at='gamesense'break end;if network~=nil then at='neverlose'break end;if renderer~=nil and renderer.setup_texture~=nil then at='nixware'break end;at='primordial'break end;local au=at;if'ev0lve'==au then h=utils.find_pattern;i=utils.find_interface;j=function()end elseif'fa7ality'==au then h=utils.find_pattern;i=utils.find_interface;j=function()end elseif'primordial'==au then h=memory_find_pattern;i=memory_create_interface;j=function(av)return callbacks.add(e_callbacks.SHUTDOWN,av)end elseif'memesense'==au then h=Utils.PatternScan;i=Utils.CreateInterface;j=function(av)return Cheat.RegisterCallback('destroy',av)end elseif'legendware'==au then h=utils.find_signature;i=utils.create_interface;j=function(av)return client.add_callback('unload',av)end elseif'pandora'==au then h=client.find_sig;i=client.create_interface elseif'legion'==au then h=memory_find_pattern;i=memory_create_interface;j=function(av)return client.add_callback('on_unload',av)end elseif'gamesense'==au then h=function(aw,ax)local ay=''for az in ax:gmatch('%S+')do ay=ay..(az=='?'and'\xCC'or _G.string.char(tonumber(az,16)))end;return client.find_signature(aw,ay)end;i=client.create_interface;j=function(av)return client.set_event_callback('shutdown',av)end elseif'nixware'==au then h=client.find_pattern;i=se.create_interface;j=function(av)return client.register_callback("unload",av)end elseif'neverlose'==au then h=utils.opcode_scan;i=utils.create_interface;j=function()end elseif'rifk7'==au then h=function(aA,ax)local aB=c("uint32_t*",engine.signature(aA,ax))assert(tonumber(aB)~=0)return aB[0]end;i=function(aA,aC)aC=f.gsub(aC,"%d+","")return general.create_interface(aA,aC)end;print=function(aD)return general.log_to_console_colored("[lua] "..tostring(aD),255,141,161,255)end elseif'spirthack'==au then h=Utils.PatternScan;i=Utils.CreateInterface end;k=xpcall and pcall and true or false;l=b.C and at~='gamesense'm=function()for aE,aF in pairs(Z)do a3(aF):disposeGlobal()end end;n=error;if error then error=function(aG)m()return n(aG)end end;o=function(aG)return print('Caught lua exception in V8 HandleScope: ',tostring(aG))end;p=function(aG)return print('Caught lua exception in V8 Function Callback: ',tostring(aG))end;q=function(aH,aI)local aJ=getmetatable(aH)setmetatable(aH,nil)local aK=aH[aI]setmetatable(aH,aJ)return aK end;r=function(aH,aI,aL)local aJ=getmetatable(aH)setmetatable(aH,nil)aH[aI]=aL;return setmetatable(aH,aJ)end;if not rawget then rawget=q end;if not rawset then rawset=r end;s=function(aM,aN)return function(...)return aM(aN,...)end end;t=function(aO)local aP={}for aQ,aF in pairs(aO)do aP[aQ]=aF end;return aP end;u=function(aR,aS,aT,aU)local aV=c('void***',i(aR,aS))or error(aS..' is nil.')return s(c(aU,aV[0][aT]),aV)end;v=d('void***')w=function(aW,aX,aY)return c(aY,c(v,aW)[0][aX])end;x=function(aX,aY)local aO=d(aY)return function(aW,...)return w(aW,aX,aO)(aW,...)end end;y=(function()local aZ;aZ=function()return error('Failed to load GetProcAddress')end;local a_;a_=function()return error('Failed to load GetModuleHandleA')end;if l then b.cdef([[ uint32_t GetProcAddress(uint32_t, const char*); uint32_t GetModuleHandleA(const char*); ]])aZ=b.C.GetProcAddress;a_=b.C.GetModuleHandleA else aZ=c('uint32_t(__stdcall*)(uint32_t, const char*)',c('uint32_t**',c('uint32_t',h('engine.dll','FF 15 ? ? ? ? A3 ? ? ? ? EB 05'))+2)[0][0])a_=c('uint32_t(__stdcall*)(const char*)',c('uint32_t**',c('uint32_t',h('engine.dll','FF 15 ? ? ? ? 85 C0 74 0B'))+2)[0][0])end;if at=='gamesense'then local b0=h('engine.dll','51 C3')local b1=c('void*',aZ)aZ=function(b2,b3)local b4=c('uint32_t(__thiscall*)(void*, uint32_t, const char*)',b0)return b4(b1,b2,b3)end;local b5=c('void*',a_)a_=function(aw)local b6=c('uint32_t(__thiscall*)(void*, const char*)',b0)return b6(b5,aw)end end;return function(aA,b7,aU)return c(d(aU),aZ(a_(aA),b7))end end)()z=function(b8)local b9=c('uint8_t*',b8)local ba=b9[0]if(0xE8 or 0xE9)==ba then return c('uint32_t',b9+c('int32_t*',b9+1)[0]+5)elseif 0xFF==ba then if b9[1]==0x15 then return c('uint32_t**',c('const char*',b8)+2)[0][0]end else return b8 end end;A=function(...)local bb={...}local bc=#bb;local bd=e(('void*[%.f]'):format(bc))for aX=1,bc do bd[aX-1]=a4:fromLua(bb[aX]):getInternal()end;return bc,bd end;B=function(be)return function(bf)bf=aa(bf)local bb={}local bg=bf:length()if bg>0 then for aX=0,bg-1 do table.insert(bb,bf:get(aX))end end;local bh=nil;if k then local bi,bj=xpcall(function()return be(unpack(bb))end,p)if bi then bh=bj end else bh=be(unpack(bb))end;return bf:setReturnValue(a4:fromLua(bh):getInternal())end end;C=function(bh)local aX=1;for aE in pairs(bh)do if bh[aX]~=nil then aX=aX+1 else return false end end;return aX~=1 end;D=e('void*')E=e('int[1]')F={panelIDs={}}do local bk;local bl={get=function(self,aT,aO)return s(c(aO,self.this[0][aT]),self.this)end,getInstance=function(self)return self.this end}bl.__index=bl;bk=setmetatable({__init=function(self,b8)self.this=c('void***',b8)end,__base=bl,__name="vtable"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;G=bk end;do local bk;local bl={cache={},get=function(self,bo,aU)if not self.cache[bo]then self.cache[bo]=y(self.file,bo,aU)end;return self.cache[bo]end}bl.__index=bl;bk=setmetatable({__init=function(self,bp)self.file=bp end,__base=bl,__name="DllImport"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;H=bk end;I=G(u('panorama.dll','PanoramaUIEngine001',11,'void*(__thiscall*)(void*)')())J=I:get(36,'bool(__thiscall*)(void*,void const*)')K=I:get(56,'void*(__thiscall*)(void*)')L=I:get(113,'void****(__thiscall*)(void*,void*,char const*,char const*,int,int,bool)')M=s(c(d('void*(__thiscall*)(void*,void*,void*,void*,int,bool)'),z(h('panorama.dll','E8 ? ? ? ? 8B 4C 24 10 FF 15'))),I:getInstance())N=I:get(123,'void*(__thiscall*)(void*)')O=I:get(129,'void*(__thiscall*)(void*)')P=I:get(121,'void(__thiscall*)(void*, void*, void*)')Q=x(25,'void*(__thiscall*)(void*)')R=x(9,'const char*(__thiscall*)(void*)')S=x(40,'void*(__thiscall*)(void*,const char*)')T=x(218,'void*(__thiscall*)(void*)')U=s(c('void***(__thiscall*)(void*,void*)',z(h('panorama.dll','E8 ? ? ? ? 8B 00 85 C0 75 1B'))),I:getInstance())V={}W=function(bq)if V[bq]~=nil then return V[bq]end;V[bq]=T(bq)return V[bq]end;X=H('v8.dll')Y=O()Z={}do local bk;local bl={}bl.__index=bl;bk=setmetatable({__init=function(self,bh)self.this=c('void*',bh)end,__base=bl,__name="Message"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;_=bk end;do local bk;local bl={getInternal=function(self)return self.this end,isValid=function(self)return self.this[0]~=D end,getMessage=function(self)return _(self.this[0])end,globalize=function(self)local br=X:get('?GlobalizeReference@V8@v8@@CAPAPAVObject@internal@2@PAVIsolate@42@PAPAV342@@Z','void*(__cdecl*)(void*,void*)')(Y,self.this[0])local bs=a3(br)Z[bs:getIdentityHash()]=br;return bs end,__call=function(self)return a4(self.this[0])end}bl.__index=bl;bk=setmetatable({__init=function(self,bh)self.this=c('void**',bh)end,__base=bl,__name="Local"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;a0=bk end;do local bk;local bl={getInternal=function(self)return self.this end,toLocalChecked=function(self)if not(self.this[0]==D)then return a0(self.this)end end,toValueChecked=function(self)if not(self.this[0]==D)then return a4(self.this[0])end end}bl.__index=bl;bk=setmetatable({__init=function(self,bh)self.this=c('void**',bh)end,__base=bl,__name="MaybeLocal"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;a1=bk end;a2={__index=function(self,aI)local aN=rawget(self,'this')local bj=ak()(function()return aN:getAsValue():toObject():get(a4:fromLua(aI):getInternal()):toValueChecked():toLua()end)if type(bj)=='table'then rawset(bj,'parent',aN)end;return bj end,__newindex=function(self,aI,aL)local aN=rawget(self,'this')return ak()(function()return aN:getAsValue():toObject():set(a4:fromLua(aI):getInternal(),a4:fromLua(aL):getInternal()):toValueChecked():toLua()end)end,__len=function(self)local aN=rawget(self,'this')local bj=0;if aN.baseType=='Array'then bj=ak()(function()return aN:getAsValue():toArray():length()end)elseif aN.baseType=='Object'then bj=ak()(function()return aN:getAsValue():toObject():getPropertyNames():toValueChecked():toArray():length()end)end;return bj end,__pairs=function(self)local aN=rawget(self,'this')local bj;bj=function()return nil end;if aN.baseType=='Object'then ak()(function()local bt=a6(aN:getAsValue():toObject():getPropertyNames():toValueChecked())local bu,bv=0,bt:length()bj=function()bu=bu+1;local aI=bt[bu-1]if bu<=bv then return aI,self[aI]end end end)end;return bj end,__ipairs=function(self)local aN=rawget(self,'this')local bj;bj=function()return nil end;if aN.baseType=='Array'then ak()(function()local bu,bv=0,aN:getAsValue():toArray():length()bj=function()bu=bu+1;if bu<=bv then return bu,self[bu-1]end end end)end;return bj end,__call=function(self,...)local aN=rawget(self,'this')local bw={...}if aN.baseType~='Function'then error('Attempted to call a non-function value: '..aN.baseType)end;local bx=false;local bj=ak()(function()local by=al()by:enter()local bz=aN:getAsValue():toFunction():setParent(rawget(self,'parent'))(unpack(bw)):toLocalChecked()if by:hasCaught()then P(by:getInternal(),F.getPanel("CSGOJsRegistration"))if k then bx=true end end;by:exit()if bz==nil then return nil else return bz():toLua()end end)if bx then error("\n\nFailed to call the given javascript function, please check the error message above ^ \n\n(definitely not because I was too lazy to implement my own exception handler)\n")end;return bj end,__tostring=function(self)local aN=rawget(self,'this')return ak()(function()return aN:getAsValue():stringValue()end)end,__gc=function(self)local aN=rawget(self,'this')return aN:disposeGlobal()end}do local bk;local bl={setType=function(self,bh)self.baseType=bh;return self end,getInternal=function(self)return self.this end,disposeGlobal=function(self)return X:get('?DisposeGlobal@V8@v8@@CAXPAPAVObject@internal@2@@Z','void(__cdecl*)(void*)')(self.this)end,get=function(self)return a1(ak:createHandle(self.this))end,getAsValue=function(self)return a4(ak:createHandle(self.this)[0])end,toLua=function(self)return self:get():toValueChecked():toLua()end,getIdentityHash=function(self)return X:get('?GetIdentityHash@Object@v8@@QAEHXZ','int(__thiscall*)(void*)')(self.this)end,__call=function(self)return setmetatable({this=self,parent=nil},a2)end}bl.__index=bl;bk=setmetatable({__init=function(self,bh,bA)if bA==nil then bA='Value'end;self.this=bh;self.baseType=bA end,__base=bl,__name="Persistent"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;a3=bk end;do local bk;local bl={fromLua=function(self,bh)if bh==nil then return ac(Y):getValue()end;local bB=type(bh)local ba=bB;if'boolean'==ba then return ae(Y,bh):getValue()elseif'number'==ba then return af(Y,bh):getInstance()elseif'string'==ba then return ah(Y,bh):getInstance()elseif'table'==ba then if C(bh)then return a6:fromLua(Y,bh)else return a5:fromLua(Y,bh)end elseif'function'==ba then return a9(B(bh)):getFunction()()else return error('Failed to convert from lua to v8js: Unknown type')end end,isUndefined=function(self)return X:get('?IsUndefined@Value@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,isNull=function(self)return X:get('?IsNull@Value@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,isBoolean=function(self)return X:get('?IsBoolean@Value@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,isBooleanObject=function(self)return X:get('?IsBooleanObject@Value@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,isNumber=function(self)return X:get('?IsNumber@Value@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,isNumberObject=function(self)return X:get('?IsNumberObject@Value@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,isString=function(self)return X:get('?IsString@Value@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,isStringObject=function(self)return X:get('?IsStringObject@Value@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,isObject=function(self)return X:get('?IsObject@Value@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,isArray=function(self)return X:get('?IsArray@Value@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,isFunction=function(self)return X:get('?IsFunction@Value@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,booleanValue=function(self)return X:get('?BooleanValue@Value@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,numberValue=function(self)return X:get('?NumberValue@Value@v8@@QBENXZ','double(__thiscall*)(void*)')(self.this)end,stringValue=function(self)local bC=e('char*[2]')local bh=X:get('??0Utf8Value@String@v8@@QAE@V?$Local@VValue@v8@@@2@@Z','struct{char* str; int length;}*(__thiscall*)(void*,void*)')(bC,self.this)local bD=f(bh.str,bh.length)X:get('??1Utf8Value@String@v8@@QAE@XZ','void(__thiscall*)(void*)')(bC)return bD end,toObject=function(self)return a5(a1(X:get('?ToObject@Value@v8@@QBE?AV?$Local@VObject@v8@@@2@XZ','void*(__thiscall*)(void*,void*)')(self.this,E)):toValueChecked():getInternal())end,toArray=function(self)return a6(a1(X:get('?ToObject@Value@v8@@QBE?AV?$Local@VObject@v8@@@2@XZ','void*(__thiscall*)(void*,void*)')(self.this,E)):toValueChecked():getInternal())end,toFunction=function(self)return a7(a1(X:get('?ToObject@Value@v8@@QBE?AV?$Local@VObject@v8@@@2@XZ','void*(__thiscall*)(void*,void*)')(self.this,E)):toValueChecked():getInternal())end,toLocal=function(self)return a0(e('void*[1]',self.this))end,toLua=function(self)if self:isUndefined()or self:isNull()then return nil end;if self:isBoolean()or self:isBooleanObject()then return self:booleanValue()end;if self:isNumber()or self:isNumberObject()then return self:numberValue()end;if self:isString()or self:isStringObject()then return self:stringValue()end;if self:isObject()then if self:isArray()then return self:toArray():toLocal():globalize():setType('Array')()end;if self:isFunction()then return self:toFunction():toLocal():globalize():setType('Function')()end;return self:toObject():toLocal():globalize():setType('Object')()end;return error('Failed to convert from v8js to lua: Unknown type')end,getInternal=function(self)return self.this end}bl.__index=bl;bk=setmetatable({__init=function(self,bh)self.this=c('void*',bh)end,__base=bl,__name="Value"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;a4=bk end;do local bk;local bE=a4;local bl={fromLua=function(self,bF,bh)local bG=a5(a1(X:get('?New@Object@v8@@SA?AV?$Local@VObject@v8@@@2@PAVIsolate@2@@Z','void*(__cdecl*)(void*,void*)')(E,bF)):toValueChecked():getInternal())for aX,aF in pairs(bh)do bG:set(a4:fromLua(aX):getInternal(),a4:fromLua(aF):getInternal())end;return bG end,get=function(self,aI)return a1(X:get('?Get@Object@v8@@QAE?AV?$Local@VValue@v8@@@2@V32@@Z','void*(__thiscall*)(void*,void*,void*)')(self.this,E,aI))end,set=function(self,aI,aL)return X:get('?Set@Object@v8@@QAE_NV?$Local@VValue@v8@@@2@0@Z','bool(__thiscall*)(void*,void*,void*)')(self.this,aI,aL)end,getPropertyNames=function(self)return a1(X:get('?GetPropertyNames@Object@v8@@QAE?AV?$Local@VArray@v8@@@2@XZ','void*(__thiscall*)(void*,void*)')(self.this,E))end,callAsFunction=function(self,bH,bI,bJ)return a1(X:get('?CallAsFunction@Object@v8@@QAE?AV?$Local@VValue@v8@@@2@V32@HQAV32@@Z','void*(__thiscall*)(void*,void*,void*,int,void*)')(self.this,E,bH,bI,bJ))end,getIdentityHash=function(self)return X:get('?GetIdentityHash@Object@v8@@QAEHXZ','int(__thiscall*)(void*)')(self.this)end}bl.__index=bl;setmetatable(bl,bE.__base)bk=setmetatable({__init=function(self,bh)self.this=bh end,__base=bl,__name="Object",__parent=bE},{__index=function(bm,bK)local bh=rawget(bl,bK)if bh==nil then local bL=rawget(bm,"__parent")if bL then return bL[bK]end else return bh end end,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;if bE.__inherited then bE.__inherited(bE,bk)end;a5=bk end;do local bk;local bE=a5;local bl={fromLua=function(self,bF,bh)local bM=a6(a1(X:get('?New@Array@v8@@SA?AV?$Local@VArray@v8@@@2@PAVIsolate@2@H@Z','void*(__cdecl*)(void*,void*,int)')(E,bF,#bh)):toValueChecked():getInternal())for aX=1,#bh do bM:set(aX-1,a4:fromLua(bh[aX]):getInternal())end;return bM end,get=function(self,aI)return a1(X:get('?Get@Object@v8@@QAE?AV?$Local@VValue@v8@@@2@I@Z','void*(__thiscall*)(void*,void*,unsigned int)')(self.this,E,aI))end,set=function(self,aI,aL)return X:get('?Set@Object@v8@@QAE_NIV?$Local@VValue@v8@@@2@@Z','bool(__thiscall*)(void*,unsigned int,void*)')(self.this,aI,aL)end,length=function(self)return X:get('?Length@Array@v8@@QBEIXZ','uint32_t(__thiscall*)(void*)')(self.this)end}bl.__index=bl;setmetatable(bl,bE.__base)bk=setmetatable({__init=function(self,bh)self.this=bh end,__base=bl,__name="Array",__parent=bE},{__index=function(bm,bK)local bh=rawget(bl,bK)if bh==nil then local bL=rawget(bm,"__parent")if bL then return bL[bK]end else return bh end end,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;if bE.__inherited then bE.__inherited(bE,bk)end;a6=bk end;do local bk;local bE=a5;local bl={setParent=function(self,bh)self.parent=bh;return self end,__call=function(self,...)if self.parent==nil then return self:callAsFunction(aj(ai():getCurrentContext()):global():toValueChecked():getInternal(),A(...))else return self:callAsFunction(self.parent:getAsValue():getInternal(),A(...))end end}bl.__index=bl;setmetatable(bl,bE.__base)bk=setmetatable({__init=function(self,bh,bL)self.this=bh;self.parent=bL end,__base=bl,__name="Function",__parent=bE},{__index=function(bm,bK)local bh=rawget(bl,bK)if bh==nil then local bL=rawget(bm,"__parent")if bL then return bL[bK]end else return bh end end,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;if bE.__inherited then bE.__inherited(bE,bk)end;a7=bk end;do local bk;local bl={}bl.__index=bl;bk=setmetatable({__init=function(self)self.this=a1(X:get('?New@ObjectTemplate@v8@@SA?AV?$Local@VObjectTemplate@v8@@@2@XZ','void*(__cdecl*)(void*)')(E)):toLocalChecked()end,__base=bl,__name="ObjectTemplate"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;a8=bk end;do local bk;local bl={getFunction=function(self)return a1(X:get('?GetFunction@FunctionTemplate@v8@@QAE?AV?$Local@VFunction@v8@@@2@XZ','void*(__thiscall*)(void*, void*)')(self:this():getInternal(),E)):toLocalChecked()end,getInstance=function(self)return self:this()end}bl.__index=bl;bk=setmetatable({__init=function(self,bN)self.this=a1(X:get('?New@FunctionTemplate@v8@@SA?AV?$Local@VFunctionTemplate@v8@@@2@PAVIsolate@2@P6AXABV?$FunctionCallbackInfo@VValue@v8@@@2@@ZV?$Local@VValue@v8@@@2@V?$Local@VSignature@v8@@@2@HW4ConstructorBehavior@2@@Z','void*(__cdecl*)(void*,void*,void*,void*,void*,int,int)')(E,Y,c('void(__cdecl*)(void******)',bN),e('int[1]'),e('int[1]'),0,0)):toLocalChecked()end,__base=bl,__name="FunctionTemplate"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;a9=bk end;do local bk;local bl={kHolderIndex=0,kIsolateIndex=1,kReturnValueDefaultValueIndex=2,kReturnValueIndex=3,kDataIndex=4,kCalleeIndex=5,kContextSaveIndex=6,kNewTargetIndex=7,getHolder=function(self)return a1(self:getImplicitArgs_()[self.kHolderIndex]):toLocalChecked()end,getIsolate=function(self)return ai(self:getImplicitArgs_()[self.kIsolateIndex][0])end,getReturnValueDefaultValue=function(self)return a4(e('void*[1]',self:getImplicitArgs_()[self.kReturnValueDefaultValueIndex]))end,getReturnValue=function(self)return a4(e('void*[1]',self:getImplicitArgs_()[self.kReturnValueIndex]))end,setReturnValue=function(self,aL)self:getImplicitArgs_()[self.kReturnValueIndex]=c('void**',aL)[0]end,getData=function(self)return a1(self:getImplicitArgs_()[self.kDataIndex]):toLocalChecked()end,getCallee=function(self)return a1(self:getImplicitArgs_()[self.kCalleeIndex]):toLocalChecked()end,getContextSave=function(self)return a1(self:getImplicitArgs_()[self.kContextSaveIndex]):toLocalChecked()end,getNewTarget=function(self)return a1(self:getImplicitArgs_()[self.kNewTargetIndex]):toLocalChecked()end,getImplicitArgs_=function(self)return self.this[0]end,getValues_=function(self)return self.this[1]end,getLength_=function(self)return self.this[2]end,length=function(self)return tonumber(c('int',self:getLength_()))end,get=function(self,aX)if self:length()>aX then return a4(self:getValues_()-aX):toLua()else return end end}bl.__index=bl;bk=setmetatable({__init=function(self,bh)self.this=c('void****',bh)end,__base=bl,__name="FunctionCallbackInfo"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;aa=bk end;do local bk;local bE=a4;local bl={getValue=function(self)return self.this end,toString=function(self)return self.this:getValue():stringValue()end}bl.__index=bl;setmetatable(bl,bE.__base)bk=setmetatable({__init=function(self,bh)self.this=bh end,__base=bl,__name="Primitive",__parent=bE},{__index=function(bm,bK)local bh=rawget(bl,bK)if bh==nil then local bL=rawget(bm,"__parent")if bL then return bL[bK]end else return bh end end,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;if bE.__inherited then bE.__inherited(bE,bk)end;ab=bk end;do local bk;local bE=ab;local bl={}bl.__index=bl;setmetatable(bl,bE.__base)bk=setmetatable({__init=function(self,bF)self.this=a4(c('uintptr_t',bF)+0x48)end,__base=bl,__name="Null",__parent=bE},{__index=function(bm,bK)local bh=rawget(bl,bK)if bh==nil then local bL=rawget(bm,"__parent")if bL then return bL[bK]end else return bh end end,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;if bE.__inherited then bE.__inherited(bE,bk)end;ac=bk end;do local bk;local bE=ab;local bl={}bl.__index=bl;setmetatable(bl,bE.__base)bk=setmetatable({__init=function(self,bF)self.this=a4(c('uintptr_t',bF)+0x56)end,__base=bl,__name="Undefined",__parent=bE},{__index=function(bm,bK)local bh=rawget(bl,bK)if bh==nil then local bL=rawget(bm,"__parent")if bL then return bL[bK]end else return bh end end,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;if bE.__inherited then bE.__inherited(bE,bk)end;ad=bk end;do local bk;local bE=ab;local bl={}bl.__index=bl;setmetatable(bl,bE.__base)bk=setmetatable({__init=function(self,bF,bO)self.this=a4(c('uintptr_t',bF)+(function()if bO then return 0x4C else return 0x50 end end)())end,__base=bl,__name="Boolean",__parent=bE},{__index=function(bm,bK)local bh=rawget(bl,bK)if bh==nil then local bL=rawget(bm,"__parent")if bL then return bL[bK]end else return bh end end,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;if bE.__inherited then bE.__inherited(bE,bk)end;ae=bk end;do local bk;local bE=a4;local bl={getLocal=function(self)return self.this end,getValue=function(self)return self:getInstance():numberValue()end,getInstance=function(self)return self:this()end}bl.__index=bl;setmetatable(bl,bE.__base)bk=setmetatable({__init=function(self,bF,bh)self.this=a1(X:get('?New@Number@v8@@SA?AV?$Local@VNumber@v8@@@2@PAVIsolate@2@N@Z','void*(__cdecl*)(void*,void*,double)')(E,bF,tonumber(bh))):toLocalChecked()end,__base=bl,__name="Number",__parent=bE},{__index=function(bm,bK)local bh=rawget(bl,bK)if bh==nil then local bL=rawget(bm,"__parent")if bL then return bL[bK]end else return bh end end,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;if bE.__inherited then bE.__inherited(bE,bk)end;af=bk end;do local bk;local bE=af;local bl={}bl.__index=bl;setmetatable(bl,bE.__base)bk=setmetatable({__init=function(self,bF,bh)self.this=a1(X:get('?NewFromUnsigned@Integer@v8@@SA?AV?$Local@VInteger@v8@@@2@PAVIsolate@2@I@Z','void*(__cdecl*)(void*,void*,uint32_t)')(E,bF,tonumber(bh))):toLocalChecked()end,__base=bl,__name="Integer",__parent=bE},{__index=function(bm,bK)local bh=rawget(bl,bK)if bh==nil then local bL=rawget(bm,"__parent")if bL then return bL[bK]end else return bh end end,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;if bE.__inherited then bE.__inherited(bE,bk)end;ag=bk end;do local bk;local bE=a4;local bl={getLocal=function(self)return self.this end,getValue=function(self)return self:getInstance():stringValue()end,getInstance=function(self)return self:this()end}bl.__index=bl;setmetatable(bl,bE.__base)bk=setmetatable({__init=function(self,bF,bh)self.this=a1(X:get('?NewFromUtf8@String@v8@@SA?AV?$MaybeLocal@VString@v8@@@2@PAVIsolate@2@PBDW4NewStringType@2@H@Z','void*(__cdecl*)(void*,void*,const char*,int,int)')(E,bF,bh,0,#bh)):toLocalChecked()end,__base=bl,__name="String",__parent=bE},{__index=function(bm,bK)local bh=rawget(bl,bK)if bh==nil then local bL=rawget(bm,"__parent")if bL then return bL[bK]end else return bh end end,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;if bE.__inherited then bE.__inherited(bE,bk)end;ah=bk end;do local bk;local bl={enter=function(self)return X:get('?Enter@Isolate@v8@@QAEXXZ','void(__thiscall*)(void*)')(self.this)end,exit=function(self)return X:get('?Exit@Isolate@v8@@QAEXXZ','void(__thiscall*)(void*)')(self.this)end,getCurrentContext=function(self)return a1(X:get('?GetCurrentContext@Isolate@v8@@QAE?AV?$Local@VContext@v8@@@2@XZ','void**(__thiscall*)(void*,void*)')(self.this,E)):toValueChecked():getInternal()end,getInternal=function(self)return self.this end}bl.__index=bl;bk=setmetatable({__init=function(self,bh)if bh==nil then bh=Y end;self.this=bh end,__base=bl,__name="Isolate"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;ai=bk end;do local bk;local bl={enter=function(self)return X:get('?Enter@Context@v8@@QAEXXZ','void(__thiscall*)(void*)')(self.this)end,exit=function(self)return X:get('?Exit@Context@v8@@QAEXXZ','void(__thiscall*)(void*)')(self.this)end,global=function(self)return a1(X:get('?Global@Context@v8@@QAE?AV?$Local@VObject@v8@@@2@XZ','void*(__thiscall*)(void*,void*)')(self.this,E))end}bl.__index=bl;bk=setmetatable({__init=function(self,bh)self.this=bh end,__base=bl,__name="Context"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;aj=bk end;do local bk;local bl={enter=function(self)return X:get('??0HandleScope@v8@@QAE@PAVIsolate@1@@Z','void(__thiscall*)(void*,void*)')(self.this,Y)end,exit=function(self)return X:get('??1HandleScope@v8@@QAE@XZ','void(__thiscall*)(void*)')(self.this)end,createHandle=function(self,bh)return X:get('?CreateHandle@HandleScope@v8@@KAPAPAVObject@internal@2@PAVIsolate@42@PAV342@@Z','void**(__cdecl*)(void*,void*)')(Y,bh)end,__call=function(self,aM,bq)if bq==nil then bq=F.GetPanel('CSGOJsRegistration')end;local bF=ai()bF:enter()self:enter()local bP;if bq then bP=U(W(bq))[0]else bP=aj(bF:getCurrentContext()):global():getInternal()end;bP=aj((function()if bP~=D then return self:createHandle(bP[0])else return 0 end end)())bP:enter()local bh=nil;if k then local bi,bj=xpcall(aM,o)if bi then bh=bj end else bh=aM()end;bP:exit()self:exit()bF:exit()return bh end}bl.__index=bl;bk=setmetatable({__init=function(self)self.this=e('char[0xC]')end,__base=bl,__name="HandleScope"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;ak=bk end;do local bk;local bl={enter=function(self)return X:get('??0TryCatch@v8@@QAE@PAVIsolate@1@@Z','void(__thiscall*)(void*, void*)')(self.this,Y)end,exit=function(self)return X:get('??1TryCatch@v8@@QAE@XZ','void(__thiscall*)(void*)')(self.this)end,canContinue=function(self)return X:get('?CanContinue@TryCatch@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,hasTerminated=function(self)return X:get('?HasTerminated@TryCatch@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,hasCaught=function(self)return X:get('?HasCaught@TryCatch@v8@@QBE_NXZ','bool(__thiscall*)(void*)')(self.this)end,message=function(self)return a0(X:get('?Message@TryCatch@v8@@QBE?AV?$Local@VMessage@v8@@@2@XZ','void*(__thiscall*)(void*, void*)')(self.this,E))end,getInternal=function(self)return self.this end}bl.__index=bl;bk=setmetatable({__init=function(self)self.this=e('char[0x19]')end,__base=bl,__name="TryCatch"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;al=bk end;do local bk;local bl={compile=function(self,bq,bQ,bR)if bR==nil then bR=''end;return s(c('void**(__thiscall*)(void*,void*,const char*,const char*)',at=='memesense'and h('panorama.dll','E8 ? ? ? ? 8B 4C 24 10 FF 15')-2816 or h('panorama.dll','55 8B EC 83 E4 F8 83 EC 64 53 8B D9')),I:getInstance())(bq,bQ,bR)end,loadstring=function(self,bS,bq)local bT=a1(self:compile(bq,bS)):toLocalChecked()if bT==D then if k then error("\nFailed to compile the given javascript string, please check the error message above ^\n")else print("\nFailed to compile the given javascript string, please check the error message above ^\n")return function()return print('WARNING: Attempted to call nullptr (script compilation failed)')end end end;local bF=ai()local bU=ak()bF:enter()bU:enter()local bP;if bq then bP=U(W(bq))[0]else bP=aj(bF:getCurrentContext()):global():getInternal()end;bP=aj((function()if bP~=D then return bU:createHandle(bP[0])else return 0 end end)())bP:enter()local bj=a1(M(E,bq,bT():getInternal(),0,false)):toValueChecked()if bj==D then if k then error("\nFailed to evaluate the given javascript string, please check the error message above ^\n")else print("\nFailed to evaluate the given javascript string, please check the error message above ^\n")bj=function()return print('WARNING: Attempted to call nullptr (script execution failed)')end end else bj=bj:toLua()end;bP:exit()bU:exit()bF:exit()return bj end}bl.__index=bl;bk=setmetatable({__init=function()end,__base=bl,__name="Script"},{__index=bl,__call=function(bm,...)local bn=setmetatable({},bl)bm.__init(bn,...)return bn end})bl.__class=bk;am=bk end;an=d([[ struct { char* pad1[0x4]; void* m_pPanel; void* unk1; } ]])ao=d([[ struct { struct { $ *m_pMemory; int m_nAllocationCount; int m_nGrowSize; } m_Memory; int m_Size; $ *m_pElements; } ]],an,an)g(ao,{__index={Count=function(self)return self.m_Memory.m_nAllocationCount end,Element=function(self,aX)return c(d('$&',an),self.m_Memory.m_pMemory[aX])end,RemoveAll=function(self)self=nil;self=d('$[?]',ao)(1)[0]self.m_Size=0 end},__ipairs=function(self)local bu,bv=0,self:Count()return function()bu=bu+1;local bV=self:Element(bu-1).m_pPanel;if bu<=bv and J(bV)then return bu,bV end end end})ap=d('$[?]',ao)(1)[0]aq=c('unsigned int*',c('uintptr_t**',I:getInstance())[0][36]+21)[0]ar=c(ap,c('uintptr_t',I:getInstance())+aq)F.hasPanel=function(bW)for aX,aF in ipairs(ar)do local bX=f(R(aF))if bX==bW then return true end end;return false end;F.getPanel=function(bW,bY)local bZ=F.panelIDs[bW]if bZ~=nil and J(bZ)and f(R(bZ))==bW then return bZ end;F.panelIDs={}local bV=D;for aX,aF in ipairs(ar)do local bX=f(R(aF))if bX~=''then F.panelIDs[bX]=aF;if bX==bW then bV=aF;break end end end;if bV==D then if bY~=nil then bV=F.getPanel(bY)else error(('Failed to get target panel %s (EAX == 0)'):format(tostring(bW)))end end;return bV end;F.getIsolate=function()return ai(O())end;F.runScript=function(b_,bq,c0)if bq==nil then bq=F.getPanel('CSGOJsRegistration')end;if c0==nil then c0='panorama/layout/base.xml'end;if not J(bq)then error('Invalid panel pointer (EAX == 0)')end;return L(bq,b_,c0,8,10,false)end;F.loadstring=function(b_,bq)if bq==nil then bq='CSGOJsRegistration'end;local bY='CSGOJsRegistration'if bq=='CSGOMainMenu'then bY='CSGOHud'end;if bq=='CSGOHud'then bY='CSGOMainMenu'end;return am:loadstring(('(()=>{%s})'):format(b_),F.getPanel(bq,bY))end;F.open=function(bq)if bq==nil then bq='CSGOJsRegistration'end;local bY='CSGOJsRegistration'if bq=='CSGOMainMenu'then bY='CSGOHud'end;if bq=='CSGOHud'then bY='CSGOMainMenu'end;return ak()(function()return aj(ai():getCurrentContext()):global():toValueChecked():toLua()end,F.GetPanel(bq,bY))end;F.GetPanel=F.getPanel;F.GetIsolate=F.getIsolate;F.RunScript=F.runScript;F.panelArray=ar;F.info=a;F.flush=m;setmetatable(F,{__tostring=function(self)return('luv8 panorama library v%.1f'):format(a._VERSION)end,__index=function(self,aI)if F.hasPanel(aI)then return F.open(aI)end;return F.open()[aI]end})return F
 end)()
 
+-- the last load step reaches csgo/specter/load_trace.txt BEFORE the next one runs (owners, Oct 2026: the game froze at the load and the console stages
+-- could not be read): after a freeze the file names the part that never finished; "loaded" = the load went through
+load_step = function(name)
+    pcall(libs.filesystem.write, "load_trace.txt", tostring(name))
+end
+load_step("libs ready")
+
 libs.tools.http = libs.httpcreator.new(
     {
         task_interval = 2.0,
@@ -362,6 +369,7 @@ return { create: create, destroy: destroy, clear: clear, update: update,
 
 --- @info: shit codes
 --- @region: useful codes
+if (load_step) then load_step("region: useful codes") end
 
 ffi.cdef [[
     typedef struct {float x, y, z;}vec3_t;
@@ -615,6 +623,7 @@ local utilitize = {
 local get_entity_address = utilitize.this_call(ffi.cast("get_client_entity_t", utilitize.entity_list_003[0][3]), utilitize.entity_list_003)
 
 
+if (load_step) then load_step("hud / chat signatures") end
 local hud = find_sig("client.dll", "B9 ?? ?? ?? ?? 88 46 09", "void*", 1, 1)
 local hud_chat = find_sig("client.dll", "55 8B EC 53 8B 5D 08 56 57 8B F9 33 F6 39 77 28", "void***(__thiscall*)(void*, const char*)")(hud, "CHudChat")
 
@@ -627,9 +636,11 @@ local engine_client = ffi.cast(ffi.typeof("void***"), memory_create_interface("e
 local console_is_visible = ffi.cast("console_is_visible", engine_client[0][11])
 
 
+if (load_step) then load_step("fs_tesla signature") end
 local fs_tesla = ffi.cast("FX_TeslaFn", memory_find_pattern("client.dll", "55 8B EC 81 EC ? ? ? ? 56 57 8B F9 8B 47 18"))
 
 
+if (load_step) then load_step("clipboard vtable") end
 local get_text_count = v_table_bind("vgui2.dll", "VGUI_System010", 7, "int(__thiscall*)(void*)")
 local set_clipboard = v_table_bind("vgui2.dll", "VGUI_System010", 9, "void(__thiscall*)(void*, const char*, int)")
 local get_clipboard = v_table_bind("vgui2.dll", "VGUI_System010", 11, "int(__thiscall*)(void*, int, const char*, int)")
@@ -715,6 +726,7 @@ end
 
 --- @info: authentication
 --- @region: main cloud
+if (load_step) then load_step("region: main cloud") end
 
 local loader = loader or {}
 
@@ -805,6 +817,7 @@ end
 
 --- @info: default values, settings etc
 --- @region: variables
+if (load_step) then load_step("region: variables") end
 
 local settings_file = "settings.json"
 local function read_settings()
@@ -1035,6 +1048,7 @@ end
 
 --- @info: ui management
 --- @region: menu style(s)
+if (load_step) then load_step("region: menu style(s)") end
 
 local states = {"Global", "Stand", "Move", "Slow walk", "Duck", "Duck move", "Air", "Air duck", "Fakelag", "Manual", "Freestand"}
 local shortstates = {"G", "S", "M", "SW", "D", "DM", "A", "AD", "F", "MN", "FR"}
@@ -1782,6 +1796,7 @@ end
 
 --- @info: advanced print
 --- @region: print
+if (load_step) then load_step("region: print") end
 
 print = function(...)
     local args = {...}
@@ -1909,6 +1924,7 @@ end
 
 --- @info: lua helpers
 --- @region: useful thing(s)
+if (load_step) then load_step("region: useful thing(s)") end
 
 -- configs funcs
 
@@ -2555,6 +2571,7 @@ end
 
 --- @info: config system
 --- @region: config
+if (load_step) then load_step("region: config") end
 
 -- cloud based
 
@@ -3144,6 +3161,7 @@ end)
 
 --- @info: lua network, clantag [sync]
 --- @region: clantag
+if (load_step) then load_step("region: clantag") end
 
 local clantag_prev
 clan_anim = function(indices)
@@ -3756,6 +3774,7 @@ end
 
 --- @info: advanced fast ladder with up and down selection
 --- @region: fastladder
+if (load_step) then load_step("region: fastladder") end
 
 fast_ladder = function(cmd)
     if (ui.player.fast_ladder:get(1) or ui.player.fast_ladder:get(2)) then
@@ -3846,6 +3865,7 @@ end
 
 --- @info: advanced super toss with multiple selection methods
 --- @region: super_toss
+if (load_step) then load_step("region: super_toss") end
 
 toss.ang_vec = function(ang)
     return vec3_t(math.cos(ang.x * math.pi / 180) * math.cos(ang.y * math.pi / 180), math.cos(ang.x * math.pi / 180) * math.sin(ang.y * math.pi / 180), -math.sin(ang.x * math.pi / 180))
@@ -3927,6 +3947,7 @@ end
 
 --- @info: nofall dmg when landing
 --- @region: nofall
+if (load_step) then load_step("region: nofall") end
 
 calculate_fall = function(length)
     local local_player = entity_list_get_local_player()
@@ -3983,6 +4004,7 @@ end
 
 --- @info: defensive safepoint
 --- @region: safe def
+if (load_step) then load_step("region: safe def") end
 
 -- Network budgets are measured in seconds; menu thresholds are milliseconds.
 resolver.network = function()
@@ -4026,6 +4048,7 @@ end
 
 --- @info: multipoint correction
 --- @region: dmg pred
+if (load_step) then load_step("region: dmg pred") end
 
 local damage = {
     scale = {
@@ -4120,6 +4143,7 @@ end
 
 --- @info: boost the prediction time
 --- @region: accuracy boost
+if (load_step) then load_step("region: accuracy boost") end
 
 accuracy_boost = function(ctx, cmd, unpredicted_data)
     -- Preserve native accuracy requirements on latency-sensitive peeks.
@@ -4141,6 +4165,7 @@ end
 
 --- @info: anti afk
 --- @region: antiafk
+if (load_step) then load_step("region: antiafk") end
 
 antiafk = function(cmd)
     if (ui.misc.antiafk:get()) then
@@ -4181,6 +4206,7 @@ end
 
 --- @info: it will defuse at 5.1 or 10.1 sec
 --- @region: defuse bot
+if (load_step) then load_step("region: defuse bot") end
 
 enemies_dead = function()
     for _, enemy in pairs(entity_list_get_players(true)) do
@@ -4238,6 +4264,7 @@ end
 
 --- @info: knifebot helper
 --- @region: knifebot
+if (load_step) then load_step("region: knifebot") end
 
 knifebot_helper = function(cmd)
     if (ui.misc.knifebot_helper:get()) then
@@ -4264,6 +4291,7 @@ end
 
 --- @info: zeus vs rushers
 --- @region: zeus rush
+if (load_step) then load_step("region: zeus rush") end
 
 -- (owners, Oct 2026: "ha valaki jön felém késsel akkor zeust vesz elő és lezeusolja, és ha valaki zeussal akkor is zeust, ha
 -- egy helyben állsz hamarabb lő a zeus"): an enemy that runs at us with a knife or a zeus makes us take our own zeus out, and the
@@ -4427,6 +4455,7 @@ end
 
 --- @info: evade message
 --- @region: antibrute
+if (load_step) then load_step("region: antibrute") end
 
 for i = 1, 28 do
     evades.backtrack_poses[i] = vec3_t.new(0, 0, 0)
@@ -4777,6 +4806,7 @@ end
 
 --- @info: repeats everyone's message
 --- @region: talkback
+if (load_step) then load_step("region: talkback") end
 
 on_talkback = function(event)
     if (ui.player.talk_back:get()) then
@@ -4818,6 +4848,7 @@ end
 
 --- @info: trash talk
 --- @region: killsay
+if (load_step) then load_step("region: killsay") end
 
 local old_phrase = ""
 on_killsay = function(event)
@@ -4918,6 +4949,7 @@ end
 
 --- @info: fast weapon switch
 --- @region: fast switch
+if (load_step) then load_step("region: fast switch") end
 
 on_zeus = function(shot)
     if (ui.misc.fast_switch:get()) then
@@ -4960,6 +4992,7 @@ end
 
 --- @info: optimized backtrack
 --- @region: backtrack system
+if (load_step) then load_step("region: backtrack system") end
 
 -- Backtracking itself is Primordial's: its records, and the tick count it sends with the shot (the server rewinds the
 -- players to that tick). The old code here wrote cmd.tick_count on every command from a record of the enemy nearest the
@@ -4967,6 +5000,7 @@ end
 -- What a lua can add: more fake latency (the server takes records within 0.2 s of our real + fake latency, so older
 -- records become hittable) and the order the aimbot picks targets in.
 --- @region: engine prediction
+if (load_step) then load_step("region: engine prediction") end
 -- Our own movement run through the game's prediction (owners, Oct 2026: "miaz hogy nincs ffi nezd meg ujra"): the Primordial lua has ffi,
 -- memory_create_interface / memory_find_pattern / memory_get_vfunc, so CPrediction::SetupMove, CGameMovement::ProcessMovement and
 -- CPrediction::FinishMove can be called with a user command of our own. EXPERIMENTAL and off by default: the vtable indexes and
@@ -5357,6 +5391,7 @@ resolver.stat_lines = function()
 end
 --- @info: resolver: side from freestanding / jitter, learned per player and state from hits and misses
 --- @region: resolver
+if (load_step) then load_step("region: resolver") end
 -- [pm-resolver:begin] the loader's beta version is built without this part (make_primordial_beta in discord_bot.py)
 
 -- Primordial's own resolver does the resolving (its animation fix and records; no workshop lua writes an enemy's feet
@@ -6672,6 +6707,7 @@ end
 --- (/shotlog, base64 parts) every 40 shots and at round start; the bot writes them to the "shotlogs" branch, folder
 --- shotlogs/primordial (the batch ids start with "pm"). No names: the target is a hash of its steam id with a salt of this load
 --- @region: shot logs
+if (load_step) then load_step("region: shot logs") end
 
 local shotlog = { server = presence.server, buf = {}, sending = false,
                   salt = tostring(client_get_unix_time()) .. tostring(math.random(1000000)) }
@@ -6952,6 +6988,7 @@ end
 
 --- @info: cool team animation with ffi animation
 --- @region: animation
+if (load_step) then load_step("region: animation") end
 
 team_animation = function()
     -- the old version wrote RANDOM numbers into the animation state of every enemy (a random "resolver" that fought the real one,
@@ -6964,6 +7001,7 @@ end
 
 --- @info: advanced antiaim (pasted from metaset)
 --- @region: antiaim
+if (load_step) then load_step("region: antiaim") end
 
 run_exploit = function(ctx, cmd, unpredicted)
     local weapon = entity_list_get_local_player():get_active_weapon()
@@ -8534,6 +8572,7 @@ end
 
 --- @info: rubberbang | no recharge until safe place | teleport back after shot | doubletap optimizer
 --- @region: quickfall | safe recharge | better hideshots | better doubletap
+if (load_step) then load_step("region: quickfall | safe recharge | better hideshots | better doubletap") end
 
 quick_fall = function(cmd, unpredicted_data)
     if (ui.exploits.quick_fall:get() and ui.quick_fall:get()) then
@@ -8699,6 +8738,7 @@ end
 
 --- @info: edge-yaw antiaim
 --- @region: edgeyaw
+if (load_step) then load_step("region: edgeyaw") end
 
 edgeyaw.fix_yaw = function(yaw)
     while (yaw > 180) do
@@ -8865,6 +8905,7 @@ end
 
 --- @info: hit and miss indicator
 --- @region: log indicator
+if (load_step) then load_step("region: log indicator") end
 
 handle_dragging = function()
     if (ui.utils.event_logs:get(1)) then
@@ -8918,6 +8959,7 @@ end
 
 --- @info: menu effect, watermark, keybinds spectator, crosshair indicator, gs indicator, china hat
 --- @region: visuals
+if (load_step) then load_step("region: visuals") end
 
 lerp = function(time, a, b)
     return a * (1 - time) + b * time
@@ -9770,6 +9812,7 @@ end
 
 --- @info: handle menu
 --- @region: menu
+if (load_step) then load_step("region: menu") end
 
 materials_for_each(function(mat)
     for material = 1, #console_material do
@@ -10062,6 +10105,7 @@ end
 
 --- @info: main code
 --- @region: callbacks
+if (load_step) then load_step("region: callbacks") end
 
 do_player = function()
     perf.add(e_callbacks.PLAYER_ESP, "PLAYER_ESP", function(ctx)
@@ -10949,6 +10993,7 @@ end)
 
 --- @info: initialization of everything (so you wont crash)
 --- @region: init
+if (load_step) then load_step("region: init") end
 
 print("preparing lua..")
 setup = function()
@@ -11130,55 +11175,77 @@ setup = function()
     end
 
     execute_tasks = function()
+        if (load_step) then load_step("execute_tasks: do_paint") end
         do_paint()
         print("preparing lua..", get_text_color(), " (stage 45%%)")
 
+        if (load_step) then load_step("execute_tasks: do_net") end
         do_net()
         print("preparing lua..", get_text_color(), " (stage 50%%)")
 
+        if (load_step) then load_step("execute_tasks: do_event") end
         do_event()
         print("preparing lua..", get_text_color(), " (stage 55%%)")
 
+        if (load_step) then load_step("execute_tasks: do_runcmd") end
         do_runcmd()
         print("preparing lua..", get_text_color(), " (stage 60%%)")
 
+        if (load_step) then load_step("execute_tasks: do_hitscan") end
         do_hitscan()
+        if (load_step) then load_step("execute_tasks: do_target") end
         do_target()
         print("preparing lua..", get_text_color(), " (stage 65%%)")
 
+        if (load_step) then load_step("execute_tasks: do_setupcmd") end
         do_setupcmd()
         print("preparing lua..", get_text_color(), " (stage 70%%)")
 
+        if (load_step) then load_step("execute_tasks: do_aimshoot") end
         do_aimshoot()
         print("preparing lua..", get_text_color(), " (stage 75%%)")
 
+        if (load_step) then load_step("execute_tasks: do_antiaim") end
         do_antiaim()
         print("preparing lua..", get_text_color(), " (stage 80%%)")
 
+        if (load_step) then load_step("execute_tasks: do_aimmiss") end
         do_aimmiss()
         print("preparing lua..", get_text_color(), " (stage 85%%)")
 
+        if (load_step) then load_step("execute_tasks: do_aimhit") end
         do_aimhit()
         print("preparing lua..", get_text_color(), " (stage 90%%)")
 
+        if (load_step) then load_step("execute_tasks: do_player") end
         do_player()
         print("preparing lua..", get_text_color(), " (stage 95%%)")
     end
 
     finish_up = function()
+        if (load_step) then load_step("finish_up: reload_configs") end
         configs.reload_configs()
+        if (load_step) then load_step("finish_up: restore_last") end
         configs.restore_last()
+        if (load_step) then load_step("finish_up: reload_cloud_configs") end
         configs.reload_cloud_configs()
 
         print("preparing lua..", get_text_color(), " (stage 100%%)")
     end
 
+    if (load_step) then load_step("setup: imports (panorama js, moon icon)") end
     imports_setup()
+    if (load_step) then load_step("setup: save_cfg") end
     save_cfg()
+    if (load_step) then load_step("setup: fps_boost (cvars)") end
     fps_boost()
+    if (load_step) then load_step("setup: configure_groups") end
     configure_groups()
+    if (load_step) then load_step("setup: execute_tasks (callbacks)") end
     execute_tasks()
+    if (load_step) then load_step("setup: finish_up (configs)") end
     finish_up()
+    if (load_step) then load_step("loaded") end
 
     collectgarbage("collect")
 
@@ -11191,6 +11258,7 @@ setup()
 
 --- @info: helper
 --- @region: search table(s)
+if (load_step) then load_step("region: search table(s)") end
 
 table.insert(on_predict, false)
 table.contains = function(tbl, value)
