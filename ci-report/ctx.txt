@@ -1,0 +1,14 @@
+test_a_failing_layer_read_does_not_break_the_shot (__main__.ResolverContextTests.test_a_failing_layer_read_does_not_break_the_shot) ... ok
+test_callers_and_log_are_wired (__main__.ResolverContextTests.test_callers_and_log_are_wired) ... ok
+test_confidence_follows_the_decision_not_the_current_state (__main__.ResolverContextTests.test_confidence_follows_the_decision_not_the_current_state) ... ok
+test_held_shot_keeps_the_state_of_its_decision (__main__.ResolverContextTests.test_held_shot_keeps_the_state_of_its_decision) ... ok
+test_jitter_confidence_reads_the_state_slot (__main__.ResolverContextTests.test_jitter_confidence_reads_the_state_slot) ... ok
+test_jitter_slot_is_per_state (__main__.ResolverContextTests.test_jitter_slot_is_per_state) ... ok
+test_layers_are_logged_at_fire (__main__.ResolverContextTests.test_layers_are_logged_at_fire) ... ok
+test_memory_keeps_states_apart_and_old_calls_work (__main__.ResolverContextTests.test_memory_keeps_states_apart_and_old_calls_work) ... ok
+test_result_trains_the_slot_of_the_decision (__main__.ResolverContextTests.test_result_trains_the_slot_of_the_decision) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.012s
+
+OK

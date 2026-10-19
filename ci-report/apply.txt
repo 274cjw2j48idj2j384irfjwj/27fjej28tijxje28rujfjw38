@@ -1,0 +1,1 @@
+{"applied": true, "edits": ["memory_slot_per_state", "snapshot_decision_state", "layers_at_fire", "update_uses_state_slot", "held_context_state", "result_uses_decision_slot", "confidence_follows_decision", "layers_in_the_log"], "before": "80aa72ae748273c33bd8dd7982223fef332c90692e334f5e034bf1d176809124", "after": "b9a3984a3aaa8005467142fb7eda4663afa0fd3b68c981f4ca43795e7c6f0cf3"}

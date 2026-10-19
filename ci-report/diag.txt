@@ -1,0 +1,14 @@
+test_enemy_shift_is_not_blamed_on_the_angle (__main__.DiagnoseTests.test_enemy_shift_is_not_blamed_on_the_angle) ... ok
+test_hit_has_no_fault (__main__.DiagnoseTests.test_hit_has_no_fault) ... ok
+test_host_reasons_are_data (__main__.DiagnoseTests.test_host_reasons_are_data) ... ok
+test_jitter_and_streak_and_latency_causes (__main__.DiagnoseTests.test_jitter_and_streak_and_latency_causes) ... ok
+test_lost_attribution_is_reported (__main__.DiagnoseTests.test_lost_attribution_is_reported) ... ok
+test_low_hitchance_spread_is_an_inference (__main__.DiagnoseTests.test_low_hitchance_spread_is_an_inference) ... ok
+test_missing_held_and_stale_values_are_data (__main__.DiagnoseTests.test_missing_held_and_stale_values_are_data) ... ok
+test_source_wires_the_logger_after_the_snapshot (__main__.DiagnoseTests.test_source_wires_the_logger_after_the_snapshot) ... ok
+test_turn_after_fire_is_inferred (__main__.DiagnoseTests.test_turn_after_fire_is_inferred) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.015s
+
+OK
