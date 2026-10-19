@@ -352,6 +352,23 @@ test("confidence options: off by default, body below the force level, head safe 
     assert(ctx.groups[1] == nil and ctx.safepoints[1] == true)    -- head stays, with a safe point
     env.ui.ragebot.conf_head:set(0)
 end)
+test("hitscan decision reason: hp_body, defensive_policy, normal_head", function()
+    resolver.reset()
+    resolver.active = false
+    target.hp, target.flags = 39, 1
+    resolver.hitscan(context(target))
+    assert(resolver.why[target:get_index()] == "hp_body")
+    target.hp = 100
+    resolver.hitscan(context(target))
+    assert(resolver.why[target:get_index()] == "normal_head")
+    local p = resolver.data[target:get_index()] or {}
+    resolver.data[target:get_index()] = p
+    p.defensive_at = clock - 0.01
+    env.ui.ragebot.def_hold:set(true)
+    resolver.hitscan(context(target))
+    assert(resolver.why[target:get_index()] == "defensive_policy")
+    env.ui.ragebot.def_hold:set(false)
+end)
 test("new sliders initialize explicit defaults with unit steps", function()
     assert(source:find('slider("Body aim below HP", 0, 100, 1, 0, "hp")', 1, true))
     assert(source:find('slider("High ping threshold", 40, 250, 1, 0, "ms")', 1, true))

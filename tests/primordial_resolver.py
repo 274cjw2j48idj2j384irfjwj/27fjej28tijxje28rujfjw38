@@ -79,6 +79,7 @@ def main(argv):
         print("  %-22s %d" % (k, n))
     table("state (sx)", shots, lambda r: r.get("sx"), is_hit, 5)
     table("safe point (sp: none / 1 head / 2 jitter / 3 smart body)", shots, lambda r: r.get("sp"), is_hit)
+    table("policy at fire time (hd)", shots, lambda r: r.get("hd"), is_hit)
     table("hypothesis (cd)", shots, lambda r: r.get("cd"), is_hit, 5)
     table("value missing reason (vw)", shots, lambda r: r.get("vw"), is_hit)
     table("enemy defensive (df)", shots, lambda r: bool(r.get("df")), is_hit)
