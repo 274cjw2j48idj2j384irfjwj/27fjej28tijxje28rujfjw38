@@ -68,6 +68,12 @@ jobs:
           mkdir -p ci-report
           python tests/primordial_regress.py 2>&1 | tee ci-report/regress.txt
           test "${PIPESTATUS[0]}" -eq 0
+      - name: Show the failing regression tests
+        if: always()
+        run: |
+          mkdir -p ci-report
+          grep -n -B100 -A2 'enemy defensive / lag break: the shift' tests/primordial_regress.py > ci-report/excerpt_defensive.txt || true
+          grep -n -B60 -A2 'Resolver learning: 100' tests/primordial_regress.py > ci-report/excerpt_learning.txt || true
       - name: Advanced Lua harness
         id: adv
         continue-on-error: true
