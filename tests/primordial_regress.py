@@ -630,7 +630,7 @@ TICKS = 0
 globals = { real_time = function() return SIM end, tick_count = function() TICKS = TICKS + 1 return TICKS end, interval_per_tick = function() return 1 / 64 end }
 local function item(v) return { get = function() return v end } end
 ui = { ragebot = { logic_reso = item(false), smart_baim = item(true),
-    smart_baim_hp = item(40), smart_baim_lethal = item(true), def_hold = item(false), def_ticks = item(16), resolver = { shot_pred = item(4) } } }
+    smart_baim_hp = item(40), smart_baim_lethal = item(true), def_hold = item(false), def_ticks = item(16), conf_head = item(0), conf_body = item(0), resolver = { shot_pred = item(4) } } }
 HP = 100
 damage = { calculate = function(_, _, box) return box == "chest" and 70 or 87 end }
 res_custom = function() return false end
@@ -1054,7 +1054,8 @@ DF = chunk("resolver.memory = function(idx, key, kind)", "resolver.shot_id = fun
      chunk("resolver.shot_id = function(event)", "local RES_JIT_N = 12") + \
      chunk("resolver.HYP = {", "--- @info: resolver: side from freestanding") + \
      chunk("local RES_JIT_N = 12", "resolver.update = function(local_player, ent)") + \
-     chunk("resolver.on_result = function(target, hit_ok, resolver_miss, event, reason)", "resolver.body_damage = function(ent)")
+     chunk("resolver.on_result = function(target, hit_ok, resolver_miss, event, reason)", "resolver.body_damage = function(ent)") + \
+     chunk("resolver.confidence = function(idx)", "resolver.enforce_body = function(ctx)")
 dm = L.LuaRuntime(unpack_returned_tuples=True)
 dm.execute("""
 RES_FS_TICKS = 16

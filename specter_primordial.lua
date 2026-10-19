@@ -1203,6 +1203,8 @@ local ui = {
         learn_rate = groups.resolver:slider("Resolver learning", 0, 100, 1, 0, "%"),
         def_hold = groups.resolver:checkbox("Body only on defensive", false),
         def_ticks = groups.resolver:slider("Defensive lock ticks", 1, 64, 1, 0, "t"),
+        conf_head = groups.resolver:slider("Min confidence for head", 0, 100, 1, 0, "%"),
+        conf_body = groups.resolver:slider("Force body below confidence", 0, 100, 1, 0, "%"),
         pose_reso = groups.resolver_beta:checkbox("Pose resolver"),
         resolver = {
             enable_resolver = groups.resolver_beta:checkbox("Custom resolver"),
@@ -5607,6 +5609,7 @@ resolver.capture = function(shot)
     end)
     if (ok3) then s.l3, s.l3w, s.l3c, s.l3s, s.l6s = rate3, weight3, cycle3, seq3, seq6 end
     s.state = resolver.state_of(shot.player)
+    s.conf = resolver.confidence(idx)
     resolver.shots[#resolver.shots + 1] = s
     if (#resolver.shots > 128) then table.remove(resolver.shots, 1) end
 end
@@ -6404,6 +6407,15 @@ resolver.body_damage_now = function(local_player, ent)
     end
     return best
 end
+-- per-player confidence 0-100 (owners, Oct 2026): the hit share of the hypothesis the resolver is using for this target now
+-- (Beta mean good / (good + bad) of its situation); nil while there is nothing learned / no value yet
+resolver.confidence = function(idx)
+    local prev, all = resolver.previous[idx], resolver.mem[idx]
+    local mem = prev ~= nil and prev.key ~= nil and all ~= nil and all[prev.key] or nil
+    local c = mem ~= nil and mem.candidates[prev.candidate or mem.selected or 1] or nil
+    if (c == nil) then return nil end
+    return 100 * c.good / math.max(1e-6, c.good + c.bad)
+end
 resolver.enforce_body = function(ctx)
     ctx:set_hitscan_group_state(e_hitscan_groups.HEAD, false, false)
     ctx:set_hitscan_group_state(e_hitscan_groups.CHEST, true, false)
@@ -6469,6 +6481,17 @@ resolver.hitscan = function(ctx)
     if (not body and ui.ragebot.def_hold:get() and p ~= nil and p.defensive_at ~= nil
         and globals.real_time() - p.defensive_at <= ui.ragebot.def_ticks:get() * globals.interval_per_tick()) then
         body = true
+    end
+
+    -- "Min confidence for head" (a safe point on the head below it) and "Force body below confidence" (body only), both 0 = off
+    local conf = resolver.confidence(idx)
+    if (conf ~= nil and not body) then
+        local force, head_min = ui.ragebot.conf_body:get(), ui.ragebot.conf_head:get()
+        if (force > 0 and conf < force) then
+            body = true
+        elseif (head_min > 0 and conf < head_min) then
+            safe = true
+        end
     end
 
     -- what the shot logs carry: 3 = body (smart body aim), 2 = a safe point for a jittering target, 1 = for another reason
@@ -6752,6 +6775,7 @@ shotlog.result = function(shot, hit)
         row.l6, row.l6w = shotlog.num(snap.l6, 6), shotlog.num(snap.l6w, 4)
         row.l3, row.l3w, row.l3c = shotlog.num(snap.l3, 6), shotlog.num(snap.l3w, 4), shotlog.num(snap.l3c, 3)
         row.l3s, row.l6s = shotlog.num(snap.l3s), shotlog.num(snap.l6s)
+        row.cf = shotlog.num(snap.conf, 0)
     end
     if (hit) then
         row.hg, row.dmg = shot.hitgroup, shotlog.num(shot.damage)
