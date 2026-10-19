@@ -1,25 +1,19 @@
-# Primordial resolver and AA safety fix
+# Primordial safety fix: application retry
 
-Base branch: main. Review branch: fix/primordial-resolver-aa-audit.
-Reviewed uploaded Lua SHA-256: 8c17bbe4dd96db9951f7c3bd22ab52e91d5908e40dc81525f1df2ec9541f076e.
+The previous full-source fingerprint check rejected the repository copy. PR 173 merged tooling only; no runtime Lua fix was included.
 
-## Changes
+## Targeted application
 
-1. Bound defensive/lag-break attribution by fire time plus RTT, not arbitrary result delay.
-2. Preserve the original key, candidate and model metadata for a held resolver value.
-3. Fix the Lua nil-ternary expression that mislabeled fresh values as held.
-4. Credit held-shot feedback to the original decision context.
-5. Allow at most one eligible bandit update per incoming-shot snapshot; damage-event statistics remain separate.
-6. Suppress delayed near-miss reactions after confirmed hurt/evade, death, disable, attacker replacement, local-player replacement, time rewind or expiry.
+The new entry point is tools/apply_primordial_reviewed_edits.py. It reuses the six reviewed edits and Lua tokenizer from primordial_safety_patch.py, but validates each target region rather than requiring an identical whole-file fingerprint.
 
-No new offsets, signatures or Primordial API calls are introduced. Resolver angle priors, AA presets, body-aim defaults and fake ping are not retuned without evidence.
+Every edit must have exactly one unchanged original fragment or exactly one already-patched fragment. Duplicate, altered, mixed or overlapping target regions are rejected. Every final replacement is checked again. Source outside the six edited spans is preserved verbatim. Existing patched fragments are a no-op.
 
-## Validation and safe application
+The corrections are unchanged: bounded defensive-event attribution; original held-decision ownership; correct fresh/held status; feedback attribution to the held hypothesis; one eligible AA learning update per incoming snapshot; stale/hurt near-miss callback guards. No AA presets, resolver priors, fake-ping settings or FFI layouts are retuned.
 
-The patcher tokenizes Lua while ignoring comments and whitespace. It requires the exact reviewed semantic source hash, checks each edit has one match, rejects overlaps and verifies the final semantic hash. It preserves unrelated repository source and comments. An already patched source is a no-op. Any other source fails closed.
+## Validation
 
-Local checks completed: patch construction, Python syntax, idempotence, comment preservation and rejection of unreviewed source. Local LuaJIT execution was unavailable; no game performance or hit-rate improvement is claimed.
+Local Python checks passed for six edits, repeat application, unrelated-source preservation, partial application, duplicate rejection and altered-target rejection. Local LuaJIT tests remain unavailable; GitHub must run the focused and existing regression suites.
 
-The branch-scoped GitHub Actions workflow installs lupa 2.6, applies the patch on its runner, compiles the full Lua through LuaJIT and runs the new focused tests plus existing Primordial regressions and advanced harness. It commits only specter_primordial.lua to the review branch after all tests succeed. It does not merge a PR or publish cloud. A failed check leaves the source uncommitted and must be investigated before merge.
+On the review branch, the workflow commits specter_primordial.lua only after all checks succeed. On internal PRs into main, it additionally requires that applying the reviewed corrections produces no uncommitted Lua diff: a tooling-only PR cannot pass as a runtime fix. The cloud branch and Discord bot are not modified.
 
-Oct 16-17 logs are observational baseline only, not counterfactual proof that a new angle would hit or evade.
+Before merge, inspect the actual Lua diff and green PR checks. A new Discord build is expected only after the Lua content actually changes on main; no empty version bump or duplicate-upload bypass is used. Discord delivery itself has not been verified here.
