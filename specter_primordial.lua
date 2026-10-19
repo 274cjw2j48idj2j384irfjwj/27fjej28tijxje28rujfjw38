@@ -1201,6 +1201,7 @@ local ui = {
         latency_limit = groups.resolver:slider("High ping threshold", 40, 250, 1, 0, "ms"),
         fast_peek = groups.resolver:checkbox("Fast crouch / peek scan", true),
         learn_rate = groups.resolver:slider("Resolver learning", 0, 100, 1, 0, "%"),
+        def_hold = groups.resolver:checkbox("Body only on defensive", false),
         pose_reso = groups.resolver_beta:checkbox("Pose resolver"),
         resolver = {
             enable_resolver = groups.resolver_beta:checkbox("Custom resolver"),
@@ -6460,6 +6461,12 @@ resolver.hitscan = function(ctx)
         if (not body and hp > 0 and ui.ragebot.smart_baim_lethal:get() and (jitter or misses >= 1)) then
             body = hp <= resolver.body_damage(ent)
         end
+    end
+
+    -- "Body only on defensive" (default off): while the target's tickbase shift is on (its sim time went back, `defensive_until`, 0.25 s) its drawn
+    -- model is not where the server tests our shot, so the small head hitbox is a gamble: body only until the shift is over
+    if (not body and ui.ragebot.def_hold:get() and p ~= nil and (p.defensive_until or 0) > globals.real_time()) then
+        body = true
     end
 
     -- what the shot logs carry: 3 = body (smart body aim), 2 = a safe point for a jittering target, 1 = for another reason
