@@ -5612,7 +5612,21 @@ resolver.capture = function(shot)
     s.state = resolver.state_of(shot.player)
     s.conf = resolver.confidence(idx)
     s.sp, s.hd = resolver.safe and resolver.safe[idx] or nil, resolver.why and resolver.why[idx] or nil   -- the policy AT FIRE time
-    s.misses = resolver.misses[idx] or 0                          -- the miss streak AT FIRE time (the shot log used to write it after the result was counted)
+        s.misses = resolver.misses[idx] or 0
+    -- fire-time facts for the per-shot diagnosis (shotlog.diagnose): age of the newest record, jitter state, eye yaw at fire
+    local okd, dg = pcall(function()
+        local now_t = globals.real_time()
+        local pv = resolver.previous[idx]
+        return {
+            age = p and p.updated and now_t - p.updated or nil,
+            fresh = resolver.fresh(p) and true or false,
+            smp = p and p.samples or nil, nc = p and p.nochoke or nil, ck = p and p.choke or nil,
+            jit = p and p.jitter and true or false, jc = p and p.confidence or nil,
+            eye = tonumber(shot.player:get_prop("m_angEyeAngles[1]")),
+            held = pv and pv.held_at and now_t - pv.held_at or nil,
+        }
+    end)
+    if (okd) then s.dg = dg end                          -- the miss streak AT FIRE time (the shot log used to write it after the result was counted)
     resolver.shots[#resolver.shots + 1] = s
     if (#resolver.shots > 128) then table.remove(resolver.shots, 1) end
 end
@@ -6759,6 +6773,73 @@ shotlog.send = function()
 end
 
 -- one line per shot result: what Primordial says about the shot, our resolver / backtrack / prediction state, the target
+-- Per-shot diagnosis (dev build): names the most likely cause of a miss from what was logged. class "data" = shown by the
+-- logged values (a missing / held / stale angle, an enemy defensive, a host reason), "infer" = the most likely cause, NOT
+-- proven (the real angle of the enemy is not readable)
+shotlog.diagnose = function(row, snap, shot, hit)
+    if (hit) then
+        return "hit", "data", nil
+    end
+    local function n(v, digits)
+        v = shotlog.num(v, digits or 1)
+        return v == nil and "?" or tostring(v)
+    end
+    local reason = tostring(shot and shot.reason_string or "?")
+    local hc, bt, ping = tonumber(row.hc), tonumber(row.bt), tonumber(row.ping)
+    if (snap == nil) then
+        return "attr_lost", "data", "no snapshot (shot id missing or ambiguous), host: " .. reason
+    end
+    if (reason == "spread" or reason == "spread (missed safe)") then
+        if (hc ~= nil and hc < 60) then
+            return "low_hitchance", "infer", "spread at hit chance " .. n(hc, 0)
+        end
+        return "spread", "data", "host: spread at hit chance " .. n(hc, 0)
+    elseif (reason == "occlusion") then
+        return "occlusion", "data", "host: the bullet was blocked"
+    elseif (reason:find("death", 1, true)) then
+        return "death_race", "data", "host: " .. reason
+    elseif (reason == "server rejection") then
+        return "server_reject", "data", "host: server rejection"
+    end
+    if (snap.defensive) then
+        return "enemy_defensive", "data", "target shifted ticks at fire, lag comp not angle"
+    elseif (snap.lagbreak) then
+        return "enemy_lagbreak", "data", "target teleported (lag break) at fire"
+    end
+    local dg = snap.dg
+    if (snap.candidate == nil) then
+        return "no_value", "data", "no angle written (" .. tostring(snap.vw or "?") .. ")"
+    end
+    if (snap.vw == "held") then
+        return "held_value", "data", "held angle, " .. n(dg and dg.held, 2) .. " s old"
+    end
+    if (dg ~= nil and dg.fresh == false) then
+        return "stale_record", "data", "newest record " .. n(dg.age, 2) .. " s old at fire"
+    end
+    local eye_now, eye_fire = tonumber(row.eye), dg and tonumber(dg.eye) or nil
+    if (eye_now ~= nil and eye_fire ~= nil) then
+        local drift = (eye_now - eye_fire + 180) % 360 - 180
+        if (math.abs(drift) >= 25) then
+            return "target_turned", "infer", "eye yaw moved " .. n(drift, 0) .. " deg after the shot"
+        end
+    end
+    if (dg ~= nil and dg.jit and (reason == "jitter" or snap.kind == "jitter")) then
+        return "jitter_side", "infer", "jitter conf " .. n(dg.jc, 2) .. ", hypothesis " .. tostring(snap.candidate)
+    end
+    if ((tonumber(snap.misses) or 0) >= 2) then
+        return "repeat_miss", "infer", tostring(snap.misses) .. " misses in a row, hypothesis " .. tostring(snap.candidate)
+    end
+    if (bt ~= nil and bt >= 14) then
+        return "old_record", "infer", "shot at a " .. n(bt, 0) .. " tick old record"
+    end
+    if (ping ~= nil and ping >= 90) then
+        return "high_latency", "infer", "ping " .. n(ping, 0) .. " ms"
+    end
+    if (reason == "extrapolation") then
+        return "extrapolation", "infer", "host: movement prediction"
+    end
+    return "angle_wrong", "infer", "hypothesis " .. tostring(snap.candidate) .. " value " .. n(snap.desync, 0) .. " in " .. tostring(snap.key)
+end
 shotlog.result = function(shot, hit)
     local target = shot.player
     if (target == nil or info.plan ~= "dev") then -- with a key (the loader's versions) nothing is sent
@@ -6805,6 +6886,23 @@ shotlog.result = function(shot, hit)
         row.l3, row.l3w, row.l3c = shotlog.num(snap.l3, 6), shotlog.num(snap.l3w, 4), shotlog.num(snap.l3c, 3)
         row.l3s, row.l6s = shotlog.num(snap.l3s), shotlog.num(snap.l6s)
         row.cf = shotlog.num(snap.conf, 0)
+    end
+        local usable = (snap ~= nil and snap.idx == idx) and snap or nil
+    local okx, dxv, dxc, dxd = pcall(shotlog.diagnose, row, usable, shot, hit)
+    if (okx) then
+        row.dx, row.dxc, row.dxd = dxv, dxc, dxd
+    else
+        row.dx, row.dxc = "diag_error", "data"
+    end
+    local fire = usable ~= nil and usable.dg or nil
+    if (fire ~= nil) then
+        row.fa, row.fr, row.jc = shotlog.num(fire.age, 3), fire.fresh and 1 or 0, shotlog.num(fire.jc, 2)
+        row.fe, row.hl = shotlog.num(fire.eye, 1), shotlog.num(fire.held, 2)
+    end
+    if (not hit and ui.utils.event_logs:get(5)) then
+        pcall(function()
+            print("dx ", get_text_color(), tostring(row.dx), specter_color_t(168, 168, 168), "  " .. tostring(row.dxd or row.dxc or ""))
+        end)
     end
     if (hit) then
         row.hg, row.dmg = shot.hitgroup, shotlog.num(shot.damage)
