@@ -976,3 +976,6 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   Fails when the best attacker hits a preset / state above 0.60 (a forced side guess is ~0.47). Reworked AA (Oct 2026): 0.37-0.52,
   mean 0.46 (the 7 old presets 0.39-0.53, mean 0.48; was 0.63 before the coin flip body side).
   It models the angles only, not the animation layers a real cheat also reads.
+- Load freeze report (owners, Oct 19 2026: "primo mindig egybol fagy, tegnap meg mukodott"): the diff of that day touches no load-time native code (no ffi, no signature, no panorama); the only
+  change that runs while the menu is open at the start was `menu_handle` writing the "Resolver learning" and "Defensive lock ticks" sliders (`.ref:set`) on EVERY frame. They are set once now
+  (`ui.slider_defaults_set`), which also lets the user move them. Not confirmed as the freeze cause: if it stays, the known good file is the Oct 17 version (`git show 8a97498:specter_primordial.lua`).
