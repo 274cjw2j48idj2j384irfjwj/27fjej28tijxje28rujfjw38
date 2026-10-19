@@ -873,7 +873,6 @@ local config = {}
 local auto_cfg = {}
 local should_change_side = {}
 local keybinds = { sorted = { }, mode = {[0] = 'toggle', 'hold on', 'hold off', 'always', 'off'}, unsorted = {["double tap"]=menu_find("aimbot","general","exploits","doubletap","enable")[2],["hide shots"]=menu_find("aimbot","general","exploits","hideshots","enable")[2],["quick peek"]=menu_find("aimbot","general","misc","autopeek")[2],["fake duck"]=menu_find("antiaim","main","general","fakeduck")[2],["lock angle"]=menu_find("antiaim","main","general","lock angle")[2],["inverter"]=menu_find("antiaim","main","manual","invert desync")[2],["lean inverter"]=menu_find("antiaim","main","manual","invert body lean")[2],["slow walk"]=menu_find("misc","main","movement","slow walk")[2],["ping spike"]=menu_find("aimbot","general","fake ping","enable")[2],["auto direction"]=menu_find("antiaim","main","auto direction","enable")[2],["edge jump"]=menu_find("misc","main","movement","edge jump")[2],["sneak"]=menu_find("misc","main","movement","sneak")[2],["edge bug"]=menu_find("misc","main","movement","edge bug helper")[2],["jump bug"]=menu_find("misc","main","movement","jump bug")[2],["fire extinguisher"]=menu_find("misc","utility","general","fire extinguisher")[2],["free cam"]=menu_find("misc","utility","general","freecam")[2],["nade helper"]=menu_find("misc","nade helper","general","enable")[2],["auto throw"]=menu_find("misc","nade helper","general","autothrow")[2],["extended angles"]=menu_find("antiaim","main","extended angles","enable")[2],["lean resolver"]=menu_find("aimbot","general","aimbot","body lean resolver")[2],["resolver override"]=menu_find("aimbot","general","aimbot","override resolver")[2],["dormant aimbot"]=menu_find("aimbot","general","dormant aimbot","enable")[2],["min. damage"]=menu_find("aimbot",get_active_weapon(),"target overrides","min. damage")[2],["hitbox override"]=menu_find("aimbot",get_active_weapon(),"target overrides","hitbox")[2],["lethal shot"]=menu_find("aimbot",get_active_weapon(),"target overrides","lethal shot")[2],["hitchance override"]=menu_find("aimbot",get_active_weapon(),"target overrides","hitchance")[2],["safepoint"]=menu_find("aimbot",get_active_weapon(),"target overrides","safepoint")[2],["lean safepoint"]=menu_find("aimbot",get_active_weapon(),"target overrides","body lean safepoint")[2]}}
-local misstable = {}
 local on_predict = {}
 local player_pose = {}
 local shared_data = {}
@@ -6656,7 +6655,7 @@ shotlog.aa = function(kind, snap, hitgroup, damage)
         lua = "primordial", v = 1, kind = "aa", r = kind, t = client_get_unix_time(),
         map = engine_get_level_name and engine_get_level_name() or nil, ping = get_user_ping(),
         st = snap.name, ym = snap.ym, jm = snap.jm, ds = snap.ds, def = snap.def or nil, ab = snap.ab or nil,
-        dc = snap.dc or nil, arm = snap.arm,
+        dc = snap.dc or nil, arm = snap.arm, eff = snap.eff,
         hg = hitgroup, dmg = shotlog.num(damage),
         -- the fake ping we added (the total ping above is mostly that + the real one) and our speed: with them the next logs can
         -- tell whether the head hits come with the fake ping (head hits were 12 % of the events under 40 ms and 24-30 % above)
@@ -7045,7 +7044,7 @@ end
 -- (Left / Right / Peek, Random desync side off) stay as they are
 builder.brain, builder.brain_d = {}, {}
 builder.brain_apply = function(ctx, anti_aim)
-    builder.brain_now, builder.brain_index = nil, nil
+    builder.brain_now, builder.brain_index, builder.brain_delay = nil, nil, nil
     if (not ui.antiaim.builder.adaptive:get() or anti_aim.yaw_mode:get() == 1) then
         return
     end
@@ -7054,11 +7053,13 @@ builder.brain_apply = function(ctx, anti_aim)
     local arm = builder.adv.ARMS[index]
     builder.brain_now = arm.name
     builder.brain_index = index
+    builder.brain_delay = arm.delay == true
     local yaw_left
     if (arm.delay) then
         local d, tick = builder.brain_d, globals.tick_count()
         if (d.yaw == nil or (builder.fresh and (tick >= (d.until_t or 0) or tick < (d.until_t or 0) - 256))) then
-            d.left = not d.left
+            -- the first side after a state change / a reset is a coin flip (it was always the same one: nil -> true)
+            if (d.yaw == nil) then d.left = math.random(2) == 1 else d.left = not d.left end
             d.until_t = tick + math.max(3, anti_aim.yaw_delay:get()) + builder.rnd(0, anti_aim.meta_delay:get())
             d.yaw = d.left and (anti_aim.yaw_left:get() + builder.rnd(0, anti_aim.yaw_meta_left:get()))
                 or (anti_aim.yaw_right:get() + builder.rnd(0, anti_aim.yaw_meta_right:get()))
@@ -7459,6 +7460,7 @@ builder.aa_snapshot = function()
         dc = builder.direct_on(),
         arm = builder.brain_now,
         arm_index = builder.brain_index,
+        eff = builder.brain_delay and "delay" or nil,   -- a delay profile REPLACES the yaw of the configured mode (`ym`)
         noise = ui.antiaim.switch_noise:get() and builder.noise or 0,
         speed = (function()
             local me = entity_list_get_local_player()
@@ -8380,6 +8382,15 @@ run_antiaim = function(ctx, cmd, unpredicted)
     end
 end
 
+builder.miss_seq = {}
+builder.miss_claim = function(idx)
+    local n = (builder.miss_seq[idx] or 0) + 1
+    builder.miss_seq[idx] = n
+    return n
+end
+builder.miss_current = function(idx, n)
+    return builder.miss_seq[idx] == n
+end
 on_miss = function(event)
     if (ui.antiaim.builder.enable:get()) then
         local userid = event.userid
@@ -8393,31 +8404,24 @@ on_miss = function(event)
                         if (eye_pos) then
                             local bullet_impact = vec3_t(event.x, event.y, event.z)
                             
-                            local localrecord = eye_pos:dist(bullet_impact)
                             local localorigin = eye_pos
                             local snapshot = builder.incoming_snapshot(entity)
-                            misstable[#misstable + 1] = eye_pos:dist(bullet_impact)
+                            -- one pending near miss PER ATTACKER (it was one shared list: a second enemy's impact inside the 0.15 s made the
+                            -- first one's check fail and its bullet was never counted), and our eye as it was when the bullet landed (0.15 s later
+                            -- at 250 u/s we are 37 units away, the limit is 50)
+                            local attacker_idx, seq = entity:get_index(), builder.miss_claim(entity:get_index())
+                            local my_eye = local_player:get_eye_position()
                             client_delay_call(function()
-                                if (localrecord == misstable[#misstable]) then
-                                    local eye_pos = local_player:get_eye_position()
-                                    if (eye_pos) then
-                                        if (builder.closest_point_on_ray(localorigin, bullet_impact, eye_pos):dist(eye_pos) < 50) then
-                                            builder.misses = builder.misses < #builder.anti_bruteforce and builder.misses + 1 or 0
-                                            builder.anti_brute_trigger()
-                                            if (snapshot ~= nil and not snapshot.hurt and not snapshot.evaded
-                                                and globals.tick_count() - hurt_tick > 8) then
-                                                snapshot.evaded = true
-                                                builder.aa_record("evaded", nil, nil, nil, snapshot)
-                                            end
+                                if (builder.miss_current(attacker_idx, seq) and my_eye ~= nil) then
+                                    if (builder.closest_point_on_ray(localorigin, bullet_impact, my_eye):dist(my_eye) < 50) then
+                                        builder.misses = builder.misses < #builder.anti_bruteforce and builder.misses + 1 or 0
+                                        builder.anti_brute_trigger()
+                                        if (snapshot ~= nil and not snapshot.hurt and not snapshot.evaded
+                                            and globals.tick_count() - hurt_tick > 8) then
+                                            snapshot.evaded = true
+                                            builder.aa_record("evaded", nil, nil, nil, snapshot)
                                         end
-
-                                        misstable = {}
-                                        return
-                                    else
-                                        return
                                     end
-                                else
-                                    return
                                 end
                             end, 0.15)
                         else
