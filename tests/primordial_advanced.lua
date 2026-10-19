@@ -50,7 +50,7 @@ local env = setmetatable({
     ui = {
         ragebot = { logic_reso = control(true), smart_baim = control(true),
             smart_baim_hp = control(40), smart_baim_lethal = control(true),
-            latency_guard = control(true), latency_limit = control(80), fast_peek = control(true), learn_rate = control(100), def_hold = control(false), def_ticks = control(16), conf_head = control(0), conf_body = control(0),
+            latency_guard = control(true), latency_limit = control(80), fast_peek = control(true), learn_rate = control(100),
             backtrack = { prediction = control(true), enable_backtrack = control(true),
                 extended_backtrack = control(false), ping_in_sight = control(false), engine_pred = control(false) },
             resolver = { enable_resolver = control(false) },
@@ -309,65 +309,6 @@ test("low HP forces body aim even with resolver inactive", function()
     resolver.hitscan(ctx)
     assert(ctx.groups[1] == false and ctx.groups[2] == true and ctx.groups[3] == true)
     assert(ctx.groups[4] == false and ctx.groups[5] == false)
-end)
-test("Body only on defensive: off by default, body only while the target's shift is on", function()
-    resolver.reset()
-    resolver.active = false
-    target.hp, target.flags = 100, 1
-    local p = resolver.data[target:get_index()] or {}
-    resolver.data[target:get_index()] = p
-    p.defensive_at = clock - 0.1
-    local ctx = context(target)
-    resolver.hitscan(ctx)
-    assert(ctx.groups[1] == nil)                                 -- option off: nothing touched
-    env.ui.ragebot.def_hold:set(true)
-    ctx = context(target)
-    resolver.hitscan(ctx)
-    assert(ctx.groups[1] == false and ctx.groups[2] == true)     -- shifting: head off, body on
-    p.defensive_at = clock - 1
-    ctx = context(target)
-    resolver.hitscan(ctx)
-    assert(ctx.groups[1] == nil)                                 -- shift over: normal again
-    env.ui.ragebot.def_hold:set(false)
-end)
-test("confidence options: off by default, body below the force level, head safe point below the minimum", function()
-    resolver.reset()
-    resolver.active = false
-    target.hp, target.flags = 100, 1
-    local idx = target:get_index()
-    resolver.mem[idx] = { stand = { candidates = { { good = 2, bad = 6 } }, selected = 1 } }   -- 25 %
-    resolver.previous[idx] = { key = "stand", candidate = 1 }
-    assert(math.abs(resolver.confidence(idx) - 25) < 1e-6)
-    local ctx = context(target)
-    resolver.hitscan(ctx)
-    assert(ctx.groups[1] == nil)                                 -- both off
-    env.ui.ragebot.conf_body:set(30)
-    ctx = context(target)
-    resolver.hitscan(ctx)
-    assert(ctx.groups[1] == false and ctx.groups[2] == true)     -- 25 < 30: body only
-    env.ui.ragebot.conf_body:set(0)
-    env.ui.ragebot.conf_head:set(40)
-    ctx = context(target)
-    resolver.hitscan(ctx)
-    assert(ctx.groups[1] == nil and ctx.safepoints[1] == true)    -- head stays, with a safe point
-    env.ui.ragebot.conf_head:set(0)
-end)
-test("hitscan decision reason: hp_body, defensive_policy, normal_head", function()
-    resolver.reset()
-    resolver.active = false
-    target.hp, target.flags = 39, 1
-    resolver.hitscan(context(target))
-    assert(resolver.why[target:get_index()] == "hp_body")
-    target.hp = 100
-    resolver.hitscan(context(target))
-    assert(resolver.why[target:get_index()] == "normal_head")
-    local p = resolver.data[target:get_index()] or {}
-    resolver.data[target:get_index()] = p
-    p.defensive_at = clock - 0.01
-    env.ui.ragebot.def_hold:set(true)
-    resolver.hitscan(context(target))
-    assert(resolver.why[target:get_index()] == "defensive_policy")
-    env.ui.ragebot.def_hold:set(false)
 end)
 test("new sliders initialize explicit defaults with unit steps", function()
     assert(source:find('slider("Body aim below HP", 0, 100, 1, 0, "hp")', 1, true))

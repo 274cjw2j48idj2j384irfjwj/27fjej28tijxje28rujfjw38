@@ -984,3 +984,7 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   step runs: at every `--- @region:` (col 0, from "useful codes" on), the three native signature groups at the top (hud / chat, fs_tesla, clipboard vtable), every `setup()` stage, every
   `execute_tasks` callback registration and the three `finish_up` parts; the last line "loaded" = the load went through. After a freeze the file says which step never finished. Keep a new
   top-level region marked with a `load_step` line, and remove the trace only when the freeze is found.
+- Oct 19 2026 REVERT (owners: "csinald vissza az osszes mai updatet", the load froze and the cause was not found): `specter_primordial.lua`, `tests/primordial_regress.py` and `tests/primordial_advanced.lua` are back to the
+  Oct 17 state (merge 8a97498, the last build the owners ran). Gone with it: the Oct 19 resolver / AA changes of this file (learning weights by aimed group / hit chance, the confidence / def_hold options, fire / grenade damage
+  filter, per attacker near miss, `vw` / `cm` / `sp` / `hd` shot log fields, delay profile coin flip, state scaled noise), the other session's commits of that day (fault log, resolver context, no random animation) and the
+  load trace. Their git history stays (PRs #165 - #179); the files they added (`.github/workflows/primordial-*.yml`, `tools/apply_primordial_*.py`, `tests/primordial_*_regress.py`) were left alone and fail against this file.
