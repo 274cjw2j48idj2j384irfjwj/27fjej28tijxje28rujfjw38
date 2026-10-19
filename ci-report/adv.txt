@@ -1,0 +1,59 @@
+PASS jitter differs from a steady spin
+PASS initial simulation is a baseline, not a choked record
+PASS bounded jitter history and confidence
+PASS small repeated jitter contributes usable confidence
+PASS simulation rewind invalidates target memory
+PASS respawn invalidates target generation
+PASS out-of-order shot IDs credit the captured candidate
+PASS duplicate result cannot train twice
+PASS spread feedback leaves hypotheses unchanged
+PASS overlapping feedback without IDs is not guessed
+PASS unique shot without an ID may be matched
+PASS feedback from a previous target generation is ignored
+PASS expired shots and queue size are bounded
+PASS resolver miss explores a different hypothesis
+PASS half-offset hypotheses respect yaw calculation mode
+PASS invalid simulation times are rejected
+PASS zero-offset hypothesis can learn
+PASS packet decisions stay stable within a tick
+PASS state changes discard stale AA caches
+PASS tick rewind clears anti-brute timers
+PASS negative UI randomization does not create an empty interval
+PASS X-Way stays bounded and refreshes changed parameters
+PASS delayed AA feedback credits the captured arm, not current arm
+PASS frame-scaled smoothing converges without overshoot
+PASS angle normalization and finite desync bounds
+PASS low HP forces body aim even with resolver inactive
+PASS Body only on defensive: off by default, body only while the target's shift is on
+PASS confidence options: off by default, body below the force level, head safe point below the minimum
+PASS hitscan decision reason: hp_body, defensive_policy, normal_head
+PASS new sliders initialize explicit defaults with unit steps
+PASS health threshold is strict and configurable
+PASS zero threshold disables HP-forced body aim
+PASS disabling smart body aim removes its overrides
+PASS lethal body scan respects actual traced damage through walls
+PASS head hits and invalid traces do not count as lethal body damage
+PASS final body enforcement defeats a later head re-enable
+PASS fresh confident crouch jitter does not force safepoints in fast mode
+PASS explicit strict safety remains respected
+PASS stale jitter does not force safety
+PASS crouch transition clears earlier standing jitter evidence
+PASS simulation rewind has a defensive grace window
+PASS high ping uses millisecond threshold and outgoing-only budgets
+PASS invalid latency inputs stay finite
+PASS high ping fallback enables native resolver
+PASS high ping does not receive added fake latency
+PASS fake ping only runs while an enemy is in sight, 1 s after, and always when the option is off
+PASS expired prediction priorities are ignored
+PASS blocked extrapolation does not manufacture a future peek
+PASS crouch peek prediction supports slow movement and short lookahead
+PASS fast crouch scan avoids script-imposed defensive head safepoint
+PASS fast crouch scan avoids 90 percent damage-accuracy injection
+PASS normal standing scan preserves the chosen accuracy booster
+PASS false autopeek position is not mistaken for an active peek
+PASS miss statistics retain host reasons with logging off
+PASS host jitter is not relabeled as prediction error
+PASS missing reason safely becomes unknown
+PASS AA code does not depend on resolver-only numeric helpers
+PASS shot capture is optional when the resolver block is omitted
+ALL 58 TESTS PASSED
