@@ -5584,11 +5584,12 @@ resolver.capture = function(shot)
     local p, prev = resolver.data[idx], resolver.previous[idx]
     local s = { id = resolver.shot_id(shot), idx = idx, time = now,
         epoch = resolver.epoch, track = p, aimpos = shot.player:get_hitbox_pos(1) }
-    if (prev ~= nil) then
-        s.key, s.kind, s.rel = prev.key, prev.kind, prev.rel
-        s.candidate, s.desync = prev.candidate, prev.m_flDesync
-        s.model, s.nxt = prev.model, prev.nxt
-        s.phase, s.reliab = prev.phase, prev.reliab
+        if (prev ~= nil) then
+        local selected = (prev.vwhy == "held" and prev.held_context) or prev
+        s.key, s.kind, s.rel = selected.key, selected.kind, selected.rel
+        s.candidate, s.desync = selected.candidate, selected.m_flDesync
+        s.model, s.nxt = selected.model, selected.nxt
+        s.phase, s.reliab = selected.phase, selected.reliab
         s.vw = prev.vwhy
     end
     -- classified at the result (resolver.spoiled): the round trip and the state of the target at the shot
@@ -5736,8 +5737,9 @@ end
 -- true when an event of that kind spoils a shot fired at t_fire with a round trip of rtt, the result arriving at now
 resolver.spoiled = function(p, t_fire, rtt, now, kind)
     local m = resolver.K.ev_margin
+    local upper = math.min(now, t_fire + rtt) + m
     for _, ev in ipairs(p.events or {}) do
-        if (ev.kind == kind and ev.obs >= t_fire + rtt - ev.dur - m and ev.obs <= now + m) then
+        if (ev.kind == kind and ev.obs >= t_fire + rtt - ev.dur - m and ev.obs <= upper) then
             return true
         end
     end
@@ -6316,7 +6318,12 @@ resolver.update = function(local_player, ent)
     if (applied) then
         value = resolver.hypothesis(candidate, hint, nx and -nx or 0, half, resolver.max_desync(st), c)
         st.m_flGoalFeetYaw = res_norm(eye + value)
-        prev.held, prev.held_candidate, prev.held_at = value, candidate, globals.real_time()
+                prev.held, prev.held_candidate, prev.held_at = value, candidate, globals.real_time()
+        prev.held_context = {
+            key = key, kind = kind, rel = value ~= 0 and res_sign(value * hint) or 0,
+            candidate = candidate, m_flDesync = value, model = c, nxt = nx,
+            phase = prof.phase, reliab = prof.rel,
+        }
     elseif (able and prev.held ~= nil and globals.real_time() - prev.held_at <= 0.6) then
         -- no newer record than 0.12 s (a choking target updates every 8-15 ticks, a defensive shift is no record): the last
         -- value stays (owners, Oct 2026: "nem jol meri fel a szoget ... jitternel", 59 % of the real shots had no value
@@ -6336,7 +6343,11 @@ resolver.update = function(local_player, ent)
     prev.candidate, prev.confidence = applied and candidate or nil, confidence
     -- why a shot would carry no value (shot log `vw`): "few" records, "nochoke" (no desync possible), "stale" (no record under 0.12 s and the
     -- held value older than 0.6 s), "held" = the last value was written again, nil = a fresh one
-    prev.vwhy = fresh_value and nil or applied and "held" or (p.samples < 2 and "few") or (p.nochoke >= RES_NOCHOKE and "nochoke") or "stale"
+        if (fresh_value) then
+        prev.vwhy = nil
+    else
+        prev.vwhy = applied and "held" or (p.samples < 2 and "few") or (p.nochoke >= RES_NOCHOKE and "nochoke") or "stale"
+    end
     prev.model, prev.nxt = c, nx
     prev.phase, prev.reliab = prof.phase, prof.rel
 end
@@ -7502,7 +7513,9 @@ builder.aa_record = function(kind, hitgroup, damage, attacker, snapshot)
     end
     local snap = snapshot or builder.aa_snapshot()
     -- Unattributed damage still appears in stats, but cannot train an arm.
-    if (snapshot ~= nil and snap.arm_index ~= nil) then
+        if (snapshot ~= nil and snap.arm_index ~= nil and not snap.learned
+        and (kind == "evaded" or (kind == "hit" and hitgroup == 1))) then
+        snap.learned = true
         builder.adv.brain_learn(builder.brain, builder.adv.arm_group(snap.n), kind, hitgroup,
             globals.real_time(), math.random, snap.arm_index)
     end
@@ -8411,7 +8424,13 @@ on_miss = function(event)
                             -- at 250 u/s we are 37 units away, the limit is 50)
                             local attacker_idx, seq = entity:get_index(), builder.miss_claim(entity:get_index())
                             local my_eye = local_player:get_eye_position()
+                                                        local scheduled_at = globals.real_time()
                             client_delay_call(function()
+                                local now = globals.real_time()
+                                if (not ui.antiaim.builder.enable:get() or now < scheduled_at or now - scheduled_at > 0.5) then return end
+                                if (entity_list_get_local_player() ~= local_player or not local_player:is_alive()) then return end
+                                if (entity_list_get_player_from_userid(userid) ~= entity or not entity:is_enemy()) then return end
+                                if (snapshot ~= nil and (snapshot.hurt or snapshot.evaded)) then return end
                                 if (builder.miss_current(attacker_idx, seq) and my_eye ~= nil) then
                                     if (builder.closest_point_on_ray(localorigin, bullet_impact, my_eye):dist(my_eye) < 50) then
                                         builder.misses = builder.misses < #builder.anti_bruteforce and builder.misses + 1 or 0
