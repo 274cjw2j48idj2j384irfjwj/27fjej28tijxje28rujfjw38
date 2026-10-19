@@ -8,7 +8,9 @@ on:
       - main
     paths:
       - specter_primordial.lua
+      - tests/primordial_regress.py
       - tools/apply_primordial_resolver_context.py
+      - tools/adapt_primordial_regress.py
       - tests/primordial_resolver_context_regress.py
       - .github/workflows/primordial-resolver-context.yml
 permissions:
@@ -37,8 +39,10 @@ jobs:
           mkdir -p ci-report
           python tools/apply_primordial_resolver_context.py --apply 2>&1 | tee ci-report/apply.txt
           test "${PIPESTATUS[0]}" -eq 0
+          python tools/adapt_primordial_regress.py --apply 2>&1 | tee -a ci-report/apply.txt
+          test "${PIPESTATUS[0]}" -eq 0
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git diff --exit-code -- specter_primordial.lua
+            git diff --exit-code -- specter_primordial.lua tests/primordial_regress.py
           fi
       - name: Resolver context tests
         id: ctx
@@ -68,12 +72,6 @@ jobs:
           mkdir -p ci-report
           python tests/primordial_regress.py 2>&1 | tee ci-report/regress.txt
           test "${PIPESTATUS[0]}" -eq 0
-      - name: Show the failing regression tests
-        if: always()
-        run: |
-          mkdir -p ci-report
-          grep -n -B100 -A2 'enemy defensive / lag break: the shift' tests/primordial_regress.py > ci-report/excerpt_defensive.txt || true
-          grep -n -B60 -A2 'Resolver learning: 100' tests/primordial_regress.py > ci-report/excerpt_learning.txt || true
       - name: Advanced Lua harness
         id: adv
         continue-on-error: true
@@ -93,7 +91,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if [ "${{ steps.apply.outcome }}" = "success" ] && [ "${{ steps.ctx.outcome }}" = "success" ] && [ "${{ steps.diag.outcome }}" = "success" ] && [ "${{ steps.safety.outcome }}" = "success" ] && [ "${{ steps.regress.outcome }}" = "success" ] && [ "${{ steps.adv.outcome }}" = "success" ]; then
             git rm -rqf --ignore-unmatch ci-report
-            git add -- specter_primordial.lua
+            git add -- specter_primordial.lua tests/primordial_regress.py
             if git diff --cached --quiet; then
               echo "Nothing to commit."
               exit 0
