@@ -47,7 +47,7 @@ class DiagnoseTests(unittest.TestCase):
 
     def test_hit_has_no_fault(self):
         lua = runtime()
-        self.assertEqual(lua.eval('shotlog.diagnose(base_row(), base_snap(), {}, true)'), 'hit')
+        self.assertEqual(lua.eval('(shotlog.diagnose(base_row(), base_snap(), {}, true))'), 'hit')
 
     def test_lost_attribution_is_reported(self):
         self.check('attr_lost', 'data', 'snap = nil')
