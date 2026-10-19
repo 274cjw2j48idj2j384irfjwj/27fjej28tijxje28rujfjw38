@@ -6954,66 +6954,10 @@ end
 --- @region: animation
 
 team_animation = function()
-    -- Legacy cosmetic routine writes random values into animation state.
-    -- Do not execute it while the resolver relies on those same records.
-    if (resolver.active) then return end
-    if (ui.player.team_anim:get()) then
-        local players = entity_list_get_players()
-        local teams = entity_list_get_players(true)
-
-        if (players ~= nil and teams ~= nil) then
-            for _, v in pairs(players) do
-                local is_teammate = false
-                for _, teammate in pairs(teams) do
-                    if (v == teammate) then
-                        is_teammate = true
-                        break
-                    end
-                end
-        
-                if (v:is_alive()) then
-                    if (not is_teammate) then
-                        local anim_fix = ffi.cast("CPlayer_animation_State**", ffi.cast("uintptr_t", get_entity_address(v:get_index())) + 0x9960)[0]
-            
-                        anim_fix.m_flGoalFeetYaw = 549
-                        anim_fix.m_flCurrentFeetYaw = -256
-
-                        anim_fix.m_fDuckAmount = client_random_float(0, 1)
-            
-                        anim_fix.m_flHeadHeightOrOffsetFromHittingGroundanimation = client_random_float(-34.91, 50.6)
-                        anim_fix.m_flPitch = client_random_float(-91, 34)
-            
-                        anim_fix.m_flanimUpdateDelta = client_random_float(-2.758, 3.985)
-                        anim_fix.m_flLeanAmount = client_random_float(-29.15, 51.63)
-
-                        anim_fix.m_vOriginZ = client_random_float(-8726, 87269)
-                        anim_fix.m_vOriginY = client_random_float(-2154, 21543)
-                        anim_fix.m_vOriginX = client_random_float(-6978, 69781)
-            
-                        anim_fix.m_vvelocity_x = client_random_float(-3410, 34109)
-                        anim_fix.m_vvelocity_y = client_random_float(-9842, 98421)
-            
-                        anim_fix.m_flCurrentTorsoYaw = client_random_float(-789, 654)
-                        anim_fix.m_flFeetYawRate = client_random_float(-987, 876)
-                        anim_fix.m_flFeetCycle = client_random_float(0.194, 0.957)
-            
-                        anim_fix.m_flMagicFraction = client_random_float(-4.456, 7.987)
-                        anim_fix.m_flSpeed2D = client_random_float(-10, 2450)
-            
-                        anim_fix.m_flUpVelocity = client_random_float(-20, 100)
-                        anim_fix.m_flSpeedNormalized = client_random_float(-2.456, 5.789)
-
-                        anim_fix.m_flFeetSpeedForwardsOrsideWays = client_random_float(-30, 80)
-                        anim_fix.m_flFeetSpeedUnknownForwardOrsideways = client_random_float(-40, 60)
-                    end
-                end
-            end
-        else
-            return
-        end
-    else
-        return
-    end
+    -- the old version wrote RANDOM numbers into the animation state of every enemy (a random "resolver" that fought the real one,
+    -- some of the values are far outside what the game allows). The angle of an enemy is decided by resolver.update only: nothing
+    -- is written here any more
+    return
 end
 
 --- @endregion
