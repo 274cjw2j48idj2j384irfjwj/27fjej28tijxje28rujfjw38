@@ -630,7 +630,7 @@ TICKS = 0
 globals = { real_time = function() return SIM end, tick_count = function() TICKS = TICKS + 1 return TICKS end, interval_per_tick = function() return 1 / 64 end }
 local function item(v) return { get = function() return v end } end
 ui = { ragebot = { logic_reso = item(false), smart_baim = item(true),
-    smart_baim_hp = item(40), smart_baim_lethal = item(true), def_hold = item(false), def_ticks = item(16), conf_head = item(0), conf_body = item(0), resolver = { shot_pred = item(4) } } }
+    smart_baim_hp = item(40), smart_baim_lethal = item(true), resolver = { shot_pred = item(4) } } }
 HP = 100
 damage = { calculate = function(_, _, box) return box == "chest" and 70 or 87 end }
 res_custom = function() return false end
@@ -1054,8 +1054,7 @@ DF = chunk("resolver.memory = function(idx, key, kind)", "resolver.shot_id = fun
      chunk("resolver.shot_id = function(event)", "local RES_JIT_N = 12") + \
      chunk("resolver.HYP = {", "--- @info: resolver: side from freestanding") + \
      chunk("local RES_JIT_N = 12", "resolver.update = function(local_player, ent)") + \
-     chunk("resolver.on_result = function(target, hit_ok, resolver_miss, event, reason)", "resolver.body_damage = function(ent)") + \
-     chunk("resolver.confidence = function(idx)", "resolver.enforce_body = function(ctx)")
+     chunk("resolver.on_result = function(target, hit_ok, resolver_miss, event, reason)", "resolver.body_damage = function(ent)")
 dm = L.LuaRuntime(unpack_returned_tuples=True)
 dm.execute("""
 RES_FS_TICKS = 16
@@ -1093,7 +1092,7 @@ r = D("""
 for i = 1, 6 do REC(i % 2 == 0 and 30 or -30) end
 local p = resolver.data[3]
 resolver.previous[3] = { key = "jitter", kind = "jitter", candidate = 1, m_flDesync = 20, rel = 1 }
-local mem = resolver.memory(3, "jitter@stand")
+local mem = resolver.memory(3, "jitter")
 -- 1. a plain resolver miss counts
 local s1 = RESULT(1, false, true, "resolver")
 local plain = resolver.misses[3] == 1 and mem.candidates[1].bad > 1 and not s1.defensive and s1.state == "stand"
@@ -1188,25 +1187,6 @@ r = ep.eval("""function()
 end""")()
 check(tuple(r) == (True, True, True), "engine prediction: a 2D origin / velocity netvar gives z from name[2] or 0, no error (%s)" % (r,))
 
-# damage that is no bullet (fire, grenades) is no shot at us: it must not count in the AA stats / trigger the anti brute
-BL = L.LuaRuntime(unpack_returned_tuples=True)
-BL.execute("builder = {}\n" + chunk("builder.NON_BULLET = {", "builder.aa_record = function(kind, hitgroup, damage, attacker, snapshot)"))
-r = BL.eval("function() return builder.is_bullet_damage('ssg08'), builder.is_bullet_damage('weapon_awp'), builder.is_bullet_damage('inferno'), "
-            "builder.is_bullet_damage('hegrenade'), builder.is_bullet_damage('weapon_molotov'), builder.is_bullet_damage(nil) end")()
-check(tuple(r) == (True, True, False, False, False, True), "player_hurt: fire / grenade damage is no shot at us, guns and unknown weapons are (%s)" % (r,))
-
-# near misses are tracked PER ATTACKER: a second enemy's impact must not cancel the first one's pending check, the same attacker's newer impact does
-NM = L.LuaRuntime(unpack_returned_tuples=True)
-NM.execute("builder = {}\n" + chunk("builder.miss_seq = {}", "on_miss = function(event)"))
-r = NM.eval("""function()
-    local a1 = builder.miss_claim(5)
-    local b1 = builder.miss_claim(7)            -- another enemy shoots inside the 0.15 s
-    local first_ok = builder.miss_current(5, a1) and builder.miss_current(7, b1)
-    local a2 = builder.miss_claim(5)            -- the same enemy again: only the newest counts
-    return first_ok, builder.miss_current(5, a1), builder.miss_current(5, a2), builder.miss_current(7, b1)
-end""")()
-check(tuple(r) == (True, False, True, True), "near miss: one pending check per attacker, another enemy does not cancel it (%s)" % (r,))
-
 # "Resolver learning" slider (owners, Oct 2026): 0 % learns nothing, 50 % half a point per result, 100 % the full one
 r = D("""
 local out = {}
@@ -1214,23 +1194,15 @@ for i, rate in ipairs({ 100, 50, 0 }) do
     LEARN = rate
     local key = "learn" .. i
     resolver.previous[3] = { key = key, kind = "jitter", candidate = 1, m_flDesync = 20, rel = 1 }
-    local mem = resolver.memory(3, key .. "@stand")
+    local mem = resolver.memory(3, key)
     local good = mem.candidates[1].good
     RESULT(100 + rate, true, false, nil)
     out[i] = mem.candidates[1].good - good
 end
--- a hit on the body (aim group not the head) counts half of a head hit
 LEARN = 100
-resolver.previous[3] = { key = "learn4", kind = "jitter", candidate = 1, m_flDesync = 20, rel = 1 }
-local mem4 = resolver.memory(3, "learn4@stand")
-local g4 = mem4.candidates[1].good
-resolver.capture({ player = ENT, id = 900 })
-NOW = NOW + 0.1
-resolver.on_result(ENT, true, false, { id = 900, aim_hitgroup = 3 })
-local body_hit = mem4.candidates[1].good - g4
-return out[1] > 0.99 and out[1] < 1.01, out[2] > 0.49 and out[2] < 0.51, math.abs(out[3]) < 1e-9, body_hit > 0.49 and body_hit < 0.51
+return out[1] > 0.99 and out[1] < 1.01, out[2] > 0.49 and out[2] < 0.51, math.abs(out[3]) < 1e-9
 """)
-check(tuple(r) == (True, True, True, True), "Resolver learning: 100%% the full result, 50%% half, 0%% the hypotheses stay as they are, a body hit counts half (%s)" % (r,))
+check(tuple(r) == (True, True, True), "Resolver learning: 100%% the full result, 50%% half, 0%% the hypotheses stay as they are (%s)" % (r,))
 
 # what was learned stays with the PLAYER: a dormant phase / respawn keeps it, another player in the slot does not
 r = J("""
