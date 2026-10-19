@@ -551,6 +551,16 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   What the logs (Oct 16 / 17, 331 shots) do show: in the air 27 of 62 shots have NO value (`vl` 0, `cd` None) and hit 0.48 against 0.66 with one (ground: 0.66 without, 0.72 with); the
   fake ping 400 (the user's own slider) 121 shots, non-defensive hit 0.73 against 0.78 at fp 0 (not significant). New shot log field `vw` = why there is no fresh value: "few" records,
   "nochoke" (no desync possible), "stale" (no record under 0.12 s and the held value older than 0.6 s), "held" (the last value written again); read it before changing the hold.
+- "Fix the resolver + anti-aim, evidence driven" prompt (owners' file `primordial_resolver_aa_fix_prompt.md`, Oct 19 2026), checked against the logs with the new
+  `python3 tests/primordial_resolver.py [dump.txt] [--since DAY]` (all the tables; reads `origin/shotlogs` without a file; exit 1 when a shot row after `--since` lacks `r`, `native`, `ping`, `hc`,
+  `fp` or `sx`). What was WRONG in the prompt: (1) "44 % of the shots are `native:true`": 518 of 1159, all of them on Oct 14 / 15, before the "no fallback" fix; 0 of 331 on Oct 16 / 17;
+  (2) "`dead:true` inflates the hit rate": `dead` is `hp <= 0` after the shot = a KILL, always a hit (461 of the 780 hits); the 67.3 % over all shots is the real rate; (3) "`sp` is missing on most rows":
+  `sp` is nil (left out of the JSON) when no safe point was set, so absent = none; the safe point rows score lower because they are the hard shots (jitterers, after misses, low HP), not because
+  the safe point costs hits; (4) the AA list was read backwards: the numbers are the ENEMY's hit rate on us, so LOWER IS BETTER for us: Duck 76.2, Move 77.4, Random hold 64.6, Static 68.0, Packet coin 77.7 are
+  our best, Air 86.6, Duck move 85.9, Stand 84.8, X-Way 83.2, Delay tied 82.8 our worst; (5) the only enemy-defensive number that matters is `df` (116 shots, hit 0.37 against 0.71).
+  Changed: the shot log `cm` is the miss streak AT FIRE time now (`s.misses` in `capture`; it was read after the result was counted). Left alone (no number supports a change): the resolver
+  hypotheses, the safe point layer, Smart body aim, the AA modes. Open from the numbers: X-Way (83.2 %, 524 rows, the mode default.cfg uses in Stand / Duck / Air) against Distort 79.8 % and Random hold
+  64.6 % (48 rows only): not proven, states are mixed in; the air shots without a resolver value are logged with `vw` now.
 - hvh.gg servers (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg"; then "crashes the game after i refresh hvh.gg"):
   Misc > Servers has a second list "HvH servers (hvh.gg)" + "Connect to the selected hvh.gg server" / "Refresh hvh.gg" (`servers.hvh_*`). The lua
   does NOT ask hvh.gg itself (the first version did, through the steam http library, and a big page crashed the game): server.js `GET /hvhgg`

@@ -5611,6 +5611,7 @@ resolver.capture = function(shot)
     if (ok3) then s.l3, s.l3w, s.l3c, s.l3s, s.l6s = rate3, weight3, cycle3, seq3, seq6 end
     s.state = resolver.state_of(shot.player)
     s.conf = resolver.confidence(idx)
+    s.misses = resolver.misses[idx] or 0                          -- the miss streak AT FIRE time (the shot log used to write it after the result was counted)
     resolver.shots[#resolver.shots + 1] = s
     if (#resolver.shots > 128) then table.remove(resolver.shots, 1) end
 end
@@ -6780,6 +6781,7 @@ shotlog.result = function(shot, hit)
         row.df, row.lb, row.sx = snap.defensive, snap.lagbreak, snap.state
         row.ph, row.rl = snap.phase, shotlog.num(snap.reliab, 2)
         row.vw = snap.vw
+        row.cm = snap.misses or row.cm
         row.l6, row.l6w = shotlog.num(snap.l6, 6), shotlog.num(snap.l6w, 4)
         row.l3, row.l3w, row.l3c = shotlog.num(snap.l3, 6), shotlog.num(snap.l3w, 4), shotlog.num(snap.l3c, 3)
         row.l3s, row.l6s = shotlog.num(snap.l3s), shotlog.num(snap.l6s)
