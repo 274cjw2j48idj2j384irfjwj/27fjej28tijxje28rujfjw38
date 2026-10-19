@@ -9,6 +9,6 @@ test_source_wires_the_logger_after_the_snapshot (__main__.DiagnoseTests.test_sou
 test_turn_after_fire_is_inferred (__main__.DiagnoseTests.test_turn_after_fire_is_inferred) ... ok
 
 ----------------------------------------------------------------------
-Ran 9 tests in 0.008s
+Ran 9 tests in 0.013s
 
 OK

@@ -10,6 +10,6 @@ test_result_keeps_the_slot_of_a_plain_situation (__main__.ResolverContextTests.t
 test_result_trains_the_state_slot_of_a_jitterer (__main__.ResolverContextTests.test_result_trains_the_state_slot_of_a_jitterer) ... ok
 
 ----------------------------------------------------------------------
-Ran 10 tests in 0.006s
+Ran 10 tests in 0.009s
 
 OK
