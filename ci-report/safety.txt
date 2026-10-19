@@ -9,6 +9,6 @@ test_stale_callbacks_do_not_mutate_aa (__main__.SafetyTests.test_stale_callbacks
 test_valid_near_miss_still_reacts (__main__.SafetyTests.test_valid_near_miss_still_reacts) ... ok
 
 ----------------------------------------------------------------------
-Ran 9 tests in 0.020s
+Ran 9 tests in 0.013s
 
 OK

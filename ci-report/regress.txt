@@ -68,11 +68,37 @@ ok   smart body aim: independent lethal-body fallback; inactive safety stays off
 ok   menu_find: each item looked up once ((True, 2, 'aimbot/auto/accuracy'))
 ok   FPS profiler wraps the callbacks and the PAINT parts
 ok   Multipoint correction: the head first every time, the chest when Smart body aim took the head out, one trace per tick and target however many commands (double tap) ((0, 1) (1, 1) 1 2)
-Traceback (most recent call last):
-  File "/home/runner/work/27fjej28tijxje28rujfjw38/27fjej28tijxje28rujfjw38/tests/primordial_regress.py", line 789, in <module>
-    FM = chunk("resolver.memory = function(idx, key, kind)", "resolver.shot_id = function(event)") + \
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/runner/work/27fjej28tijxje28rujfjw38/27fjej28tijxje28rujfjw38/tests/primordial_regress.py", line 29, in chunk
-    i = SRC.index(start)
-        ^^^^^^^^^^^^^^^^
-ValueError: substring not found
+ok   feet model: standing feet go to the LBY target at 100 deg/s inside the max body yaw, running they follow the eye yaw, no LBY = no model, the max body yaw shrinks with speed ((-58, -33, -8, 20.625, None, 58, 37.7))
+ok   state profile: the LBY phase is fully trusted once the feet model converged, the eye phase (moving / air) less, a fresh model little, the steps are counted (('lby', 1, 0.25, 'eye', 0.35, 12, 0.5, 'eye', 5))
+ok   state priors: all 7 states have one, standing trusts the feet model more than air, air the jitter pattern more than standing ((7, 1, 1))
+ok   jitter period: a fixed delay switches exactly when the run reaches it, a tick jitter every record, no period = a low confidence guess, too little history = nothing ((-1, 3, 0.8, 1, 3, 1, 1, -1, None, 0.25, None))
+ok   jitter period: run_update follows a delay 3 jitter (stays inside a run) and forgets when the jitter ends ((1, -1, None, None))
+ok   pattern change: fires once, after 10 records of the new pattern; a steady jitterer and a non-jitterer never do ((1, 30, False, 0))
+ok   round change: what was learned about a player comes back halved, the feet hypothesis wins first with a visible body yaw, loses after misses, is skipped without one; hypothesis values ((True, True, True, 6, 1, 1, -40, 40, -58, -58, 58))
+ok   2D netvar vectors: z from the [2] element or 0, no error ([-20, 0, -20, True])
+ok   movement forecast: a runner is predicted ahead along its velocity, a wall stops it, garbage netvars and no data give nothing ([True, True, True, True, 6, True, True])
+ok   resolver.update: a standing target with a visible body yaw gets the feet model's value, a delay 3 jitter gets its period and next side, no / garbage LBY breaks nothing ((6, 58, -58, None, True, True, 3, 'jitter', True, True, True))
+ok   tickbase shift: the target and what was learned stay with a short grace window, a big jump back starts over ((True, True, True, True, True))
+FAIL enemy defensive / lag break: the shift observed a round trip after the shot flags it, such a miss is no resolver miss and teaches nothing, a hit still counts, an old shift / walking flags nothing, the stats per state show it as defensive / lag break ((False, True, False, True, True, True, 'stand,6,1,2,1,1,1,nil,jitter,6', True))
+ok   jitter levels: two recurring levels = cyclic, many scattered ones = random, too few records = none (('cyclic', 'random', None, 'cyclic'))
+ok   engine prediction: missing interfaces = nothing called, state bad, one console line ((True, 'bad', 1))
+ok   engine prediction: a 2D origin / velocity netvar gives z from name[2] or 0, no error ((True, True, True))
+ok   player_hurt: fire / grenade damage is no shot at us, guns and unknown weapons are ((True, True, False, False, False, True))
+ok   near miss: one pending check per attacker, another enemy does not cancel it ((True, False, True, True))
+FAIL Resolver learning: 100% the full result, 50% half, 0% the hypotheses stay as they are, a body hit counts half ((False, False, True, False))
+ok   learning follows the player (steam id): kept over a dormant phase and a respawn, not given to another player in the slot ((True, True, True, True))
+ok   on peek defensive: 14 commands x 5 enemies in one frame = 2 enemies traced, every enemy once per 4 ticks ((4, 10, 14, True))
+ok   unsafe peek: a gun with a round that is ready counts, an empty gun / knife / grenade / a gun half a second from firing does not ((True, False, False, False, False, True, False, False))
+ok   defensive trigger: one shift, a cool down of 38 ticks, urgent (shot at) ignores it, never on the tick we shoot ((3, 2))
+ok   Adaptive AA: Beta draws in 0..1 around the mean, state groups ((True, True, 0.9080209147266585, '4,1,2,2,1,2,3,3'))
+ok   Adaptive AA: plays the profile that is not head hit most of the time, a head hit switches at once, a body hit teaches nothing, the beliefs stay bounded ((0.6866666666666666, True, True, True))
+ok   Adaptive AA: tied / inverse / coin desync side rules ((False, True, True, False, True, False))
+ok   Adaptive AA at run time: Delay tied switches only after its delay ticks, on a sent packet, the desync on the yaw side (('-20:false -20:false -20:false -20:false 20:true 20:true 20:true 20:true -20:false -20:false -20:false -20:false 20:true', 'Delay tied', 2))
+ok   cloud configs: list newest first, Use imports, upload in 3 parts (0 first), refresh after, no key = nothing sent, the dev build shares as dev=1 + user (('https://srv/configs?lua=pm', 'ann ~ new  10-17 09:26 (3h ago)|bob ~ hvh  10-14 12:26 (3d ago)', 'https://srv/configs/get?lua=pm&name=hvh&author=bob', 'CFG:Zm9v', 1, 2, 'https://srv/configs/delete?lua=pm&dev=1&who=bob%20x&name=hvh'))
+ok   last config: Use remembers it, the start loads it quietly, nothing when it is gone / the default one ((True, True, True, True, True))
+ok   on_brute: a missing hurt player / local player is no error ((True, True, True, True))
+ok   anti-aim errors are caught and printed (max 1 per 3 s), the ANTIAIM callback never rethrows ((2, 3))
+
+2 failed
+config has been loaded successfully.
+config has been loaded successfully.
