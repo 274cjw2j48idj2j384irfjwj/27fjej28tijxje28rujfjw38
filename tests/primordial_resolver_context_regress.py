@@ -20,31 +20,12 @@ def function(name):
 def runtime():
     lua = LuaRuntime(unpack_returned_tuples=True)
     lua.execute('resolver = { mem = {}, previous = {}, NCAND = 9 }')
-    lua.execute(function('resolver.slot'))
     lua.execute(function('resolver.confidence'))
     lua.execute(function('resolver.memory').split('\nresolver.NCAND')[0])
     return lua
 
 
 class ResolverContextTests(unittest.TestCase):
-    def test_jitter_slot_is_per_state(self):
-        lua = runtime()
-        self.assertEqual(lua.eval('resolver.slot("jitter", "jitter", "move")'), 'jitter@move')
-        self.assertEqual(lua.eval('resolver.slot("move", nil, "move")'), 'move')
-        self.assertEqual(lua.eval('resolver.slot("jitter", "jitter", nil)'), 'jitter')
-        self.assertEqual(lua.eval('resolver.slot("move fs", "fs", "move")'), 'move fs')
-
-    def test_memory_keeps_states_apart_and_old_calls_work(self):
-        lua = runtime()
-        lua.execute('a = resolver.memory(2, "jitter", "jitter", "move")')
-        lua.execute('b = resolver.memory(2, "jitter", "jitter", "air")')
-        lua.execute('c = resolver.memory(2, "jitter", "jitter", "move")')
-        lua.execute('d = resolver.memory(2, "jitter", "jitter")')
-        lua.execute('e = resolver.memory(2, "stand")')
-        self.assertTrue(lua.eval('a ~= b and a == c and d ~= a and d ~= b'))
-        self.assertTrue(lua.eval('resolver.mem[2]["jitter@move"] == a and resolver.mem[2]["jitter"] == d and resolver.mem[2].stand == e'))
-        self.assertEqual(lua.eval('#a.candidates'), 9)
-
     def test_confidence_follows_the_decision_not_the_current_state(self):
         lua = runtime()
         lua.execute("""
@@ -74,7 +55,15 @@ resolver.previous[2] = { key = "jitter", kind = "jitter", state = "move", candid
         lua.execute('resolver.previous[2].state = "air"')
         self.assertIsNone(lua.eval('resolver.confidence(2)'))
 
-    def test_result_trains_the_slot_of_the_decision(self):
+    def test_other_situations_keep_their_slot(self):
+        lua = runtime()
+        lua.execute("""
+resolver.mem[2] = { ["move fs"] = { candidates = { { good = 2, bad = 2 } }, selected = 1 } }
+resolver.previous[2] = { key = "move fs", kind = "fs", state = "move", candidate = 1 }
+""")
+        self.assertAlmostEqual(lua.eval('resolver.confidence(2)'), 50, places=6)
+
+    def result_runtime(self, kind, dstate, state):
         lua = runtime()
         lua.execute("""
 res_clamp = function(v, lo, hi) return math.max(lo, math.min(hi, v)) end
@@ -85,16 +74,31 @@ resolver.K = { forget = 0.97 }
 resolver.data, resolver.misses = {}, {}
 TRACK = {}
 resolver.data[2] = TRACK
-resolver.take_shot = function() return { idx = 2, track = TRACK, key = "jitter", kind = "jitter", candidate = 1,
-    dstate = "air", state = "move", time = 9.9, rtt = 0.05 } end
 resolver.spoiled = function() return false end
 resolver.record = function() end
 TARGET = { get_index = function() return 2 end }
 """)
+        lua.execute('SNAP = { idx = 2, track = TRACK, key = "%s", kind = "%s", candidate = 1, dstate = %s, state = "%s", time = 9.9, rtt = 0.05 }'
+                    % ('jitter' if kind == 'jitter' else 'move', kind, ('"%s"' % dstate) if dstate else 'nil', state))
+        lua.execute('resolver.take_shot = function() return SNAP end')
         lua.execute(function('resolver.on_result'))
         lua.execute('resolver.on_result(TARGET, true, false, {}, nil)')
+        return lua
+
+    def test_result_trains_the_state_slot_of_a_jitterer(self):
+        lua = self.result_runtime('jitter', 'air', 'move')
         self.assertEqual(lua.eval('resolver.mem[2]["jitter@air"].candidates[1].good'), 2)
         self.assertIsNone(lua.eval('resolver.mem[2]["jitter@move"]'))
+        self.assertIsNone(lua.eval('resolver.mem[2]["jitter"]'))
+
+    def test_result_falls_back_to_the_shot_state(self):
+        lua = self.result_runtime('jitter', None, 'stand')
+        self.assertEqual(lua.eval('resolver.mem[2]["jitter@stand"].candidates[1].good'), 2)
+
+    def test_result_keeps_the_slot_of_a_plain_situation(self):
+        lua = self.result_runtime('plain', 'air', 'move')
+        self.assertEqual(lua.eval('resolver.mem[2]["move"].candidates[1].good'), 2)
+        self.assertIsNone(lua.eval('resolver.mem[2]["move@air"]'))
 
     def capture_runtime(self):
         lua = runtime()
@@ -144,10 +148,10 @@ resolver.previous[2] = { key = "move", state = "move", candidate = 3, m_flDesync
 
     def test_callers_and_log_are_wired(self):
         update = function('resolver.update')
-        self.assertIn('resolver.memory(idx, key, kind, state)', update)
+        self.assertIn('(kind == "jitter" and key .. "@" .. state) or key', update)
         self.assertIn('state = state,', update)
-        self.assertIn('snapshot.dstate or snapshot.state', function('resolver.on_result'))
         self.assertIn('row.ly = snap.ly', function('shotlog.result'))
+        self.assertIn('resolver.memory = function(idx, key, kind)', SOURCE)
 
 
 if __name__ == '__main__':
