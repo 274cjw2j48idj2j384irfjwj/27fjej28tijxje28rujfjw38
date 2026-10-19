@@ -561,6 +561,14 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   Changed: the shot log `cm` is the miss streak AT FIRE time now (`s.misses` in `capture`; it was read after the result was counted). Left alone (no number supports a change): the resolver
   hypotheses, the safe point layer, Smart body aim, the AA modes. Open from the numbers: X-Way (83.2 %, 524 rows, the mode default.cfg uses in Stand / Duck / Air) against Distort 79.8 % and Random hold
   64.6 % (48 rows only): not proven, states are mixed in; the air shots without a resolver value are logged with `vw` now.
+- Measured fix task, Oct 16 / 17 logs ONLY (owners' long Hungarian spec, Oct 19 2026). Baseline reproduced exactly: 331 shots (Oct 16: 99, 73 hit; Oct 17: 232, 151 hit), 490 AA rows, native false 331 / 331,
+  df / lb free shots 180 / 220, df or lb 44 / 111, 114 shots without `cd` (113 with `vl` 0), 9 identical extra lines (all AA rows inside one batch: 4 of the groups are hitgroup 0 damage 8 = fire ticks, so they are NOT proven
+  duplicates and are not deleted), 383 AA hits of which 83 have hitgroup 0. Findings: (1) 83 of 383 AA "hits" (21.7 %) are hitgroup 0 with 1-24 damage, gaps of 0-1 s = fire / grenade damage, not shots: the enemy hit rate on us is 78.2 %
+  raw, 73.7 % (300 of 407) without them; `player_hurt` fed `aa_record` AND `builder.anti_brute_trigger()` with any damage of an enemy: now only bullets (`builder.is_bullet_damage`, `NON_BULLET` = inferno / hegrenade /
+  incgrenade / molotov / flashbang / smokegrenade / decoy); (2) the missing `cd` is NOT what costs hits: free of df / lb, no `cd` 44 / 50, with `cd` 136 / 170; the low hit rate of valueless shots (air 0.48) came from the
+  df / lb shots (they have no fresh value); (3) a hit counted a full point for the hypothesis even when the aimed group was the body (172 of 331 shots aimed the head, 155 the body): body hits count 0.5 now (`on_result`);
+  (4) shot log `sp` / `hd` are the policy AT FIRE time (`capture`), `hd` = hp_body / lethal_body / defensive_policy / confidence_body / confidence_safe / jitter_safe / safe_head / normal_head. NOT changed (no number backs it):
+  hypothesis weights, the safe point layer, the AA profiles. Not proven in game: the effect of (1) and (3); watch the AA table without hg 0 and `cd` hit rates in the next logs.
 - hvh.gg servers (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg"; then "crashes the game after i refresh hvh.gg"):
   Misc > Servers has a second list "HvH servers (hvh.gg)" + "Connect to the selected hvh.gg server" / "Refresh hvh.gg" (`servers.hvh_*`). The lua
   does NOT ask hvh.gg itself (the first version did, through the steam http library, and a big page crashed the game): server.js `GET /hvhgg`

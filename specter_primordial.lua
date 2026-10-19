@@ -5611,6 +5611,7 @@ resolver.capture = function(shot)
     if (ok3) then s.l3, s.l3w, s.l3c, s.l3s, s.l6s = rate3, weight3, cycle3, seq3, seq6 end
     s.state = resolver.state_of(shot.player)
     s.conf = resolver.confidence(idx)
+    s.sp, s.hd = resolver.safe and resolver.safe[idx] or nil, resolver.why and resolver.why[idx] or nil   -- the policy AT FIRE time
     s.misses = resolver.misses[idx] or 0                          -- the miss streak AT FIRE time (the shot log used to write it after the result was counted)
     resolver.shots[#resolver.shots + 1] = s
     if (#resolver.shots > 128) then table.remove(resolver.shots, 1) end
@@ -6380,7 +6381,9 @@ resolver.on_result = function(target, hit_ok, resolver_miss, event, reason)
     if (hit_ok) then
         mem.misses = 0
         mem.last_failed = nil
-        c.good = c.good + weight
+        -- a hit on the body says little about the head angle (the torso hitbox is big): it counts half; no aim group in the event = a full point
+        local aimed = event and tonumber(event.aim_hitgroup)
+        c.good = c.good + weight * ((aimed ~= nil and aimed ~= 1) and 0.5 or 1)
     elseif (resolver_miss) then
         mem.misses = mem.misses + 1
         -- a miss at a low hit chance is more likely the spread than the resolver: it counts 0.5 (hc 0) to 1 (hc 100) of a point
@@ -6474,13 +6477,15 @@ resolver.hitscan = function(ctx)
 
     -- Below the configured HP: body only. On risky targets above the threshold,
     -- the optional lethal fallback requires an actual valid body bullet trace.
-    local body = false
+    local body, why = false, nil
     if (ui.ragebot.smart_baim:get()) then
         local hp = tonumber(ent:get_prop("m_iHealth")) or 100
         local threshold = res_clamp(ui.ragebot.smart_baim_hp:get(), 0, 100)
         body = hp > 0 and hp < threshold
+        why = body and "hp_body" or nil
         if (not body and hp > 0 and ui.ragebot.smart_baim_lethal:get() and (jitter or misses >= 1)) then
             body = hp <= resolver.body_damage(ent)
+            why = body and "lethal_body" or nil
         end
     end
 
@@ -6488,7 +6493,7 @@ resolver.hitscan = function(ctx)
     -- model is not where the server tests our shot, so the small head hitbox is a gamble: body only until the shift is over
     if (not body and ui.ragebot.def_hold:get() and p ~= nil and p.defensive_at ~= nil
         and globals.real_time() - p.defensive_at <= ui.ragebot.def_ticks:get() * globals.interval_per_tick()) then
-        body = true
+        body, why = true, "defensive_policy"
     end
 
     -- "Min confidence for head" (a safe point on the head below it) and "Force body below confidence" (body only), both 0 = off
@@ -6496,15 +6501,18 @@ resolver.hitscan = function(ctx)
     if (conf ~= nil and not body) then
         local force, head_min = ui.ragebot.conf_body:get(), ui.ragebot.conf_head:get()
         if (force > 0 and conf < force) then
-            body = true
+            body, why = true, "confidence_body"
         elseif (head_min > 0 and conf < head_min) then
-            safe = true
+            safe, why = true, "confidence_safe"
         end
     end
 
     -- what the shot logs carry: 3 = body (smart body aim), 2 = a safe point for a jittering target, 1 = for another reason
     resolver.safe = resolver.safe or {}
     resolver.safe[idx] = body and 3 or (jitter_safe and 2) or (safe and 1) or nil
+    -- why the shot got this policy (shot log `hd`): hp_body / lethal_body / defensive_policy / confidence_body / confidence_safe / jitter_safe / safe_head / normal_head
+    resolver.why = resolver.why or {}
+    resolver.why[idx] = why or (jitter_safe and "jitter_safe") or (safe and "safe_head") or "normal_head"
     if (body) then
         resolver.enforce_body(ctx)
     end
@@ -6782,6 +6790,7 @@ shotlog.result = function(shot, hit)
         row.ph, row.rl = snap.phase, shotlog.num(snap.reliab, 2)
         row.vw = snap.vw
         row.cm = snap.misses or row.cm
+        row.sp, row.hd = snap.sp, snap.hd
         row.l6, row.l6w = shotlog.num(snap.l6, 6), shotlog.num(snap.l6w, 4)
         row.l3, row.l3w, row.l3c = shotlog.num(snap.l3, 6), shotlog.num(snap.l3w, 4), shotlog.num(snap.l3c, 3)
         row.l3s, row.l6s = shotlog.num(snap.l3s), shotlog.num(snap.l6s)
@@ -7479,6 +7488,11 @@ builder.incoming_snapshot = function(entity)
     local now = globals.real_time()
     if (snap ~= nil and not snap.ambiguous and now >= snap.time and now - snap.time <= 2) then return snap end
     return nil
+end
+-- damage that is no shot at us: fire / grenades tick with hitgroup 0 and a small damage (Oct 16 / 17 logs: 83 of 383 AA "hits"), world damage has no attacker
+builder.NON_BULLET = { inferno = true, hegrenade = true, incgrenade = true, molotov = true, flashbang = true, smokegrenade = true, decoy = true }
+builder.is_bullet_damage = function(weapon)
+    return not builder.NON_BULLET[(tostring(weapon or ""):gsub("^weapon_", ""))]
 end
 builder.aa_record = function(kind, hitgroup, damage, attacker, snapshot)
     if (not ui.antiaim.builder.enable:get()) then
@@ -10496,7 +10510,8 @@ do_event = function()
             end
             if (event.name == "player_hurt") then
                 on_knifebot(event)
-                if (local_player == entity) and not (local_player == entity_list_get_player_from_userid(event.attacker)) then
+                if (local_player == entity) and not (local_player == entity_list_get_player_from_userid(event.attacker))
+                    and builder.is_bullet_damage(event.weapon) then
                     hurt_tick = globals.tick_count()
                     builder.anti_brute_trigger()
                     local attacker = entity_list_get_player_from_userid(event.attacker)

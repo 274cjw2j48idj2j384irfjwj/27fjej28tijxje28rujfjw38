@@ -1188,6 +1188,13 @@ r = ep.eval("""function()
 end""")()
 check(tuple(r) == (True, True, True), "engine prediction: a 2D origin / velocity netvar gives z from name[2] or 0, no error (%s)" % (r,))
 
+# damage that is no bullet (fire, grenades) is no shot at us: it must not count in the AA stats / trigger the anti brute
+BL = L.LuaRuntime(unpack_returned_tuples=True)
+BL.execute("builder = {}\n" + chunk("builder.NON_BULLET = {", "builder.aa_record = function(kind, hitgroup, damage, attacker, snapshot)"))
+r = BL.eval("function() return builder.is_bullet_damage('ssg08'), builder.is_bullet_damage('weapon_awp'), builder.is_bullet_damage('inferno'), "
+            "builder.is_bullet_damage('hegrenade'), builder.is_bullet_damage('weapon_molotov'), builder.is_bullet_damage(nil) end")()
+check(tuple(r) == (True, True, False, False, False, True), "player_hurt: fire / grenade damage is no shot at us, guns and unknown weapons are (%s)" % (r,))
+
 # "Resolver learning" slider (owners, Oct 2026): 0 % learns nothing, 50 % half a point per result, 100 % the full one
 r = D("""
 local out = {}
@@ -1200,10 +1207,18 @@ for i, rate in ipairs({ 100, 50, 0 }) do
     RESULT(100 + rate, true, false, nil)
     out[i] = mem.candidates[1].good - good
 end
+-- a hit on the body (aim group not the head) counts half of a head hit
 LEARN = 100
-return out[1] > 0.99 and out[1] < 1.01, out[2] > 0.49 and out[2] < 0.51, math.abs(out[3]) < 1e-9
+resolver.previous[3] = { key = "learn4", kind = "jitter", candidate = 1, m_flDesync = 20, rel = 1 }
+local mem4 = resolver.memory(3, "learn4")
+local g4 = mem4.candidates[1].good
+resolver.capture({ player = ENT, id = 900 })
+NOW = NOW + 0.1
+resolver.on_result(ENT, true, false, { id = 900, aim_hitgroup = 3 })
+local body_hit = mem4.candidates[1].good - g4
+return out[1] > 0.99 and out[1] < 1.01, out[2] > 0.49 and out[2] < 0.51, math.abs(out[3]) < 1e-9, body_hit > 0.49 and body_hit < 0.51
 """)
-check(tuple(r) == (True, True, True), "Resolver learning: 100%% the full result, 50%% half, 0%% the hypotheses stay as they are (%s)" % (r,))
+check(tuple(r) == (True, True, True, True), "Resolver learning: 100%% the full result, 50%% half, 0%% the hypotheses stay as they are, a body hit counts half (%s)" % (r,))
 
 # what was learned stays with the PLAYER: a dormant phase / respawn keeps it, another player in the slot does not
 r = J("""
