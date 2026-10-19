@@ -528,6 +528,15 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   enemy's. Added: Resolver page "Body only on defensive" (default off, `ui.ragebot.def_hold`, used in `resolver.hitscan`): while the target's tickbase shift is on
   (`p.defensive_until`, 0.25 s after its sim time went back) the head group is off and the body is forced, like Smart body aim does. Logs (Oct 16 / 17): shots at a shifted
   target (`df`) are 26 % of the shots and hit 0.39 against 0.79; compare with the option on.
+- "Systems that do not exist yet" prompt (owners, Oct 19 2026, 6 resolver + 6 anti-aim + a PlayerState cache): taken in part. Added: (1) Resolver page "Defensive lock ticks" (1-64, 16 at
+  the start, shown with "Body only on defensive"): the body-only window after the target's shift (`p.defensive_at`) is now this many ticks instead of a fixed 0.25 s; (2) the
+  Switch noise is scaled by the state (`builder.NOISE_SCALE`: Stand / Duck 0.6, Slow walk 0.8, Air / Air duck 1.5) and the AA shot log rows carry it as `nz`.
+  NOT built, on purpose: confidence -> head / body forcing ("Min confidence for head" / "Force body below confidence": the "body aim when the head is unsure" versions were REVERTED by the
+  owners, see the Oct 16 list); a pose parameter / layer fusion side detector (the owners' old pose resolver and the logs `l3` / `l6` have to show a correlation first); a PlayerState cache
+  rewrite (every reader would change at once: against the "extend, no rewrite" rule); predictive anti brute (the Phases anti brute + the bandit already rotate on a hit / near miss);
+  the live max desync controller (`ctx:set_desync` takes a fraction of the engine's own limit, `antiaim.get_max_desync_range` is for our own AA); a choked-only micro jitter (the
+  per packet noise already is that); a standing LBY breaker (Primordial's desync does it; a body lean flip without proof is a guess); a low charge defensive trigger (a defensive needs the
+  charge: with it low there is nothing to shift). `antiaim.*` getters describe OUR OWN antiaim, they say nothing about an enemy.
 - hvh.gg servers (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg"; then "crashes the game after i refresh hvh.gg"):
   Misc > Servers has a second list "HvH servers (hvh.gg)" + "Connect to the selected hvh.gg server" / "Refresh hvh.gg" (`servers.hvh_*`). The lua
   does NOT ask hvh.gg itself (the first version did, through the steam http library, and a big page crashed the game): server.js `GET /hvhgg`

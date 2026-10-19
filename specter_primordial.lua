@@ -1202,6 +1202,7 @@ local ui = {
         fast_peek = groups.resolver:checkbox("Fast crouch / peek scan", true),
         learn_rate = groups.resolver:slider("Resolver learning", 0, 100, 1, 0, "%"),
         def_hold = groups.resolver:checkbox("Body only on defensive", false),
+        def_ticks = groups.resolver:slider("Defensive lock ticks", 1, 64, 1, 0, "t"),
         pose_reso = groups.resolver_beta:checkbox("Pose resolver"),
         resolver = {
             enable_resolver = groups.resolver_beta:checkbox("Custom resolver"),
@@ -5974,7 +5975,7 @@ resolver.track = function(ent, eye)
     -- stays (every shift used to wipe it), only a short grace window
     if (p ~= nil and sim < p.sim and p.sim - sim <= resolver.K.shift
         and (spawn == nil or p.spawn == nil or spawn == p.spawn)) then
-        p.defensive_until, p.nochoke = now + 0.25, 0
+        p.defensive_until, p.defensive_at, p.nochoke = now + 0.25, now, 0
         resolver.event(p, now, math.min(p.sim - sim, 1))
         p.events[#p.events].kind = "def"
         return p
@@ -6465,7 +6466,8 @@ resolver.hitscan = function(ctx)
 
     -- "Body only on defensive" (default off): while the target's tickbase shift is on (its sim time went back, `defensive_until`, 0.25 s) its drawn
     -- model is not where the server tests our shot, so the small head hitbox is a gamble: body only until the shift is over
-    if (not body and ui.ragebot.def_hold:get() and p ~= nil and (p.defensive_until or 0) > globals.real_time()) then
+    if (not body and ui.ragebot.def_hold:get() and p ~= nil and p.defensive_at ~= nil
+        and globals.real_time() - p.defensive_at <= ui.ragebot.def_ticks:get() * globals.interval_per_tick()) then
         body = true
     end
 
@@ -6619,7 +6621,7 @@ shotlog.aa = function(kind, snap, hitgroup, damage)
         hg = hitgroup, dmg = shotlog.num(damage),
         -- the fake ping we added (the total ping above is mostly that + the real one) and our speed: with them the next logs can
         -- tell whether the head hits come with the fake ping (head hits were 12 % of the events under 40 ms and 24-30 % above)
-        fp = backtrack.amount, spd = shotlog.num(snap.speed),
+        fp = backtrack.amount, spd = shotlog.num(snap.speed), nz = shotlog.num(snap.noise, 1),
     }
     local ok, line = pcall(libs.json.encode, row)
     if (ok and type(line) == "string") then
@@ -6940,6 +6942,8 @@ end
 
 -- one decision per sent packet: the yaw left / right switch and the desync side, a fresh coin flip that is not tied to
 -- the yaw side (a resolver that learns "yaw left = body right" from a few shots hits every shot after that)
+-- state number (see `states`) -> factor of the switch noise: Stand, Slow walk, Duck calm; Air, Air duck wild
+builder.NOISE_SCALE = { [2] = 0.6, [4] = 0.8, [5] = 0.6, [7] = 1.5, [8] = 1.5 }
 builder.new_packet = function()
     local tick = globals.tick_count()
     local state = global.current_state_number
@@ -6967,7 +6971,8 @@ builder.new_packet = function()
         builder.yaw_flip = not builder.yaw_flip
         builder.side_flip = math.random(2) == 1
         -- bounded noise on every switch (owners, Oct 2026): 3-7 deg either way, so a brute force that steps through fixed angles does not land
-        builder.noise = (math.random(2) == 1 and 1 or -1) * (3 + math.random() * 4)
+        -- scaled by the state (owners, Oct 2026): more in the air where the AA can not be read from the feet anyway, less when standing / ducked
+        builder.noise = (math.random(2) == 1 and 1 or -1) * (3 + math.random() * 4) * (builder.NOISE_SCALE[state] or 1)
     end
 end
 
@@ -7411,6 +7416,7 @@ builder.aa_snapshot = function()
         dc = builder.direct_on(),
         arm = builder.brain_now,
         arm_index = builder.brain_index,
+        noise = ui.antiaim.switch_noise:get() and builder.noise or 0,
         speed = (function()
             local me = entity_list_get_local_player()
             local vel = me ~= nil and me:get_prop("m_vecVelocity") or nil
@@ -9734,6 +9740,8 @@ menu_handle = function()
         ui.ragebot.smart_baim_lethal:depend({ui.ragebot.smart_baim, true})
         ui.ragebot.latency_limit:depend({ui.ragebot.latency_guard, true})
         ui.ragebot.learn_rate.ref:set(100)
+        ui.ragebot.def_ticks.ref:set(16)
+        ui.ragebot.def_ticks:depend({ui.ragebot.def_hold, true})
         ui.ragebot.resolver.duck_mode:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
         ui.ragebot.resolver.auto_duck:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
         ui.ragebot.resolver.safe_peek:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})

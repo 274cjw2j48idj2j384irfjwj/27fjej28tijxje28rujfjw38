@@ -50,7 +50,7 @@ local env = setmetatable({
     ui = {
         ragebot = { logic_reso = control(true), smart_baim = control(true),
             smart_baim_hp = control(40), smart_baim_lethal = control(true),
-            latency_guard = control(true), latency_limit = control(80), fast_peek = control(true), learn_rate = control(100), def_hold = control(false),
+            latency_guard = control(true), latency_limit = control(80), fast_peek = control(true), learn_rate = control(100), def_hold = control(false), def_ticks = control(16),
             backtrack = { prediction = control(true), enable_backtrack = control(true),
                 extended_backtrack = control(false), ping_in_sight = control(false), engine_pred = control(false) },
             resolver = { enable_resolver = control(false) },
@@ -316,7 +316,7 @@ test("Body only on defensive: off by default, body only while the target's shift
     target.hp, target.flags = 100, 1
     local p = resolver.data[target:get_index()] or {}
     resolver.data[target:get_index()] = p
-    p.defensive_until = clock + 0.2
+    p.defensive_at = clock - 0.1
     local ctx = context(target)
     resolver.hitscan(ctx)
     assert(ctx.groups[1] == nil)                                 -- option off: nothing touched
@@ -324,7 +324,7 @@ test("Body only on defensive: off by default, body only while the target's shift
     ctx = context(target)
     resolver.hitscan(ctx)
     assert(ctx.groups[1] == false and ctx.groups[2] == true)     -- shifting: head off, body on
-    p.defensive_until = clock - 1
+    p.defensive_at = clock - 1
     ctx = context(target)
     resolver.hitscan(ctx)
     assert(ctx.groups[1] == nil)                                 -- shift over: normal again
