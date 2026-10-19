@@ -521,6 +521,13 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   / `("m_vecVelocity")` are 2D vectors in Primordial, `.z` raises and an error in a callback UNLOADS the script. `engine_prediction.vector(ent, name)` reads x / y and takes z from
   `name[2]` or 0 (also `no_fall`, which indexed `.z` the same way); the whole engine prediction call in `backtrack.predict` is in a `pcall`, `capture` runs only with the option on. Never index
   `.z` of an origin / velocity netvar, use that helper.
+- "Complete rewrite of the resolver and anti-aim" prompt (owners, Oct 19 2026, a generic Primordial prompt): almost everything it lists is in already (per state hypotheses with
+  good / bad weights, learn rate, forget, defensive / lag break penalty, Smart body aim with the lethal check, latency guard, fast peek, HITSCAN safe points, TARGET_SELECTION
+  peek priority, shot snapshots, stats panels, adaptive AA bandit, anti brute Phases / Shift, X-Way / Distort / Random hold, micro noise per packet, own freestand, direct control).
+  Not a rewrite: the owners' rule is to extend. Part of the prompt does not fit the api: `antiaim.get_desync_side` / `get_body_lean` / `is_inverting_*` describe OUR OWN antiaim, not an
+  enemy's. Added: Resolver page "Body only on defensive" (default off, `ui.ragebot.def_hold`, used in `resolver.hitscan`): while the target's tickbase shift is on
+  (`p.defensive_until`, 0.25 s after its sim time went back) the head group is off and the body is forced, like Smart body aim does. Logs (Oct 16 / 17): shots at a shifted
+  target (`df`) are 26 % of the shots and hit 0.39 against 0.79; compare with the option on.
 - hvh.gg servers (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg"; then "crashes the game after i refresh hvh.gg"):
   Misc > Servers has a second list "HvH servers (hvh.gg)" + "Connect to the selected hvh.gg server" / "Refresh hvh.gg" (`servers.hvh_*`). The lua
   does NOT ask hvh.gg itself (the first version did, through the steam http library, and a big page crashed the game): server.js `GET /hvhgg`
