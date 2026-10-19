@@ -6377,7 +6377,9 @@ resolver.on_result = function(target, hit_ok, resolver_miss, event, reason)
         c.good = c.good + weight
     elseif (resolver_miss) then
         mem.misses = mem.misses + 1
-        c.bad = c.bad + weight
+        -- a miss at a low hit chance is more likely the spread than the resolver: it counts 0.5 (hc 0) to 1 (hc 100) of a point
+        local hc = tonumber(event and event.aim_hitchance)
+        c.bad = c.bad + weight * (hc ~= nil and res_clamp(0.5 + hc / 200, 0.5, 1) or 1)
         mem.last_failed = snapshot.candidate
     end
 end
