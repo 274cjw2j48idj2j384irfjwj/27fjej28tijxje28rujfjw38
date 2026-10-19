@@ -537,6 +537,10 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   the live max desync controller (`ctx:set_desync` takes a fraction of the engine's own limit, `antiaim.get_max_desync_range` is for our own AA); a choked-only micro jitter (the
   per packet noise already is that); a standing LBY breaker (Primordial's desync does it; a body lean flip without proof is a guess); a low charge defensive trigger (a defensive needs the
   charge: with it low there is nothing to shift). `antiaim.*` getters describe OUR OWN antiaim, they say nothing about an enemy.
+  Owners asked why the confidence options were left out ("Miert nem epitetted bele"): they are in now as SEPARATE options that are 0 = off by default, so the reverted behaviour only exists if
+  somebody switches it on. Resolver page "Min confidence for head" (a head safe point below it) and "Force body below confidence" (body only below it); the confidence is
+  `resolver.confidence(idx)` = the Beta mean (good / (good + bad), 0-100) of the hypothesis in use for that target and situation, nil while nothing is learned; shot logs carry it as `cf`.
+  Judge them by the hit rate per `cf` band in the logs before using a value.
 - hvh.gg servers (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg"; then "crashes the game after i refresh hvh.gg"):
   Misc > Servers has a second list "HvH servers (hvh.gg)" + "Connect to the selected hvh.gg server" / "Refresh hvh.gg" (`servers.hvh_*`). The lua
   does NOT ask hvh.gg itself (the first version did, through the steam http library, and a big page crashed the game): server.js `GET /hvhgg`

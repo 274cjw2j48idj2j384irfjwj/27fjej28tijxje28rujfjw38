@@ -50,7 +50,7 @@ local env = setmetatable({
     ui = {
         ragebot = { logic_reso = control(true), smart_baim = control(true),
             smart_baim_hp = control(40), smart_baim_lethal = control(true),
-            latency_guard = control(true), latency_limit = control(80), fast_peek = control(true), learn_rate = control(100), def_hold = control(false), def_ticks = control(16),
+            latency_guard = control(true), latency_limit = control(80), fast_peek = control(true), learn_rate = control(100), def_hold = control(false), def_ticks = control(16), conf_head = control(0), conf_body = control(0),
             backtrack = { prediction = control(true), enable_backtrack = control(true),
                 extended_backtrack = control(false), ping_in_sight = control(false), engine_pred = control(false) },
             resolver = { enable_resolver = control(false) },
@@ -329,6 +329,28 @@ test("Body only on defensive: off by default, body only while the target's shift
     resolver.hitscan(ctx)
     assert(ctx.groups[1] == nil)                                 -- shift over: normal again
     env.ui.ragebot.def_hold:set(false)
+end)
+test("confidence options: off by default, body below the force level, head safe point below the minimum", function()
+    resolver.reset()
+    resolver.active = false
+    target.hp, target.flags = 100, 1
+    local idx = target:get_index()
+    resolver.mem[idx] = { stand = { candidates = { { good = 2, bad = 6 } }, selected = 1 } }   -- 25 %
+    resolver.previous[idx] = { key = "stand", candidate = 1 }
+    assert(math.abs(resolver.confidence(idx) - 25) < 1e-6)
+    local ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == nil)                                 -- both off
+    env.ui.ragebot.conf_body:set(30)
+    ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == false and ctx.groups[2] == true)     -- 25 < 30: body only
+    env.ui.ragebot.conf_body:set(0)
+    env.ui.ragebot.conf_head:set(40)
+    ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == nil and ctx.safepoints[1] == true)    -- head stays, with a safe point
+    env.ui.ragebot.conf_head:set(0)
 end)
 test("new sliders initialize explicit defaults with unit steps", function()
     assert(source:find('slider("Body aim below HP", 0, 100, 1, 0, "hp")', 1, true))
