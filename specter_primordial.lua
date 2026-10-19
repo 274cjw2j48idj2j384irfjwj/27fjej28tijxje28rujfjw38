@@ -9791,8 +9791,12 @@ menu_handle = function()
         ui.ragebot.smart_baim_hp:depend({ui.ragebot.smart_baim, true})
         ui.ragebot.smart_baim_lethal:depend({ui.ragebot.smart_baim, true})
         ui.ragebot.latency_limit:depend({ui.ragebot.latency_guard, true})
-        ui.ragebot.learn_rate.ref:set(100)
-        ui.ragebot.def_ticks.ref:set(16)
+        -- start values of the sliders (they take no default argument): once, not every frame (it held them at 100 / 16 while the menu was open)
+        if (not ui.slider_defaults_set) then
+            ui.slider_defaults_set = true
+            ui.ragebot.learn_rate.ref:set(100)
+            ui.ragebot.def_ticks.ref:set(16)
+        end
         ui.ragebot.def_ticks:depend({ui.ragebot.def_hold, true})
         ui.ragebot.resolver.duck_mode:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
         ui.ragebot.resolver.auto_duck:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
