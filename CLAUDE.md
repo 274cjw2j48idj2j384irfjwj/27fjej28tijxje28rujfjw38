@@ -569,6 +569,12 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   df / lb shots (they have no fresh value); (3) a hit counted a full point for the hypothesis even when the aimed group was the body (172 of 331 shots aimed the head, 155 the body): body hits count 0.5 now (`on_result`);
   (4) shot log `sp` / `hd` are the policy AT FIRE time (`capture`), `hd` = hp_body / lethal_body / defensive_policy / confidence_body / confidence_safe / jitter_safe / safe_head / normal_head. NOT changed (no number backs it):
   hypothesis weights, the safe point layer, the AA profiles. Not proven in game: the effect of (1) and (3); watch the AA table without hg 0 and `cd` hit rates in the next logs.
+- AA weakness list checked against the code (owners pasted an outside analysis, Oct 19 2026). Confirmed and fixed: (1) `on_miss` kept ONE shared list of impacts (`misstable`) for every enemy, so a second enemy's
+  bullet inside the 0.15 s made the first one's check fail (its near miss was never counted / never reached the anti brute and the bandit), and it measured the distance from OUR eye 0.15 s later (37 units at 250 u/s, the
+  limit is 50): now one pending check per attacker (`builder.miss_claim` / `miss_current`) and our eye as it was at the impact; (2) after a state change the delay profile always started with the same side (nil -> true): a coin flip
+  now; (3) the AA rows carry `eff` = "delay" when a delay profile (Delay tied / inverse / coin) replaced the yaw of the configured mode `ym`. By design, NOT bugs: the Adaptive AA delay profiles set their own yaw and
+  the tied / inverse ones the desync side (that is what a profile is; the stats key already shows the profile name), body hits teach the bandit nothing (a body hit does not depend on the desync), and `ctx:set_desync`
+  in the direct control proxy has no caller outside `direct_apply` (nothing to fix). Not proven in game: how many more near misses reach the anti brute now.
 - hvh.gg servers (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg"; then "crashes the game after i refresh hvh.gg"):
   Misc > Servers has a second list "HvH servers (hvh.gg)" + "Connect to the selected hvh.gg server" / "Refresh hvh.gg" (`servers.hvh_*`). The lua
   does NOT ask hvh.gg itself (the first version did, through the steam http library, and a big page crashed the game): server.js `GET /hvhgg`

@@ -1195,6 +1195,18 @@ r = BL.eval("function() return builder.is_bullet_damage('ssg08'), builder.is_bul
             "builder.is_bullet_damage('hegrenade'), builder.is_bullet_damage('weapon_molotov'), builder.is_bullet_damage(nil) end")()
 check(tuple(r) == (True, True, False, False, False, True), "player_hurt: fire / grenade damage is no shot at us, guns and unknown weapons are (%s)" % (r,))
 
+# near misses are tracked PER ATTACKER: a second enemy's impact must not cancel the first one's pending check, the same attacker's newer impact does
+NM = L.LuaRuntime(unpack_returned_tuples=True)
+NM.execute("builder = {}\n" + chunk("builder.miss_seq = {}", "on_miss = function(event)"))
+r = NM.eval("""function()
+    local a1 = builder.miss_claim(5)
+    local b1 = builder.miss_claim(7)            -- another enemy shoots inside the 0.15 s
+    local first_ok = builder.miss_current(5, a1) and builder.miss_current(7, b1)
+    local a2 = builder.miss_claim(5)            -- the same enemy again: only the newest counts
+    return first_ok, builder.miss_current(5, a1), builder.miss_current(5, a2), builder.miss_current(7, b1)
+end""")()
+check(tuple(r) == (True, False, True, True), "near miss: one pending check per attacker, another enemy does not cancel it (%s)" % (r,))
+
 # "Resolver learning" slider (owners, Oct 2026): 0 % learns nothing, 50 % half a point per result, 100 % the full one
 r = D("""
 local out = {}
