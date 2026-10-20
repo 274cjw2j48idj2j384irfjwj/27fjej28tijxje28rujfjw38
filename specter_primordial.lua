@@ -1201,6 +1201,8 @@ local ui = {
         latency_limit = groups.resolver:slider("High ping threshold", 40, 250, 1, 0, "ms"),
         fast_peek = groups.resolver:checkbox("Fast crouch / peek scan", true),
         learn_rate = groups.resolver:slider("Resolver learning", 0, 100, 1, 0, "%"),
+        def_hold = groups.resolver:checkbox("Body only on defensive", true),
+        def_ticks = groups.resolver:slider("Defensive lock ticks", 1, 128, 1, 0, "t"),
         pose_reso = groups.resolver_beta:checkbox("Pose resolver"),
         resolver = {
             enable_resolver = groups.resolver_beta:checkbox("Custom resolver"),
@@ -1555,6 +1557,8 @@ local ui = {
 -- Initialize before saved configurations are imported.
 ui.ragebot.smart_baim_hp.ref:set(40)
 ui.ragebot.latency_limit.ref:set(80)
+ui.ragebot.learn_rate.ref:set(100)
+ui.ragebot.def_ticks.ref:set(48)
 ui.antiaim.builder.ab_mode = groups.settings:selection("Anti brute mode", {"Shift", "Phases"})
 ui.antiaim.builder.direct = groups.settings:checkbox("Direct control (dev)", true)
 ui.antiaim.builder.adaptive = groups.settings:checkbox("Adaptive AA", false)
@@ -4005,7 +4009,7 @@ resolver.fast_target = function(ent)
 end
 safe_defensive = function(ctx, cmd, unpredicted_data)
     if (ctx.player == nil or resolver.fast_target(ctx.player)
-        or (resolver.safe and resolver.safe[ctx.player:get_index()] == 3)) then return end
+        or (resolver.safe and (resolver.safe[ctx.player:get_index()] or 0) >= 3)) then return end
     if (ui.ragebot.safe_defensive:get()) then
         if (defensive:is_active(ctx.player)) then
             ctx:set_safepoint_state(true, e_hitscan_groups.HEAD)
@@ -4061,7 +4065,7 @@ dmg_prediction = function(ctx, cmd, unpredicted_data)
     if (ui.ragebot.multipoint_pred:get()) then
         if (not defensive:is_active(ctx.player)) then
             local enemy = ctx.player
-            local nohead = resolver.safe ~= nil and resolver.safe[enemy:get_index()] == 3
+            local nohead = resolver.safe ~= nil and (resolver.safe[enemy:get_index()] or 0) >= 3
             local tick = globals.tick_count()
             local cached = dmg_pick[enemy:get_index()]
             local k
@@ -5174,6 +5178,11 @@ backtrack.horizon = function(net, ducking)
     local limit = ducking and 0.04 or net.high and 0.06 or 0.10
     return math.min(limit, math.max(interval, net.outgoing + interval * 2))
 end
+-- a bullet from `a` to `b` that hurts the target
+backtrack.hurts = function(local_player, enemy, a, b)
+    local bullet = trace_bullet(a, b, local_player, enemy)
+    return bullet ~= nil and bullet.valid and (bullet.damage or 0) > 0
+end
 backtrack.predict = function(local_player)
     local tick = globals.tick_count()
     if (tick >= backtrack.predict_tick and tick - backtrack.predict_tick < 2) then return end
@@ -5254,11 +5263,19 @@ backtrack.predict = function(local_player)
                             from = moved
                         end
                     end
-                    local later = trace_bullet(from, to, local_player, enemy)
-                    local current = trace_bullet(eye, head, local_player, enemy)
-                    if (later ~= nil and later.valid and (later.damage or 0) > 0
-                        and not (current ~= nil and current.valid and (current.damage or 0) > 0)) then
-                        peekers[#peekers + 1] = enemy:get_index()
+                    -- the aimbot also takes the body: a target that gives only its chest next is a peeker too (it was the head only). Traces
+                    -- are cheaper than before: a head we can already hit is no peeker and ends the check, the chest is traced only when the
+                    -- head fails
+                    if (not backtrack.hurts(local_player, enemy, eye, head)) then
+                        local peeking = backtrack.hurts(local_player, enemy, from, to)
+                        local chest = not peeking and enemy:get_hitbox_pos(e_hitboxes.CHEST) or nil
+                        if (chest ~= nil and not backtrack.hurts(local_player, enemy, eye, chest)) then
+                            peeking = backtrack.hurts(local_player, enemy, from,
+                                vec3_t(chest.x + to.x - head.x, chest.y + to.y - head.y, chest.z + to.z - head.z))
+                        end
+                        if (peeking) then
+                            peekers[#peekers + 1] = enemy:get_index()
+                        end
                     end
                 end
             end
@@ -5604,6 +5621,13 @@ resolver.capture = function(shot)
     end)
     if (ok3) then s.l3, s.l3w, s.l3c, s.l3s, s.l6s = rate3, weight3, cycle3, seq3, seq6 end
     s.state = resolver.state_of(shot.player)
+    -- what the shot log carries from the moment of the shot (it read these after the result was counted): the policy of the scan
+    -- (`sp`), the miss streak and how long ago the target's last tickbase shift / lag break was seen (the data that tells
+    -- how long "Defensive lock ticks" has to be)
+    s.sp = resolver.safe and resolver.safe[s.idx] or nil
+    s.misses = resolver.misses[s.idx] or 0
+    local last = p ~= nil and p.events ~= nil and p.events[#p.events] or nil
+    s.evage = last ~= nil and now - last.obs or nil
     resolver.shots[#resolver.shots + 1] = s
     if (#resolver.shots > 128) then table.remove(resolver.shots, 1) end
 end
@@ -6368,10 +6392,15 @@ resolver.on_result = function(target, hit_ok, resolver_miss, event, reason)
     if (hit_ok) then
         mem.misses = 0
         mem.last_failed = nil
-        c.good = c.good + weight
+        -- a hit on the body says little about the body yaw we chose (the torso hitbox is big, 83 - 92 % of the body shots hit in the
+        -- logs against 75 % of the head shots): it counts half. No aim group in the event = a full point
+        local aimed = event and tonumber(event.aim_hitgroup)
+        c.good = c.good + weight * ((aimed ~= nil and aimed ~= 1) and 0.5 or 1)
     elseif (resolver_miss) then
         mem.misses = mem.misses + 1
-        c.bad = c.bad + weight
+        -- a miss at a low hit chance is more likely the spread than the resolver: 0.5 of a point at hit chance 0, a full one at 100
+        local chance = tonumber(event and event.aim_hitchance)
+        c.bad = c.bad + weight * (chance ~= nil and res_clamp(0.5 + chance / 200, 0.5, 1) or 1)
         mem.last_failed = snapshot.candidate
     end
 end
@@ -6461,9 +6490,22 @@ resolver.hitscan = function(ctx)
         end
     end
 
-    -- what the shot logs carry: 3 = body (smart body aim), 2 = a safe point for a jittering target, 1 = for another reason
+    -- "Body only on defensive" (owners' logs of Oct 16 / 17: head shots at a target that shifted its tickbase or broke its lag
+    -- compensation hit 13 of 63, the body groups 31 of 47; they are 37 % of all head shots): while the target's last shift / lag break
+    -- was seen less than `Defensive lock ticks` ago the head group is off, when a body bullet can hurt it at all
+    local locked = false
+    if (not body and ui.ragebot.def_hold:get() and p ~= nil) then
+        local event = p.events ~= nil and p.events[#p.events] or nil
+        if (event ~= nil and globals.real_time() - event.obs <= ui.ragebot.def_ticks:get() * globals.interval_per_tick()
+            and resolver.body_damage(ent) > 0) then
+            body, locked = true, true
+        end
+    end
+
+    -- what the shot logs carry: 4 = body while the target is on a defensive / lag break, 3 = body (smart body aim), 2 = a safe
+    -- point for a jittering target, 1 = for another reason
     resolver.safe = resolver.safe or {}
-    resolver.safe[idx] = body and 3 or (jitter_safe and 2) or (safe and 1) or nil
+    resolver.safe[idx] = locked and 4 or body and 3 or (jitter_safe and 2) or (safe and 1) or nil
     if (body) then
         resolver.enforce_body(ctx)
     end
@@ -6742,6 +6784,7 @@ shotlog.result = function(shot, hit)
         row.l6, row.l6w = shotlog.num(snap.l6, 6), shotlog.num(snap.l6w, 4)
         row.l3, row.l3w, row.l3c = shotlog.num(snap.l3, 6), shotlog.num(snap.l3w, 4), shotlog.num(snap.l3c, 3)
         row.l3s, row.l6s = shotlog.num(snap.l3s), shotlog.num(snap.l6s)
+        row.sp, row.cm, row.ea = snap.sp, snap.misses, shotlog.num(snap.evage, 2)
     end
     if (hit) then
         row.hg, row.dmg = shot.hitgroup, shotlog.num(shot.damage)
@@ -9657,7 +9700,7 @@ menu_handle = function()
         ui.ragebot.smart_baim_hp:depend({ui.ragebot.smart_baim, true})
         ui.ragebot.smart_baim_lethal:depend({ui.ragebot.smart_baim, true})
         ui.ragebot.latency_limit:depend({ui.ragebot.latency_guard, true})
-        ui.ragebot.learn_rate.ref:set(100)
+        ui.ragebot.def_ticks:depend({ui.ragebot.def_hold, true})
         ui.ragebot.resolver.duck_mode:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
         ui.ragebot.resolver.auto_duck:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
         ui.ragebot.resolver.safe_peek:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
@@ -10171,7 +10214,7 @@ do_hitscan = function()
         
             accuracy_boost(ctx, cmd, unpredicted_data)
             -- Final authority: later corrections cannot re-enable the head.
-            if (ctx.player ~= nil and resolver.safe and resolver.safe[ctx.player:get_index()] == 3) then
+            if (ctx.player ~= nil and resolver.safe and (resolver.safe[ctx.player:get_index()] or 0) >= 3) then
                 resolver.enforce_body(ctx)
             end
             if (builder.onpeek) then
