@@ -51,6 +51,7 @@ local env = setmetatable({
         ragebot = { logic_reso = control(true), smart_baim = control(true),
             smart_baim_hp = control(40), smart_baim_lethal = control(true),
             latency_guard = control(true), latency_limit = control(80), fast_peek = control(true), learn_rate = control(100),
+            def_hold = control(false), def_ticks = control(48),
             backtrack = { prediction = control(true), enable_backtrack = control(true),
                 extended_backtrack = control(false), ping_in_sight = control(false), engine_pred = control(false) },
             resolver = { enable_resolver = control(false) },
@@ -158,6 +159,28 @@ test("out-of-order shot IDs credit the captured candidate", function()
     resolver.on_result(target, false, true, { id = 101 })
     assert(mem.candidates[1].bad > 1 and mem.candidates[2].bad == 1)
     assert(#resolver.shots == 0)
+end)
+test("a body hit teaches half, a miss at a low hit chance teaches less", function()
+    resolver.reset()
+    prepare(1, 201)
+    local mem = resolver.memory(2, "stand")
+    local before = mem.candidates[1].good
+    resolver.on_result(target, true, false, { id = 201, aim_hitgroup = 3 })
+    local body = mem.candidates[1].good - before
+    prepare(1, 202)
+    before = mem.candidates[1].good
+    resolver.on_result(target, true, false, { id = 202, aim_hitgroup = 1 })
+    local head = mem.candidates[1].good - before
+    assert(head > 0 and math.abs(body - head / 2) < 0.1, string.format("%f %f", body, head))
+    prepare(1, 203)
+    before = mem.candidates[1].bad
+    resolver.on_result(target, false, true, { id = 203, aim_hitchance = 100 })
+    local sure = mem.candidates[1].bad - before
+    prepare(1, 204)
+    before = mem.candidates[1].bad
+    resolver.on_result(target, false, true, { id = 204, aim_hitchance = 0 })
+    local low = mem.candidates[1].bad - before
+    assert(sure > 0 and low < sure and low > 0)
 end)
 test("duplicate result cannot train twice", function()
     local mem = resolver.memory(2, "stand")
@@ -315,6 +338,8 @@ test("new sliders initialize explicit defaults with unit steps", function()
     assert(source:find('slider("High ping threshold", 40, 250, 1, 0, "ms")', 1, true))
     env.ui.ragebot.smart_baim_hp.ref = env.ui.ragebot.smart_baim_hp
     env.ui.ragebot.latency_limit.ref = env.ui.ragebot.latency_limit
+    env.ui.ragebot.learn_rate.ref = env.ui.ragebot.learn_rate
+    env.ui.ragebot.def_ticks.ref = env.ui.ragebot.def_ticks
     env.ui.ragebot.smart_baim_hp:set(0)
     env.ui.ragebot.latency_limit:set(40)
     section("ui.ragebot.smart_baim_hp.ref:set(40)", "ui.antiaim.builder.ab_mode")
@@ -509,6 +534,31 @@ test("crouch peek prediction supports slow movement and short lookahead", functi
     assert(positions[1].x <= 1.8)
     trace_handler = nil
 end)
+test("a target that gives only its chest next is a peeker, a head we can already hit is not", function()
+    tick = tick + 2
+    target.flags, target.velocity = 1, { x = 100, y = 0, z = 0 }
+    local get_hitbox_pos = target.get_hitbox_pos
+    target.get_hitbox_pos = function(_, hitbox)
+        if (hitbox == env.e_hitboxes.CHEST) then return { x = 5, y = 2, z = 30 } end
+        return { x = 1, y = 2, z = 3 }
+    end
+    env.vec3_t = function(x, y, z) return { x = x, y = y, z = z } end
+    env.trace_line = function() return { fraction = 1 } end
+    -- the head never, the chest only once it has moved
+    trace_handler = function(_, point) return { valid = true, damage = (point.z == 30 and point.x > 6) and 50 or 0, hitgroup = 2 } end
+    env.backtrack.predict_tick, env.backtrack.records = -1, {}
+    env.backtrack.predict(env.entity_list_get_local_player())
+    assert(#env.backtrack.peekers == 1 and env.backtrack.peekers[1] == 2)
+    -- the head can be hit now: nobody peeks
+    tick = tick + 2
+    trace_handler = function() return { valid = true, damage = 50, hitgroup = 1 } end
+    env.backtrack.predict_tick = -1
+    env.backtrack.predict(env.entity_list_get_local_player())
+    assert(#env.backtrack.peekers == 0)
+    target.get_hitbox_pos = get_hitbox_pos
+    target.velocity = { x = 0, y = 0, z = 0 }
+    trace_handler = nil
+end)
 env.ui.ragebot.safe_defensive = control(true)
 env.ui.ragebot.accuracy_boost = { enable_booster = control(true), booster_mode = control(2) }
 env.defensive = { is_active = function() return true end }
@@ -564,6 +614,57 @@ end)
 test("AA code does not depend on resolver-only numeric helpers", function()
     local tail = source:sub(assert(source:find("-- [pm-resolver:end]", 1, true)))
     assert(not tail:find("res_clamp(", 1, true))
+end)
+test("body only on defensive: a recent shift / lag break takes the head away, an old one does not", function()
+    resolver.reset()
+    resolver.active, resolver.safe_all = false, false
+    target.flags, target.hp = 1, 100
+    env.ui.ragebot.def_hold:set(true)
+    env.ui.ragebot.def_ticks:set(48)
+    trace_handler = function() return { valid = true, damage = 40, hitgroup = 2 } end
+    -- a shift seen 0.2 s ago, inside 48 ticks (0.75 s)
+    resolver.data[2] = { updated = clock, defensive_until = 0, events = { { obs = clock - 0.2, dur = 0.1, kind = "def" } } }
+    local ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == false and ctx.groups[2] == true and ctx.groups[3] == true)
+    assert(resolver.safe[2] == 4)
+    -- a lag break counts the same
+    resolver.data[2].events[1].kind = "lc"
+    ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == false)
+    -- the last event is older than the lock: nothing is taken away
+    resolver.data[2].events[1].obs = clock - 1
+    tick = tick + 1
+    ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == nil and resolver.safe[2] == nil)
+    -- no event at all
+    resolver.data[2].events = {}
+    ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == nil)
+    -- the option off: nothing is taken away even with a fresh event
+    env.ui.ragebot.def_hold:set(false)
+    resolver.data[2].events = { { obs = clock, dur = 0.1, kind = "def" } }
+    ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == nil)
+    trace_handler = nil
+end)
+test("body only on defensive leaves the head when no body bullet can hurt the target", function()
+    resolver.reset()
+    resolver.active = false
+    target.flags, target.hp = 1, 100
+    env.ui.ragebot.def_hold:set(true)
+    resolver.data[2] = { updated = clock, defensive_until = 0, events = { { obs = clock, dur = 0.1, kind = "def" } } }
+    trace_handler = function() return { valid = false, damage = 0, hitgroup = 0 } end
+    tick = tick + 1
+    local ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == nil)
+    trace_handler = nil
+    env.ui.ragebot.def_hold:set(false)
 end)
 test("shot capture is optional when the resolver block is omitted", function()
     assert(source:find("if (resolver.capture ~= nil) then resolver.capture(shot) end", 1, true))
