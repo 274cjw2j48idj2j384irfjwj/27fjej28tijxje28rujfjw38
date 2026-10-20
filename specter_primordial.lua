@@ -10862,6 +10862,24 @@ setup = function()
         print("preparing lua..", get_text_color(), " (stage 30%%)")
     end
 
+    -- csgo/specter/cvar_dump.txt, overwritten at every start (like default.cfg): every cvar the script changes, the value it had
+    -- before (saved in `save_cfg`, given back when the script unloads) and the value it has now
+    cvar_dump = function()
+        local names = {}
+        for name in pairs(auto_cfg) do
+            if (type(name) == "string" and name:find("^[a-z][a-z0-9_]*$") and cvars[name] ~= nil) then
+                names[#names + 1] = name
+            end
+        end
+        table.sort(names)
+        local lines = { "specter cvar dump (name, value before the script, value now)" }
+        for _, name in ipairs(names) do
+            local ok, now = pcall(function() return cvars[name]:get_float() end)
+            lines[#lines + 1] = string.format("%s  %s  %s", name, tostring(auto_cfg[name]), ok and tostring(now) or "?")
+        end
+        pcall(libs.filesystem.write, configs.dir .. "cvar_dump.txt", table.concat(lines, "\n") .. "\n")
+    end
+
     fps_boost = function()
         cvars.sv_party_mode:set_int(1)
 
@@ -10990,6 +11008,7 @@ setup = function()
     imports_setup()
     save_cfg()
     fps_boost()
+    pcall(cvar_dump)
     configure_groups()
     execute_tasks()
     finish_up()

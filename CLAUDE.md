@@ -1014,3 +1014,5 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   0.5..1 (spread). (3) Peek prediction (`backtrack.predict`, now with `backtrack.hurts`): a target that can be hurt only at the chest after its move is a peeker too (it was the head only), a head we can already hit ends the check (fewer
   traces than before). (4) The "Resolver learning" (100) and "Defensive lock ticks" (48) start values are set ONCE with the other sliders after the ui table (`menu_handle` used to write learn_rate every frame: the slider could not be moved).
   Not proven in game: judge them by `sp` 4 / `ea` / `df` in the next logs (`python3 tests/primordial_resolver.py`).
+- Files written at every start (owners, Oct 20 2026: "irja felul a default.cfgt, meg a cvar_dump.txt"): `csgo/specter/default.cfg` (the embedded owner config, `configs.reload_configs`) and `csgo/specter/cvar_dump.txt` (`cvar_dump`,
+  called with `pcall` after `fps_boost`: one line per cvar the script changes = "name, value before the script (`auto_cfg`, given back on unload), value now"). Both are overwritten, never read back.
