@@ -88,6 +88,9 @@ PM_PLANS        = ["pm_nightly", "pm_beta"]
 PM_DEV_PLAN     = "pm_dev"
 KEY_PLANS       = VALID_PLANS + PM_PLANS + [PM_DEV_PLAN]
 PRIMORDIAL_FILE = "specter_primordial.lua"
+# files of RELEASE_FILES that are announced in #staff WITHOUT the file (owners, Oct 21 2026: "staffba is csak a loaderrel lehessen"):
+# the Primordial dev build is loaded with the loader and a dev key (the third build, `pm_dev`), never from a posted file
+LOADER_ONLY_FILES = {PRIMORDIAL_FILE}
 # the Primordial changelog in #updates (with its logo, like the gamesense one; owners, Oct 2026: it goes out even before
 # the Primordial lua is released); PRIMORDIAL_UPDATES=0 turns it off
 PRIMORDIAL_UPDATES = _env("PRIMORDIAL_UPDATES", "1").lower() in ("1", "true", "yes", "on")
@@ -1696,8 +1699,12 @@ def release_embed(path: str, ver: dict) -> discord.Embed:
             pass
     else:
         embed.description = f"New `{path}` on `{SCRIPT_BRANCH}` (no commit message: {ver['commit_err']})"
-    embed.add_field(name="Size", value=f"{len(ver['body']) // 1024} KB" + (" without comments" if ver["stripped"] else ""),
-                    inline=True)
+    if path in LOADER_ONLY_FILES:
+        embed.add_field(name="How to load", value="Only with the Primordial loader: log in with a dev key and press **Load dev**. "
+                        "The file is not posted here.", inline=False)
+    else:
+        embed.add_field(name="Size", value=f"{len(ver['body']) // 1024} KB" + (" without comments" if ver["stripped"] else ""),
+                        inline=True)
     embed.add_field(name="SHA-256", value=f"`{ver['hash']}`", inline=True)
     embed.set_footer(text=f"{path} @ {ver['hash']}")
     return embed
@@ -1756,8 +1763,8 @@ async def check_releases(force: bool = False) -> list[str]:
                     continue
                 try:
                     embed = release_embed(path, ver)
-                    msg = await ch.send(embed=embed, files=[discord.File(io.BytesIO(ver["body"]), filename=path.rsplit("/", 1)[-1])]
-                                        + lua_badge(embed, lua_of(path)))
+                    attach = [] if path in LOADER_ONLY_FILES else [discord.File(io.BytesIO(ver["body"]), filename=path.rsplit("/", 1)[-1])]
+                    msg = await ch.send(embed=embed, files=attach + lua_badge(embed, lua_of(path)))
                 except discord.HTTPException as e:
                     report.append(f"`{path}`: could not post in {ch.mention}: {e}")
                     continue
