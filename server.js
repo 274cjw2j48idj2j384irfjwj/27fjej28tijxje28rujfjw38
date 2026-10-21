@@ -93,8 +93,15 @@ async function get_script(plan) {
     }
 }
 
-// pm_*: Specter for Primordial (specter_primordial_loader.lua), nightly = everything, beta = no resolver page
-const VALID_PLANS = ['beta', 'nightly', 'specter', 'debug', 'pm_nightly', 'pm_beta']
+// pm_*: Specter for Primordial (specter_primordial_loader.lua), nightly = everything, beta = no resolver page, dev = the newest
+// (main) build. A key's plan decides which BUILDS its owner can load (owners, Oct 21 2026: "dev kulcs: mind a 3, nightly: beta es
+// nightly, beta: csak beta"); the loader asks for one of them with `build`
+const VALID_PLANS = ['beta', 'nightly', 'specter', 'debug', 'pm_dev', 'pm_nightly', 'pm_beta']
+const PM_BUILDS = {
+    pm_dev:     ['pm_dev', 'pm_nightly', 'pm_beta'],
+    pm_nightly: ['pm_nightly', 'pm_beta'],
+    pm_beta:    ['pm_beta'],
+}
 
 function parse_duration(dur) {
     if (!dur || dur === 'lifetime') return null
@@ -374,6 +381,7 @@ app.get('/verify', async (req, res) => {
     res.json({
         valid: true, plan: license.plan, expires_at: license.expires_at,
         user: license.note||null, ticket, ticket_exp, nonce,
+        builds: PM_BUILDS[license.plan] || null,
         loader_gs: loader.gs, loader_pm: loader.pm,
     })
 })
@@ -394,6 +402,7 @@ app.get('/report', async (req, res) => {
 // ── GET /script ───────────────────────────────────────────────────────────
 app.get('/script', async (req, res) => {
     const { key, hwid, plan, ticket, nonce } = req.query
+    const build = String(req.query.build || plan || '')           // the build the loader picked (a Primordial key can load several)
     if (!key||!hwid||!plan||!ticket||!nonce)
         return res.status(400).json({ ok: false, reason: 'missing_params' })
     const db      = await db_read()
@@ -411,7 +420,9 @@ app.get('/script', async (req, res) => {
         return res.status(403).json({ ok: false, reason: 'bad_ticket' })
     }
 
-    const raw = await get_script(plan)
+    if (!(PM_BUILDS[plan] || [plan]).includes(build))
+        return res.status(403).json({ ok: false, reason: 'wrong_build' })
+    const raw = await get_script(build)
     if (!raw) return res.status(500).json({ ok: false, reason: 'script_missing' })
 
     // the script talks back to this server (cloud loadouts, tamper reports); without PUBLIC_URL: the host it was asked on
@@ -433,7 +444,7 @@ app.get('/script', async (req, res) => {
         `rawset(_G, "_auth_user",       ${JSON.stringify(license.note||"")})`,
         `rawset(_G, "_auth_key",        ${JSON.stringify(key)})`,
         `rawset(_G, "_auth_hwid",       ${JSON.stringify(hwid)})`,
-        `rawset(_G, "BUILD_VERSION",    ${JSON.stringify(plan)})`,
+        `rawset(_G, "BUILD_VERSION",    ${JSON.stringify(build)})`,
         `rawset(_G, "_server_url",      ${JSON.stringify(public_url)})`,
     ].join('\n')
 
@@ -441,7 +452,7 @@ app.get('/script', async (req, res) => {
     license.last_ticket = null; license.last_ticket_exp = null; license.last_nonce = null
     await db_write(db)
 
-    console.log(`[SCRIPT DELIVERED] key=${key} plan=${plan}`)
+    console.log(`[SCRIPT DELIVERED] key=${key} plan=${plan} build=${build}`)
     res.type('text/plain').send(prefix + '\n\n' + raw)
 })
 
