@@ -13,10 +13,10 @@ rawset(_G, "_specter_pm_loader_loaded", true)
 local SERVER_URL = "https://specter-license-mh111-production.up.railway.app"
 -- bump whenever this file changes: the server hands out the number of the newest loader (the bot reads it from the cloud
 -- branch) and an older one tells its user to download the new one
-local LOADER_VERSION = 5
+local LOADER_VERSION = 6
 local KEY_FILE = "specter/key.txt"             -- csgo/specter/key.txt
 local BUILD_FILE = "specter/build.txt"         -- the build a multi build key loaded last (csgo/specter/build.txt)
-local GROUP = "Specter loader"
+local GROUP = "𓆩☾𓆪 Specter loader 𓆩☾𓆪"
 
 -- the Primordial calls the two libraries below use
 local client_log, global_vars_cur_time = client.log, global_vars.cur_time
