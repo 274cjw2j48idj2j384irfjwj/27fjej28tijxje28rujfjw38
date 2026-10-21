@@ -385,6 +385,7 @@ check(ok, "loader compiles under LuaJIT" + ("" if ok else ": " + str(err)))
 check("/verify?key=" in LOADER and "/script?key=" in LOADER and 'plan:find("^pm_")' in LOADER,
       "loader: verify -> script, only pm_ keys")
 check("[resolver:begin]" not in LOADER and "shotlog" not in LOADER, "loader carries no script code")
+check("𓆩☾𓆪" in LOADER, "loader: the 𓆩☾𓆪 decoration is in the group title")
 
 # the builds of a key (owners, Oct 21 2026: "dev kulcs mind a 3, nightly: beta + nightly, beta: csak beta"): the server lists them, the loader reads the list
 SERVER = open(os.path.join(ROOT, "server.js"), encoding="utf-8").read()
