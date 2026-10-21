@@ -352,15 +352,6 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   weapon is out; the DT key itself is not touched. The decision is the pure `zeus.decide`
   (tested). Not proven in game: the server checks the range on the lag compensated enemy, so firing "earlier" than the range
   edge would only miss.
-- Scoreboard flag (owners, Oct 2026: "a specter hold írja felül az ország zászlaját"): the scoreboard badge (`libs.tools.js`) hides
-  the row's country flag (`find_flag`: ids FlagImg / Flag / CountryFlag, classes sb-row__cell__flag ... of the CS:GO scoreboard; not
-  confirmed in game: none found = the badge stays beside the rank as before) and sits in its place, the flag comes back when the
-  badge goes (`destroy_panel`). Owners, Oct 2026 (screenshot: "our logo doesn't override the flags"): the fixed ids / classes found
-  nothing in game, so `find_flag` also walks every panel of the row (depth 7, `walk`) and takes the first whose id says `flag` or
-  `country` (the CS:GO row ids are `id-sb-name__*`, `id-sb-skillgroup-image`, the rank cell is `data-stat="rank"`, from the other
-  scoreboard luas). Still a guess: Home > "Dump scoreboard row" prints the first row's panels (id, type, data-stat) to the console
-  (scoreboard open), send it when the flag stays. A cheat revealer (clan tag based, badges per cheat) was built and taken out again (owners, Oct 2026):
-  the real ones read the voice packets, which the Primordial api does not give.
 - Fake ping set by hand (owners, Oct 2026: "beallitom 400 fakepinget es ahogy elindul a kor leesik"): the lua wrote 0 / 100 / its own value
   over it at the round change (no enemy alive, knife out). `backtrack.update` now treats a slider value it did not write as the user's
   (`backtrack.saved`) and never goes below it (except in the high ping guard).
@@ -506,8 +497,6 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   or the year 2018 drops it, and when a region / country / continent / location field exists it has to be a European one (`HVH_EU`); a row that says
   nothing of a kind stays. If it still shows the wrong ones, `/hvhgg?debug=1` now lists per source the first 8 rows with all their fields and
   whether they were kept (`rows`): send that and the filter is made exact.
-- Flag, third try (owners, Oct 2026: still not covered): `find_flag` also takes an image panel whose source path says flag / country
-  (`GetImageSrc`), and the flag is hidden with width 0 + opacity 0 as well (given back on destroy). Send the "Dump scoreboard row" output if it stays.
 - Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";
   Primordial only, the gamesense lua has no user detection to build on): Misc > "Servers" (page 15). "Share my server" (default
   OFF, a RAW `menu_add_checkbox`, not an eui item: eui exports every checkbox into the configs, and an imported / cloud config must
@@ -943,3 +932,9 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   flips on odd phases, the yaw gets +- Brute shift for 0.7 s. Manual keys (`builder.own_manual`), the Freestand key (`builder.own_freestand`, 2 traces every 4 ticks), the knife behind us (Anti backstab) and Safe head (Air knife / Air zeus / Height advantage, "Allow defensive") override the
   way. Menu labels of the defensive are "Def trigger / Def pitch / Def yaw / Def value" (the old "Defensive pitch" etc. had other value lists and an old saved config would set them out of range). The AA stats / shot log rows (`kind:"aa"`) carry the state and `wy` (ways). The old
   logs (Oct 14-17: enemies hit ~80 % of the events in every setting) are the baseline: judge the new one by the head share per state and ways. Not proven in game.
+- Scoreboard row of a Specter user (owners, Oct 21 2026: the mock-ups they picked, "csak a mi sorunkat változtassa meg a többi maradjon", "GS zöld, prim lila", the moon after the label): replaces the old badge beside the rank / over the country flag
+  (the flag code `find_flag` is gone). In the Panorama JS (`libs.tools.js`, `get_panel`): the ROW of a Specter user gets an inline tinted gradient background, a 1 px border and a 2 px stripe on its left (`LOOKS`: gs green, pm lilac), restored when the user goes (`destroy_panel`);
+  a badge panel "SPECTER GS" / "SPECTER PRIM" + the moon is inserted before the money cell (`data-stat` money / cash; no such cell = only the row look, the badge stays hidden: Home > "Dump scoreboard row" prints the cells). The other rows are untouched, the star / MVP column stays.
+  `presence.refresh_icons` passes the kind (`gs` for the gamesense lua's heartbeat, else pm); the moons are `specter_moon_pm.png` (lilac) and `specter_moon_gs.png` (green), 64 x 64, the detailed crater moon from the owners' reference image, downloaded one after the other from server.js
+  `GET /moon_pm.png` / `/moon_gs.png` (`/moon.png` = pm, for older scripts) into csgo/materials/panorama/images/icons/. NOT confirmed in game: the earlier badge never showed on the owners' scoreboard either; the first thing to check is the "Dump scoreboard row" output (cell ids / data-stat) and the row style being accepted.
+  `node tests/primordial_scoreboard.js`, `python3 tests/...` presence: `tests/primordial_presence.lua` via lupa (both are run by hand).
