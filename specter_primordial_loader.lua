@@ -13,7 +13,7 @@ rawset(_G, "_specter_pm_loader_loaded", true)
 local SERVER_URL = "https://specter-license-mh111-production.up.railway.app"
 -- bump whenever this file changes: the server hands out the number of the newest loader (the bot reads it from the cloud
 -- branch) and an older one tells its user to download the new one
-local LOADER_VERSION = 3
+local LOADER_VERSION = 4
 local KEY_FILE = "specter/key.txt"             -- csgo/specter/key.txt
 local BUILD_FILE = "specter/build.txt"         -- the build a multi build key loaded last (csgo/specter/build.txt)
 local GROUP = "Specter loader"
@@ -92,6 +92,33 @@ end
 local function save_build(build)
     pcall(libs.filesystem.create_directory, "specter", "MOD")
     pcall(libs.filesystem.write, BUILD_FILE, build)
+end
+
+-- the key out of whatever was copied (a Discord message, ```key```, spaces / new lines around it): XXXXXX-XXXXXX-XXXXXX-XXXXXX
+local function key_from_text(text)
+    text = tostring(text or "")
+    local found = text:match("%w%w%w%w%w%w%-%w%w%w%w%w%w%-%w%w%w%w%w%w%-%w%w%w%w%w%w")
+    if (found ~= nil) then
+        return found
+    end
+    return (text:gsub("[`%c]", " "):match("^%s*(%S+)") or "")
+end
+
+-- the clipboard (the menu's text box takes no Ctrl+V), read only when the button is pressed, inside a pcall: nil when it can not be read
+local function clipboard_text()
+    local ok, text = pcall(function()
+        local sys = ffi.cast("void***", memory_create_interface("vgui2.dll", "VGUI_System010"))
+        local count = ffi.cast("int(__thiscall*)(void*)", sys[0][7])
+        local read = ffi.cast("int(__thiscall*)(void*, int, char*, int)", sys[0][11])
+        local n = count(sys)
+        if (n <= 0 or n > 4096) then
+            return nil
+        end
+        local buffer = ffi.new("char[?]", n + 1)
+        read(sys, 0, buffer, n + 1)
+        return ffi.string(buffer)
+    end)
+    return ok and text or nil
 end
 
 local function field(body, name)
@@ -241,6 +268,15 @@ login = function(chosen)
     end)
 end
 
+ui.import = menu.add_button(GROUP, "Import key", function()
+    local key = key_from_text(clipboard_text())
+    if (key == "") then
+        status("No key in the clipboard: copy it from the Discord message first.")
+        return
+    end
+    pcall(ui.key.set, ui.key, key)
+    status("Key imported (" .. key:sub(1, 6) .. "...). Press Login.")
+end)
 ui.login = menu.add_button(GROUP, "Login", function() login() end)
 
 local saved = read_key()

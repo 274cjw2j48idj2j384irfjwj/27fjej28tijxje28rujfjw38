@@ -410,6 +410,14 @@ r = _pl.eval("(function()\n" + _lc("local function parse_builds(body)", "login =
     return table.concat(a, ","), table.concat(b, ","), #c
 end)()""")
 check(tuple(r) == ("pm_dev,pm_nightly,pm_beta", "pm_beta", 0), "loader: reads the builds the server lists (none = the key's own plan) (%s)" % (tuple(r),))
+_pk = L.LuaRuntime(unpack_returned_tuples=True)
+r = _pk.eval("(function()\n" + _lc("local function key_from_text(text)", "-- the clipboard (the menu") + """
+    return key_from_text("here is your key: ```aB3dEf-gH1jKl-mN0pQr-sT5uVw``` enjoy"), key_from_text("  abcdef  "), key_from_text(nil), key_from_text("a b")
+end)()""")
+check(tuple(r) == ("aB3dEf-gH1jKl-mN0pQr-sT5uVw", "abcdef", "", "a"),
+      "loader: Import key finds the key in whatever was copied (%s)" % (tuple(r),))
+check('menu.add_button(GROUP, "Import key"' in LOADER and "clipboard_text()" in LOADER and "pcall(function()" in LOADER[LOADER.index("local function clipboard_text"):],
+      "loader: an Import key button reads the clipboard inside a pcall, only when pressed")
 check("&build=" in LOADER and 'menu.add_button(GROUP, "Load "' in LOADER and "read_build()" in LOADER,
       "loader: asks /script for the chosen build, one button per build, remembers the last one")
 
