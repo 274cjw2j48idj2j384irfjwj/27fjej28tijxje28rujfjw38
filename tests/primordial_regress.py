@@ -418,8 +418,29 @@ check(tuple(r) == ("aB3dEf-gH1jKl-mN0pQr-sT5uVw", "abcdef", "", "a"),
       "loader: Import key finds the key in whatever was copied (%s)" % (tuple(r),))
 check('menu.add_button(GROUP, "Import key"' in LOADER and "clipboard_text()" in LOADER and "pcall(function()" in LOADER[LOADER.index("local function clipboard_text"):],
       "loader: an Import key button reads the clipboard inside a pcall, only when pressed")
-check("&build=" in LOADER and 'menu.add_button(GROUP, "Load "' in LOADER and "read_build()" in LOADER,
-      "loader: asks /script for the chosen build, one button per build, remembers the last one")
+check("&build=" in LOADER and 'menu.add_list(GROUP, "Builds"' in LOADER and "read_build()" in LOADER and 'menu.add_button(GROUP, "Load "' not in LOADER,
+      "loader: asks /script for the chosen build, the builds are a list (no Load buttons), remembers the last one")
+check(LOADER.count('local STAR = "★★"') == 1 and "STAR .. \"  dev" in LOADER and "STAR .. \"  nightly" in LOADER and "STAR .. \"  beta" in LOADER
+      and "Double-click a build in the list to load it" in LOADER,
+      "loader: every build has the same double star and the menu says how to load it (double-click)")
+_cs = L.LuaRuntime(unpack_returned_tuples=True)
+r = _cs.eval("(function()\n" + _lc("local CLICK_WINDOW, CLICK_NEAR, CLICK_ZONE", "local clicks, was_down") + """
+    local PLACEHOLDER = "-- pick --"
+    local out, st = {}, {}
+    local function step(press, label, now) out[#out + 1] = tostring(click_step(st, press, label, now)) end
+    step({ x = 100, y = 200, t = 1.00 }, PLACEHOLDER, 1.00)      -- first click on an item: nothing yet
+    step(nil, "dev", 1.02)                                        -- the selection changed to it
+    step({ x = 101, y = 200, t = 1.20 }, "dev", 1.20)             -- second press on the same spot: double click -> dev
+    step(nil, "dev", 1.22)
+    step({ x = 100, y = 500, t = 3.00 }, "dev", 3.00)             -- a single click far below the list: nothing
+    step({ x = 100, y = 500, t = 3.10 }, "dev", 3.10)             -- two presses outside the list area (a double click in the Key box): nothing
+    step({ x = 100, y = 200, t = 5.00 }, "dev", 5.00)             -- double click again on the selected item
+    step({ x = 100, y = 200, t = 5.30 }, "dev", 5.30)
+    step({ x = 100, y = 200, t = 8.00 }, "dev", 8.00)             -- too slow: two single clicks
+    step({ x = 100, y = 200, t = 9.00 }, "dev", 9.00)
+    return table.concat(out, ",")
+end)()""")
+check(r == "nil,nil,dev,nil,nil,nil,nil,dev,nil,nil", "loader: a double click on a build loads it, one click / two far or slow clicks do not (%s)" % (r,))
 
 # default.cfg (owners: "csináld meg a legjobb configot ezzel"): it decodes (the items it names that are gone are ignored by the import)
 import base64, json
