@@ -127,7 +127,8 @@ groups = setmetatable({}, { __index = function(t, k)
     rawset(g, "button", function(_, label) return element("button:" .. label) end)
     rawset(t, k, g); return g end })
 ui = proxy()
-info = { beta_build = true, beta_text2 = " (beta)" }
+info = { beta_build = true, beta_text2 = " (beta)", plan = "dev" }
+PM_DISCORD = "discord.gg/test"
 client_version = "5.5"
 menu_add_separator = function() return proxy() end
 menu_is_open = function() return true end
@@ -146,10 +147,10 @@ EXPECT = {  # page -> (main point, groups that show)
     4: ("Anti-Aim", {"settings", "antiaim", "features"}), 12: ("Anti-Aim", {"settings", "yaw", "jitter"}),
     13: ("Anti-Aim", {"settings", "desync"}), 14: ("Anti-Aim", {"settings", "defensive"}),
     6: ("Misc", {"visuals", "customization"}), 7: ("Misc", {"player", "communication"}), 8: ("Misc", {"misc", "movement"}),
-    9: ("Misc", {"utils", "sync"}), 15: ("Misc", {"servers"}),
+    9: ("Misc", {"utils", "sync"}), 15: ("Misc", {"servers"}), 16: ("Info", {"about"}),
 }
 SUBS = {"Config": {"Configs", "Statistics"}, "Ragebot": {"Resolver", "Aimbot", "Tickbase", "Exploits"},
-        "Anti-Aim": {"Builder", "Yaw / Jitter", "Desync", "Defensive"}, "Misc": {"Visuals", "Player", "Movement", "Utils", "Servers"}}
+        "Anti-Aim": {"Builder", "Yaw / Jitter", "Desync", "Defensive"}, "Misc": {"Visuals", "Player", "Movement", "Utils", "Servers"}, "Info": {"Information"}}
 for page, (main, want) in sorted(EXPECT.items()):
     lua.execute("PAGE = %d; SHOWN = {}; menu_handle()" % page)
     shown = {k.split(":", 1)[1] for k, v in dict(lua.globals().SHOWN).items() if v}
@@ -366,7 +367,7 @@ check(["Disable DT with zeus", True] in json.loads(base64.b64decode(re.search(r'
 
 # the loader's beta version (BUILD_VERSION pm_beta): no Resolver page and no resolver groups, the helpers stay
 beta = L.LuaRuntime()
-beta.execute(MENU_MOCK.replace('info = { beta_build = true', 'info = { plan = "beta", beta_build = true'))
+beta.execute(MENU_MOCK.replace('beta_text2 = " (beta)", plan = "dev"', 'beta_text2 = " (beta)", plan = "beta"'))
 beta.execute(NAV + MENU_HANDLE)
 for page, want in ((3, set()), (10, {"ragebot"}), (5, {"exploits", "helpers"})):
     beta.execute("PAGE = %d; SHOWN = {}; menu_handle()" % page)

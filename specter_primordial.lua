@@ -976,6 +976,7 @@ local groups = {
     statistics = libs.eui.create("Statistics", 2),
 
     servers = libs.eui.create("Servers", 2),
+    about = libs.eui.create("Information", 2),
     
 
     ragebot = libs.eui.create("Ragebot", 3),
@@ -1700,7 +1701,11 @@ local nav_pages = {
     { name = "Ragebot", subs = { { "Resolver", 3 }, { "Aimbot", 10 }, { "Tickbase", 11 }, { "Exploits", 5 } } },
     { name = "Anti-Aim", subs = { { "Builder", 4 }, { "Yaw / Jitter", 12 }, { "Desync", 13 }, { "Defensive", 14 } } },
     { name = "Misc", subs = { { "Visuals", 6 }, { "Player", 7 }, { "Movement", 8 }, { "Utils", 9 }, { "Servers", 15 } } },
+    { name = "Info", subs = { { "Information", 16 } } },
 }
+-- the symbol in front of every main button (owners, Oct 21 2026: "csinálj ugyan úgy szimbólumokat a menübe"); the menu draws text only, so these are
+-- characters of the menu font: one that shows as a box in game is swapped here
+local NAV_SYMBOLS = { Config = "☾", Ragebot = "◎", ["Anti-Aim"] = "✦", Misc = "❖", Info = "ℹ" }
 if (info.plan == "beta") then
     table.remove(nav_pages[2].subs, 1)
 end
@@ -1709,7 +1714,7 @@ ui.nav.mains = {}
 ui.nav.subs = {}
 
 for i, main in ipairs(nav_pages) do
-    ui.nav.mains[i] = groups.nav:button(main.name,
+    ui.nav.mains[i] = groups.nav:button((NAV_SYMBOLS[main.name] or "•") .. "  " .. main.name,
         function()
             ui.nav.slider.ref:set(main.subs[1][2])
         end
@@ -1728,6 +1733,25 @@ for i, main in ipairs(nav_pages) do
         ) })
     end
 end
+
+-- the Information page (owners, Oct 21 2026: "külön tab information és oda dc link"): what this is, the Discord, a copy / open button
+ui.about = {
+    title = groups.about:text("☾  Specter v" .. client_version .. info.beta_text2 .. "  ·  " .. info.plan),
+    sep = groups.about:separator(),
+    discord = groups.about:text("◈  Discord  " .. PM_DISCORD),
+    support = groups.about:text("✉  Support, configs and updates are on the Discord"),
+    copy = groups.about:button("⧉  Copy the Discord invite", function()
+        clipboard.set("https://" .. PM_DISCORD)
+        notifications.create("Specter", "Discord invite copied!", notifications.types.success)
+    end),
+    open = groups.about:button("➜  Open the Discord", function()
+        local api = libs.tools.js2 and libs.tools.js2.SteamOverlayAPI
+        if (not (api ~= nil and pcall(api.OpenExternalBrowserURL, "https://" .. PM_DISCORD))) then
+            clipboard.set("https://" .. PM_DISCORD)
+            notifications.create("Specter", "Could not open the browser, the invite was copied.", notifications.types.warning)
+        end
+    end),
+}
 
 --- @endregion
 
@@ -8907,6 +8931,7 @@ menu_handle = function()
         groups.utils:depend({page == 9})
         groups.sync:depend({page == 9})
         groups.servers:depend({page == 15})
+        groups.about:depend({page == 16})
 
         if (ui.nav.slider:get() == 0) then
             menu_set_group_column("Home | Specter v" .. client_version .. "" .. info.beta_text2, 2)
@@ -9987,6 +10012,7 @@ setup = function()
         groups.utils:depend({false})
         groups.sync:depend({false})
         groups.servers:depend({false})
+        groups.about:depend({false})
         groups.yaw:depend({false})
         groups.jitter:depend({false})
         groups.desync:depend({false})
