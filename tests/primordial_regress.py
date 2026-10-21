@@ -1557,7 +1557,7 @@ r = af.eval("""(function()
 end)()""")
 cb = SRC[SRC.index('perf.add(e_callbacks.ANTIAIM, "ANTIAIM"'):]
 cb = cb[:cb.index("do_aimshoot = function()")]
-check(tuple(r) == (2, 3) and "error(err, 0)" not in cb and cb.count("builder.aa_failed(err)") == 2,
+check(tuple(r) == (2, 3) and "error(err, 0)" not in cb and cb.count("builder.aa_failed(err)") == 3,
       "anti-aim errors are caught and printed (max 1 per 3 s), the ANTIAIM callback never rethrows (%s)" % (tuple(r),))
 
 # the cheat revealer (the owners' own LuaJIT bytecode, embedded as base64): never touched, loaded only from a ticked raw menu item
