@@ -75,7 +75,7 @@ section("local backtrack = {", "local RES_NOCHOKE = 8", "\nexport_backtrack = ba
 env.backtrack = env.export_backtrack
 section("resolver.HYP = {", "--- @info: resolver: side from freestanding")
 section("local RES_NOCHOKE = 8", "local shotlog = {")
-section("builder.lerp = function", "builder.apply_preset = function")
+section("builder.adv = {}", "builder.closest_point_on_ray")
 local passed = 0
 local function test(name, fn)
     local ok, err = pcall(fn)
@@ -254,55 +254,22 @@ test("zero-offset hypothesis can learn", function()
     resolver.on_result(target, true, false, { id = 500 })
     assert(resolver.memory(2, "stand").candidates[5].good > 1)
 end)
-test("packet decisions stay stable within a tick", function()
-    builder.new_packet()
-    assert(builder.fresh)
-    local side = builder.side_flip
-    builder.new_packet()
-    assert(not builder.fresh and builder.side_flip == side)
-    tick = tick + 1
-    choked = 2
-    builder.new_packet()
-    assert(not builder.fresh)
-    choked = 0
-    builder.new_packet()
-    assert(builder.fresh)
-end)
-test("state changes discard stale AA caches", function()
-    builder.xw_st.value = 500
-    builder.advanced_left = 99
-    env.global.current_state_number = 3
-    builder.new_packet()
-    assert(builder.xw_st.value == nil and builder.advanced_left == nil and builder.fresh)
-end)
-test("tick rewind clears anti-brute timers", function()
-    builder.ab_until, builder.ab_phase_until, builder.ab_trigger_tick = 2000, 3000, tick
-    tick = 1
-    builder.new_packet()
-    assert(builder.ab_until == 0 and builder.ab_phase_until == 0 and builder.ab_trigger_tick == nil)
-end)
-test("negative UI randomization does not create an empty interval", function()
-    for _ = 1, 100 do
-        local value = builder.rnd(0, -30)
-        assert(value >= -30 and value <= 0)
-    end
-end)
-test("Simple AA: every way is played once a round in a fixed order, no random", function()
+test("anti-aim: every way is played once a round in a fixed order, no random", function()
     for ways = 2, 7 do
         local seen, last = {}, nil
         for k = 0, ways - 1 do
-            local pos = builder.adv.simple_pos(ways, false, 0, k)
+            local pos = builder.adv.way_pos(ways, false, 0, k)
             assert(pos >= 1 and pos <= ways and not seen[pos])
             seen[pos] = true
             if (ways >= 3 and last ~= nil) then assert(pos ~= last) end
             last = pos
         end
-        assert(builder.adv.simple_pos(ways, true, 0, 0) == 1 and builder.adv.simple_pos(ways, true, 1, 0) == 2)
-        assert(builder.adv.simple_pos(ways, false, 0, 0) == builder.adv.simple_pos(ways, false, 0, ways))
+        assert(builder.adv.way_pos(ways, true, 0, 0) == 1 and builder.adv.way_pos(ways, true, 1, 0) == 2)
+        assert(builder.adv.way_pos(ways, false, 0, 0) == builder.adv.way_pos(ways, false, 0, ways))
     end
-    assert(builder.adv.simple_hold(2, 3, 1) == 5 and builder.adv.simple_hold(2, 3, 2) == 2 and builder.adv.simple_hold(0, 0, 2) == 1)
+    assert(builder.adv.hold_for(2, 3, 1) == 5 and builder.adv.hold_for(2, 3, 2) == 2 and builder.adv.hold_for(0, 0, 2) == 1)
 end)
-test("Simple AA: Thue-Morse side has no period and is bounded on garbage", function()
+test("anti-aim: Thue-Morse side has no period and is bounded on garbage", function()
     local expect = { false, true, true, false, true, false, false, true }
     for n = 0, 7 do assert(builder.adv.tm_side(n) == expect[n + 1]) end
     assert(builder.adv.tm_side(0 / 0) == false and builder.adv.tm_side(math.huge) == false and builder.adv.tm_side(-5) == false)
@@ -314,31 +281,10 @@ test("Simple AA: Thue-Morse side has no period and is bounded on garbage", funct
         assert(not same)
     end
 end)
-test("Simple AA: defensive pitch is a fixed value or a triangle wave", function()
-    assert(builder.adv.simple_def_pitch(2, 5) == 89 and builder.adv.simple_def_pitch(3, 5) == -89 and builder.adv.simple_def_pitch(4, 5) == 0)
-    assert(builder.adv.simple_def_pitch(5, 0) == -89 and builder.adv.simple_def_pitch(5, 12) == 89)
-    for t = 0, 47 do local v = builder.adv.simple_def_pitch(5, t) assert(v >= -89 and v <= 89) end
-end)
-test("X-Way stays bounded and refreshes changed parameters", function()
-    local st = {}
-    for _ = 1, 100 do
-        local value = builder.adv.xway(st, 5, 25, 10, 2, builder.rnd)
-        assert(value >= -15 and value <= 35)
-    end
-    assert(builder.adv.xway(st, 5, 0, 77, 100, builder.rnd) == 77)
-end)
-test("delayed AA feedback credits the captured arm, not current arm", function()
-    local st = {}
-    local g = builder.adv.brain_group(st, 1)
-    g.cur, g.until_t = 2, clock + 10
-    builder.adv.brain_learn(st, 1, "hit", 1, clock, math.random, 1)
-    assert(g.arms[1].b > 1 and g.arms[2].b == 1 and g.cur == 2)
-end)
-test("frame-scaled smoothing converges without overshoot", function()
-    local value = builder.lerp(0, 89, 0.1)
-    assert(value > 0 and value < 89)
-    for _ = 1, 100 do value = builder.lerp(value, 89, 0.1) end
-    assert(value == 89)
+test("anti-aim: defensive pitch is a fixed value or a triangle wave", function()
+    assert(builder.adv.def_pitch(2, 5) == 89 and builder.adv.def_pitch(3, 5) == -89 and builder.adv.def_pitch(4, 5) == 0)
+    assert(builder.adv.def_pitch(5, 0) == -89 and builder.adv.def_pitch(5, 12) == 89)
+    for t = 0, 47 do local v = builder.adv.def_pitch(5, t) assert(v >= -89 and v <= 89) end
 end)
 test("angle normalization and finite desync bounds", function()
     assert(builder.adv.norm(181) == -179)
@@ -374,7 +320,7 @@ test("new sliders initialize explicit defaults with unit steps", function()
     env.ui.ragebot.def_ticks.ref = env.ui.ragebot.def_ticks
     env.ui.ragebot.smart_baim_hp:set(0)
     env.ui.ragebot.latency_limit:set(40)
-    section("ui.ragebot.smart_baim_hp.ref:set(40)", "ui.antiaim.builder.ab_mode")
+    section("ui.ragebot.smart_baim_hp.ref:set(40)", "ui.utils.aa_stats = ")
     assert(env.ui.ragebot.smart_baim_hp:get() == 40 and env.ui.ragebot.latency_limit:get() == 80)
 end)
 test("health threshold is strict and configurable", function()

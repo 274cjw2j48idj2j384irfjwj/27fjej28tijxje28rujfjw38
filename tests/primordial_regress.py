@@ -385,97 +385,101 @@ check("/verify?key=" in LOADER and "/script?key=" in LOADER and 'plan:find("^pm_
       "loader: verify -> script, only pm_ keys")
 check("[resolver:begin]" not in LOADER and "shotlog" not in LOADER, "loader carries no script code")
 
-# the advanced anti-aim's deciding functions (builder.adv: X-Way, Distort, Random hold, lua jitter, defensive picks): pure
-# lua, run here with a seeded math.random. Not a simulation of the game: only the numbers they give
-ADV = chunk("builder.xw_st, builder.ds_st", "-- \"Apply advanced preset\"")
-adv = L.LuaRuntime(unpack_returned_tuples=True)
-adv.execute("builder = {} globals = { tick_count = function() return 0 end } math.randomseed(7)\n" + ADV)
-R = adv.eval("""function(code) return assert(loadstring(code))() end""")
-xw = R("""local st, out = {}, {}
-for n = 1, 2000 do out[n] = builder.adv.xway(st, 5, 50, 10, 1, builder.rnd) end
-local seen, rep, lo, hi = {}, 0, 1e9, -1e9
-for n = 1, #out do seen[out[n]] = (seen[out[n]] or 0) + 1; if n > 1 and out[n] == out[n-1] then rep = rep + 1 end
-  lo = math.min(lo, out[n]); hi = math.max(hi, out[n]) end
-local kinds, minc = 0, 1e9
-for _, c in pairs(seen) do kinds = kinds + 1; minc = math.min(minc, c) end
-return kinds, rep, lo, hi, minc""")
-check(xw[0] == 5 and xw[1] == 0 and xw[2] == -40 and xw[3] == 60 and xw[4] == 400,
-      "X-Way: 5 positions over centre +- range, each once a round, never twice in a row (%s)" % (xw,))
-g = R("""local nan = 0 / 0
-local st, a, b = {}, builder.adv.def_yaw({}, 11, 30, 0, false, 0, builder.rnd), builder.adv.def_yaw({}, 11, 30, 0, false, 1, builder.rnd)
-return builder.adv.norm(nan), builder.adv.norm(math.huge), builder.adv.norm(190), builder.rnd(nan, 5) == 0 or builder.rnd(nan, 5) == 5, a, b""")
-check(g[0] == 0 and g[1] == 0 and g[2] == -170 and g[3] and g[4] == -g[5],
-      "AA numbers: NaN / inf give 0, the defensive jitter flick follows the packet parity and flips every sent packet (%s)" % (list(g),))
-hold = R("""local st, run, worst, prev = {}, 0, 0, nil
-for n = 1, 3000 do local v = builder.adv.xway(st, 3, 30, 0, 4, builder.rnd)
-  if v == prev then run = run + 1 else run = 1 end; worst = math.max(worst, run); prev = v end
-return worst""")
-check(hold <= 8 and hold >= 2, "X-Way: a position is held at most hold packets (twice in a row only across a round: %d)" % hold)
-ds = R("""local st, bad, lo, hi = {}, 0, 1e9, -1e9
-for n = 1, 3000 do local v = builder.adv.distort(st, 40, 5, 35, 15, builder.rnd)
-  if v ~= v then bad = bad + 1 end; lo = math.min(lo, v); hi = math.max(hi, v) end
-local st2 = {}; builder.adv.distort(st2, 40, 0, 35, 15, builder.rnd)
-local inside = builder.adv.distort(st2, 0, 0, 35, 15, builder.rnd)
-return bad, lo, hi, inside""")
-check(ds[0] == 0 and ds[1] >= -35 and ds[2] <= 45 and ds[3] == 0, "Distort: inside centre +- range, no NaN, a smaller range pulls it in (%s)" % (ds,))
-hd = R("""local st, run, worst, prev, sides = {}, 0, 0, nil, {}
-for n = 1, 3000 do local v = builder.adv.hold(st, -30, 30, 3, builder.rnd); sides[v] = true
-  if v == prev then run = run + 1 else run = 1 end; worst = math.max(worst, run); prev = v end
-return worst, sides[-30] and sides[30] and true or false""")
-check(hd[0] == 3 and hd[1], "Random hold: both sides, each held at most hold packets (%s)" % (hd,))
-jt = R("""local st, ok = {}, true
-for n = 1, 500 do local v = builder.adv.jitter(st, 6, -12, 0, builder.rnd); ok = ok and v >= -12 and v <= 12 end
-local prev = nil
-for n = 1, 500 do local v = builder.adv.jitter(st, 7, 15, 10, builder.rnd)
-  ok = ok and math.abs(v) >= 15 and math.abs(v) <= 25 and (prev == nil or (v > 0) ~= (prev > 0)); prev = v end
-return ok""")
-check(jt, "lua jitter: Random inside +- degree, Switch random changes side every packet with degree .. degree + random")
-df = R("""local st, ok = {}, true
-local a = builder.adv.def_pitch(st, 11, 0, 0, true, 0, builder.rnd)
-ok = ok and (a == 89 or a == -89) and builder.adv.def_pitch(st, 11, 0, 0, false, 0, builder.rnd) == a
-for t = 0, 5, 0.01 do local p = builder.adv.def_pitch(st, 12, -60, 80, false, t, builder.rnd); ok = ok and p >= -60 and p <= 80 end
-local s1 = builder.adv.def_yaw(st, 10, 0, 0, true, 0, builder.rnd)
-ok = ok and math.abs(s1) >= 90 and math.abs(s1) <= 150 and builder.adv.def_yaw(st, 10, 0, 0, false, 1, builder.rnd) == s1
-ok = ok and builder.adv.def_yaw(st, 9, 0, 170, false, 0, builder.rnd) == -10 and builder.adv.def_yaw(st, 9, 0, -30, false, 0, builder.rnd) == 150
-ok = ok and builder.adv.def_yaw(st, 11, 140, 0, false, 2, builder.rnd) == 140 and builder.adv.def_yaw(st, 11, -140, 0, false, 3, builder.rnd) == -140
-for n = 1, 500 do local d = builder.adv.def_yaw(st, 12, 120, 0, n % 50 == 0, n, builder.rnd); ok = ok and d >= -120 and d <= 120 and d == d end
-return ok""")
-check(df, "defensive: Random up/down holds its pick, Sway stays between the values, Opposite / Random side / Jitter flick / Distort angles")
-aim = R("""return builder.adv.aims_at(0, 100, 5, 20), builder.adv.aims_at(90, 100, 0, 20), builder.adv.aims_at(0/0, 1, 1, 20),
-  builder.adv.aims_at(179, -100, 1, 20), builder.rnd(5, -5) >= -5, builder.adv.norm(540), builder.adv.norm(-190)""")
-check(aim[0] and not aim[1] and not aim[2] and aim[3] and aim[4] and aim[5] == -180 and aim[6] == 170,
-      "threat aim / rnd with b < a / yaw normalising (%s)" % (aim,))
-
-# default.cfg (owners: "csináld meg a legjobb configot ezzel"): it decodes, every anti-aim item it sets exists, states 1-8 use
-# the advanced engine with the same values as the "Apply advanced preset" button
+# default.cfg (owners: "csináld meg a legjobb configot ezzel"): it decodes (the items it names that are gone are ignored by the import)
 import base64, json
 cfg = json.loads(base64.b64decode(re.search(r'configs\.default_config\s*=\s*"([^"]+)"', SRC).group(1)))
-labels = set(re.findall(r'shortstates\[i\] \.\. " \| ([^"]+)"', SRC))
-bad = [n[0] for g in ("Yaw", "Jitter", "Desync", "Defensive") for n in cfg[g]
-       if not n[0].startswith("Override - ") and n[0].split(" | ", 1)[1] not in labels]
-check(not bad, "default.cfg: every anti-aim item it sets exists (%s)" % bad[:5])
 get = lambda g, n: next((it[1] for it in cfg[g] if it[0] == n), None)
-pre = SRC[SRC.index("    local P = {"):SRC.index("    }\n", SRC.index("    local P = {"))]
-rows = re.findall(r"\[(\d)\] = \{ ([-\d, ]+), \{", pre)
-same = len(rows) == 8
-for i, vals in rows:
-    v = [int(x) for x in vals.split(",") if x.strip()]
-    p = ["G", "S", "M", "SW", "D", "DM", "A", "AD"][int(i) - 1]
-    same = same and [get("Yaw", p + " | Yaw mode"), get("Yaw", p + " | Range"), get("Jitter", p + " | Modifier mode"),
-                     get("Desync", p + " | Desync"), get("Defensive", p + " | Defensive")] == [v[0], v[3], v[9], 5,
-                                                                                       1]
-trig = lambda p: [n for n, on in get("Defensive", p + " | Smart triggers") if on]
-check(trig("M") == ["Peek"] and trig("A") == ["Air"] and trig("AD") == [] and trig("S") == [] and trig("FR") == []
-      and get("Defensive", "FR | Defensive") == 1 and get("Defensive", "M | Defensive") == 1 and get("Defensive", "A | Defensive") == 1
-      and "set(st.trigger_defensive, 1)" in SRC,
-      "default.cfg: defensive off in every state (the real AA rows: its events had the higher head share), the Peek / Air triggers stay set")
-check(same and get("Settings", "Anti brute mode") == 2 and get("Features", "Fakelag variance") is True
-      and get("Settings", "Adaptive AA") is True and "set(b.adaptive, true)" in SRC
-      and (get("Yaw", "M | Left"), get("Yaw", "M | Right"), get("Yaw", "M | Left randomization")) == (-10, 10, -18),
-      "default.cfg: the advanced anti-aim + Adaptive AA with the owner's old left / right, the same as the preset button")
+check(isinstance(cfg, dict) and len(cfg) > 5, "default.cfg decodes (%d groups)" % len(cfg))
+
+# the anti-aim (owners, Oct 21 2026: "simple antiaim ... semmi random"): the deciding functions are pure and fixed, no random number anywhere
+ADV = chunk("builder.adv = {}\n", "-- anti brute: a hit, or an enemy bullet")
+adv = L.LuaRuntime(unpack_returned_tuples=True)
+adv.execute("builder = {}\n" + ADV)
+R = adv.eval("""function(code) return assert(loadstring(code))() end""")
+r = R("""
+local ok = true
+for ways = 2, 7 do
+    local seen = {}
+    for k = 0, ways - 1 do
+        local pos = builder.adv.way_pos(ways, false, 0, k)
+        ok = ok and pos >= 1 and pos <= ways and not seen[pos]
+        seen[pos] = true
+    end
+    ok = ok and builder.adv.way_pos(ways, false, 0, 0) == builder.adv.way_pos(ways, false, 0, ways)
+end
+local tm = {}
+for n = 0, 7 do tm[#tm + 1] = builder.adv.tm_side(n) and 1 or 0 end
+return table.concat(tm), builder.adv.way_pos(4, true, 1, 0), builder.adv.hold_for(2, 3, 1), builder.adv.hold_for(2, 3, 2),
+       builder.adv.tm_side(0 / 0), builder.adv.tm_side(math.huge), builder.adv.def_pitch(5, 0), builder.adv.def_pitch(5, 12),
+       builder.adv.norm(181), builder.adv.norm(0 / 0), ok
+""")
+check(tuple(r) == ("01101001", 2, 5, 2, False, False, -89, 89, -179, 0, True),
+      "anti-aim maths: every way once a round in a fixed order, Thue-Morse sides, hold with the odd step extra, garbage is bounded (%s)" % (tuple(r),))
+ENGINE = SRC[SRC.index("builder.adv = {}\n"):SRC.index("-- An error in the anti-aim code UNLOADS")]
+check("math.random" not in ENGINE and "client_random" not in ENGINE, "anti-aim: no random number anywhere in the engine")
+
+# run_antiaim end to end on a mock: the ways come in the fixed order, a brute phase restarts them, the defensive angles apply while the shift lasts
+ANTI = (chunk("builder.state = { phase", "builder.closest_point_on_ray") + chunk("-- the config entry of a state", "-- the anti-aim as it is now")
+        + chunk("-- safe head: pitch down", "on_miss = function(event)"))
+aa = L.LuaRuntime(unpack_returned_tuples=True)
+r = aa.eval("""(function()
+    local function ctl(v) return { get = function() return v end, set = function(_, x) v = x end } end
+    local OUT = {}
+    builder = {}
+""" + ADV + """
+    global = { current_state_number = 3, current_state = "move" }
+    states = { "Global", "Stand", "Move" }
+    refs = { overridemove = ctl(false), overridemovesw = ctl(false), yawadd = ctl(0), jittermode = ctl(1), rotate = ctl(false), pitch = ctl(1),
+        fsstate = { set = function() end }, desyncside = ctl(1), leftamount = ctl(0), rightamount = ctl(0), freestand = ctl(false),
+        double_tap = ctl(true), fake_duck = ctl(false) }
+    local cfg = { override = ctl(true), ways = ctl(5), order = ctl(1), hold = ctl(1), hold_alt = ctl(0), brute = ctl(10), side = ctl(1), amount = ctl(58),
+        def_trigger = ctl(1), def_pitch = ctl(5), def_yaw = ctl(4), def_val = ctl(90) }
+    for k = 1, 7 do cfg["yaw" .. k] = ctl(k * 5) end
+    ui = { antiaim = { builder = { enable = ctl(true), anti_brute = ctl(true), yaw = ctl(1), pitch = ctl(2), defensive_ping = ctl(1), [3] = cfg, [1] = cfg },
+        features = { antibackstab = ctl(false), safehead = { get = function() return false end } } } }
+    local T = 100
+    globals = { tick_count = function() return T end }
+    time_to_ticks = function(x) return math.floor(x * 64) end
+    entity_list_get_local_player = function() return { get_prop = function(_, n) if n == "m_iHealth" then return 100 end return { x = 0, y = 0, z = 0 } end } end
+    game_rules_get_prop = function() return 0 end
+    engine_get_choked_commands = function() return 0 end
+    builder.base_yaw = function() return 0 end
+    builder.own_manual = function() return nil end
+    builder.peek_visible = function() return true end
+    builder.height_safe = function() return false end
+    entity_list_get_players = function() return {} end
+    vec3_t = function(x, y, z) return { x = x, y = y, z = z } end
+    exploits_get_charge = function() return 14 end
+    exploits_get_max_charge = function() return 14 end
+    local TRIG = 0
+    defensive = { trigger = function() TRIG = TRIG + 1 end, is_active = function() return true end }
+    e_cmd_buttons = { ATTACK = 1 }
+""" + ANTI + """
+    local ctx = { set_yaw = function(_, v) OUT.yaw = v end, set_pitch = function(_, v) OUT.pitch = v end,
+        set_desync = function(_, v) OUT.des = v end, set_invert_desync = function() end }
+    local cmd = { has_button = function() return false end }
+    local yaws, sides = {}, {}
+    for i = 1, 5 do
+        T = T + 1
+        run_antiaim(ctx, cmd)
+        yaws[#yaws + 1] = OUT.yaw
+        sides[#sides + 1] = OUT.des < 0 and 1 or 0
+    end
+    local plain_pitch = OUT.pitch
+    builder.anti_brute_trigger()
+    T = T + 1
+    run_antiaim(ctx, cmd)
+    local brute_yaw = OUT.yaw
+    cfg.def_trigger = ctl(5)
+    T = T + 100
+    run_antiaim(ctx, cmd)
+    return table.concat(yaws, ","), table.concat(sides), plain_pitch, brute_yaw, TRIG > 0, OUT.pitch ~= 89
+end)()""")
+check(tuple(r) == ("-175,-165,-155,-170,-160", "11010", 89, -155, True, True),
+      "run_antiaim on a mock: the ways in the fixed order, Thue-Morse sides, a brute phase restarts them with the shift, the defensive applies (%s)" % (tuple(r),))
 
 # safe head by height: only an enemy 5+ units below us whose bullet reaches the head, at most 2 traced, cached for 4 ticks
-HS = chunk("builder.height = { tick = -100, on = false }", "run_antiaim = function(ctx, cmd, unpredicted)")
+HS = chunk("builder.height = { tick = -100, on = false }", "-- safe head: pitch down")
 hs = L.LuaRuntime(unpack_returned_tuples=True)
 hs.execute("""builder = {}
 TICK, TRACES, DMG = 0, 0, 10
@@ -495,124 +499,10 @@ r = hs.eval("function() local a = builder.height_safe(ME) local n = TRACES TICK 
             "local d = builder.height_safe(ME) return a, n, b, m, c, d end")()
 check(r[0] and r[1] == 1 and r[2] and r[3] == 1 and not r[4] and not r[5],
       "safe head height: a lower enemy that hits the head turns it on, cached for 4 ticks (no new trace), no damage = off, an enemy above us = off (%s)" % (list(r),))
-check('safe_opt:get("Air zeus")' in SRC and 'safe_opt:get("Height advantage")' in SRC
+check('option:get("Air zeus")' in SRC and 'option:get("Height advantage")' in SRC
       and get("Features", "Safe head") and ["Height advantage", True] in get("Features", "Safe head"),
       "safe head: Air knife / Air zeus / Height advantage in the menu and on in default.cfg")
 
-# direct control (dev build): the anti-aim code writes into recorders, the lua sends yaw / pitch / desync itself
-DIRECT = chunk("-- the Primordial jitter types (yaw add", "run_antiaim = function(ctx, cmd, unpredicted)")
-dr = L.LuaRuntime(unpack_returned_tuples=True)
-dr.execute("""builder = {} globals = { tick_count = function() return 0 end }
-info = { plan = "dev" }
-local function item(v) return { v = v, get = function(self) return self.v end, set = function(self, x) self.v = x end } end
-ui = { antiaim = { builder = { enable = item(true), direct = item(true) } } }
-REAL = {}
-refs = {}
-for _, f in ipairs({ "pitch", "yawbase", "yawadd", "rotate", "rotaterange", "rotatespeed", "jittermode", "jittertype",
-    "jitterrange", "desyncside", "leftamount", "rightamount" }) do refs[f] = item(0); REAL[f] = refs[f] end
-refs.left, refs.right, refs.back = item(false), item(false), item(false)
-engine_get_view_angles = function() return { y = 30 } end
-entity_list_get_players = function() return {} end
-""" + ADV + DIRECT + """
-function CTX()
-    local c = { calls = {} }
-    for _, m in ipairs({ "set_yaw", "set_pitch", "set_desync", "set_invert_desync", "set_fakelag" }) do
-        c[m] = function(self, v) self.calls[m] = v end
-    end
-    return c
-end""")
-D = dr.eval("""function(code) return assert(loadstring(code))() end""")
-r = D("""
-builder.fresh = true
-builder.direct_begin()
-local swapped = refs.yawadd ~= REAL.yawadd
-local ctx = CTX()
-local dctx = builder.direct_ctx(ctx)
-refs.yawbase:set(2) refs.yawadd:set(15) refs.pitch:set(2) refs.jittermode:set(1)
-refs.desyncside:set(2) refs.leftamount:set(80) refs.rightamount:set(60)
-dctx:set_fakelag(true)
-builder.direct_restore()
-local restored = refs.yawadd == REAL.yawadd
-builder.direct_apply(ctx, { get_eye_position = function() return { x = 0, y = 0 } end })
-local c = ctx.calls
-return swapped, restored, c.set_yaw, c.set_pitch, c.set_desync, c.set_invert_desync, c.set_fakelag, REAL.yawadd.v, REAL.desyncside.v, REAL.leftamount.v
-""")
-check(r[0] and r[1] and r[2] == -135 and r[3] == 89 and abs(r[4] + 0.8) < 1e-9 and r[5] is False and r[6] is True
-      and r[7] == 0 and r[8] == 2 and r[9] == 100,
-      "direct control: recorders swapped in and back, yaw = view 30 + 180 + 15, pitch down, desync left 80 %% (%s)" % (r,))
-r = D("""
-builder.direct_begin()
-local ctx = CTX()
-local dctx = builder.direct_ctx(ctx)
-refs.desyncside:set(2) refs.leftamount:set(80) refs.rightamount:set(60)
-dctx:set_invert_desync(true)
-dctx:set_yaw(200)
-dctx:set_pitch(-45)
-builder.direct_restore()
-builder.direct_apply(ctx, {})
-return ctx.calls.set_yaw, ctx.calls.set_pitch, ctx.calls.set_desync
-""")
-check(r[0] == -160 and r[1] == -45 and abs(r[2] - 0.6) < 1e-9,
-      "direct control: an own set_yaw / set_pitch wins, the random side flips the desync to the right 60 %% (%s)" % (r,))
-r = D("""
-builder.direct_begin()
-local ctx = CTX()
-refs.desyncside:set(5) refs.yawbase:set(1)
-builder.direct_restore()
-builder.direct_apply(ctx, {})
-return ctx.calls.set_desync == nil, ctx.calls.set_yaw == nil, REAL.desyncside.v
-""")
-check(r[0] and r[1] and r[2] == 5, "direct control: peek fake stays Primordial's, yaw base 1 (round end) sends no yaw (%s)" % (r,))
-r = D("""
-local function key(v) return { get = function() return v end } end
-refs.left, refs.right, refs.back, refs.freestand = key(false), key(false), key(false), key(true)
-vec3_t = function(x, y, z) return { x = x, y = y, z = z } end
-e_hitboxes = { HEAD = 0 }
-builder.direct_begin()
-local ctx = CTX()
-refs.yawbase:set(2) refs.yawadd:set(15) refs.jittermode:set(1) refs.desyncside:set(2) refs.leftamount:set(80)
-builder.direct_restore()
-builder.direct_apply(ctx, { get_hitbox_pos = function() return { x = 0, y = 0, z = 64 } end })
-local no_wall = ctx.calls.set_yaw
--- a threat straight ahead (+x), a wall on our left only: the head goes left (to + 90)
-local enemy = { is_alive = function() return true end, is_dormant = function() return false end,
-    get_render_origin = function() return { x = 500, y = 0, z = 0 } end,
-    get_eye_position = function() return { x = 500, y = 0, z = 64 } end }
-entity_list_get_players = function() return { enemy } end
-trace_line = function(_, to) return { fraction = to.y > 0 and 0.5 or 1 } end
-builder.own_fs.tick = -100
-local ctx2 = CTX()
-builder.direct_begin() builder.direct_restore()
-builder.direct_apply(ctx2, { get_hitbox_pos = function() return { x = 0, y = 0, z = 64 } end })
-local fs_yaw = ctx2.calls.set_yaw
--- manual right: view 30 - 90
-refs.right = key(true)
-local ctx3 = CTX()
-builder.direct_begin() builder.direct_restore()
-builder.direct_apply(ctx3, {})
-refs.right, refs.freestand = key(false), nil
-entity_list_get_players = function() return {} end
-return no_wall, fs_yaw, ctx3.calls.set_yaw, ctx.calls.set_desync, REAL.yawadd.v
-""")
-check(r == (-135, 90, -60, -0.8, 0), "direct control, own: Freestand without a wall = the normal yaw, a wall on the left = "
-      "the head left (90), manual right = view - 90, the desync still ours, Primordial's yaw add 0 (%s)" % (r,))
-r = D("""
-local P = builder.adv.fs_pick
-return P(0.5, 1, 0), P(1, 0.4, 0), P(1, 1, 1), P(0.5, 0.52, -1), P(0.3, 0.9, 1)
-""")
-check(r == (1, -1, 0, -1, 1), "own freestand: the covered side, both covered = keep the side, none = normal AA (%s)" % (r,))
-r = D("""
-local st, a = {}, {}
-for n = 1, 6 do a[#a + 1] = builder.adv.native_jitter(st, 3, 30, true) end
-local st2, b = {}, {}
-for n = 1, 5 do b[#b + 1] = builder.adv.native_jitter(st2, 4, 40, true) end
-local st3 = {}
-local c1 = builder.adv.native_jitter(st3, 2, 30, true)
-local c2 = builder.adv.native_jitter(st3, 2, 30, false)
-return table.concat(a, ","), table.concat(b, ","), c1 == c2
-""")
-check(r[0] == "0,30,-30,0,30,-30" and r[1] == "-20,0,20,40,-40" and r[2],
-      "direct control jitter: 3Way / 5Way steps once per packet (%s)" % (r,))
 check("render_circle_filled = function(pos, radius" in SRC, "circle radii are rounded (Primordial wants an int)")
 
 
@@ -1235,7 +1125,7 @@ check(tuple(r) == (True, True, True, True),
 
 # DT lag (owners, Oct 2026: "lagging only in mid mirage with dt"): the on peek defensive check traces each enemy at
 # most once per 4 ticks and 2 enemies per frame, however many commands double tap runs in one frame
-PV = chunk("builder.adv.armed = function", "builder.adv.aims_at = function") + chunk("builder.peek_seen, builder.peek_budget = {}", "run_antiaim = function(")
+PV = chunk("builder.adv.armed = function", "-- own freestanding: which side of our head") + chunk("builder.peek_seen, builder.peek_budget = {}", "run_antiaim = function(")
 pv = L.LuaRuntime(unpack_returned_tuples=True)
 r = pv.eval("""(function()
     builder = { adv = {} }
@@ -1301,91 +1191,6 @@ r = dtl.eval("""(function()
     return shifts, after_shot
 end)()""")
 check(tuple(r) == (3, 2), "defensive trigger: one shift, a cool down of 38 ticks, urgent (shot at) ignores it, never on the tick we shoot (%s)" % (tuple(r),))
-
-# Adaptive AA (owners, Oct 2026: "nagyon advanced aa improve ... unhittable"): a Thompson sampling bandit over AA profiles
-# per state group. Only the deciding maths here (the game decides how good a profile is): draws stay in 0..1, the
-# profile the enemies keep head-hitting is dropped, a head hit switches at once, the side rules
-r = R("""
-math.randomseed(11)
-local lo, hi, sum = 1, 0, 0
-for n = 1, 2000 do local v = builder.adv.beta_sample(30, 3, math.random) lo = math.min(lo, v) hi = math.max(hi, v) sum = sum + v end
-local g = {}
-for i = 1, 8 do g[i] = builder.adv.arm_group(i) end
-return lo >= 0, hi <= 1, sum / 2000, table.concat(g, ",")
-""")
-check(r[0] and r[1] and abs(r[2] - 30 / 33) < 0.02 and r[3] == "4,1,2,2,1,2,3,3",
-      "Adaptive AA: Beta draws in 0..1 around the mean, state groups (%s)" % (r,))
-r = R("""
-math.randomseed(5)
-local st, now, on = {}, 0, {}
-local head = { 0.7, 0.1, 0.5, 0.5, 0.6 }       -- how often each profile gets head hit when a bullet comes
-for n = 1, 600 do
-    now = now + 1
-    local arm = builder.adv.brain_arm(st, 2, now, math.random)
-    on[arm] = (on[arm] or 0) + 1
-    if (n % 2 == 0) then
-        if (math.random() < head[arm]) then builder.adv.brain_learn(st, 2, "hit", 1, now, math.random)
-        else builder.adv.brain_learn(st, 2, "evaded", nil, now, math.random) end
-    end
-end
-local g = st.g[2]
-local before = g.cur
-builder.adv.brain_learn(st, 2, "hit", 1, now, math.random)
-local switched = g.cur ~= before
-local body_before = g.arms[g.cur].b
-builder.adv.brain_learn(st, 2, "hit", 3, now, math.random)
-local ok = true
-for _, a in ipairs(g.arms) do ok = ok and a.a >= 1 and a.b >= 1 and a.a < 20 and a.b < 20 end
-return (on[2] or 0) / 600, switched, g.arms[g.cur].b == body_before, ok
-""")
-check(r[0] > 0.5 and r[1] and r[2] and r[3],
-      "Adaptive AA: plays the profile that is not head hit most of the time, a head hit switches at once, a body hit "
-      "teaches nothing, the beliefs stay bounded (%s)" % (r,))
-r = R("""
-local A = builder.adv.arm_invert
-return A("tied", true, true), A("tied", false, false), A("inverse", true, false), A("inverse", false, true),
-    A("coin", true, true), A("coin", false, false)
-""")
-check(r == (False, True, True, False, True, False), "Adaptive AA: tied / inverse / coin desync side rules (%s)" % (r,))
-BRAIN = chunk("-- Adaptive AA at run time", "-- anti bruteforce: an enemy bullet passing near the head")
-br = L.LuaRuntime(unpack_returned_tuples=True)
-br.execute("""builder = {} TICK = 0 NOW = 0
-globals = { tick_count = function() return TICK end, real_time = function() return NOW end }
-""" + ADV + """
-local function item(v) return { v = v, get = function(self) return self.v end } end
-ui = { antiaim = { builder = { adaptive = item(true), random_side = item(true) } } }
-global = { current_state_number = 3 }
-AA = { yaw_mode = item(4), yaw_val = item(0), yaw_delay = item(4), meta_delay = item(0), yaw_left = item(-20),
-    yaw_right = item(20), yaw_meta_left = item(0), yaw_meta_right = item(0), desync = item(5) }
-SIDE = nil
-refs = { desyncside = { set = function(_, v) SIDE = v end } }
-builder.set_yaw = function(v) builder.base_yaw = v end
-builder.ab_active = function() return false end
-""" + BRAIN + """
-function STEP(fresh)
-    local c = {}
-    c.set_invert_desync = function(_, v) c.inv = v end
-    builder.fresh = fresh
-    builder.brain_apply(c, AA)
-    return builder.base_yaw, c.inv
-end""")
-r = br.eval("""(function()
-    builder.brain.g = { [2] = { arms = {}, cur = 2, until_t = 1000 } }      -- force "Delay tied" on the move group
-    for i = 1, 5 do builder.brain.g[2].arms[i] = { a = 1, b = 1 } end
-    local out = {}
-    for t = 0, 12 do
-        TICK = t
-        local y, inv = STEP(t % 2 == 0)
-        out[#out + 1] = y .. ":" .. tostring(inv)
-    end
-    return table.concat(out, " "), builder.brain_now, SIDE
-end)()""")
-seq = r[0].split()
-yaws = [x.split(":")[0] for x in seq]
-check(r[1] == "Delay tied" and r[2] == 2 and all(x.split(":")[1] == ("false" if x.startswith("-") else "true") for x in seq)
-      and yaws[:4] == [yaws[0]] * 4 and yaws[4] != yaws[0],
-      "Adaptive AA at run time: Delay tied switches only after its delay ticks, on a sent packet, the desync on the "
-      "yaw side (%s)" % (r,))
 
 # cloud configs (owners, Oct 2026: "a cloud cfg ... nem működik"): the old azura.uno socket is gone, they go through our
 # server (lua=pm): the list, Use, the upload in parts (part 0 first, then the rest), no key = a message, nothing sent
@@ -1557,7 +1362,7 @@ r = af.eval("""(function()
 end)()""")
 cb = SRC[SRC.index('perf.add(e_callbacks.ANTIAIM, "ANTIAIM"'):]
 cb = cb[:cb.index("do_aimshoot = function()")]
-check(tuple(r) == (2, 3) and "error(err, 0)" not in cb and cb.count("builder.aa_failed(err)") == 3,
+check(tuple(r) == (2, 3) and "error(err, 0)" not in cb and cb.count("builder.aa_failed(err)") == 1,
       "anti-aim errors are caught and printed (max 1 per 3 s), the ANTIAIM callback never rethrows (%s)" % (tuple(r),))
 
 # the cheat revealer (the owners' own LuaJIT bytecode, embedded as base64): never touched, loaded only from a ticked raw menu item
