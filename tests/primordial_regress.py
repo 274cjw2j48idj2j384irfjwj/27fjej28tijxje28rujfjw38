@@ -1365,16 +1365,7 @@ cb = cb[:cb.index("do_aimshoot = function()")]
 check(tuple(r) == (2, 3) and "error(err, 0)" not in cb and cb.count("builder.aa_failed(err)") == 1,
       "anti-aim errors are caught and printed (max 1 per 3 s), the ANTIAIM callback never rethrows (%s)" % (tuple(r),))
 
-# the cheat revealer (the owners' own LuaJIT bytecode, embedded as base64): never touched, loaded only from a ticked raw menu item
-import base64 as _b64
-_blob = re.search(r'revealer\.blob = "([A-Za-z0-9+/=]+)"', SRC)
-_raw = _b64.b64decode(_blob.group(1)) if _blob else b""
-check(_raw[:3] == b"\x1bLJ" and len(_raw) > 100000, "the cheat revealer is embedded as LuaJIT bytecode (%d bytes)" % len(_raw))
-_upd = SRC[SRC.index("revealer.update = function()"):SRC.index("revealer.blob = ")]
-check('"Cheat revealer (scoreboard)", false)' in SRC and "ui.servers.reveal:get()" in _upd and "pcall(function()" in _upd
-      and "revealer.tried = true" in _upd and "engine_is_in_game()" in _upd
-      and SRC.count("revealer.blob") == 2 and "revealer.update()" in SRC,
-      "the cheat revealer loads once, in a game, from a ticked raw menu item, inside a pcall, never at the load")
+check("revealer" not in SRC, "the cheat revealer is gone")
 
 print("\n%d failed" % len(FAILS) if FAILS else "\nall passed")
 sys.exit(1 if FAILS else 0)
