@@ -1,0 +1,668 @@
+-- Standalone regression harness. No game process, network calls or FFI reads.
+-- Run from the repository root: luajit tests/primordial_advanced.lua
+local path = arg[1] or "specter_primordial.lua"
+local handle = assert(io.open(path, "rb"))
+local source = handle:read("*a")
+handle:close()
+assert(loadstring(source, "full-file-syntax"))
+local clock, tick, choked = 10, 640, 0
+local outgoing, incoming, autopeek = 0.02, 0.02, nil
+local entities, trace_handler = {}, nil
+local function control(value)
+    return { get = function() return value end, set = function(_, v) value = v end }
+end
+local resolver = { data = {}, mem = {}, previous = {}, misses = {}, safe = {},
+    shots = {}, epoch = 0, trust = { fs = 0, jitter = 0 }, stats = {} }
+local builder = { speed = 0 }
+local controls = { adaptive = control(true), enable = control(true),
+    anti_brute = control(true), ab_mode = control(1) }
+local env = setmetatable({
+    resolver = resolver, builder = builder, reso = {},
+    bit = require("bit"), ffi = require("ffi"),
+    globals = {
+        real_time = function() return clock end,
+        tick_count = function() return tick end,
+        frame_time = function() return 1 / 64 end,
+    },
+    global = { current_state_number = 2 },
+    engine_get_choked_commands = function() return choked end,
+    engine_get_latency = function(flow) return flow == 1 and outgoing or incoming end,
+    e_latency_flows = { OUTGOING = 1, INCOMING = 2 },
+    e_hitboxes = { HEAD = 0, CHEST = 2, PELVIS = 3 },
+    e_hitscan_groups = { HEAD = 1, CHEST = 2, STOMACH = 3, ARMS = 4, LEGS = 5, FEET = 6 },
+    ragebot_get_autopeek_pos = function() return autopeek end,
+    entity_list_get_entity = function(idx) return entities[idx] end,
+    entity_list_get_players = function()
+        local result = {}
+        for _, e in pairs(entities) do result[#result + 1] = e end
+        return result
+    end,
+    entity_list_get_local_player = function()
+        return { get_prop = function() return nil end, get_eye_position = function() return { x = 0, y = 0, z = 0 } end }
+    end,
+    trace_line = function() return { fraction = 1 } end,
+    vec3_t = function(x, y, z) return { x = x, y = y, z = z } end,
+    trace_bullet = function(...)
+        if trace_handler then return trace_handler(...) end
+        return { valid = true, damage = 30, hitgroup = 3 }
+    end,
+    time_to_ticks = function(v) return math.floor(v * 64 + 0.5) end,
+    ui = {
+        ragebot = { logic_reso = control(true), smart_baim = control(true),
+            smart_baim_hp = control(40), smart_baim_lethal = control(true),
+            latency_guard = control(true), latency_limit = control(80), fast_peek = control(true), learn_rate = control(100),
+            def_hold = control(false), def_ticks = control(48),
+            backtrack = { prediction = control(true), enable_backtrack = control(true),
+                extended_backtrack = control(false), ping_in_sight = control(false), engine_pred = control(false) },
+            resolver = { enable_resolver = control(false) },
+            reso_cfg = { yaw_calc = control(3) } },
+        antiaim = { builder = controls },
+    },
+}, { __index = _G })
+env.globals.interval_per_tick = function() return 1 / 64 end
+env.math = {}
+for k, v in pairs(math) do env.math[k] = v end
+env.math.vec_length2d = function(v) return math.sqrt(v.x * v.x + v.y * v.y) end
+local function section(first, last, appendix)
+    local a = assert(source:find(first, 1, true), first)
+    local b = assert(source:find(last, a, true), last)
+    local chunk = assert(loadstring(source:sub(a, b - 1) .. (appendix or ""), first))
+    setfenv(chunk, env)
+    chunk()
+end
+section("resolver.network = function", "safe_defensive = function")
+section("local backtrack = {", "local RES_NOCHOKE = 8", "\nexport_backtrack = backtrack")
+env.backtrack = env.export_backtrack
+section("resolver.HYP = {", "--- @info: resolver: side from freestanding")
+section("local RES_NOCHOKE = 8", "local shotlog = {")
+section("builder.adv = {}", "builder.closest_point_on_ray")
+local passed = 0
+local function test(name, fn)
+    local ok, err = pcall(fn)
+    if not ok then error("FAIL " .. name .. ": " .. tostring(err), 0) end
+    passed = passed + 1
+    print("PASS " .. name)
+end
+local function entity(idx)
+    local e = { idx = idx, sim = 1, spawn = 100, hp = 100, flags = 1, velocity = { x = 0, y = 0, z = 0 } }
+    function e:get_index() return self.idx end
+    function e:get_hitbox_pos() return { x = 1, y = 2, z = 3 } end
+    function e:get_prop(prop)
+        if prop == "m_flSimulationTime" then return self.sim end
+        if prop == "m_flSpawnTime" then return self.spawn end
+        if prop == "m_iHealth" then return self.hp end
+        if prop == "m_fFlags" then return self.flags end
+        if prop == "m_vecVelocity" then return self.velocity end
+    end
+    function e:is_alive() return self.hp > 0 end
+    function e:is_dormant() return false end
+    function e:is_enemy() return true end
+    function e:get_name() return "test-target" end
+    return e
+end
+local target = entity(2)
+entities[2] = target
+local function prepare(candidate, id)
+    local p = resolver.track(target, 0)
+    resolver.previous[2] = { key = "stand", kind = nil, rel = 1,
+        candidate = candidate, m_flDesync = 58 }
+    resolver.capture({ id = id, player = target })
+    return p
+end
+test("jitter differs from a steady spin", function()
+    assert(resolver.jit_classify({ 60, -60, 60, -60 }, 20))
+    assert(not resolver.jit_classify({ 60, 60, 60, 60 }, 20))
+    assert(not resolver.jit_classify({ 1, -1, 1, -1 }, 20))
+end)
+test("initial simulation is a baseline, not a choked record", function()
+    resolver.reset()
+    target.sim = 900
+    local p = resolver.track(target, 170)
+    assert(p.sim == 900 and p.samples == 0 and #p.jd == 0)
+    target.sim = 900 + 1 / 64
+    assert(resolver.track(target, -170).jd[1] == 20)
+end)
+test("bounded jitter history and confidence", function()
+    local p = { jd = {}, jy = {}, dir = 1 }
+    for i = 1, 100 do
+        resolver.jit_record(p, i % 2 == 0 and 60 or -60, i / 64, 20, i % 2 == 0 and 30 or -30)
+    end
+    assert(#p.jd == 12 and #p.jy == 12)
+    assert(p.jitter and p.confidence >= 0.8 and p.confidence <= 1)
+end)
+test("small repeated jitter contributes usable confidence", function()
+    local p = { jd = {}, jy = {}, dir = 1 }
+    for i = 1, 30 do
+        resolver.jit_record(p, i % 2 == 0 and 6 or -6, i / 64, 20, i % 2 == 0 and 3 or -3)
+    end
+    assert(p.jitter and p.confidence >= 0.65)
+end)
+test("simulation rewind invalidates target memory", function()
+    local old = resolver.data[2]
+    resolver.memory(2, "stand").misses = 7
+    target.sim = 1
+    local p = resolver.track(target, 0)
+    assert(p ~= old and resolver.mem[2] == nil)
+end)
+test("respawn invalidates target generation", function()
+    local old = resolver.data[2]
+    target.spawn = target.spawn + 1
+    assert(resolver.track(target, 0) ~= old)
+end)
+test("out-of-order shot IDs credit the captured candidate", function()
+    resolver.reset()
+    prepare(1, 101)
+    prepare(2, 102)
+    local mem = resolver.memory(2, "stand")
+    resolver.on_result(target, true, false, { id = 102 })
+    assert(mem.candidates[2].good > 1 and mem.candidates[1].good == 1)
+    resolver.on_result(target, false, true, { id = 101 })
+    assert(mem.candidates[1].bad > 1 and mem.candidates[2].bad == 1)
+    assert(#resolver.shots == 0)
+end)
+test("a body hit teaches half, a miss at a low hit chance teaches less", function()
+    resolver.reset()
+    prepare(1, 201)
+    local mem = resolver.memory(2, "stand")
+    local before = mem.candidates[1].good
+    resolver.on_result(target, true, false, { id = 201, aim_hitgroup = 3 })
+    local body = mem.candidates[1].good - before
+    prepare(1, 202)
+    before = mem.candidates[1].good
+    resolver.on_result(target, true, false, { id = 202, aim_hitgroup = 1 })
+    local head = mem.candidates[1].good - before
+    assert(head > 0 and math.abs(body - head / 2) < 0.1, string.format("%f %f", body, head))
+    prepare(1, 203)
+    before = mem.candidates[1].bad
+    resolver.on_result(target, false, true, { id = 203, aim_hitchance = 100 })
+    local sure = mem.candidates[1].bad - before
+    prepare(1, 204)
+    before = mem.candidates[1].bad
+    resolver.on_result(target, false, true, { id = 204, aim_hitchance = 0 })
+    local low = mem.candidates[1].bad - before
+    assert(sure > 0 and low < sure and low > 0)
+end)
+test("duplicate result cannot train twice", function()
+    local mem = resolver.memory(2, "stand")
+    local before = mem.candidates[1].bad
+    resolver.on_result(target, false, true, { id = 101 })
+    assert(mem.candidates[1].bad == before)
+end)
+test("spread feedback leaves hypotheses unchanged", function()
+    prepare(3, 103)
+    local mem = resolver.memory(2, "stand")
+    local before = mem.candidates[3].bad
+    resolver.on_result(target, false, false, { id = 103 })
+    assert(mem.candidates[3].bad == before)
+end)
+test("overlapping feedback without IDs is not guessed", function()
+    resolver.reset()
+    prepare(1, nil)
+    prepare(2, nil)
+    local mem = resolver.memory(2, "stand")
+    resolver.on_result(target, true, false, {})
+    assert(mem.candidates[1].good == 1 and mem.candidates[2].good == 1)
+    assert(resolver.shots[1].ambiguous and resolver.shots[2].ambiguous)
+end)
+test("unique shot without an ID may be matched", function()
+    resolver.reset()
+    prepare(1, nil)
+    resolver.on_result(target, true, false, {})
+    assert(resolver.memory(2, "stand").candidates[1].good > 1)
+end)
+test("feedback from a previous target generation is ignored", function()
+    resolver.reset()
+    prepare(1, 200)
+    target.spawn = target.spawn + 1
+    resolver.track(target, 0)
+    resolver.on_result(target, true, false, { id = 200 })
+    assert(resolver.mem[2] == nil)
+end)
+test("expired shots and queue size are bounded", function()
+    resolver.reset()
+    for i = 1, 140 do prepare(1, i) end
+    assert(#resolver.shots == 128)
+    clock = clock + 5
+    resolver.prune_shots(clock)
+    assert(#resolver.shots == 0)
+end)
+test("resolver miss explores a different hypothesis", function()
+    local mem = resolver.memory(2, "stand")
+    local first = resolver.choose(mem, 0.8)
+    mem.last_failed = first
+    mem.candidates[first].bad = mem.candidates[first].bad + 1
+    assert(resolver.choose(mem, 0.8) ~= first)
+end)
+test("half-offset hypotheses respect yaw calculation mode", function()
+    local mem = resolver.memory(2, "mode-check")
+    mem.candidates[3].good = 1000
+    assert(resolver.choose(mem, 0.8, true) == 3)
+    local choice = resolver.choose(mem, 0.8, false)
+    assert(choice ~= 3 and choice ~= 4)
+end)
+test("invalid simulation times are rejected", function()
+    local e = entity(10)
+    e.sim = math.huge
+    assert(resolver.track(e, 0) == nil)
+    e.sim = 0 / 0
+    assert(resolver.track(e, 0) == nil)
+end)
+test("zero-offset hypothesis can learn", function()
+    resolver.reset()
+    prepare(5, 500)
+    resolver.previous[2].rel = 0
+    resolver.on_result(target, true, false, { id = 500 })
+    assert(resolver.memory(2, "stand").candidates[5].good > 1)
+end)
+test("anti-aim: every way is played once a round in a fixed order, no random", function()
+    for ways = 2, 7 do
+        local seen, last = {}, nil
+        for k = 0, ways - 1 do
+            local pos = builder.adv.way_pos(ways, false, 0, k)
+            assert(pos >= 1 and pos <= ways and not seen[pos])
+            seen[pos] = true
+            if (ways >= 3 and last ~= nil) then assert(pos ~= last) end
+            last = pos
+        end
+        assert(builder.adv.way_pos(ways, true, 0, 0) == 1 and builder.adv.way_pos(ways, true, 1, 0) == 2)
+        assert(builder.adv.way_pos(ways, false, 0, 0) == builder.adv.way_pos(ways, false, 0, ways))
+    end
+    assert(builder.adv.hold_for(2, 3, 1) == 5 and builder.adv.hold_for(2, 3, 2) == 2 and builder.adv.hold_for(0, 0, 2) == 1)
+end)
+test("anti-aim: Thue-Morse side has no period and is bounded on garbage", function()
+    local expect = { false, true, true, false, true, false, false, true }
+    for n = 0, 7 do assert(builder.adv.tm_side(n) == expect[n + 1]) end
+    assert(builder.adv.tm_side(0 / 0) == false and builder.adv.tm_side(math.huge) == false and builder.adv.tm_side(-5) == false)
+    local seq = {}
+    for n = 0, 63 do seq[n] = builder.adv.tm_side(n) end
+    for period = 1, 16 do
+        local same = true
+        for n = 0, 63 - period do if seq[n] ~= seq[n + period] then same = false break end end
+        assert(not same)
+    end
+end)
+test("anti-aim: defensive pitch is a fixed value or a triangle wave", function()
+    assert(builder.adv.def_pitch(2, 5) == 89 and builder.adv.def_pitch(3, 5) == -89 and builder.adv.def_pitch(4, 5) == 0)
+    assert(builder.adv.def_pitch(5, 0) == -89 and builder.adv.def_pitch(5, 12) == 89)
+    for t = 0, 47 do local v = builder.adv.def_pitch(5, t) assert(v >= -89 and v <= 89) end
+end)
+test("enemy AA type: static, jitter, stack, and the AA that jitters only when it moves", function()
+    local p = { jitter = false }
+    assert(resolver.aa_type(nil) == nil and resolver.aa_type(p) == "static")
+    p.jitter, p.jit_kind = true, "random"
+    assert(resolver.aa_type(p) == "jitter")
+    p.jit_kind = "cyclic"
+    assert(resolver.aa_type(p) == "stack")
+    local q = { jitter = false }
+    for _ = 1, 12 do q.jitter = false resolver.aa_note(q, "stand") end
+    for _ = 1, 12 do q.jitter = true resolver.aa_note(q, "move") end
+    q.jit_kind = "random"
+    assert(resolver.aa_type(q) == "peek")
+    resolver.aa_note(q, "air")                       -- the air has no class: nothing changes
+    assert(q.aa.still[1] > 11 and q.aa.moving[1] > 10)
+    local r = { jitter = true, jit_kind = "random" }
+    for _ = 1, 12 do resolver.aa_note(r, "stand") resolver.aa_note(r, "move") end
+    assert(resolver.aa_type(r) == "jitter")          -- jitters standing too: no peek AA
+end)
+test("angle normalization and finite desync bounds", function()
+    assert(builder.adv.norm(181) == -179)
+    assert(builder.adv.norm(-181) == 179)
+    local st = { m_flFeetSpeedForwardsOrsideWays = 0 / 0,
+        m_flStopToFullRunningFraction = math.huge, m_fDuckAmount = nil }
+    local value = resolver.max_desync(st)
+    assert(value == value and value >= 29 and value <= 58)
+end)
+local function context(e)
+    local ctx = { player = e, groups = {}, safepoints = {}, forced_hc = nil, forced_accuracy = nil }
+    function ctx:set_hitscan_group_state(group, enabled) self.groups[group] = enabled end
+    function ctx:set_safepoint_state(value, group) self.safepoints[group] = value end
+    function ctx:set_hitchance(value) self.forced_hc = value end
+    function ctx:set_damage_accuracy(value) self.forced_accuracy = value end
+    return ctx
+end
+test("low HP forces body aim even with resolver inactive", function()
+    resolver.reset()
+    resolver.active = false
+    target.hp, target.flags = 39, 1
+    local ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == false and ctx.groups[2] == true and ctx.groups[3] == true)
+    assert(ctx.groups[4] == false and ctx.groups[5] == false)
+end)
+test("new sliders initialize explicit defaults with unit steps", function()
+    assert(source:find('slider("Body aim below HP", 0, 100, 1, 0, "hp")', 1, true))
+    assert(source:find('slider("High ping threshold", 40, 250, 1, 0, "ms")', 1, true))
+    env.ui.ragebot.smart_baim_hp.ref = env.ui.ragebot.smart_baim_hp
+    env.ui.ragebot.latency_limit.ref = env.ui.ragebot.latency_limit
+    env.ui.ragebot.learn_rate.ref = env.ui.ragebot.learn_rate
+    env.ui.ragebot.def_ticks.ref = env.ui.ragebot.def_ticks
+    env.ui.ragebot.smart_baim_hp:set(0)
+    env.ui.ragebot.latency_limit:set(40)
+    section("ui.ragebot.smart_baim_hp.ref:set(40)", "ui.utils.aa_stats = ")
+    assert(env.ui.ragebot.smart_baim_hp:get() == 40 and env.ui.ragebot.latency_limit:get() == 80)
+end)
+test("health threshold is strict and configurable", function()
+    target.hp = 40
+    local ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == nil)
+    env.ui.ragebot.smart_baim_hp:set(50)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == false)
+    env.ui.ragebot.smart_baim_hp:set(40)
+end)
+test("zero threshold disables HP-forced body aim", function()
+    env.ui.ragebot.smart_baim_hp:set(0)
+    target.hp = 1
+    local ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == nil)
+    env.ui.ragebot.smart_baim_hp:set(40)
+end)
+test("disabling smart body aim removes its overrides", function()
+    env.ui.ragebot.smart_baim:set(false)
+    target.hp = 10
+    local ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == nil)
+    env.ui.ragebot.smart_baim:set(true)
+end)
+test("lethal body scan respects actual traced damage through walls", function()
+    target.hp = 60
+    resolver.misses[2] = 1
+    local ctx = context(target)
+    trace_handler = function() return { valid = true, damage = 20, hitgroup = 3 } end
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == nil)
+    tick = tick + 1 -- the body damage is traced once per tick and target
+    trace_handler = function() return { valid = true, damage = 65, hitgroup = 3 } end
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == false)
+    trace_handler = nil
+    resolver.misses[2] = nil
+end)
+test("head hits and invalid traces do not count as lethal body damage", function()
+    tick = tick + 1
+    trace_handler = function() return { valid = true, damage = 100, hitgroup = 1 } end
+    assert(resolver.body_damage(target) == 0)
+    tick = tick + 1
+    trace_handler = function() return nil end
+    assert(resolver.body_damage(target) == 0)
+    trace_handler = nil
+end)
+test("final body enforcement defeats a later head re-enable", function()
+    local ctx = context(target)
+    ctx.groups[1] = true
+    resolver.enforce_body(ctx)
+    assert(ctx.groups[1] == false and ctx.groups[2] == true and ctx.groups[3] == true)
+end)
+test("fresh confident crouch jitter does not force safepoints in fast mode", function()
+    target.flags, target.hp = 3, 100
+    resolver.active, resolver.safe_all = true, false
+    resolver.data[2] = { updated = clock, defensive_until = 0, jitter = true, confidence = 1 }
+    local ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.safepoints[1] == nil and ctx.safepoints[2] == nil)
+end)
+test("explicit strict safety remains respected", function()
+    resolver.safe_all = true
+    local ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.safepoints[1] == true)
+    resolver.safe_all = false
+end)
+test("stale jitter does not force safety", function()
+    target.flags = 1
+    resolver.data[2] = { updated = clock - 1, defensive_until = 0, jitter = true, confidence = 1 }
+    local ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.safepoints[1] == nil and ctx.safepoints[2] == nil)
+end)
+test("crouch transition clears earlier standing jitter evidence", function()
+    resolver.reset()
+    target.flags = 1
+    local p = resolver.track(target, 0)
+    p.jitter, p.confidence, p.jd, p.jy = true, 1, { 60, -60, 60 }, { 30, -30, 30 }
+    target.flags, target.sim = 3, target.sim + 1 / 64
+    p = resolver.track(target, 0)
+    assert(not p.jitter and p.confidence == 0 and #p.jd == 1)
+end)
+test("simulation rewind has a defensive grace window", function()
+    target.sim = target.sim - 1
+    local p = resolver.track(target, 0)
+    assert(not resolver.fresh(p) and p.defensive_until > clock)
+end)
+test("high ping uses millisecond threshold and outgoing-only budgets", function()
+    outgoing, incoming = 0.08, 0.07
+    local net = resolver.network()
+    assert(net.high and math.abs(net.ping - 150) < 0.001)
+    assert(env.backtrack.horizon(net, false) <= 0.06)
+    assert(env.backtrack.horizon(net, true) <= 0.04)
+    outgoing, incoming = 0.02, 0.02
+end)
+test("invalid latency inputs stay finite", function()
+    outgoing, incoming = 0 / 0, math.huge
+    local net = resolver.network()
+    assert(net.ping == 0 and net.outgoing == 0 and net.incoming == 0)
+    outgoing, incoming = 0.02, 0.02
+end)
+test("high ping fallback enables native resolver", function()
+    local setting = control(false)
+    env.menu_find = function() return setting end
+    env.auto_cfg = { resolve_antiaim = false }
+    resolver.native(false, true)
+    assert(setting:get())
+    resolver.native(true, false)
+    assert(not setting:get())
+    resolver.native(false, false)
+    assert(not setting:get())
+end)
+test("high ping does not receive added fake latency", function()
+    local ping = control(12)
+    env.backtrack.ping = ping
+    local player = { get_active_weapon = function() return { get_name = function() return "ssg08" end } end }
+    outgoing, incoming = 0.07, 0.07
+    env.backtrack.update(player)
+    assert(ping:get() == 0)
+    outgoing, incoming = 0.02, 0.02
+    clock = clock + 1
+    env.backtrack.update(player)
+    assert(ping:get() == 60)
+    env.ui.ragebot.backtrack.enable_backtrack:set(false)
+    env.backtrack.update(player)
+    assert(ping:get() == 12)
+    env.ui.ragebot.backtrack.enable_backtrack:set(true)
+end)
+test("fake ping only runs while an enemy is in sight, 1 s after, and always when the option is off", function()
+    local ping = control(0)
+    env.backtrack.ping, env.backtrack.saved, env.backtrack.amount, env.backtrack.seen_until = ping, nil, nil, nil
+    local player = { get_active_weapon = function() return { get_name = function() return "ssg08" end } end }
+    outgoing, incoming = 0.02, 0.02
+    local dormant = true
+    env.ui.ragebot.backtrack.ping_in_sight:set(true)
+    target.is_dormant = function() return dormant end
+    env.backtrack.update(player)
+    assert(ping:get() == 0)                         -- nobody in sight: no fake ping
+    dormant = false
+    clock = clock + 1
+    env.backtrack.update(player)
+    assert(ping:get() == 60)                        -- seen: on (the 100 ms budget minus the real 40)
+    dormant = true
+    clock = clock + 0.5
+    env.backtrack.update(player)
+    assert(ping:get() == 60)                        -- lost half a second ago: still on
+    clock = clock + 1
+    env.backtrack.update(player)
+    assert(ping:get() == 0)                         -- a second without a sight: off
+    env.ui.ragebot.backtrack.ping_in_sight:set(false)
+    env.backtrack.update(player)
+    assert(ping:get() == 60)                        -- option off: the old behaviour, an alive enemy is enough
+    env.ui.ragebot.backtrack.ping_in_sight:set(false)
+    target.is_dormant = function() return false end
+end)
+test("expired prediction priorities are ignored", function()
+    env.backtrack.peekers, env.backtrack.peek_until = { 2 }, clock - 1
+    local n = 0
+    local ctx = { prioritize_target = function() n = n + 1 end }
+    env.backtrack.target_selection(ctx)
+    assert(n == 0)
+end)
+test("blocked extrapolation does not manufacture a future peek", function()
+    target.flags, target.velocity = 3, { x = 20, y = 0, z = 0 }
+    env.trace_line = function() return { fraction = 0.5 } end
+    trace_handler = function() return { valid = true, damage = 50, hitgroup = 1 } end
+    env.backtrack.predict_tick, env.backtrack.records = -1, {}
+    env.backtrack.predict(env.entity_list_get_local_player())
+    assert(#env.backtrack.peekers == 0)
+    env.trace_line = function() return { fraction = 1 } end
+    trace_handler = nil
+end)
+test("crouch peek prediction supports slow movement and short lookahead", function()
+    tick = tick + 2
+    local positions = {}
+    trace_handler = function(_, point)
+        positions[#positions + 1] = point
+        return { valid = true, damage = point.x > 1 and 50 or 0, hitgroup = 1 }
+    end
+    env.vec3_t = function(x, y, z) return { x = x, y = y, z = z } end
+    env.backtrack.predict(env.entity_list_get_local_player())
+    assert(#env.backtrack.peekers == 1 and env.backtrack.peekers[1] == 2)
+    assert(positions[1].x <= 1.8)
+    trace_handler = nil
+end)
+test("a target that gives only its chest next is a peeker, a head we can already hit is not", function()
+    tick = tick + 2
+    target.flags, target.velocity = 1, { x = 100, y = 0, z = 0 }
+    local get_hitbox_pos = target.get_hitbox_pos
+    target.get_hitbox_pos = function(_, hitbox)
+        if (hitbox == env.e_hitboxes.CHEST) then return { x = 5, y = 2, z = 30 } end
+        return { x = 1, y = 2, z = 3 }
+    end
+    env.vec3_t = function(x, y, z) return { x = x, y = y, z = z } end
+    env.trace_line = function() return { fraction = 1 } end
+    -- the head never, the chest only once it has moved
+    trace_handler = function(_, point) return { valid = true, damage = (point.z == 30 and point.x > 6) and 50 or 0, hitgroup = 2 } end
+    env.backtrack.predict_tick, env.backtrack.records = -1, {}
+    env.backtrack.predict(env.entity_list_get_local_player())
+    assert(#env.backtrack.peekers == 1 and env.backtrack.peekers[1] == 2)
+    -- the head can be hit now: nobody peeks
+    tick = tick + 2
+    trace_handler = function() return { valid = true, damage = 50, hitgroup = 1 } end
+    env.backtrack.predict_tick = -1
+    env.backtrack.predict(env.entity_list_get_local_player())
+    assert(#env.backtrack.peekers == 0)
+    target.get_hitbox_pos = get_hitbox_pos
+    target.velocity = { x = 0, y = 0, z = 0 }
+    trace_handler = nil
+end)
+env.ui.ragebot.safe_defensive = control(true)
+env.ui.ragebot.accuracy_boost = { enable_booster = control(true), booster_mode = control(2) }
+env.defensive = { is_active = function() return true end }
+section("safe_defensive = function", "local damage = {")
+section("accuracy_boost = function", "antiafk = function")
+test("fast crouch scan avoids script-imposed defensive head safepoint", function()
+    target.flags = 3
+    local ctx = context(target)
+    env.safe_defensive(ctx)
+    assert(ctx.safepoints[1] == nil)
+end)
+test("fast crouch scan avoids 90 percent damage-accuracy injection", function()
+    local ctx = context(target)
+    env.accuracy_boost(ctx)
+    assert(ctx.forced_accuracy == nil)
+end)
+test("normal standing scan preserves the chosen accuracy booster", function()
+    target.flags = 1
+    local ctx = context(target)
+    env.accuracy_boost(ctx)
+    assert(ctx.forced_accuracy == 90)
+end)
+test("false autopeek position is not mistaken for an active peek", function()
+    autopeek = false
+    assert(not resolver.fast_target(target))
+    autopeek = nil
+end)
+env.perf = { add = function(_, _, fn) env.miss_callback = fn end }
+env.e_callbacks = { AIMBOT_MISS = 1 }
+env.hit_groups = { [1] = "head" }
+env.cl_logs = { add_log = function() end }
+env.shotlog = { result = function() end }
+env.ui.utils = { event_logs = control(false) }
+env.indicator = { data = {}, shot_count = 0 }
+section("do_aimmiss = function()", "do_antiaim = function()")
+env.do_aimmiss()
+test("miss statistics retain host reasons with logging off", function()
+    env.miss_callback({ id = 9000, player = target, aim_hitgroup = 1,
+        reason_string = "spread", backtrack_ticks = 30 })
+    assert(env.indicator.data.spread == 1)
+    assert(env.indicator.data.jitter == nil and env.indicator.data["prediction error"] == nil)
+    assert(env.indicator.shot_count == 1)
+end)
+test("host jitter is not relabeled as prediction error", function()
+    env.miss_callback({ id = 9001, player = target, aim_hitgroup = 1,
+        reason_string = "jitter", backtrack_ticks = 18 })
+    assert(env.indicator.data.jitter == 1 and env.indicator.data["prediction error"] == nil)
+end)
+test("missing reason safely becomes unknown", function()
+    env.miss_callback({ id = 9002, player = target, aim_hitgroup = 1 })
+    assert(env.indicator.data.unknown == 1)
+end)
+test("AA code does not depend on resolver-only numeric helpers", function()
+    local tail = source:sub(assert(source:find("-- [pm-resolver:end]", 1, true)))
+    assert(not tail:find("res_clamp(", 1, true))
+end)
+test("body only on defensive: a recent shift / lag break takes the head away, an old one does not", function()
+    resolver.reset()
+    resolver.active, resolver.safe_all = false, false
+    target.flags, target.hp = 1, 100
+    env.ui.ragebot.def_hold:set(true)
+    env.ui.ragebot.def_ticks:set(48)
+    trace_handler = function() return { valid = true, damage = 40, hitgroup = 2 } end
+    -- a shift seen 0.2 s ago, inside 48 ticks (0.75 s)
+    resolver.data[2] = { updated = clock, defensive_until = 0, events = { { obs = clock - 0.2, dur = 0.1, kind = "def" } } }
+    local ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == false and ctx.groups[2] == true and ctx.groups[3] == true)
+    assert(resolver.safe[2] == 4)
+    -- a lag break counts the same
+    resolver.data[2].events[1].kind = "lc"
+    ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == false)
+    -- the last event is older than the lock: nothing is taken away
+    resolver.data[2].events[1].obs = clock - 1
+    tick = tick + 1
+    ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == nil and resolver.safe[2] == nil)
+    -- no event at all
+    resolver.data[2].events = {}
+    ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == nil)
+    -- the option off: nothing is taken away even with a fresh event
+    env.ui.ragebot.def_hold:set(false)
+    resolver.data[2].events = { { obs = clock, dur = 0.1, kind = "def" } }
+    ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == nil)
+    trace_handler = nil
+end)
+test("body only on defensive leaves the head when no body bullet can hurt the target", function()
+    resolver.reset()
+    resolver.active = false
+    target.flags, target.hp = 1, 100
+    env.ui.ragebot.def_hold:set(true)
+    resolver.data[2] = { updated = clock, defensive_until = 0, events = { { obs = clock, dur = 0.1, kind = "def" } } }
+    trace_handler = function() return { valid = false, damage = 0, hitgroup = 0 } end
+    tick = tick + 1
+    local ctx = context(target)
+    resolver.hitscan(ctx)
+    assert(ctx.groups[1] == nil)
+    trace_handler = nil
+    env.ui.ragebot.def_hold:set(false)
+end)
+test("shot capture is optional when the resolver block is omitted", function()
+    assert(source:find("if (resolver.capture ~= nil) then resolver.capture(shot) end", 1, true))
+end)
+print(string.format("ALL %d TESTS PASSED", passed))

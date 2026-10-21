@@ -27,12 +27,14 @@ ENV VARS (set in Discord bot host or .env):
                         neither @everyone nor a member / customer / plan role can read it
   RELEASE_FILES       — files posted there when a new commit changes them (default: specter_dev.lua, specter_primordial.lua)
   RELEASE_MINUTES     — how often GitHub is checked (default: 5, 0 = only /release_check)
+  PRIMORDIAL_UPDATES  — 1 (default): the Primordial changelog goes to #updates too (with the Primordial logo); 0 = off
   AUTO_UPLOAD         — 1 (default): a new specter_cloud.lua of CLOUD_BRANCH goes to the license server by itself (every
                         plan; the loader downloads it from there), 0: only /script_upload
   UPDATES_CHANNEL     — public channel (name or id) the changelog of a new cloud script is posted in (default: updates)
   AUTO_PANELS         — 1 (default): at every start the prices / rules / how-to / ticket panels that changed (or are missing)
                         are posted again in their channels and the old posts deleted; a new specter_loader.lua of
-                        CLOUD_BRANCH goes to #loader-download the same way (checked every RELEASE_MINUTES). 0: only by hand
+                        CLOUD_BRANCH goes to #loader-download the same way, specter_primordial_loader.lua to
+                        #primordial-loader (checked every RELEASE_MINUTES). 0: only by hand
   LOG_TOKEN           — GitHub token that can WRITE the repo's contents (fine-grained, Contents: Read and write). The
                         resolver shot logs of the dev build (license server /shotlog) go with it to SHOTLOG_BRANCH
                         (default: shotlogs) every RELEASE_MINUTES, one file per round: shotlogs/<day>/<time>-<shots>.jsonl.
@@ -81,8 +83,14 @@ SCRIPT_TOKEN      = _env("SCRIPT_TOKEN", "")
 VALID_PLANS     = ["beta", "nightly", "specter", "debug"]
 # Specter for Primordial (specter_primordial_loader.lua): nightly = everything, beta = no resolver page
 PM_PLANS        = ["pm_nightly", "pm_beta"]
-KEY_PLANS       = VALID_PLANS + PM_PLANS
+# the dev key (owners, Oct 21 2026): it loads all three Primordial builds (dev = specter_primordial.lua of SCRIPT_BRANCH, nightly, beta);
+# a nightly key loads nightly + beta, a beta key beta only (server.js PM_BUILDS)
+PM_DEV_PLAN     = "pm_dev"
+KEY_PLANS       = VALID_PLANS + PM_PLANS + [PM_DEV_PLAN]
 PRIMORDIAL_FILE = "specter_primordial.lua"
+# the Primordial changelog in #updates (with its logo, like the gamesense one; owners, Oct 2026: it goes out even before
+# the Primordial lua is released); PRIMORDIAL_UPDATES=0 turns it off
+PRIMORDIAL_UPDATES = _env("PRIMORDIAL_UPDATES", "1").lower() in ("1", "true", "yes", "on")
 VALID_DURATIONS = ["lifetime", "1d", "7d", "14d", "30d", "90d"]
 
 # what the Staff role may do on the server: moderation, not the server / roles / channels (those stay the owner's)
@@ -114,6 +122,7 @@ PLAN_TO_ROLE = {
     "beta":     "Beta",
     "pm_nightly": "Primordial",
     "pm_beta":    "Primordial",
+    "pm_dev":     "Primordial",
 }
 
 # ── Prices (edit these to match your pricing) ────────────────────────
@@ -171,6 +180,37 @@ def logo(embed: discord.Embed, banner: bool = False) -> list[discord.File]:
         return []
     (embed.set_image if banner else embed.set_thumbnail)(url=f"attachment://{name}")
     return [discord.File(path, filename=name)]
+
+
+# which lua a post is about (owners, Oct 2026: "rakjon elé egy Primo logót vagy egy GS logot"): its name and logo in the
+# embed's author line, above the title. assets/gs_icon.png / assets/primordial_icon.png (a square PNG; swap them for the real logos)
+LUA_BADGES = {
+    "gamesense":  ("Specter for Gamesense",  "gs_icon.png"),
+    "primordial": ("Specter for Primordial", "primordial_icon.png"),
+}
+
+
+def changelog_embed(lua: str, points: str) -> discord.Embed:
+    """The #updates post of a release (the release merge's points); its lua's name + logo go on with lua_badge."""
+    embed = discord.Embed(title="\u2601\ufe0f Specter updated", color=0xB4A0FF if lua == "primordial" else 0x82C3FF,
+                          timestamp=discord.utils.utcnow(), description=points or "A new version of the script is out.")
+    embed.set_footer(text="You get it at your next login (the loader downloads it)")
+    return embed
+
+
+def lua_of(path: str) -> str:
+    return "primordial" if "primordial" in path else "gamesense"
+
+
+def lua_badge(embed: discord.Embed, lua: str) -> list[discord.File]:
+    """The lua's name + logo above the title -> the file to send with the message (none when the PNG is missing)."""
+    name, file = LUA_BADGES[lua]
+    path = os.path.join(ASSETS, file)
+    if not os.path.isfile(path):
+        embed.set_author(name=name)
+        return []
+    embed.set_author(name=name, icon_url=f"attachment://{file}")
+    return [discord.File(path, filename=file)]
 BUY_CONTACT = _env("BUY_CONTACT", "@owner")
 
 # ── Channel structure ────────────────────────────────────────────────
@@ -226,6 +266,7 @@ CHANNEL_STRUCTURE = [
         "category": "\U0001f51c Specter·Primordial",
         "channels": [
             {"name": "primordial-news", "type": "text", "readonly": True, "emoji": "\U0001f4e2", "topic": "Specter for primordial: news and the release"},
+            {"name": "primordial-loader", "type": "text", "access": "primordial_readonly", "emoji": "\U0001f4e5", "topic": "Download the Specter for Primordial loader here"},
             {"name": "sneak-peeks",     "type": "text", "readonly": True, "emoji": "\U0001f440", "topic": "Sneak peeks of the primordial lua"},
             {"name": "primordial-chat", "type": "text", "access": "member", "emoji": "\U0001f4ac", "topic": "Talk about the primordial lua"},
         ],
@@ -596,9 +637,10 @@ async def setup_channels(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     guild = interaction.guild
 
-    member_role   = await find_or_create_role(guild, "Member")
-    customer_role = await find_or_create_role(guild, "Customer")
-    staff_role    = await find_or_create_role(guild, "Staff")
+    member_role     = await find_or_create_role(guild, "Member")
+    customer_role   = await find_or_create_role(guild, "Customer")
+    staff_role      = await find_or_create_role(guild, "Staff")
+    primordial_role = await find_or_create_role(guild, "Primordial")
 
     access_map = {
         "member":   [member_role],
@@ -644,9 +686,10 @@ async def setup_channels(interaction: discord.Interaction):
                 if staff_role:
                     overwrites[staff_role] = discord.PermissionOverwrite(
                         view_channel=True, send_messages=True, read_message_history=True)
-            elif ch.get("access") == "customer_readonly":
-                if customer_role:
-                    overwrites[customer_role] = discord.PermissionOverwrite(
+            elif ch.get("access") in ("customer_readonly", "primordial_readonly"):
+                reader = customer_role if ch["access"] == "customer_readonly" else primordial_role
+                if reader:
+                    overwrites[reader] = discord.PermissionOverwrite(
                         view_channel=True, send_messages=False, read_message_history=True)
                 if staff_role:
                     overwrites[staff_role] = discord.PermissionOverwrite(
@@ -1215,14 +1258,15 @@ async def primordial_upload(interaction: discord.Interaction, file: discord.Atta
             raw, source = await file.read(), file.filename
         else:
             raw, source = await gh_fetch_file(PRIMORDIAL_FILE, branch)
-        builds = primordial_builds(raw.decode("utf-8"))
+        raw_text = raw.decode("utf-8")
+        builds = primordial_builds(raw_text)
     except GitHubFetchError as e:
         await interaction.followup.send(str(e), ephemeral=True)
         return
     except Exception as e:
         await interaction.followup.send(f"Could not read the script: {e}", ephemeral=True)
         return
-    if not is_primordial_script(builds["pm_nightly"]):
+    if not is_primordial_script(raw_text):
         await interaction.followup.send("This is not specter_primordial.lua. Nothing uploaded.", ephemeral=True)
         return
 
@@ -1247,6 +1291,9 @@ resolver.reset = function()
     resolver.previous = {}
     resolver.misses = {}
 end
+resolver.new_round = function()
+    resolver.reset()
+end
 update_target = function(ctx)
     resolver.previous.target = ctx.player:get_index()
 end
@@ -1264,19 +1311,50 @@ def make_primordial_beta(text: str) -> str:
     return text[:start] + PM_BETA_STUB + text[end + len("-- [pm-resolver:end]"):]
 
 
+# Auth gate for the CUSTOMER Primordial builds (pm_nightly / pm_beta). The bot prepends it to the script it uploads to
+# the server; the repo file and the #staff dev build never get it (owners: the dev build runs without a key). The loader
+# makes the server set the globals it reads (same /script prefix as gamesense, with the Primordial clock). Loaded without
+# the loader (the globals missing, or a stale token) the chunk returns at once, so the cloud file does not run standalone.
+PM_AUTH_GATE = """-- [pm-auth:begin]
+do
+    local _rg = rawget
+    if (type(_rg) ~= "function") then return end
+    if (not _rg(_G, "_auth_ok") or not _rg(_G, "_auth_alive")) then
+        if (client and client.log) then client.log("[Specter] Load it with the Specter loader.") end
+        return
+    end
+    local _ts = _rg(_G, "_auth_ts") or 0
+    local _now = (client and client.get_unix_time and client.get_unix_time()) or 0
+    if (_now - _ts > 30 or _ts > _now + 5) then
+        if (client and client.log) then client.log("[Specter] Session expired, log in again.") end
+        return
+    end
+    for _, k in ipairs({ "_auth_ok", "_auth_alive", "_auth_ts", "_auth_ticket", "_auth_ticket_exp",
+        "_auth_nonce", "_auth_key", "_auth_hwid", "_server_url" }) do
+        rawset(_G, k, nil)
+    end
+end
+-- [pm-auth:end]
+"""
+
+
 def primordial_builds(raw_text: str) -> dict[str, str]:
-    """plan -> comment-free script: pm_nightly = the whole file, pm_beta = without the resolver."""
-    return {"pm_nightly": strip_lua_comments(raw_text), "pm_beta": strip_lua_comments(make_primordial_beta(raw_text))}
+    """plan -> comment-free CUSTOMER script with the auth gate prepended: pm_nightly = the whole file, pm_beta = without
+    the resolver. The gate is added after the stripping so it stays intact; the repo file / dev build never carry it."""
+    return {"pm_nightly": PM_AUTH_GATE + strip_lua_comments(raw_text),
+            "pm_beta": PM_AUTH_GATE + strip_lua_comments(make_primordial_beta(raw_text))}
 
 
 def is_primordial_script(text: str) -> bool:
-    """specter_primordial.lua (Primordial API, the eui menu), not the gamesense script or a loader."""
-    return "e_callbacks" in text and "libs.eui" in text and "_specter_loader_loaded" not in text and "AUTH GATE" not in text
+    """specter_primordial.lua (Primordial API, the eui menu), not the gamesense script or a loader. Checked on the RAW
+    repo file (before primordial_builds prepends the auth gate), so the gate's "AUTH GATE"-free marker is not required."""
+    return "e_callbacks" in text and "libs.eui" in text and "_specter_loader_loaded" not in text and "[pm-auth:begin]" not in text
 
 
 # ── /post_loader — the customer loader in #loader-download ──────────
 
 LOADER_FILE = "specter_loader.lua"
+PM_LOADER_FILE = "specter_primordial_loader.lua"
 
 
 def is_customer_loader(text: str) -> bool:
@@ -1286,38 +1364,71 @@ def is_customer_loader(text: str) -> bool:
             and "[resolver:begin]" not in text and len(text) < 200_000)
 
 
+def is_pm_customer_loader(text: str) -> bool:
+    """The Primordial loader only: never specter_primordial.lua itself (it runs everything without a key)."""
+    return ("_specter_pm_loader_loaded" in text and "[pm-resolver:begin]" not in text
+            and "[resolver:begin]" not in text and len(text) < 200_000)
+
+
 LOADER_CHANNEL = "loader-download"
+PM_LOADER_CHANNEL = "primordial-loader"
 
-
-def loader_sha(raw: bytes) -> str:
-    return hashlib.sha256(raw).hexdigest()[:16]
-
-
-async def send_loader(target: discord.TextChannel, raw: bytes, replace: bool = True) -> int:
-    """The loader post (install steps + the file) in `target`; then the bot's older loader posts there go -> how many."""
-    embed = discord.Embed(
-        title="\U0001f4e5 Specter Loader",
-        description=(
+# both loaders (owners, Oct 2026: "ahhoz is csinálj egy külön csatornát ... cloudrol tudja bepótolni"): the file of
+# CLOUD_BRANCH goes to its own channel, by /post_loader or by itself every RELEASE_MINUTES (sync_loader)
+LOADERS = {
+    "gamesense": {
+        "file": LOADER_FILE, "channel": LOADER_CHANNEL, "check": is_customer_loader,
+        "title": "\U0001f4e5 Specter Loader",
+        "steps": (
             "**Install**\n"
             "1. Download `specter_loader.lua` below\n"
             "2. Put it into your **CS:GO folder** (where `csgo.exe` is): gamesense loads Lua scripts from there\n"
             "3. In gamesense open the **Lua** tab, refresh the list and load **specter_loader**\n"
             "4. Go to **AA > Anti-aimbot angles**, copy your key and click **Paste key** (Ctrl+V does not work in gamesense text fields), pick a username & password\n"
             "5. **Register** the first time, **Login** after that. Your HWID locks on first use\n\n"
-            "The script itself is downloaded from our server every time you log in, so this file only changes "
+        ),
+    },
+    "primordial": {
+        "file": PM_LOADER_FILE, "channel": PM_LOADER_CHANNEL, "check": is_pm_customer_loader,
+        "title": "\U0001f4e5 Specter for Primordial \u00b7 Loader",
+        "steps": (
+            "**Install**\n"
+            "1. Download `specter_primordial_loader.lua` below\n"
+            "2. Put it into your **Primordial scripts folder**\n"
+            "3. Load **specter_primordial_loader** in Primordial's Lua tab\n"
+            "4. Type your **Primordial key** (nightly / beta) and click **Login**. The key is saved, the next start logs in by "
+            "itself. Your HWID locks on first use\n\n"
+        ),
+    },
+}
+
+
+def loader_sha(raw: bytes) -> str:
+    return hashlib.sha256(raw).hexdigest()[:16]
+
+
+async def send_loader(target: discord.TextChannel, raw: bytes, replace: bool = True, lua: str = "gamesense") -> int:
+    """The loader post (install steps + the file) in `target`; then the bot's older loader posts there go -> how many."""
+    spec = LOADERS[lua]
+    embed = discord.Embed(
+        title=spec["title"],
+        description=(
+            spec["steps"]
+            + "The script itself is downloaded from our server every time you log in, so this file only changes "
             "when we post a new one here.\n"
             "No key yet? See #prices. Problems? Open a ticket in #support-ticket."
         ),
-        color=0x82C3FF,
+        color=0xB4A0FF if lua == "primordial" else 0x82C3FF,
     )
     embed.add_field(name="Updated", value=f"<t:{int(discord.utils.utcnow().timestamp())}:D>", inline=True)
     embed.add_field(name="SHA-256", value=f"`{loader_sha(raw)}`", inline=True)
     embed.set_footer(text="Specter \U0001f319 • never share your key or the loader")
-    msg = await target.send(embed=embed, files=[discord.File(io.BytesIO(raw), filename=LOADER_FILE)] + logo(embed))
+    files = [discord.File(io.BytesIO(raw), filename=spec["file"])] + lua_badge(embed, lua) + logo(embed)
+    msg = await target.send(embed=embed, files=files)
     if not replace:
         return 0
     return await delete_posts(await bot_posts(target, lambda m: m.id != msg.id
-                                              and any(a.filename == LOADER_FILE for a in m.attachments)))
+                                              and any(a.filename == spec["file"] for a in m.attachments)))
 
 
 async def bot_posts(ch: discord.TextChannel, test, limit: int = 50) -> list[discord.Message]:
@@ -1343,15 +1454,19 @@ async def delete_posts(msgs: list[discord.Message]) -> int:
     return n
 
 
-@tree.command(name="post_loader", description="Post the Specter loader (specter_loader.lua) for customers to download")
+@tree.command(name="post_loader", description="Post a Specter loader (gamesense / Primordial) for customers to download")
 @app_commands.describe(
-    file="specter_loader.lua (empty: taken from GitHub)",
+    lua="Which loader (default: gamesense)",
+    file="The loader file (empty: taken from GitHub)",
     branch="GitHub branch when no file is given (default: CLOUD_BRANCH)",
-    channel="Where to post it (default: #loader-download, else this channel)",
+    channel="Where to post it (default: #loader-download / #primordial-loader, else this channel)",
     replace="Delete the bot's older loader posts in that channel (default: yes)",
 )
+@app_commands.choices(lua=[app_commands.Choice(name="Gamesense", value="gamesense"),
+                           app_commands.Choice(name="Primordial", value="primordial")])
 async def post_loader(
     interaction: discord.Interaction,
+    lua: str = "gamesense",
     file: discord.Attachment = None,
     branch: str = "",
     channel: discord.TextChannel = None,
@@ -1366,7 +1481,7 @@ async def post_loader(
         if file is not None:
             raw, source = await file.read(), file.filename
         else:
-            raw, source = await gh_fetch_file(LOADER_FILE, branch)
+            raw, source = await gh_fetch_file(LOADERS[lua]["file"], branch)
         text = raw.decode("utf-8")
     except GitHubFetchError as e:
         await interaction.followup.send(str(e), ephemeral=True)
@@ -1375,19 +1490,19 @@ async def post_loader(
         await interaction.followup.send(f"Could not read the loader: {e}", ephemeral=True)
         return
 
-    if not is_customer_loader(text):
+    if not LOADERS[lua]["check"](text):
         await interaction.followup.send(
-            "This is not specter_loader.lua (the cloud script, the dev build and the dev loader are never posted). "
+            f"This is not {LOADERS[lua]['file']} (the scripts, the dev build and the dev loader are never posted). "
             "Nothing posted.", ephemeral=True)
         return
 
-    target = channel or named_channel(interaction.guild, LOADER_CHANNEL) or interaction.channel
+    target = channel or named_channel(interaction.guild, LOADERS[lua]["channel"]) or interaction.channel
     if not isinstance(target, discord.TextChannel):
         await interaction.followup.send("Pick a text channel to post the loader in.", ephemeral=True)
         return
 
     try:
-        removed = await send_loader(target, raw, replace)
+        removed = await send_loader(target, raw, replace, lua)
     except discord.HTTPException as e:
         await interaction.followup.send(f"Could not post in {target.mention}: {e}", ephemeral=True)
         return
@@ -1491,10 +1606,12 @@ def short_point(text: str, limit: int = 80) -> str:
     return text
 
 
-def commit_points(message: str, most: int = 6) -> str:
+def commit_points(message: str, most: int = 6, lua: str = "") -> str:
     """The commit as a short list: its title in bold, then one short line per "- " item of the body (or per sentence
     when it has no list). A merge says it after its first line ("Merge pull request #N from ..." / "Merge branch ...",
-    a bare one gives nothing); the attribution lines are left out."""
+    a bare one gives nothing); the attribution lines are left out. A release message can tag a point for one lua:
+    "- [GS] ..." only in the gamesense changelog, "- [PM] ..." only in the Primordial one (lua = "gamesense" /
+    "primordial"), an untagged point in both; without `lua` every point stays (the tag is dropped)."""
     lines = (message or "").strip().split("\n")
     if re.match(r"Merge (pull request|branch|remote-tracking branch) ", lines[0]):
         lines = lines[1:]
@@ -1507,7 +1624,14 @@ def commit_points(message: str, most: int = 6) -> str:
     items = [m.group(1) for m in re.finditer(r"^\s*[-*•]\s+(.+?)(?=^\s*[-*•]\s|^\s*$|\Z)", body, re.M | re.S)]
     if not items:
         items = [x for x in re.split(r"(?<=[.!?])\s+(?=[A-Z])", " ".join(body.split())) if x][:3]
-    points = [short_point(x) for x in items]
+    want = {"gamesense": "GS", "primordial": "PM"}.get(lua)
+    kept = []
+    for x in items:
+        m = re.match(r"\[(GS|PM)\]\s*", x.strip())
+        if m and want and m.group(1) != want:
+            continue
+        kept.append(x.strip()[m.end():] if m else x)
+    points = [short_point(x) for x in kept]
     out = [f"**{title}**"] + [f"• {p}" for p in points[:most]]
     if len(points) > most:
         out.append(f"• … and {len(points) - most} more (see the commit)")
@@ -1631,8 +1755,9 @@ async def check_releases(force: bool = False) -> list[str]:
                 if seen.get(path) == ver["hash"] and not force:
                     continue
                 try:
-                    msg = await ch.send(embed=release_embed(path, ver),
-                                        file=discord.File(io.BytesIO(ver["body"]), filename=path.rsplit("/", 1)[-1]))
+                    embed = release_embed(path, ver)
+                    msg = await ch.send(embed=embed, files=[discord.File(io.BytesIO(ver["body"]), filename=path.rsplit("/", 1)[-1])]
+                                        + lua_badge(embed, lua_of(path)))
                 except discord.HTTPException as e:
                     report.append(f"`{path}`: could not post in {ch.mention}: {e}")
                     continue
@@ -1678,19 +1803,17 @@ async def sync_cloud(force: bool = False) -> list[str]:
         if len(done) == len(plans):
             _cloud_on_server = full
         report = [f"cloud script `{ver['hash'][:7]}` to the server: " + " ".join(lines)]
-        points = commit_points(ver["commit"]["commit"].get("message", "")) if ver["commit"] else ""
+        points = commit_points(ver["commit"]["commit"].get("message", ""), lua="gamesense") if ver["commit"] else ""
         if done and new:
             _cloud_told["updates"] = full
-            embed = discord.Embed(title="\u2601\ufe0f Specter updated", color=0x82C3FF, timestamp=discord.utils.utcnow(),
-                                  description=points or "A new version of the script is out.")
-            embed.set_footer(text="You get it at your next login (the loader downloads it)")
+            embed = changelog_embed("gamesense", points)
             for guild in client.guilds:
                 ch = named_channel(guild, UPDATES_CHANNEL)
                 if ch is None:
                     report.append(f"{guild.name}: no #{UPDATES_CHANNEL} channel (UPDATES_CHANNEL), changelog not posted")
                     continue
                 try:
-                    await ch.send(embed=embed, files=logo(embed))       # a new post each version, the old ones stay
+                    await ch.send(embed=embed, files=lua_badge(embed, "gamesense") + logo(embed))  # a new post each version, the old ones stay
                     report.append(f"changelog posted in {ch.mention}")
                 except discord.HTTPException as e:
                     report.append(f"could not post in {ch.mention}: {e}")
@@ -1768,25 +1891,107 @@ async def sync_shotlogs() -> list[str]:
 
 async def sync_primordial(force: bool = False) -> list[str]:
     """A new specter_primordial.lua of CLOUD_BRANCH -> the license server for pm_nightly and pm_beta (the Primordial loader
-    downloads it at every login). Nothing is posted: the Primordial lua is not out yet; main never reaches the server."""
+    downloads it at every login); main never reaches the server. With PRIMORDIAL_UPDATES its changelog (the release merge's
+    message, like the gamesense one) goes to #updates with the Primordial logo, once per version."""
     try:
-        ver = await newest_version(PRIMORDIAL_FILE, CLOUD_BRANCH)
+        ver = await newest_version(PRIMORDIAL_FILE, CLOUD_BRANCH, head=True)
     except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError) as e:
         return [f"`{PRIMORDIAL_FILE}`: {e}"]
     try:
-        builds = primordial_builds(ver["raw"].decode("utf-8"))
+        raw_text = ver["raw"].decode("utf-8")
+        builds = primordial_builds(raw_text)
     except (UnicodeDecodeError, ValueError) as e:
         return [f"`{PRIMORDIAL_FILE}` of `{CLOUD_BRANCH}`: {e}, not uploaded"]
-    if not is_primordial_script(builds["pm_nightly"]):
+    if not is_primordial_script(raw_text):
         return [f"`{PRIMORDIAL_FILE}` of `{CLOUD_BRANCH}`: not the primordial script, not uploaded"]
     have = await server_script_hashes()
-    lines = []
+    lines, done = [], []
     for p in PM_PLANS:
         if force or have is None or have.get(p) != hashlib.sha256(builds[p].encode("utf-8")).hexdigest():
-            lines += (await upload_script(builds[p], [p]))[0]
+            got_lines, got = await upload_script(builds[p], [p])
+            lines += got_lines
+            done += got
     if not lines:
         return []
-    return [f"primordial script `{ver['hash'][:7]}` to the server: " + " ".join(lines)]
+    report = [f"primordial script `{ver['hash'][:7]}` to the server: " + " ".join(lines)]
+    full = hashlib.sha256(builds["pm_nightly"].encode("utf-8")).hexdigest()
+    if PRIMORDIAL_UPDATES and done and _cloud_told.get("primordial") != full:
+        _cloud_told["primordial"] = full
+        points = commit_points(ver["commit"]["commit"].get("message", ""), lua="primordial") if ver["commit"] else ""
+        for guild in client.guilds:
+            ch = named_channel(guild, UPDATES_CHANNEL)
+            if ch is None:
+                continue
+            embed = changelog_embed("primordial", points)
+            try:
+                await ch.send(embed=embed, files=lua_badge(embed, "primordial") + logo(embed))
+                report.append(f"primordial changelog posted in {ch.mention}")
+            except discord.HTTPException as e:
+                report.append(f"could not post in {ch.mention}: {e}")
+    return report
+
+
+_pm_dev_seen = {"etag": ""}
+
+
+async def sync_primordial_dev(force: bool = False) -> list[str]:
+    """specter_primordial.lua of SCRIPT_BRANCH (main, the dev build) -> the license server as `pm_dev`, with the auth gate like the
+    customer builds: only a dev key (the Primordial loader's third build) gets it. Polled with its ETag, uploaded when the server
+    has another one."""
+    try:
+        raw, etag = await gh_get_file(PRIMORDIAL_FILE, SCRIPT_BRANCH, "" if force else _pm_dev_seen["etag"])
+    except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError) as e:
+        return [f"`{PRIMORDIAL_FILE}` of `{SCRIPT_BRANCH}` (pm_dev): {e}"]
+    if raw is None:
+        return []
+    try:
+        raw_text = raw.decode("utf-8")
+    except UnicodeDecodeError as e:
+        return [f"`{PRIMORDIAL_FILE}` of `{SCRIPT_BRANCH}` (pm_dev): {e}, not uploaded"]
+    if not is_primordial_script(raw_text):
+        return [f"`{PRIMORDIAL_FILE}` of `{SCRIPT_BRANCH}`: not the primordial script, pm_dev not uploaded"]
+    script = PM_AUTH_GATE + strip_lua_comments(raw_text)
+    have = await server_script_hashes()
+    if not force and have is not None and have.get(PM_DEV_PLAN) == hashlib.sha256(script.encode("utf-8")).hexdigest():
+        _pm_dev_seen["etag"] = etag
+        return []
+    lines, done = await upload_script(script, [PM_DEV_PLAN])
+    if done:
+        _pm_dev_seen["etag"] = etag
+    return [f"primordial dev build to the server: " + " ".join(lines)] if lines else []
+
+
+@tree.command(name="post_changelog", description="Post the changelog of the newest cloud release again (with its lua's logo)")
+@app_commands.describe(lua="Which lua's changelog", here="Post it in this channel (a preview) instead of #updates",
+                       text="Own text instead of the release's: title | point | point ...")
+@app_commands.choices(lua=[app_commands.Choice(name="Gamesense", value="gamesense"),
+                           app_commands.Choice(name="Primordial", value="primordial")])
+async def post_changelog(interaction: discord.Interaction, lua: str = "gamesense", here: bool = False, text: str = ""):
+    if not is_admin(interaction):
+        await interaction.response.send_message("No permission.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    if text.strip():
+        parts = [p.strip() for p in text.split("|") if p.strip()]
+        points = commit_points(parts[0] + "\n" + "".join(f"- {p}\n" for p in parts[1:]))
+    else:
+        try:
+            ver = await newest_version(PRIMORDIAL_FILE if lua == "primordial" else CLOUD_FILE, CLOUD_BRANCH, head=True)
+        except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError) as e:
+            await interaction.followup.send(f"Could not read `{CLOUD_BRANCH}`: {e}", ephemeral=True)
+            return
+        points = commit_points(ver["commit"]["commit"].get("message", ""), lua=lua) if ver["commit"] else ""
+    ch = interaction.channel if here else named_channel(interaction.guild, UPDATES_CHANNEL)
+    if ch is None:
+        await interaction.followup.send(f"No #{UPDATES_CHANNEL} channel here.", ephemeral=True)
+        return
+    embed = changelog_embed(lua, points)
+    try:
+        await ch.send(embed=embed, files=lua_badge(embed, lua) + logo(embed))
+    except discord.HTTPException as e:
+        await interaction.followup.send(f"Could not post in {ch.mention}: {e}", ephemeral=True)
+        return
+    await interaction.followup.send(f"Changelog posted in {ch.mention}.", ephemeral=True)
 
 
 async def release_loop():
@@ -1799,6 +2004,8 @@ async def release_loop():
             if AUTO_UPLOAD:
                 report += await sync_cloud()
                 report += await sync_primordial()
+                report += await sync_primordial_dev()
+                report += await sync_loader_versions()
             if AUTO_PANELS:
                 report += await sync_loader()
         except Exception as e:
@@ -1825,6 +2032,8 @@ async def release_check(interaction: discord.Interaction, force: bool = False):
     if AUTO_UPLOAD:
         report += await sync_cloud(force)
         report += await sync_primordial(force)
+        report += await sync_primordial_dev(force)
+        report += await sync_loader_versions(force)
     if AUTO_PANELS:
         report += await sync_loader(force)
     text = "\n".join(report) or "Nothing new: the newest versions are already out."
@@ -2100,34 +2309,77 @@ async def sync_panels() -> list[str]:
     return report
 
 
+_loader_sent: dict[str, int] = {}
+
+
+def loader_version(raw: bytes) -> int | None:
+    """The `LOADER_VERSION = N` of a loader file (bumped whenever the loader changes), None when it has none."""
+    m = re.search(rb"LOADER_VERSION\s*=\s*(\d+)", raw)
+    return int(m.group(1)) if m else None
+
+
+async def sync_loader_versions(force: bool = False) -> list[str]:
+    """The LOADER_VERSION of both loaders of CLOUD_BRANCH to the license server: /verify hands it out and an older
+    loader tells its user to download the new one (#loader-download). Sent when it changed (or the bot restarted)."""
+    report = []
+    for path, lua in ((LOADER_FILE, "gs"), (PM_LOADER_FILE, "pm")):
+        try:
+            ver = await newest_version(path, CLOUD_BRANCH)
+        except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError) as e:
+            report.append(f"`{path}` version: {e}")
+            continue
+        v = loader_version(ver["raw"])
+        if v is None or (_loader_sent.get(lua) == v and not force):
+            continue
+        try:
+            res = await api_post("/admin/loader_version", {"lua": lua, "version": v})
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as e:
+            report.append(f"`{path}` version {v}: the server did not take it ({e})")
+            continue
+        if res.get("ok"):
+            _loader_sent[lua] = v
+            report.append(f"`{path}` version {v} to the server")
+        else:
+            report.append(f"`{path}` version {v}: {res.get('error', res.get('status'))}")
+    return report
+
+
 async def sync_loader(force: bool = False) -> list[str]:
-    """A new specter_loader.lua of CLOUD_BRANCH goes to #loader-download (install steps + the file), the older loader
-    post is deleted. Only the customer loader is ever posted there."""
+    """A new loader of CLOUD_BRANCH (gamesense -> #loader-download, Primordial -> #primordial-loader) is posted with its
+    install steps, the older post there deleted. Only the customer loaders are ever posted."""
+    report = []
+    for lua, spec in LOADERS.items():
+        report += await sync_one_loader(lua, spec, force)
+    return report
+
+
+async def sync_one_loader(lua: str, spec: dict, force: bool) -> list[str]:
+    path = spec["file"]
     try:
-        ver = await newest_version(LOADER_FILE, CLOUD_BRANCH)
+        ver = await newest_version(path, CLOUD_BRANCH)
     except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError) as e:
-        return [f"`{LOADER_FILE}`: {e}"]
+        return [f"`{path}`: {e}"]
     raw = ver["raw"]
-    if not is_customer_loader(raw.decode("utf-8", "replace")):
-        return [f"`{LOADER_FILE}` of `{CLOUD_BRANCH}` is not the customer loader, not posted"]
+    if not spec["check"](raw.decode("utf-8", "replace")):
+        return [f"`{path}` of `{CLOUD_BRANCH}` is not the customer loader, not posted"]
     sha = loader_sha(raw)
     report = []
     for guild in client.guilds:
-        ch = named_channel(guild, LOADER_CHANNEL)
+        ch = named_channel(guild, spec["channel"])
         if ch is None:
             continue
-        posts = await bot_posts(ch, lambda m: any(a.filename == LOADER_FILE for a in m.attachments))
+        posts = await bot_posts(ch, lambda m: any(a.filename == path for a in m.attachments))
         has_logo = bool(LOGO_URL) or os.path.isfile(os.path.join(ASSETS, "specter_icon.png"))
         if posts and not force and posts[0].embeds and any(f.name == "SHA-256" and sha in (f.value or "")
                                                            for f in posts[0].embeds[0].fields) \
                 and (bool(posts[0].embeds[0].thumbnail.url) or not has_logo):
             continue
         try:
-            removed = await send_loader(ch, raw)
+            removed = await send_loader(ch, raw, lua=lua)
         except discord.HTTPException as e:
-            report.append(f"`{LOADER_FILE}`: could not post in {ch.mention}: {e}")
+            report.append(f"`{path}`: could not post in {ch.mention}: {e}")
             continue
-        report.append(f"`{LOADER_FILE}` `{sha[:7]}` posted in {ch.mention}"
+        report.append(f"`{path}` `{sha[:7]}` posted in {ch.mention}"
                       + (f" ({removed} older post{'s' if removed != 1 else ''} removed)" if removed else ""))
     return report
 
@@ -2230,9 +2482,10 @@ async def setup_server(interaction: discord.Interaction):
         if what != "exists":
             log_lines.append(f"{'❌' if what.startswith('failed') else '✅'} Role **{name}** {what}")
 
-    member_role   = await find_or_create_role(guild, "Member")
-    customer_role = await find_or_create_role(guild, "Customer")
-    staff_role    = await find_or_create_role(guild, "Staff")
+    member_role     = await find_or_create_role(guild, "Member")
+    customer_role   = await find_or_create_role(guild, "Customer")
+    staff_role      = await find_or_create_role(guild, "Staff")
+    primordial_role = await find_or_create_role(guild, "Primordial")
     access_map = {
         "member":   [member_role],
         "customer": [customer_role, staff_role],
@@ -2278,9 +2531,10 @@ async def setup_server(interaction: discord.Interaction):
                 if staff_role:
                     overwrites[staff_role] = discord.PermissionOverwrite(
                         view_channel=True, send_messages=True, read_message_history=True)
-            elif ch.get("access") == "customer_readonly":
-                if customer_role:
-                    overwrites[customer_role] = discord.PermissionOverwrite(
+            elif ch.get("access") in ("customer_readonly", "primordial_readonly"):
+                reader = customer_role if ch["access"] == "customer_readonly" else primordial_role
+                if reader:
+                    overwrites[reader] = discord.PermissionOverwrite(
                         view_channel=True, send_messages=False, read_message_history=True)
                 if staff_role:
                     overwrites[staff_role] = discord.PermissionOverwrite(

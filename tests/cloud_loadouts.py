@@ -130,12 +130,22 @@ def run():
     w.ui.set(item(w, "Export\nloadout")[0], True)
     check(clip["v"] == cfg, "Export copies the cloud loadout's config")
 
-    # no key: share / delete only say so
+    # no key = the dev build (owners, Oct 2026: "dev can upload to cloud too"): share / delete go out as dev=1 + who, no key
     w.ui.set(item(w, "Delete\nloadout")[0], True)
-    check(not pending and "key" in status(w), "Delete without a key: " + status(w))
+    dq = parse_qs(urlparse(pending[0][0]).query) if pending else {}
+    check(len(pending) == 1 and "/configs/delete" in pending[0][0] and dq.get("dev") == ["1"] and "who" in dq and "key" not in dq and "hwid" not in dq,
+          "Delete without a key goes out as dev: " + str(pending[0][0] if pending else status(w)))
+    answer(rt, pending, json.dumps({"ok": False, "reason": "not_found"}))
     w.ui.set(lb, 0)
     w.ui.set(item(w, "☁ Share to cloud")[0], True)
-    check(not pending and "key" in status(w), "Share without a key: " + status(w))
+    sent = []
+    while pending and "/configs/upload_part" in pending[0][0]:
+        sent.append(parse_qs(urlparse(pending[0][0]).query))
+        answer(rt, pending, json.dumps({"ok": True}))
+    check(len(sent) >= 1 and all(q.get("dev") == ["1"] and "who" in q and "key" not in q and "hwid" not in q for q in sent),
+          f"Share without a key goes out as dev in {len(sent)} part(s)")
+    while pending:
+        answer(rt, pending, json.dumps([]))
     check([n for n in lst.list.values()][0] == "mine", "the own loadout is still first")
 
     # with a key

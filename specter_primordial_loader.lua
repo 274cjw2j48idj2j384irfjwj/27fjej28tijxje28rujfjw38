@@ -1,7 +1,8 @@
 -- ======================================================================
 --  SPECTER for Primordial | Loader
 --  Key + HWID checked by the license server, the script downloaded from it at every login
---  (nightly = everything, beta = no resolver). Put this file into primordial/scripts once.
+--  (nightly = everything, beta = no resolver, dev = the newest build). A key loads its own build and the ones below it:
+--  a dev key dev / nightly / beta (a button each), a nightly key nightly / beta, a beta key beta. Put this file into primordial/scripts once.
 -- ======================================================================
 
 if (rawget(_G, "_specter_pm_loader_loaded")) then
@@ -10,7 +11,11 @@ end
 rawset(_G, "_specter_pm_loader_loaded", true)
 
 local SERVER_URL = "https://specter-license-mh111-production.up.railway.app"
+-- bump whenever this file changes: the server hands out the number of the newest loader (the bot reads it from the cloud
+-- branch) and an older one tells its user to download the new one
+local LOADER_VERSION = 3
 local KEY_FILE = "specter/key.txt"             -- csgo/specter/key.txt
+local BUILD_FILE = "specter/build.txt"         -- the build a multi build key loaded last (csgo/specter/build.txt)
 local GROUP = "Specter loader"
 
 -- the Primordial calls the two libraries below use
@@ -75,6 +80,20 @@ local function save_key(key)
     pcall(libs.filesystem.write, KEY_FILE, key)
 end
 
+local function read_build()
+    local ok, exists = pcall(libs.filesystem.exists, BUILD_FILE, "MOD")
+    if (not ok or not exists) then
+        return ""
+    end
+    local ok2, text = pcall(libs.filesystem.read, BUILD_FILE)
+    return ok2 and tostring(text):match("^%s*(.-)%s*$") or ""
+end
+
+local function save_build(build)
+    pcall(libs.filesystem.create_directory, "specter", "MOD")
+    pcall(libs.filesystem.write, BUILD_FILE, build)
+end
+
 local function field(body, name)
     return body:match('"' .. name .. '"%s*:%s*"([^"]*)"')
 end
@@ -84,7 +103,7 @@ local function encode(s)
 end
 
 local REASONS = {
-    invalid_key = "Invalid key.", revoked = "This key was revoked.", expired = "This key has expired.",
+    wrong_build = "This key can not load that build.", invalid_key = "Invalid key.", revoked = "This key was revoked.", expired = "This key has expired.",
     hwid_mismatch = "This key is locked to another PC (ask staff for a HWID reset).",
     missing_params = "Enter your key.", script_missing = "The script is not on the server yet, try again later.",
 }
@@ -93,6 +112,12 @@ local ui = {}
 ui.key = menu.add_text_input(GROUP, "Key")
 ui.status = menu.add_text(GROUP, "Enter your key and press Login.")
 local busy = false
+
+-- the builds a key can load, best first; the name the buttons / messages use
+local BUILD_ORDER = { "pm_dev", "pm_nightly", "pm_beta" }
+local function build_name(build)
+    return (tostring(build):gsub("^pm_", ""))
+end
 
 local function status(text)
     say(text)
@@ -115,7 +140,37 @@ local function run(body, key, hwid, plan, user)
     end
 end
 
-local function login()
+local login
+
+-- one button per build, shown only for the builds the key allows (more than one)
+ui.builds = {}
+for _, build in ipairs(BUILD_ORDER) do
+    ui.builds[build] = menu.add_button(GROUP, "Load " .. build_name(build), function()
+        login(build)
+    end)
+    pcall(ui.builds[build].set_visible, ui.builds[build], false)
+end
+
+local function show_builds(allowed)
+    for _, build in ipairs(BUILD_ORDER) do
+        local on = false
+        for _, name in ipairs(allowed) do
+            on = on or name == build
+        end
+        pcall(ui.builds[build].set_visible, ui.builds[build], on)
+    end
+end
+
+-- the builds the server lists for the key ("builds":["pm_dev","pm_nightly","pm_beta"]); none listed = an older server: the key's own plan
+local function parse_builds(body)
+    local list, inner = {}, body:match('"builds"%s*:%s*%[(.-)%]')
+    for name in (inner or ""):gmatch('"(pm_%a+)"') do
+        list[#list + 1] = name
+    end
+    return list
+end
+
+login = function(chosen)
     if (busy) then
         return
     end
@@ -134,6 +189,13 @@ local function login()
             status(REASONS[field(body, "reason") or ""] or (body == "" and "The server did not answer, try again." or "Login failed."))
             return
         end
+        local latest = tonumber(body:match('"loader_pm"%s*:%s*(%d+)'))
+        if (latest ~= nil and latest > LOADER_VERSION) then
+            local text = "A new Specter loader is out (v" .. latest .. ", you have v" .. LOADER_VERSION
+                .. "): download it from #primordial-loader and replace this file."
+            say(text)
+            pcall(menu.add_text, "Specter update", text)
+        end
         local plan, ticket, nonce, user = field(body, "plan") or "", field(body, "ticket"), field(body, "nonce"), field(body, "user")
         if (not plan:find("^pm_")) then
             busy = false
@@ -141,21 +203,45 @@ local function login()
             return
         end
         save_key(key)
-        status("Downloading Specter " .. plan:gsub("^pm_", "") .. "...")
+        local allowed = parse_builds(body)
+        local build = plan
+        if (#allowed > 1) then
+            -- a key with several builds: the one picked with a button, else the one loaded last time, else wait for a button
+            local pick = chosen or read_build()
+            build = nil
+            for _, name in ipairs(allowed) do
+                if (name == pick) then build = name end
+            end
+            if (build == nil) then
+                busy = false
+                show_builds(allowed)
+                status("Choose a build: " .. table.concat((function()
+                    local names = {}
+                    for _, name in ipairs(allowed) do names[#names + 1] = build_name(name) end
+                    return names
+                end)(), " / ") .. ".")
+                return
+            end
+            show_builds(allowed)
+            save_build(build)
+        elseif (#allowed == 1) then
+            build = allowed[1]
+        end
+        status("Downloading Specter " .. build_name(build) .. "...")
         http:get(SERVER_URL .. "/script?key=" .. encode(key) .. "&hwid=" .. encode(hwid) .. "&plan=" .. encode(plan)
-            .. "&ticket=" .. encode(ticket or "") .. "&nonce=" .. encode(nonce or ""), function(script)
+            .. "&build=" .. encode(build) .. "&ticket=" .. encode(ticket or "") .. "&nonce=" .. encode(nonce or ""), function(script)
             busy = false
             local text = script.body or ""
             if (#text < 1000 or text:find('^%s*{')) then
                 status(REASONS[field(text, "reason") or ""] or "Download failed, try again.")
                 return
             end
-            run(text, key, hwid, plan, user)
+            run(text, key, hwid, build, user)
         end)
     end)
 end
 
-ui.login = menu.add_button(GROUP, "Login", login)
+ui.login = menu.add_button(GROUP, "Login", function() login() end)
 
 local saved = read_key()
 if (saved ~= "") then

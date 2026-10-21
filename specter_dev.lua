@@ -11202,6 +11202,13 @@ LPH_NO_VIRTUALIZE(function ()
                 :record("miscellaneous", "clantag")
                 :save()
 
+            config.miscellaneous.presence = menu.new_item(ui.new_checkbox, "AA", "Anti-aimbot angles", "Show as Specter user")
+                :record("miscellaneous", "presence")
+                :save()
+
+            config.miscellaneous.users = menu.new_item(ui.new_listbox, "AA", "Anti-aimbot angles", "\nspecter_users", {})
+                :config_ignore()
+
             config.miscellaneous.clantag_style = menu.new_item(ui.new_combobox, "AA", "Anti-aimbot angles", "•  Style\nclantag", {"Scrolling", "Glitch"})
                 :record("miscellaneous", "clantag_style")
                 :save()
@@ -11384,6 +11391,77 @@ LPH_NO_VIRTUALIZE(function ()
         end
 
         miscellaneous = {} do
+            -- Specter user detection (owners, Oct 2026: "jelezze primen belül ha valaki a gs luát használja"): every 30 s the license
+            -- server hears that this player runs the gamesense lua (a hash of the steam id, tag "gs"; the same hash and endpoint
+            -- as specter_primordial.lua's presence, so the Primordial lua lists this player as a "gs user"). No names, no address
+            miscellaneous.presence = {} do
+                local SERVER = _auth_data and _auth_data.server_url or ""
+                local next_at = 0
+
+                local function hash(text)
+                    local h1, h2 = 5381, 52711
+                    text = "specter|" .. text
+                    for i = 1, #text do
+                        local c = text:byte(i)
+                        h1 = (h1 * 33 + c) % 4294967296
+                        h2 = (h2 * 31 + c * 7) % 4294967296
+                    end
+                    return string_format("%08x%08x", h1, h2)
+                end
+
+                -- the 17 digit steam64 as TEXT: a number would lose its last digits and the hash would not match
+                local function id_of(idx)
+                    local ok, sid = pcall(entity.get_steam64, idx)
+                    sid = ok and sid ~= nil and tostring(sid) or ""
+                    return sid:match("^7656119%d%d%d%d%d%d%d%d%d%d$")
+                end
+
+                local KIND = { gs = "gs user", dev = "prim user (dev)", beta = "prim user (beta)", nightly = "prim user (nightly)" }
+                local shown = ""
+
+                -- also asks which of the players here run Specter (up to 64 hashes) and lists them like the Primordial lua's
+                -- "Specter Revealer": "name ~ gs user" runs this lua, "name ~ prim user (version)" the Primordial one
+                function miscellaneous.presence:run()
+                    if not config.miscellaneous.presence:get() or http == nil or SERVER == "" then return end
+                    local now = globals.realtime()
+                    if now < next_at and now > next_at - 60 then return end
+                    next_at = now + 30
+                    local me = entity.get_local_player()
+                    local sid = me and id_of(me)
+                    if not sid then return end
+                    local mine = hash(sid)
+                    local asked, list = { [mine] = "you" }, { mine }
+                    for _, idx in ipairs(entity.get_players(false) or {}) do
+                        local other = idx ~= me and #list < 64 and id_of(idx)
+                        if other then
+                            local h = hash(other)
+                            if asked[h] == nil then
+                                local ok, name = pcall(entity.get_player_name, idx)
+                                asked[h] = (ok and tostring(name) or "?"):gsub("[^\32-\126]", "?"):sub(1, 20)
+                                list[#list + 1] = h
+                            end
+                        end
+                    end
+                    http.get(SERVER .. "/presence?t=gs&q=" .. table.concat(list, ",") .. "&me=" .. mine, function(ok, resp)
+                        local body = type(resp) == "table" and resp.body or resp
+                        local good, data = pcall(json.parse, ok and body or "")
+                        if not (good and type(data) == "table" and type(data.on) == "table") then return end
+                        local rows = {}
+                        for h, name in pairs(asked) do
+                            local kind = KIND[data.on[h]]
+                            if kind then rows[#rows + 1] = name .. " ~ " .. kind end
+                        end
+                        table.sort(rows)
+                        if #rows == 0 then rows[1] = "nobody found here" end
+                        local joined = table.concat(rows, "\n")
+                        if joined ~= shown then
+                            shown = joined
+                            ui.update(config.miscellaneous.users:get_ref(), rows)
+                        end
+                    end)
+                end
+            end
+
             miscellaneous.clantag = {} do
                 function miscellaneous.clantag.reset()
                     for i=1, 64 do
@@ -11448,7 +11526,7 @@ LPH_NO_VIRTUALIZE(function ()
                     return temp
                 end
 
-                local text = 'specter'
+                local text = 'specter.gs'
                 local cache = ''
                 local last_style = nil
                 local chars = {}
@@ -12894,6 +12972,7 @@ LPH_NO_VIRTUALIZE(function ()
 
             function miscellaneous:net_update_end()
                 self.clantag:run()
+                self.presence:run()
             end
 
             function miscellaneous:paint_ui()
@@ -13087,6 +13166,7 @@ LPH_NO_VIRTUALIZE(function ()
                 set(A.fs_options, { "Jitter disabled" })
                 set(A.freestanding_disabler_states, { "Air", "Air & Crouch" })
                 set(A.animation_breaker, true)
+                set(config.miscellaneous.presence, true)
                 set(A.animation_breaker_leg, "Walking")
                 set(A.animation_breaker_air, "Walking")
                 set(A.animation_breaker_other, { "Quick peek legs", "Pitch zero on land" })
@@ -13220,6 +13300,15 @@ LPH_NO_VIRTUALIZE(function ()
             -- names come from other users: printable, short
             local function clean(v, n)
                 return (tostring(v or ""):gsub("[%c]", ""):sub(1, n))
+            end
+
+            -- the query that says who shares: key + hwid, or the dev build (no key) as dev=1 + its player name (owners, Oct 2026: "dev can
+            -- upload to cloud too"; the server keeps dev uploads small and apart)
+            local function cloud_auth()
+                if KEY ~= "" then return "key=" .. url_encode(KEY) .. "&hwid=" .. url_encode(HWID) end
+                if not perf.dev then return nil end
+                local ok, who = pcall(function() return entity.get_player_name(entity.get_local_player()) end)
+                return "dev=1&who=" .. url_encode(ok and type(who) == "string" and who or "dev")
             end
 
             local function cloud_ready()
@@ -13401,7 +13490,8 @@ LPH_NO_VIRTUALIZE(function ()
                 if name == "" or name:find("^No loadouts yet") then cloud_status("type a name first"); return end
                 if #name > 32 then cloud_status("name too long (max 32)"); return end
                 if picked_cloud() then cloud_status("that one is already in the cloud"); return end
-                if KEY == "" then cloud_status("log in with your key to share"); return end
+                local auth = cloud_auth()
+                if not auth then cloud_status("log in with your key to share"); return end
                 if not cloud_ready() then return end
 
                 local preset = antiaim_presets.lookup(name)
@@ -13413,7 +13503,7 @@ LPH_NO_VIRTUALIZE(function ()
                 for i = 1, #encoded, CHUNK do parts[#parts + 1] = encoded:sub(i, i + CHUNK - 1) end
                 if #parts > 150 then cloud_status("loadout too large"); return end
 
-                local base = SERVER .. "/configs/upload_part?key=" .. url_encode(KEY) .. "&hwid=" .. url_encode(HWID)
+                local base = SERVER .. "/configs/upload_part?" .. auth
                     .. "&name=" .. url_encode(name) .. "&total=" .. #parts
                 cloud_busy = true
                 local function send(i)
@@ -13448,10 +13538,11 @@ LPH_NO_VIRTUALIZE(function ()
 
             -- the server deletes only the user's own uploads
             function antiaim_presets.cloud_delete(cfg)
-                if KEY == "" then cloud_status("log in with your key to delete"); return end
+                local auth = cloud_auth()
+                if not auth then cloud_status("log in with your key to delete"); return end
                 if not cloud_ready() then return end
                 cloud_busy = true
-                local url = SERVER .. "/configs/delete?key=" .. url_encode(KEY) .. "&hwid=" .. url_encode(HWID) .. "&name=" .. url_encode(cfg.name)
+                local url = SERVER .. "/configs/delete?" .. auth .. "&name=" .. url_encode(cfg.name)
                 http.get(url, function(ok, resp)
                     cloud_busy = false
                     local answer = cloud_answer(ok, resp)
@@ -14363,6 +14454,8 @@ LPH_NO_VIRTUALIZE(function ()
                 M.hdr_social:display()
                 M.clantag:display()
                 if M.clantag:get() then M.clantag_style:display() end
+                M.presence:display()
+                if M.presence:get() then M.users:display() end
                 M.cheat_tweaks:display()
                 if M.cheat_tweaks:get() then M.cheat_tweaks_list:display() end
                 M.trashtalk:display()

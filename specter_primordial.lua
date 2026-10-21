@@ -6,7 +6,9 @@
 
 ]]
 
-local client_version = "5.5"
+-- Advanced engineering revision. Native resolver remains the default.
+-- Hard-coded FFI offsets require the exact original game/client build.
+local client_version = "5.5-advanced.3"
 
 local config_version = "1.0"
 local config_build = "beta"
@@ -35,6 +37,87 @@ menu_get_size, menu_find, menu_list, menu_add_slider, menu_add_checkbox, menu_te
 player_resource_get_prop, player_resource_set_prop = player_resource.get_prop, player_resource.set_prop
 ragebot_get_active_cfg, ragebot_get_autopeek_pos = ragebot.get_active_cfg, ragebot.get_autopeek_pos
 render_get_text_size, render_push_clip, render_load_image, render_rect_filled, render_line, render_pop_clip, render_rect_fade, render_circle_filled, render_weapon_icon, render_rect, render_texture, render_get_screen_size, render_load_image_buffer, render_create_font, render_weapon_icon_size, render_pop_alpha_modifier, render_circle, render_text, render_get_default_font, render_polygon, render_polyline, render_triangle, render_push_alpha_modifier, render_triangle_filled, render_progress_circle, render_world_to_screen = render.get_text_size, render.push_clip, render.load_image, render.rect_filled, render.line, render.pop_clip, render.rect_fade, render.circle_filled, render.weapon_icon, render.rect, render.texture, render.get_screen_size, render.load_image_buffer, render.create_font, render.weapon_icon_size, render.pop_alpha_modifier, render.circle, render.text, render.get_default_font, render.polygon, render.polyline, render.triangle, render.push_alpha_modifier, render.triangle_filled, render.progress_circle, render.world_to_screen
+
+-- menu.find walks Primordial's whole menu by name, and the script asks for the same items every frame / tick (jumpshot,
+-- the anti-aim refs, the keybinds ...). An item never changes, so each one is looked up once (owners, Oct 2026: 70 fps)
+do
+    local find, cache = menu_find, {}
+    menu_find = function(...)
+        local n, parts = select("#", ...), { ... }
+        for i = 1, n do
+            if (type(parts[i]) ~= "string") then
+                return find(...)
+            end
+        end
+        local key = table.concat(parts, "\1")
+        local item = cache[key]
+        if (item == nil) then
+            item = find(...)
+            cache[key] = item
+        end
+        return item
+    end
+end
+
+-- FPS profiler (dev build, owners Oct 2026: "az FPS nagyon gatya van 70 fpsem"): Utils "Profile 10 s" times every
+-- callback and the parts of PAINT with the performance counter, then prints the most expensive ones and sends them to
+-- the shot logs (kind "perf"). Nothing is timed while it is off
+local perf = { on = false, t = {}, n = {}, frames = 0 }
+do
+    local ok, ffi = pcall(require, "ffi")
+    local buf, freq = nil, 0
+    if (ok) then
+        pcall(ffi.cdef, "int QueryPerformanceCounter(int64_t *c); int QueryPerformanceFrequency(int64_t *f);")
+        pcall(function()
+            buf = ffi.new("int64_t[1]")
+            ffi.C.QueryPerformanceFrequency(buf)
+            freq = tonumber(buf[0]) or 0
+        end)
+    end
+    perf.now = function()
+        if (freq <= 0) then
+            return 0
+        end
+        ffi.C.QueryPerformanceCounter(buf)
+        return tonumber(buf[0]) / freq * 1000
+    end
+    perf.usable = freq > 0
+end
+
+perf.span = function(name, fn, ...)
+    if (not perf.on) then
+        return fn(...)
+    end
+    local t0 = perf.now()
+    fn(...)
+    perf.t[name] = (perf.t[name] or 0) + perf.now() - t0
+    perf.n[name] = (perf.n[name] or 0) + 1
+end
+
+perf.add = function(id, name, fn)
+    return callbacks.add(id, function(...)
+        if (not perf.on) then
+            return fn(...)
+        end
+        local t0 = perf.now()
+        fn(...)
+        local key = "cb " .. name
+        perf.t[key] = (perf.t[key] or 0) + perf.now() - t0
+        perf.n[key] = (perf.n[key] or 0) + 1
+    end)
+end
+
+-- Primordial's circle calls take the radius as an int: a fraction (the watermark's moon / sun, 4.5 * night ...) is
+-- "not a numeric type" and stops the PAINT callback, so every radius is rounded here
+do
+    local circle_filled, circle = render_circle_filled, render_circle
+    render_circle_filled = function(pos, radius, ...)
+        return circle_filled(pos, math.max(0, math.floor((tonumber(radius) or 0) + 0.5)), ...)
+    end
+    render_circle = function(pos, radius, ...)
+        return circle(pos, math.max(0, math.floor((tonumber(radius) or 0) + 0.5)), ...)
+    end
+end
 trace_line, trace_bullet, trace_hull = trace.line, trace.bullet, trace.hull
 ipairs, assert, pairs, next, tostring, tonumber, setmetatable, unpack, type, getmetatable, pcall, error = ipairs, assert, pairs, next, tostring, tonumber, setmetatable, unpack, type, getmetatable, pcall, error
 
@@ -59,7 +142,10 @@ libs.eui = (function()
 end)()
 
 libs.httpcreator = (function()
-    local a=ffi.cast("uint32_t**",ffi.cast("char**",ffi.cast("char*",memory_find_pattern("client.dll","B9 ? ? ? ? E8 ? ? ? ? 83 3D ? ? ? ? ? 0F 84"))+1)[0]+48)[0]or error("steam_http error")local b=ffi.cast("void***",a)or error("steam_http_ptr error")local c=b[0]or error("steam_http_ptr was null")local function d(e,f)return function(...)return e(f,...)end end;local g=d(ffi.cast(ffi.typeof("uint32_t(__thiscall*)(void*, uint32_t, const char*)"),c[0]),a)local h=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, uint64_t)"),c[5]),a)local i=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*, uint32_t*)"),c[9]),a)local j=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*, char*, uint32_t)"),c[10]),a)local k=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, uint32_t*)"),c[11]),a)local l=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, char*, uint32_t)"),c[12]),a)local m=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*, const char*)"),c[3]),a)local n=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*, const char*)"),c[4]),a)local o=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*)"),c[21]),a)local p=d(ffi.cast("bool(__thiscall*)(void*, uint32_t, const char*, const char*, uint32_t)",c[16]),a)local q=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t)"),c[14]),a)local r={}callbacks.add(e_callbacks.PAINT,function()for s,t in ipairs(r)do if global_vars_cur_time()-t.ls>t.task_interval then t:_process_tasks()t.ls=global_vars_cur_time()end end end)local u={}local v={__index=u}function u.new(w,x,y)return setmetatable({handle=w,url=x,callback=y,ticks=0},v)end;local z={}local A={__index=z}function z.new(B,C,D)return setmetatable({status=B,body=C,headers=D},A)end;function z:success()return self.status==200 end;local E={state={ok=200,no_response=204,timed_out=408,unknown=0}}local F={__index=E}function E.new(G)G=G or{}local t=setmetatable({requests={},task_interval=G.task_interval or 0.3,enable_debug=G.debug or false,timeout=G.timeout or 10,ls=global_vars_cur_time()},F)table.insert(r,t)return t end;local H={["get"]=1,["head"]=2,["post"]=3,["put"]=4,["delete"]=5,["options"]=6,["patch"]=7}function E:request(I,J,K,L)if type(K)=="function"and L==nil then L=K;K={}end;K=K or{}local M=H[tostring(I):lower()]local N=g(M,J)local O="application/text"if type(K.headers)=="table"then for P,Q in pairs(K.headers)do P=tostring(P)Q=tostring(Q)if P:lower()=="content-type"then O=Q end;m(N,P,Q)end end;if type(K.body)=="string"then local R=K.body:len()p(N,O,ffi.cast("unsigned char*",K.body),R)end;if type(K.params)=="table"then for S,T in pairs(K.params)do n(N,S,T)end end;if type(K.user_agent_info)=="string"then o(N,K.user_agent_info)end;if not h(N,0)then return end;local U=u.new(N,J,L)self:_debug("[HTTP] New %s request to: %s",I:upper(),J)table.insert(self.requests,U)end;function E:get(J,L)local N=g(1,J)if not h(N,0)then return end;local U=u.new(N,J,L)self:_debug("[HTTP] New GET request to: %s",J)table.insert(self.requests,U)end;function E:post(J,V,L)local N=g(3,J)for S,T in pairs(V)do n(N,S,T)end;if not h(N,0)then return end;local U=u.new(N,J,L)self:_debug("[HTTP] New POST request to: %s",J)table.insert(self.requests,U)end;function E:download_image(J,W,L)local N=g(1,J)if not h(N,0)then return end;local function X(z)if z:success()then libs.filesystem.write_binary(W,z.body)if L then L(true,"Image downloaded successfully")end else if L then L(false,"Failed to download image")end end end;local U=u.new(N,J,X)table.insert(self.requests,U)end;function E:_process_tasks()for S,T in ipairs(self.requests)do local Y=ffi.new("uint32_t[1]")self:_debug("[HTTP] Processing request #%s",S)if k(T.handle,Y)then local Z=Y[0]if Z>0 then local _=ffi.new("char[?]",Z)if l(T.handle,_,Z)then self:_debug("[HTTP] Request #%s finished. Invoking callback.",S)T.callback(z.new(E.state.ok,ffi.string(_,Z),setmetatable({},{__index=function(a0,a1)return E._get_header(T,a1)end})))table.remove(self.requests,S)q(T.handle)end else T.callback(z.new(E.state.no_response,nil,{}))table.remove(self.requests,S)q(T.handle)end end;local a2=T.ticks+1;if a2>=self.timeout then T.callback(z.new(E.state.timed_out,nil,{}))table.remove(self.requests,S)q(T.handle)else T.ticks=a2 end end end;function E:_debug(...)if self.enable_debug then client_log(string.format(...))end end;function E._get_header(U,a3)local Y=ffi.new("uint32_t[1]")if i(U.handle,a3,Y)then local Z=Y[0]local _=ffi.new("char[?]",Z)if j(U.handle,a3,_,Z)then return ffi.string(_,Z)end end;return nil end;function E._bind(a4,a5)return function(...)return a4[a5](a4,...)end end;return E
+    -- steam http. The passes run on real time: curtime starts again on every server, after a switch to a younger map no
+    -- request was answered until it caught up. A finished request leaves the list before its callback and is not timed out
+    -- in the same pass (its callback ran twice and the request after it was dropped)
+    local a=ffi.cast("uint32_t**",ffi.cast("char**",ffi.cast("char*",memory_find_pattern("client.dll","B9 ? ? ? ? E8 ? ? ? ? 83 3D ? ? ? ? ? 0F 84"))+1)[0]+48)[0]or error("steam_http error")local b=ffi.cast("void***",a)or error("steam_http_ptr error")local c=b[0]or error("steam_http_ptr was null")local function d(e,f)return function(...)return e(f,...)end end;local g=d(ffi.cast(ffi.typeof("uint32_t(__thiscall*)(void*, uint32_t, const char*)"),c[0]),a)local h=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, uint64_t)"),c[5]),a)local i=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*, uint32_t*)"),c[9]),a)local j=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*, char*, uint32_t)"),c[10]),a)local k=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, uint32_t*)"),c[11]),a)local l=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, char*, uint32_t)"),c[12]),a)local m=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*, const char*)"),c[3]),a)local n=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*, const char*)"),c[4]),a)local o=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t, const char*)"),c[21]),a)local p=d(ffi.cast("bool(__thiscall*)(void*, uint32_t, const char*, const char*, uint32_t)",c[16]),a)local q=d(ffi.cast(ffi.typeof("bool(__thiscall*)(void*, uint32_t)"),c[14]),a)local r={}callbacks.add(e_callbacks.PAINT,function()for s,t in ipairs(r)do if global_vars_real_time()-t.ls>t.task_interval then t:_process_tasks()t.ls=global_vars_real_time()end end end)local u={}local v={__index=u}function u.new(w,x,y)return setmetatable({handle=w,url=x,callback=y,ticks=0},v)end;local z={}local A={__index=z}function z.new(B,C,D)return setmetatable({status=B,body=C,headers=D},A)end;function z:success()return self.status==200 end;local E={state={ok=200,no_response=204,timed_out=408,unknown=0}}local F={__index=E}function E.new(G)G=G or{}local t=setmetatable({requests={},task_interval=G.task_interval or 0.3,enable_debug=G.debug or false,timeout=G.timeout or 10,ls=global_vars_real_time()},F)table.insert(r,t)return t end;local H={["get"]=1,["head"]=2,["post"]=3,["put"]=4,["delete"]=5,["options"]=6,["patch"]=7}function E:request(I,J,K,L)if type(K)=="function"and L==nil then L=K;K={}end;K=K or{}local M=H[tostring(I):lower()]local N=g(M,J)local O="application/text"if type(K.headers)=="table"then for P,Q in pairs(K.headers)do P=tostring(P)Q=tostring(Q)if P:lower()=="content-type"then O=Q end;m(N,P,Q)end end;if type(K.body)=="string"then local R=K.body:len()p(N,O,ffi.cast("unsigned char*",K.body),R)end;if type(K.params)=="table"then for S,T in pairs(K.params)do n(N,S,T)end end;if type(K.user_agent_info)=="string"then o(N,K.user_agent_info)end;if not h(N,0)then return end;local U=u.new(N,J,L)self:_debug("[HTTP] New %s request to: %s",I:upper(),J)table.insert(self.requests,U)end;function E:get(J,L)local N=g(1,J)if not h(N,0)then return end;local U=u.new(N,J,L)self:_debug("[HTTP] New GET request to: %s",J)table.insert(self.requests,U)end;function E:post(J,V,L)local N=g(3,J)for S,T in pairs(V)do n(N,S,T)end;if not h(N,0)then return end;local U=u.new(N,J,L)self:_debug("[HTTP] New POST request to: %s",J)table.insert(self.requests,U)end;function E:download_image(J,W,L)local N=g(1,J)if not h(N,0)then return end;local function X(z)if z:success()then libs.filesystem.write_binary(W,z.body)if L then L(true,"Image downloaded successfully")end else if L then L(false,"Failed to download image")end end end;local U=u.new(N,J,X)table.insert(self.requests,U)end;function E:_process_tasks()for S,T in ipairs(self.requests)do local Y=ffi.new("uint32_t[1]")self:_debug("[HTTP] Processing request #%s",S)if k(T.handle,Y)then local Z=Y[0]if Z>0 then local _=ffi.new("char[?]",Z)if l(T.handle,_,Z)then self:_debug("[HTTP] Request #%s finished. Invoking callback.",S)table.remove(self.requests,S)T.done=true;T.callback(z.new(E.state.ok,ffi.string(_,Z),setmetatable({},{__index=function(a0,a1)return E._get_header(T,a1)end})))q(T.handle)end else table.remove(self.requests,S)T.done=true;T.callback(z.new(E.state.no_response,nil,{}))q(T.handle)end end;if not T.done then local a2=T.ticks+1;if a2>=self.timeout then table.remove(self.requests,S)T.done=true;T.callback(z.new(E.state.timed_out,nil,{}))q(T.handle)else T.ticks=a2 end end end end;function E:_debug(...)if self.enable_debug then client_log(string.format(...))end end;function E._get_header(U,a3)local Y=ffi.new("uint32_t[1]")if i(U.handle,a3,Y)then local Z=Y[0]local _=ffi.new("char[?]",Z)if j(U.handle,a3,_,Z)then return ffi.string(_,Z)end end;return nil end;function E._bind(a4,a5)return function(...)return a4[a5](a4,...)end end;return E
 end)()
 
 libs.panorama = (function()
@@ -76,187 +162,195 @@ libs.tools.http = libs.httpcreator.new(
 
 libs.tools.js2 = libs.panorama.open()
 libs.tools.js = libs.panorama.loadstring([[
-let entity_panels = {}
-let entity_data = {}
-let event_callbacks = {}
-	let SLOT_LAYOUT = `
-		<root>
-			<Panel style="min-width: 3px; padding-top: 2px; padding-left: 0px;" scaling='stretch-to-fit-y-preserve-aspect'>
-				<Image id="smaller" textureheight="15" style="horizontal-align: center; opacity: 0.01; transition: opacity 0.1s ease-in-out 0.0s, img-shadow 0.12s ease-in-out 0.0s; overflow: noclip; padding: 3px 5px; margin: -3px -5px;"	/>
-				<Image id="small" textureheight="17" style="horizontal-align: center; opacity: 0.01; transition: opacity 0.1s ease-in-out 0.0s, img-shadow 0.12s ease-in-out 0.0s; overflow: noclip; padding: 3px 5px; margin: -3px -5px;" />
-				<Image id="image" textureheight="21" style="opacity: 0.01; transition: opacity 0.1s ease-in-out 0.0s, img-shadow 0.12s ease-in-out 0.0s; padding: 3px 5px; margin: -3px -5px; margin-top: -5px;" />
-			</Panel>
-		</root>
-	`
-	let _DestroyEntityPanel = function (key) {
-		let panel = entity_panels[key]
-		if(panel != null && panel.IsValid()) {
-			var parent = panel.GetParent()
-			let musor = parent.GetChild(0)
-			musor.visible = true
-			if(parent.FindChildTraverse("id-sb-skillgroup-image") != null) {
-				parent.FindChildTraverse("id-sb-skillgroup-image").style.margin = "0px 0px 0px 0px"
-			}
-			panel.DeleteAsync(0.0)
-		}
-		delete entity_panels[key]
-	}
-	let _DestroyEntityPanels = function() {
-		for(key in entity_panels){
-			_DestroyEntityPanel(key)
-		}
-	}
-	let _GetOrCreateCustomPanel = function(xuid) {
-		if(entity_panels[xuid] == null || !entity_panels[xuid].IsValid()){
-			entity_panels[xuid] = null
-			let scoreboard_context_panel = $.GetContextPanel().FindChildTraverse("ScoreboardContainer").FindChildTraverse("Scoreboard") || $.GetContextPanel().FindChildTraverse("id-eom-scoreboard-container").FindChildTraverse("Scoreboard")
-			if(scoreboard_context_panel == null){
-				_Clear()
-				_DestroyEntityPanels()
-				return
-			}
-			scoreboard_context_panel.FindChildrenWithClassTraverse("sb-row").forEach(function(el){
-				let scoreboard_el
-				if(el.m_xuid == xuid) {
-					el.Children().forEach(function(child_frame){
-						let stat = child_frame.GetAttributeString("data-stat", "")
-						if(stat == "rank")
-							scoreboard_el = child_frame.GetChild(0)
-					})
-					if(scoreboard_el) {
-						let scoreboard_el_parent = scoreboard_el.GetParent()
-						let custom_icons = $.CreatePanel("Panel", scoreboard_el_parent, "revealer-icon", {
-						})
-						if(scoreboard_el_parent.FindChildTraverse("id-sb-skillgroup-image") != null) {
-							scoreboard_el_parent.FindChildTraverse("id-sb-skillgroup-image").style.margin = "0px 0px 0px 0px"
-						}
-						scoreboard_el_parent.MoveChildAfter(custom_icons, scoreboard_el_parent.GetChild(1))
-						let prev_panel = scoreboard_el_parent.GetChild(0)
-						prev_panel.visible = false
-						let panel_slot_parent = $.CreatePanel("Panel", custom_icons, `icon`)
-						panel_slot_parent.visible = false
-						panel_slot_parent.BLoadLayoutFromString(SLOT_LAYOUT, false, false)
-						entity_panels[xuid] = custom_icons
-						return custom_icons
-					}
-				}
-			})
-		}
-		return entity_panels[xuid]
-	}
-	let _UpdatePlayer = function(entindex, path_to_image) {
-		if(entindex == null || entindex == 0)
-			return
-		entity_data[entindex] = {
-			applied: false,
-			image_path: path_to_image
-		}
-	}
-	let _ApplyPlayer = function(entindex) {
-		let xuid = GameStateAPI.GetPlayerXuidStringFromEntIndex(entindex)
-		let panel = _GetOrCreateCustomPanel(xuid)
-		if(panel == null)
-			return
-		let panel_slot_parent = panel.FindChild(`icon`)
-		panel_slot_parent.visible = true
-		let panel_slot = panel_slot_parent.FindChild("image")
-		panel_slot.visible = true
-		panel_slot.style.opacity = "1"
-		panel_slot.SetImage(entity_data[entindex].image_path)
-		return true
-	}
-	let _ApplyData = function() {
-		for(entindex in entity_data) {
-			entindex = parseInt(entindex)
-			let xuid = GameStateAPI.GetPlayerXuidStringFromEntIndex(entindex)
-			if(!entity_data[entindex].applied || entity_panels[xuid] == null || !entity_panels[xuid].IsValid()) {
-				if(_ApplyPlayer(entindex)) {
-					entity_data[entindex].applied = true
-				}
-			}
-		}
-	}
-	let _Create = function() {
-		event_callbacks["OnOpenScoreboard"] = $.RegisterForUnhandledEvent("OnOpenScoreboard", _ApplyData)
-		event_callbacks["Scoreboard_UpdateEverything"] = $.RegisterForUnhandledEvent("Scoreboard_UpdateEverything", function(){
-			_ApplyData()
-		})
-		event_callbacks["Scoreboard_UpdateJob"] = $.RegisterForUnhandledEvent("Scoreboard_UpdateJob", _ApplyData)
-	}
-	let _Clear = function() { entity_data = {} }
-	let _Destroy = function() {
-		_Clear()
-		_DestroyEntityPanels()
-		for(event in event_callbacks){
-			$.UnregisterForUnhandledEvent(event, event_callbacks[event])
-			delete event_callbacks[event]
-		}
-	}
-	return {
-		create: _Create,
-		destroy: _Destroy,
-		clear: _Clear,
-		update: _UpdatePlayer,
-		destroy_panel: _DestroyEntityPanels
-	}
+let entity_panels = {};
+let entity_data = {};
+let event_callbacks = {};
+const valid = function(panel) {
+    return panel != null && typeof panel.IsValid === "function" && panel.IsValid();
+};
+const destroy_panel = function(xuid) {
+    const panel = entity_panels[xuid];
+    if (valid(panel)) {
+        // the row gets its own look back
+        const row = panel.specter_row;
+        if (valid(row)) {
+            try {
+                row.style.backgroundColor = null;
+                row.style.border = null;
+                row.style.borderLeft = null;
+            } catch (_) {}
+        }
+        panel.DeleteAsync(0);
+    }
+    delete entity_panels[xuid];
+};
+const destroy_panels = function() {
+    Object.keys(entity_panels).forEach(destroy_panel);
+};
+const scoreboard = function() {
+    const context = $.GetContextPanel();
+    if (!valid(context)) return null;
+    const ids = ["ScoreboardContainer", "id-eom-scoreboard-container"];
+    for (let i = 0; i < ids.length; i++) {
+        const container = context.FindChildTraverse(ids[i]);
+        const board = valid(container) && container.FindChildTraverse("Scoreboard");
+        if (valid(board)) return board;
+    }
+    const board = context.FindChildTraverse("Scoreboard");
+    return valid(board) ? board : null;
+};
+// every panel under `panel` (depth 7 at most), parents first
+const walk = function(panel, depth, visit) {
+    if (!valid(panel) || depth > 7) return;
+    visit(panel);
+    const kids = typeof panel.Children === "function" ? (panel.Children() || []) : [];
+    for (let i = 0; i < kids.length; i++) walk(kids[i], depth + 1, visit);
+};
+// the first row of the scoreboard as text (id, type, classes of every panel): what the "Dump scoreboard row" button prints
+const dump = function() {
+    const board = scoreboard();
+    if (!valid(board)) return "no scoreboard (open it first)";
+    const rows = board.FindChildrenWithClassTraverse("sb-row") || [];
+    if (rows.length === 0) return "no rows";
+    const lines = [];
+    walk(rows[0], 0, function(panel) {
+        let depth = 0;
+        for (let p = panel; valid(p) && p !== rows[0] && depth < 12; p = p.GetParent()) depth++;
+        let stat = "";
+        try { stat = String(panel.GetAttributeString("data-stat", "")); } catch (_) {}
+        lines.push("  ".repeat(depth) + String(panel.id || "-") + " <" + String(panel.paneltype || "?") + ">" + (stat ? " data-stat=" + stat : ""));
+    });
+    return lines.join("\n");
+};
+const player_xuid = function(index) {
+    try {
+        const value = String(GameStateAPI.GetPlayerXuidStringFromEntIndex(index) || "");
+        return /^\d{17}$/.test(value) ? value : null;
+    } catch (_) { return null; }
+};
+// a Specter user's row (owners, Oct 21 2026): the row itself gets a tinted background, a thin border and a bright stripe on its left
+// (green for the gamesense lua, lilac for this one); a small badge "SPECTER GS / PRIM" + the moon sits right before the money column,
+// where the row has room. The other rows are not touched
+const LOOKS = {
+    gs: { tag: "SPECTER GS", text: "#bff0b8", from: "#2f4a34", to: "#232b25", border: "#46963f", stripe: "#8ce182" },
+    pm: { tag: "SPECTER PRIM", text: "#cdc0ff", from: "#3c3659", to: "#26242f", border: "#6e5ab8", stripe: "#bea6ff" },
+};
+const money_cell = function(row) {
+    const cells = row.Children() || [];
+    for (let i = 0; i < cells.length; i++) {
+        if (valid(cells[i]) && ["money", "cash"].indexOf(String(cells[i].GetAttributeString("data-stat", ""))) >= 0) return cells[i];
+    }
+    return null;
+};
+const get_panel = function(xuid, kind) {
+    const board = scoreboard();
+    if (!valid(board)) return null;
+    const rows = board.FindChildrenWithClassTraverse("sb-row") || [];
+    let row = null;
+    for (let i = 0; i < rows.length; i++) {
+        if (valid(rows[i]) && String(rows[i].GetAttributeString("xuid", "") || rows[i].m_xuid || "") === xuid) {
+            row = rows[i];
+            break;
+        }
+    }
+    if (!valid(row)) return null;
+    const current = entity_panels[xuid];
+    if (valid(current) && current.specter_row === row && current.specter_kind === kind) return current;
+    destroy_panel(xuid);
+    const look = LOOKS[kind] || LOOKS.pm;
+    try {
+        row.style.backgroundColor = "gradient(linear, 0% 0%, 100% 0%, from(" + look.from + "), to(" + look.to + "))";
+        row.style.border = "1px solid " + look.border;
+        row.style.borderLeft = "2px solid " + look.stripe;
+    } catch (_) {}
+    const money = money_cell(row);
+    const panel = $.CreatePanel("Panel", row, "specter-presence-" + xuid);
+    panel.specter_row = row;
+    panel.specter_kind = kind;
+    panel.style.flowChildren = "right";
+    panel.style.width = "fit-children";
+    panel.style.height = "100%";
+    panel.style.verticalAlign = "center";
+    panel.style.marginRight = "6px";
+    if (money != null) {
+        try { row.MoveChildBefore(panel, money); } catch (_) {}
+    } else {
+        panel.visible = false;   // no money cell found: only the row look (Home > "Dump scoreboard row" prints the cells)
+    }
+    const tag = $.CreatePanel("Label", panel, "specter-tag");
+    tag.text = look.tag;
+    tag.style.color = look.text;
+    tag.style.fontSize = "10px";
+    tag.style.fontWeight = "bold";
+    tag.style.letterSpacing = "1px";
+    tag.style.verticalAlign = "center";
+    const image = $.CreatePanel("Image", panel, "specter-image");
+    image.style.width = "17px";
+    image.style.height = "17px";
+    image.style.marginLeft = "5px";
+    image.style.verticalAlign = "center";
+    const fallback = $.CreatePanel("Label", panel, "specter-fallback");
+    fallback.text = "S";
+    fallback.style.color = look.stripe;
+    fallback.style.fontSize = "14px";
+    fallback.style.marginLeft = "5px";
+    fallback.style.verticalAlign = "center";
+    entity_panels[xuid] = panel;
+    return panel;
+};
+const apply_data = function() {
+    Object.keys(entity_data).forEach(function(key) {
+        const data = entity_data[key];
+        const xuid = player_xuid(parseInt(key, 10));
+        if (xuid == null) {
+            if (data.xuid) destroy_panel(data.xuid);
+            return;
+        }
+        if (data.xuid && data.xuid !== xuid) {
+            destroy_panel(data.xuid);
+            delete entity_data[key];
+            return;
+        }
+        const panel = get_panel(xuid, data.kind);
+        if (!valid(panel)) return;
+        const image = panel.FindChild("specter-image");
+        const fallback = panel.FindChild("specter-fallback");
+        if (!valid(image) || !valid(fallback)) return;
+        image.visible = data.ready;
+        fallback.visible = !data.ready;
+        if (data.ready && image.specter_path !== data.path) {
+            image.SetImage(data.path);
+            image.specter_path = data.path;
+        }
+    });
+};
+const update = function(index, path, ready, expected_xuid, kind) {
+    if (!index || index < 1 || index > 64) return false;
+    entity_data[index] = { path: path, ready: ready === true, xuid: expected_xuid || player_xuid(index), kind: kind === "gs" ? "gs" : "pm" };
+    apply_data();
+    return true;
+};
+const clear = function() { entity_data = {}; destroy_panels(); };
+const destroy = function() {
+    clear();
+    Object.keys(event_callbacks).forEach(function(event) {
+        $.UnregisterForUnhandledEvent(event, event_callbacks[event]);
+        delete event_callbacks[event];
+    });
+};
+const create = function() {
+    Object.keys(event_callbacks).forEach(function(event) {
+        $.UnregisterForUnhandledEvent(event, event_callbacks[event]);
+    });
+    event_callbacks = {};
+    ["OnOpenScoreboard", "Scoreboard_UpdateEverything", "Scoreboard_UpdateJob"].forEach(function(event) {
+        event_callbacks[event] = $.RegisterForUnhandledEvent(event, apply_data);
+    });
+    apply_data();
+};
+return { create: create, destroy: destroy, clear: clear, update: update,
+    destroy_panel: destroy_panels, apply: apply_data, dump: dump };
 ]], "CSGOHud")()
-
-xor_encrypt = function(data, key)
-    local result = {}
-    
-    local key_length = #key
-    local data_length = #data
-
-    for i = 1, data_length do
-        local data_byte = string.byte(data, i)
-        local xor_result = data_byte
-
-        for round = 1, 3 do
-            local key_byte = string.byte(key, (i + round - 1) % key_length + 1)
-            xor_result = bit.bxor(xor_result, key_byte)
-        end
-        table.insert(result, string.char(xor_result))
-    end
-    return table.concat(result)
-end
-
-generate_key = function(length)
-    local key = {}
-
-    math.randomseed(globals.tick_count())
-    for i = 1, length do
-        key[i] = string.char(math.random(0, 255))
-    end
-
-    local stretched_key = table.concat(key)
-    for i = 1, 1000 do
-        stretched_key = xor_encrypt(stretched_key, stretched_key)
-    end
-    return stretched_key
-end
-
-encode = function(text)
-    local key = generate_key(16)
-    local salt = generate_key(8)
-    local iv = generate_key(8)
-
-    local base64_text = libs.base64.encode(text)
-    local xor_result = xor_encrypt(base64_text, salt)
-
-    local final_data = iv .. salt .. xor_result
-    return libs.base64.encode(final_data)
-end
-
-decode = function(text)
-    local decoded_text = libs.base64.decode(text)
-
-    local iv = decoded_text:sub(1, 8)
-    local salt = decoded_text:sub(9, 16)
-    local xor_encrypted = decoded_text:sub(17)
-
-    local decoded_base64 = xor_encrypt(xor_encrypted, salt)
-    return libs.base64.decode(decoded_base64)
-end
 
 --- @endregion
 
@@ -612,12 +706,6 @@ end
 
 --- @endregion
 
--- offline: no Specter server, the cloud / sync sockets send nothing and receive nothing
-local offline_client = {
-    send = function(data) end,
-    receive = function(buffer_size) return nil end
-}
-local app_client = offline_client
 
 --- @info: authentication
 --- @region: main cloud
@@ -784,14 +872,14 @@ local on_predict = {}
 local player_pose = {}
 local shared_data = {}
 local presence = { server = "https://specter-license-mh111-production.up.railway.app", next = 0, shown = {}, announced = {},
-                   icon = "file://{images}/icons/specter_moon.png",
-                   version = info.plan }
+                   version = info.plan, epoch = 0, sequence = 0, failures = 0,
+                   icon_ready = false, icon_next = 0, last_success = nil }
 local animlayer_average_t = {}
 local cnl_material = {}
 local animlayer_rec_t = {}
 
 local configs = { dir = "specter/", default_dir = "specter/default.cfg", default_config = "" }
-local clantag = { " ", " ", " ", "s ", "sp ", "sp| ", "spe ", "spe| ", "spec ", "spec| ", "spect ", "spect| ", "specte ", "specte| ", "specter ", "specter| ", "$pecter ", "5pect3r ", "specter ", "specter ", "specter ", "specter ", "specter ", "retceps ", "specter ", "specter ", "retceps ", "specter ", "specter| ", "specte| ", "specte ", "spect| ", "spect ", "spec| ", "spec ", "spe| ", "spe ", "sp| ", "sp ", "s| ", "s ", "| ", " ", " ", " " }
+local clantag = { " ", " ", " ", "s ", "sp ", "sp| ", "spe ", "spe| ", "spec ", "spec| ", "spect ", "spect| ", "specte ", "specte| ", "specter.prim ", "specter.prim| ", "$pecter.prim ", "5pect3r.pr1m ", "specter.prim ", "specter.prim ", "specter.prim ", "specter.prim ", "specter.prim ", "mirp.retceps ", "specter.prim ", "specter.prim ", "mirp.retceps ", "specter.prim ", "specter.prim| ", "specte| ", "specte ", "spect| ", "spect ", "spec| ", "spec ", "spe| ", "spe ", "sp| ", "sp ", "s| ", "s ", "| ", " ", " ", " " }
 
 local phrases_new = { "Out of your league, out of your life. Stay down. Courtesy of Specter — where losers get left behind.", "Another bot bites the dust. Get a grip, get a brain, or get Specter. Your choice.", "That was your best? Pathetic. I’m powered by Specter — you’re powered by tears.", "Skill issue detected. Patch it with Specter or uninstall, clown.", "Was that supposed to be a challenge? Script runs clean, you run scared. Powered by Specter, humbled by me.", "You blinked, you died. Maybe Specter can teach you how not to suck.", "Same result, different round. You die, I win. Specter stays undefeated.", "Oh, you're trying? Cute. Next time, try Specter — it might save you a little embarrassment.", "Out-aimed, out-brained, and out of excuses. Specter stays winning, you stay losing.", "Clapped, collapsed, and deleted. If you’re gonna keep showing up, bring Specter — or bring a therapist.", "Got folded like a lawn chair. Specter stays active while you stay irrelevant.", "Run it back if you want, but I’ll still be here — Specter loaded, and your dignity unloaded.", "Another round, another L for you. Specter does the work, I just collect your tears.", "Pack it up, kid. Specter on, you off.", "You thought you had a chance? Nah. Powered by Specter, fueled by your misery.", "You’re a spectator now. Get used to it. Specter stays running while you stay dead.", "Don’t be mad at me — be mad at your skills. Specter stays sharp, you stay dull.", "Zero kills, zero chance, zero hope. Specter gives me everything you don’t have.", "Outclassed, outmatched, and outdated. Upgrade your life or just get Specter.", "Tried to be a hero, ended up a statistic. Specter runs clean, your gameplay runs tragic.", "Put down the controller and pick up Specter — maybe then you’ll last more than 5 seconds.", "I’m built different, and so is Specter. Meanwhile, you’re built like an NPC.", "Oh, you’re mad? Blame Specter — they made it too easy for me.", "Stay mad, stay bad, stay last. Specter keeps me first every time.", "You’re just another body for the highlight reel. Thanks to Specter, I never miss a shot.", "Lag? Excuses? Cope harder. Specter doesn't lag — it just wins.", "Your respawn timer is longer than your highlight reel. Specter moves fast — you don’t.", "Back to the lobby where you belong. Brought to you by Specter — the only name that matters.", "They said 'get good,' so I got Specter. What’s your excuse?", "Don’t hate the player, hate Specter for making me unstoppable.", "Back to the lobby, bot. Specter doesn’t babysit losers.", "You’re not even worth the bullet. Specter runs the show, you’re just background noise.", "How's the view from rock bottom? Specter stays at the top.", "You could have 1000 hours in this game and still be free kills. Specter makes sure of it.", "I’m not even sweating, and you’re already drowning. Specter keeps me dry, unlike you.", "You’re a walking XP drop. Specter cashes in while you cash out.", "Don’t blame lag — blame your lack of talent. Specter stays smooth, you stay choppy.", "Skill issue? Nah, this is a LIFE issue. Specter can’t fix that.", "You’re a human highlight reel — and I’m the star. Specter stays recording your failures.", "Imagine trying your hardest just to get styled on by Specter.", "Another death, another disappointment. Specter keeps the streak alive, you don’t.", "How’s it feel to be THIS bad? Specter doesn’t know, we don’t lose.", "This isn’t a match, it’s a massacre. Specter stays sharp, you stay clueless.", "You were a warm-up. Specter stays ready, you stay irrelevant.", "Next time, bring a friend — or a guide. Specter won’t hold your hand.", "You’re the kind of player people hope to get on the other team. Specter stays on the winning side.", "Your whole squad is getting farmed like NPCs. Specter stays the main character.", "The kill cam is the only screen time you’ll ever get. Specter stays in control of the show.", "At this point, I’m farming you for sport. Specter stays on point, you stay on respawn.", "If I wanted easy mode, I’d play PvE — but you’re just as brainless. Specter on top, you on the ground.", "Congratulations, you’re now part of my montage. Specter records every L you take.", "I bet you practice, huh? Yikes. Specter doesn’t need practice — just results.", "You’re not a player, you’re an extra. Specter makes me the main event.", "Uninstall. It’s not a suggestion, it’s a demand. Specter stays installed, you don’t.", "The only thing you’re carrying is regret. Specter carries me to every W.", "No skill, no aim, no hope. Specter gives me all three — you get none.", "That scoreboard doesn’t lie. Specter never loses, you never win.", "Don’t act surprised. You knew you’d lose the moment Specter loaded up.", "You’re so bad, I’m surprised you haven’t rage-quit yet. Specter never quits.", "Keep coping. I’ll keep collecting wins. Specter makes sure of that.", "You’ve got two options: Get better or get Specter. Spoiler alert — you’ll still lose.", "Dead again? Must be muscle memory by now. Specter stays fresh, you stay frozen.", "Your mom called. She said to stop embarrassing the family. Specter doesn’t disappoint.", "That was cute. Want a participation trophy? Specter only hands out gold medals.", "Your whole squad’s K/D is negative, and it’s MY fault. Specter stays positive.", "I hope you weren’t recording that. Specter doesn’t support clown content.", "This isn’t personal — it’s just business. Specter makes it look easy.", "Was that your final form? Pathetic. Specter is always evolving.", "Out of lives, out of excuses, out of time. Specter stays ahead of the clock.", "Why even queue if you’re just gonna be free kills? Specter stays charging rent in your head.", "New round, same result: YOU LOSE. Specter never reruns an L.", "If you’re looking for a tutorial, you’re in one. Specter teaches by example.", "You’re down bad, and I’m just getting started. Specter is never down, only up.", "Another day, another dollar. Thanks for being part of the grind. Specter gets paid in wins.", "Next time, buy a better connection AND some skill. Specter never lags, unlike you.", "I’ve seen bots with better reflexes. Specter stays human, you stay helpless.", "You can only run for so long. Specter sees everything — and so do I.", "You brought a knife to a gunfight. Specter brought a tank.", "Back to the lobby with you. Specter stays on the battlefield.", "Keep talking, I’ll keep stacking wins. Specter doesn’t talk — it performs.", "Watch the replay. Maybe you’ll learn something — like how not to be trash. Specter stays clean.", "This death cam is sponsored by Specter — the only thing sharper than my aim.", "You died so fast, I barely noticed. Specter noticed, though.", "Another highlight clip. Thanks for being part of the content. Specter stays viral.", "You’re not the main event — you’re the warm-up act. Specter stays headliner.", "Oh, you thought you had me? That’s hilarious. Specter makes sure I stay untouchable.", "That wasn’t close. It wasn’t even fair. Specter doesn’t do 'fair' — just wins.", "Look at you, blaming lag. Meanwhile, Specter stays on a 0ms mindset.", "You could watch the killcam 100 times, and it still wouldn’t make sense to you. Specter doesn’t make sense to losers.", "You’re not unlucky, you’re just bad. Specter doesn’t believe in luck — only skill.", "I don’t need luck, I have Specter. You need a miracle.", "It's not my fault you loaded in with negative IQ. Specter didn’t write you a tutorial.", "Uninstall, kid. Save us all some time. Specter doesn’t waste time.", "I’m not even trying, and you’re still crying. Specter stays on full power.", "That scoreboard ain’t broken, it’s just allergic to your name. Specter stays at the top.", "You’re a stat, not a threat. Specter keeps my stats clean, yours are dirty.", "They told me to 'touch grass' — I told them to touch Specter. We both won.", "Get a better script, bot. Specter is miles ahead of whatever you’re running.", "This isn’t practice mode, but I’m treating it like one. Specter stays on ranked time.", "You’re not competition. You’re content. Specter makes sure of that.", "Game over? Nah, it never started for you. Specter stays live, you stay dead.", "Did you even load in, or was that just a decoy? Specter stays loaded.", "Your gameplay should be studied as a 'what not to do' guide. Specter stays exemplary.", "You vs. me is like a pencil vs. a shredder. Specter stays sharp, you stay broken.", "If this was a horror movie, you’d be the first to die. Specter stays the final boss.", "I’d be mad too if Specter did me like that.", "You’re like a broken clock — wrong every second of the day. Specter stays on time.", "I should be charging rent for how much space I’m taking up in your head. Specter stays rent-free.", "The only thing lower than your KD is your self-esteem. Specter stays boosting both.", "The definition of insanity is doing the same thing and expecting different results. Specter stays consistent.", "They gave you every chance, and you still folded. Specter stays standing tall.", "You're a walking 'before' photo. Specter stays the 'after.'", "That aim? Certified pre-owned. Specter stays factory new.", "They told me to 'touch grass,' but I’m too busy touching greatness. Specter stays legendary.", "I don’t need to see you to beat you. Specter sees all.", "Your stats read like a comedy special. Specter stays serious.", "The only streak you’ve got is your respawn timer. Specter stays streaking wins.", "Don’t worry, you’ll get a win someday — just not here. Specter stays undefeated.", "You’re the reason they invented bot lobbies. Specter stays in the winner’s circle.", "The only thing scarier than me? Me with Specter.",  "You’re not bad at the game, you’re bad at life. Specter can’t save you from that.", "New match, same result — you lose, I win. Specter stays undefeated.", "You're like DLC nobody asked for. Specter stays in the main story.", "I’d say ‘GG,’ but nothing was good about it. Specter stays good — you stay garbage.", "Keep respawning, I’m farming kills. Specter stays farming W’s.", "Don’t just uninstall the game, uninstall your pride. Specter stays active, you stay AFK.", "It’s not a skill gap — it’s a life gap. Specter bridges it, but you’re too far gone.", "They should name a lobby after you — you spend so much time in it. Specter stays in the game.", "I’m the protagonist. You’re just background noise. Specter stays center stage.", "Delete your clips. Specter stays immortalized, while your highlights stay nonexistent.", "You died so fast, I thought you were a speedrun category. Specter stays world record.", "That was so easy I’m filing it as 'community service.' Specter stays charitable.", "I’d roast you, but Specter already did the cooking.", "They called it 'Easy Mode,' but that’s just you. Specter stays on Hard Mode.", "This isn’t a duel — it’s a public execution. Specter as the judge, jury, and executioner.", "They said to 'adapt or die.' You chose the latter. Specter stays alive.", "I’ve seen better aim from stormtroopers. Specter never misses.", "They should add a 'skip tutorial' button for you. Specter skips tutorials — you’re still stuck in one.", "I hope you’re screenshotting these deaths — it’s the most action you’ll ever get. Specter stays photogenic.", "Welcome to the lobby. Population: You. Specter stays in the game.", "If embarrassment was a currency, you’d be rich. Specter stays wealthy in wins.", "They said 'get good,' and I did. Specter stays great — you stay mid.", "Your skills are like a 404 error — not found. Specter stays online.", "You must love the loading screen — you’re always in it. Specter stays in the action.", "You thought you ate? Nah, you’re starving. Specter stays fed.", "I could 360 no-scope with my monitor off and still win. Specter stays locked in.", "At this point, I’m legally obligated to call this a 'public service.' Specter stays charitable.", "I’m not even trying. Specter tries harder than you ever could.", "The scoreboard doesn’t lie — but you might want to. Specter stays honest.", "You could have aimbot and still miss. Specter stays on target.", "I’m not playing against you — I’m playing *with* you. Specter stays serious, you stay silly.", "Thanks for playing. I needed some target practice. Specter stays precise.", "I hope you’re taking notes. Specter just wrote the lesson for you.", "Who’s the real winner here? Me. Powered by Specter.", "You're like a Wi-Fi signal — weak and easy to disconnect. Specter stays full bars.", "You died so fast, I thought it was a cutscene. Specter stays interactive.", "Don't blame the lag — blame your life choices. Specter stays smooth.", "Your aim is like a broken compass — lost. Specter stays on point.", "You're not a player, you're an NPC. Specter stays main character.", "My aim's so clean, you might as well be wearing a bullseye. Specter stays sharp.", "Every round is a new chance to disappoint yourself. Specter stays consistent.", "They should add you as a difficulty mode — 'Too Easy.' Specter stays on Expert.", "Your reaction time is slower than patch notes. Specter stays ahead of the meta.", "You must be sponsored by L, because that’s all you collect. Specter stays collecting wins.", "Don’t hate the player, hate the skill gap. Specter stays on top of the leaderboard.", "You vs. me is like practice mode vs. final boss. Specter stays unbeatable.", "RIP to your dignity. Specter stays alive and well.", "Don't worry, I'm sure the next round will be *different*... just kidding. Specter stays consistent.", "I’ve seen bots with more personality than you. Specter stays human, you stay robotic.", "Every respawn is just another L. Specter stays undefeated.", "They said, 'Don’t play with your food.' I didn’t listen. Specter stays feasting.", "You're like free DLC — nobody asked for you. Specter stays premium content.", "It’s not personal, I just don’t respect you. Specter stays respected.", "You should main spectator mode — it’s the only role you’re good at. Specter stays active.", "You don’t lose because of bad luck, you lose because of bad skill. Specter stays skillful.", "Even your shadows are afraid of me. Specter stays fearless.", "Stop blaming your team. You’re the problem. Specter stays problem-free.", "You could have Wi-Fi from NASA and still lag behind. Specter stays fast.", "This isn’t a fight — it’s a lesson. Specter stays the teacher.", "You're a limited-time event — here for a second, gone in an instant. Specter stays timeless.", "I could go AFK and still win. Specter stays present.", "Don’t feel bad — some people are born losers. Specter stays winning.", "I hope you saved that death replay — it’s the highlight of your career. Specter stays legendary.", "You’re about as useful as a controller with no buttons. Specter stays in control.", "I’ve met speed bumps with more resistance than you. Specter stays unstoppable.", "They should pay me for babysitting you. Specter stays grown.", "You're like a tutorial enemy — scripted and predictable. Specter stays unpredictable.", "If gaming had a report card, you'd have straight F's. Specter stays on Honor Roll.", "You’ve unlocked a new achievement: 'Biggest Disappointment.' Specter stays overachieving.", "No need to 'Get Good' — you need to 'Get Gone.' Specter stays put.", "I hope you like the loading screen — you’ll be seeing it a lot. Specter stays in the match.", "I thought this was PvP, but it feels more like PvE. Specter stays a raid boss.", "Your only strategy is to exist, and you’re failing that too. Specter stays thriving.", "I’m not sweating, you’re just drowning. Specter stays dry.", "They said, 'Put up a fight,' but you just put up excuses. Specter stays fighting.", "I should start charging for these lessons. Specter stays a free education.", "They’ll write stories about this defeat. Specter stays the author.", "I would say you’re learning, but that would be a lie. Specter stays on top of the class.", "You’re playing checkers in a chess game. Specter stays checkmate.", "Your only W is in 'Why am I so bad?' Specter stays questioning nothing.", "The only thing carrying you is gravity. Specter stays airborne.", "Don't cry, it's just a game — a game you’re terrible at. Specter stays top-tier.", "Your KD is a horror story. Specter stays a thriller.", "At this rate, you’ll be in next season’s blooper reel. Specter stays on highlight reels.", "They called me 'Overpowered' — I call it 'Overprepared.' Specter stays ready.", "I’m not in your lobby — you’re in my world. Specter stays in control.",  "Another death on your resume. Specter keeps me employed.", "Was that your best? Specter wouldn't even sweat that.", "You’re like a tutorial mission — easy and forgettable. Specter makes sure I shine.", "Try hard, cry harder. Specter doesn’t make excuses, only results.", "I didn’t even break a sweat. Specter stays flawless, you stay lost.", "One shot, one kill. Specter never misses, unlike you.", "You think you’re the main character? Specter makes me the hero.", "Get clapped, get clowned. Specter keeps me undefeated.", "I play like a god. Specter powers me to perfection. You? You're still learning.", "You’ve got the right idea — it’s just the wrong game. Specter plays to win, you play to lose.", "You thought you could beat me? Specter runs circles around you.", "Next time, maybe take a break. Specter stays active, you stay dead.", "Get a better connection — and a better chance. Specter doesn’t lag, it leads.", "The kill cam doesn’t lie. Specter made sure of that.", "You weren’t even a challenge, you were just a free kill. Specter stays on top.", "That was cute. But Specter makes me untouchable.", "You’re just another bot in my highlight reel. Specter makes me famous.", "Next time, bring some skill. Specter only works with winners.", "You got deleted faster than your excuses. Specter keeps me winning.", "Every shot I take is a free ticket to the lobby. Specter writes my victories.", "Call it a massacre, not a match. Specter makes me a monster.", "You got wiped faster than your self-esteem. Specter stays undefeated.", "That was cute, but Specter makes me a nightmare.", "Your aim is as bad as your excuses. Specter doesn't miss.", "You thought you had a shot? Specter proves you didn’t.", "Keep crying, I’ll keep winning. Specter has me locked in.", "Outplayed, outclassed, out of your league. Specter keeps me at the top.", "I’m over here collecting dubs, while you're still stuck in respawn. Specter shows you how it's done.", "My aim's sharper, my moves smoother, and Specter makes me unstoppable.", "You got carried — straight to the lobby. Specter does the work for me.", "That was a freebie. Specter makes sure I never miss.", "You were too busy complaining to play. Specter never complains — it just wins.", "Imagine playing for fun and still losing. Specter makes sure I win every time.", "Another round, another L for you. Specter does the hard part, I just collect the kills.", "You really thought you were a challenge? Specter just made it easy.", "No skill, no hope, no chance. Specter guarantees the win.", "You're like a speed bump. Specter just rolls over you.", "I’m just here for the free kills. Specter makes them come easy.", "Every time you respawn, I’m already winning. Specter has me ahead of you.", "You were trying to win? Specter already wrote the script, you’re just a background character.", "You’re a walking target, and Specter is my sniper.", "I’m on fire, and you’re still trying to find the match. Specter keeps me burning.",  "Another kill, another tear. Specter makes me a monster, you just make excuses.", "You thought you had a chance? Specter makes sure I never miss.", "You’re a bot in my highlight reel. Specter keeps me on top.", "I’m just built different, and Specter helps me stay that way.", "Did you even see me coming? Specter saw everything and still made it look easy.", "Your K/D is falling faster than your hopes. Specter keeps mine rising.", "Outclassed, outgunned, and out of time. Specter makes sure I win every time.", "You’re too slow, too weak, too bad. Specter keeps me in the fast lane.", "Tried to be a hero, but you’re just a footnote. Specter makes me legendary.", "Back to the lobby with you, bot. Specter makes me a god, you’re just a mortal.", "You should’ve quit after the first round. Specter makes me untouchable.", "You’re not even worth the kill. Specter makes me precise, you’re just cannon fodder.", "If you want to win, get Specter. Otherwise, enjoy your L.", "How’s the respawn timer treating you? Specter doesn’t need a second chance.", "Every time I kill you, it’s like a public service. Specter keeps me efficient.", "Stop crying and start aiming. Specter already gave me the power to win.", "Your whole team is a joke. Specter is the punchline.", "You can’t run, you can’t hide. Specter sees everything, including your inevitable loss.", "I don’t need luck, I have Specter. You just have excuses.", "That wasn’t a fight, it was a massacre. Specter makes sure of it.", "You’ve been dead longer than you’ve been alive in this game. Specter never dies.",  "Outplayed, outsmarted, and outclassed. Specter keeps me on top.", "Your skills are as weak as your excuses. Specter gives me the power to dominate.", "Another death, another reminder that Specter doesn't lose.", "You tried, but Specter made sure I didn’t break a sweat.", "Clueless, hopeless, and helpless. Specter keeps me sharp while you stay stuck.", "Another easy kill for Specter. You should’ve stayed in spawn.", "You just got outplayed by someone who’s powered by Specter. Better luck next time.", "Keep trying, keep failing. Specter is too fast for you.", "You’re just a pawn in my game. Specter makes me the king.", "I don’t lose, I just let you respawn. Specter ensures I stay undefeated.", "That wasn’t close. Specter makes every shot count, unlike you.", "Your skill gap is bigger than the map. Specter bridges the gap.", "If you're trying, I'm sorry, you’re too slow. Specter keeps me ahead.", "Another round, another L. Specter is the reason you keep losing.", "Keep blaming the game, I’ll keep winning. Specter doesn’t make excuses.", "That was almost cute. Almost. Specter makes sure I never miss.", "Nice try, but Specter already gave me the edge.", "Is this your best? Specter makes sure mine is unbeatable.", "I’m not just good, I’m powered by Specter. You’re just a free kill.", "Your attempts at a comeback are laughable. Specter doesn’t let me lose.", "You’re too slow to even react. Specter keeps me ahead of your every move.", }
 -- "Roast" (owners, Oct 2026: killsays "ami megérinti az embereket", one list with the Discord lines in it, no separate sponsor
@@ -862,11 +950,11 @@ local phrases_roast = {
 local phrases_old = { "l2p botik", "smellin your mommas perfume", "refund spirtware", "1", "kys poor freak", "ez nigga", "u sell that hs?", "renew poor cantina subscription", "ur mom adored my black cum", "the only thing lower than your k/d ratio is your i.q.", "your aim is so poor that people held a fundraiser for it", "better buy pc, stop playing at school library", "the only thing more unreliable than you is the condom your dad used.", "calling you a retard is a compliment in comparison to how stupid you actually are.", "i didnt know dying was a special ability.", "if i jumped from your ego to your intelligence, id die of starvation half-way down.", "studies show that aiming gives you better chances of hitting your target.", "you should let your chair play, at least it knows how to support.", "there are about 37 trillion cells working together in your body right now, and you are disappointing every single one of them.", "i'd call you a tool, but that would imply you were useful in at least one way.", "youre the human equivalent of a participation award.", "i'd love to see things from your perspective, but i dont think i could shove my head that far up my ass.", "i'm not trash talking, im talking to trash", "legend has it that the number 0 was first invented after scientists calculated your chance of doing something useful.", "you're the type of player to get 3rd place in a 1v1 match", "i'm not saying i hate you, but i would unplug your life support to charge my phone.", "you're an inspiration for birth control.", "does your ass ever get jealous of the amount of shit that comes out of your mouth", "you should turn the game off. just walk outside and find the nearest tree, then apologise to it for wasting so much oxygen.", "i'd tell you to shoot yourself, but i bet youd miss", "did you know sharks only kill 5 people each year? looks like you got some competition", "some babies were dropped on their heads but you were clearly thrown at a wall", "to which foundation do i need to donate to help you?", "i'm sure your bodypillow is very proud of you.", "two wrongs dont make a right, take your parents as an example.", "i bet the last time u felt a breast was in a kfc bucket", "maybe god made you a bit too special.", "i bet your brain feels as good as new, seeing that you never use it.", "it must be difficult for you, exhausting your entire vocabulary in one sentence.", "you have some big balls on you. too bad they belong to the guy fucking you from behind.", "if only you could hit an enemy as much as your dad hits you.", "i'm surprised that you were able hit the install button", "some people get paid to suck, you do it for free.", "i would ask you how old you are but i know you can't count that high.", "i'm okay with this team. i work in the city as a garbage collector. i'm used to carrying trash.", "you're as dense as a brick, but honestly a less useful one.", "i'd call you cancer, but at least cancer gets kills", "who set the bots to passive?", "you're the reason abortion was legalized", "i'd tell you to shoot yourself, but i bet your miss", "my knife is well-worn, just like your mother.", "get the bomb, at least you will carry something this game.", "options -&gt; how to play", "my dead dad has better aim than you, it only took him one bullet", "internet explorer is faster than your reactions.", "i'm surprised you've got the brain power to keep your heart beating", "you're about as useful as pedals on a wheelchair.", "you define autism", "the only thing you carry is an extra chromosome.", "you don't deserve to play this game. go back to playing with crayons and shitting yourself", "yo mama so fat when she plays overpass, you can shoot her on mirage.", "the only thing you can throw are rounds.", "i'm not trash talking, i'm talking to trash.", "if you were a csgo match, your mother would have a 7day cooldown all the time, because she kept abandoning you.", "choose your excuse: 1.lags | 2.new mouse | 3.low fps | 4.low team | 5.hacker | 6.lucker | 7.smurf | 8.hitbox | 9.tickrate", "your family tree must be a circle.", "everyone who loves you is wrong.", "listen here you little fucker, when i was your age, pluto was a planet!", "if cs:go is too hard for you maybe consider a game that requires less skill, like idk.... solitaire?", "oops, i must have chosen easy bots by accident...", "i thought i put bots on hard, why are they on easy?", "is your monitor on?", "don't be a loser, buy a rope and hang yourself.", "if i were to commit suicide, i would jump from your ego to your elo.", "do you feel special? please try suicide again... hopefully you will be successful this time.", "sell your computer and buy a wii.", "idk if u know but it's mouse1 to shoot.", "how did you change your difficulty settings? my cs:go is stuck on easy", "you are the reason why people say the csgo community sucks.", "neverlose.cc - just the best", "neverlose.cc - better than luck", "neverlose.cc - dont be owned anymore", "neverlose.cc - die or buy", "js by rezolver", "how much did you tag that wall for??", "this server is vac secured, no aimware users here. buy skeet.cc", "your brett got delivered by skeet.cc", "i don't cheat, i am just smurfing with skeet.cc", "i can hear you chrouching, you think i hack? you are good damn right son i use skeet.cc", "server cvar 'sv_rekt' changed to 1.", "you think you can kill me? you are funny. not without skeet.cc dude", "skeet &gt; all refund your copy paste trash.", "skeet.cc owns me and all", "you guys buy accounts on ebay?? go buy them on skeet.cc it's much cheaper", "you have the reaction time of a dead puppy. buy skeet.cc to improve.", "without skeet.cc the only thing you carry is an extra chromosome.", "if i wanted to suicide, i'd jump from your ego to your elo, just get good and buy skeet.cc", "is that a decoy, or are you trying to shoot somebody?", "don't cry and say i'll get banned, it's just annoying. i wont get banned anyways with skeet.cc.", "nice $4750 decoy you just bought. buy skeet.cc to finally hit your shots.", "even noah can't carry these animals without skeet.cc.", "skeet.cc - best features without lack of security.", "1 dog", "1 nn", "1.", "ez?", "ez", "is it a joke?", "the only thing lower than your k/d ratio is your penis size.", "why you miss? im not your girlfriend.", "your mother would have done better to swallow you.", "you are so ugly that they put a dark glass on the incubator when you were born.", "when god gave out intelligence, were you in the toilet?", "if your iq was two iq's higher, you could be a french fry.", "as soon as possible, ask for a refund for your hack.", "why are you here? the gay bar is two blocks away.", "who put bots in this match?", "many people suck for money, why do you do it for free?", "you're the type of player to get 3rd place in a 1v1 match.", "my k/d ratio higher than your iq.", "you're like the staircase: dark and confined.", "why did you accept the match, you knew you sucked.", "stop using ezfrags, buy normal cheat.", "buy a better hack with your mother's onlyfans money.", "i don't understand why you're crying, it's only 24cm.", "you're like a condom, you're fucked.", "did you really sold your anal virginity for that cheat?", "you're the reason abortion was legalized.", "better buy pc, stop playing at school library.", "some babies were dropped on their heads but you were clearly thrown at a wall.", "i'll be honest, you're retarded!", "i'm not lying, it was too easy to kill you.", "you're like a ball, i could kick you.", "+1", "your cheat is not the problem, but that you were born.", "when i fucked your sister, i heard your father masturbating in the closet.", "boooooooooom, u died.", "my k/d ratio higher your kills.", "who asked what u wannt? you died.", "did you pay for this cheat? it was a pity...", "i see you use aa. how about using your brain?", "sheeeeesh, i am better than you.", "if you had as much iq as you've died, maybe you wouldn't drool.", "i see you like watching killcam because you always die.", "you're dead, time to get up from the computer and get a girlfriend.", "when i fucked your mother i didn't know what i did. after 9 month..... u born.", "unplug the power cable from your computer. pee in it, the same thing will happen as now. you will die.", "have you ever tried being normal?", "are you that stupid, or is someone helping you?", }
 local phrases_fem = { "D-Do you like my stripped panties getting soaked by you and your hard cock? ehhh master you're so lewd ^0^~", "D-Don't t-touch me there Senpai", "M-Master d-dont spank my petite butt so hard ahhhH~~~ you're getting me so w-wet~", "I-I know I said you could be as rough as you want... But surprise fisting wasn't what I had in mind!!", "Senpai your cock is already throbbing from my huge ass~", "That's a penis UwU you towd me you wewe a giww!!", "O-Oniichan my t-toes are so warm with your cum all over them (^///^)~", "Hey kun, Can I have some semen?", "M-Master, if you keep thrusting that hard, i am going to pass out!", "S-Stop Senpai if we keep making these lewd sounds im going to cum~~", "P-Please l-love me harder oniichan ohh grrh aahhhh~!", "I'll take your cock for a ride!~", "Do they bounce? If so, may i see em:3", "F-Fuck me harder chan! (⊙_⊙;)", "S-Sorry onii-chan p-please d-do me harder ;w;", "All I did was crossplay 'cause I felt like it might be fun... But now I am just a little boy that cums from big dicks!", "A-ah shit... Y-your cock is big and in my ass -- already~?!", "D-Don't get the wrong idea!!! I don't w-want you to fuck my b-bussy because I l-love you or anything! d-definitely not!", "E-eham! W-Why is it so small~", "Give me all your cum Senpai ahhhhh~", "It-It's not gay if you're wearing thigh highs M-Master", "Oh my god I hate you so much Senpai but please k-keep fucking me harder! ahhh~", "Ahhhh... It's like a dream come true... I get to stick my dick inside your ass...!", "I'll swallow your sticky essence along with you~!", "B-Baka please let me be your femboy cum slut!", "Kun your cute little dick between my bussy looks really cute, I am blushing (*/ω＼*)", "Ehem! I love the furry po-! I mean.. the uh community!", "You're such a pervert for filling me up with your seman Senpai~~", "But i'm just an another furry to the community :(", "M-Master does it feel good when I slide my smoll hand up and down on your cute manly part?", "I-I need somewhere to blow my load. Can i borrow your bussy?", "Please! s-stop it.. I'm feeling sooo good..~ hmpf! Fuck me harder Daddyh~", "W-Why is it that lately... Y-You haven't been playing with my ass!!?", "Fill my throat bwussy with your semen kun", "Is there reason to be mad? Of course when u die to an femboy!", "Hey, who wants a piece of this plump 19-year-old boy-bussy? Single file, boys, come get it while it's hot!", "U-uwu! I can also whimp for you..", "M-My bussy is overflowing with your semen M-Master", "When do you wanna meet up again? I've really taken a liking to your dick! (,,◠∇◠) I want you and only you to slam it into my buwssy every day! (≧∇≦)", "Y-You got me all wet now Senpai!", "Lets take this swimsuit off already <3 i'll drink your unknown melty juice", "Boykisser is such a cute femboy ahh~~ f-fuck... ⊙.☉", "Fill up my bussy with your semen kun ^-^" }
 
-local builder = { misses = 0, invert_defensive = false, old_defensive = false, invert_delay = true, target_delay = 0, legbreak = 0, current_pitch = -89, current_yaw = -60, goal_pitch = 0, goal_yaw = 0, speed = 0, save_yaw = 0, misses = 0, warmup = game_rules_get_prop("m_bWarmupPeriod"), onpeek = false, afk_valid = false, afk = 0 }
+local builder = { misses = 0, afk_valid = false, afk = 0 }
 local indicator = { font = render_get_default_font(), shot_count = 0, data = {}, pos = vec2_t(100, 100), size = vec2_t(200, 100), difference = vec2_t(0, 0), dragging = false }
 local console_material = { "vgui_white", "vgui/hud/800corner1", "vgui/hud/800corner2", "vgui/hud/800corner3", "vgui/hud/800corner4" }
 local esp = { sync_user = {}, unsync_user = {}, sync_update = 0 }
-local resolver = { data = {}, mem = {}, previous = {}, misses = {}, trust = { fs = 0, jitter = 0 } }
+local resolver = { data = {}, mem = {}, previous = {}, misses = {}, trust = { fs = 0, jitter = 0 }, shots = {}, epoch = 0, stats = {} }
 local delay = { tick_delay = client_time_to_ticks(1), last_tick = globals.tick_count() }
 local animation = { alpha = 0, appearing = 0 }
 local toss = { target_angles = vec3_t(0, 0, 0) }
@@ -886,6 +974,9 @@ local groups = {
 
 
     statistics = libs.eui.create("Statistics", 2),
+
+    servers = libs.eui.create("Servers", 2),
+    about = libs.eui.create("Information", 2),
     
 
     ragebot = libs.eui.create("Ragebot", 3),
@@ -1024,16 +1115,25 @@ local defensive = {
         return mode and ret or self.db[idx].defensive_until > tickcount
     end,
 
-    trigger = function()
+    -- the shift empties the double tap, and the next one came as soon as it was charged again while the enemy was still in view: we
+    -- never had a shot (owners: "csak hátráltat"). So after a shift the next one waits (DEF_COOL ticks), unless we are being shot at
+    -- (urgent) and never on the tick we shoot ourselves
+    DEF_COOL = 38,
+    cool_until = 0,
+    trigger = function(self, urgent, shooting)
+        if (shooting == true) then return end
+        local tick = globals.tick_count()
+        if (not urgent and tick < self.cool_until) then return end
         if (refs.double_tap:get() and (exploits_get_charge() == exploits_get_max_charge())) then
             exploits.force_anti_exploit_shift()
+            self.cool_until = tick + self.DEF_COOL
         end
     end
 }
 
 local ui = {
     nav = {
-        slider = groups.nav:slider("Specter | tee hee!<3", 0, 14),
+        slider = groups.nav:slider("Specter | tee hee!<3", 0, 15),
 
         text = groups.nav:text("Welcome, " .. info.user .. "!"),
         sep0 = menu_add_separator("Home | Specter v" .. client_version .. "" .. info.beta_text2),
@@ -1047,7 +1147,16 @@ local ui = {
 
         refresh_players = groups.nav:button("Refresh players",
             function()
-                on_shared_players()
+                on_shared_players(true)
+            end
+        ),
+        -- the first scoreboard row as text in the console (open the scoreboard first): the ids / types the badge looks for the country flag in
+        dump_scoreboard = groups.nav:button("Dump scoreboard row",
+            function()
+                local ok, text = pcall(libs.tools.js.dump)
+                for line in tostring(ok and text or "unable to read the scoreboard"):gmatch("[^\n]+") do
+                    print(line)
+                end
             end
         ),
         sep1 = menu_add_separator("Home | Specter v" .. client_version .. "" .. info.beta_text2),
@@ -1064,14 +1173,33 @@ local ui = {
         list = groups.statistics:list("Your personal statistics", {})
     },
 
+    -- raw menu items, not eui ones: eui exports every checkbox into the configs, and an imported (cloud) config must never
+    -- switch "Share my server" on. Off at every start.
+    servers = {
+        share = menu_add_checkbox("Servers", "Share my server", false),
+        list = menu_add_list("Servers", "Specter users on servers", {}, 8),
+        connect = menu_add_button("Servers", "Connect to the selected", function() servers.connect() end),
+        refresh = menu_add_button("Servers", "Refresh the list", function() servers.update(true) end),
+        hvh_list = menu_add_list("Servers", "HvH servers (hvh.gg)", {}, 20),
+        hvh_connect = menu_add_button("Servers", "Connect to the selected hvh.gg server", function() servers.hvh_connect() end),
+        hvh_refresh = menu_add_button("Servers", "Refresh hvh.gg", function() servers.hvh_update(true) end),
+    },
+
     ragebot = {
         logic_reso = groups.resolver:checkbox("Logic resolver"),
         nexzu_reso = groups.resolver:checkbox("Improve resolver"),
-        
+        smart_baim = groups.resolver:checkbox("Smart body aim", true),
+        smart_baim_hp = groups.resolver:slider("Body aim below HP", 0, 100, 1, 0, "hp"),
+        smart_baim_lethal = groups.resolver:checkbox("Body aim if lethal on risky target", true),
+        latency_guard = groups.resolver:checkbox("High ping protection", true),
+        latency_limit = groups.resolver:slider("High ping threshold", 40, 250, 1, 0, "ms"),
+        fast_peek = groups.resolver:checkbox("Fast crouch / peek scan", true),
+        learn_rate = groups.resolver:slider("Resolver learning", 0, 100, 1, 0, "%"),
+        def_hold = groups.resolver:checkbox("Body only on defensive", true),
+        def_ticks = groups.resolver:slider("Defensive lock ticks", 1, 128, 1, 0, "t"),
         pose_reso = groups.resolver_beta:checkbox("Pose resolver"),
         resolver = {
             enable_resolver = groups.resolver_beta:checkbox("Custom resolver"),
-            unsafe_reso = groups.resolver_beta:checkbox("Lua side override (experimental)"),
             
             duck_mode = groups.resolver_beta:checkbox("Duck mode"),
             auto_duck = groups.resolver_beta:checkbox("Auto duck", true),
@@ -1081,7 +1209,6 @@ local ui = {
             pred_sel = groups.resolver_beta:slider("Prediction sel", 2, 70, 1, 0, "%"),
             calc_box = groups.resolver_beta:slider("Calculate box", 2, 35, 1, 0, "u"),
             shot_pred = groups.resolver_beta:slider("Shot prediction", 2, 65, 1, 0, "°"),
-            hit_sens = groups.resolver_beta:slider("Hit sensitivity", 2, 47, 1, 0, " miss"),
 
             safe_mode = groups.resolver_beta:slider("Safe mode", 1, 20, 1, 0, "hp")
         },
@@ -1126,6 +1253,8 @@ local ui = {
             enable_backtrack = groups.tickbase:checkbox("Improve backtrack"),
             extended_backtrack = groups.tickbase:checkbox("Extended backtrack"),
             prediction = groups.tickbase:checkbox("Advanced prediction", true),
+            engine_pred = groups.tickbase:checkbox("Engine prediction (experimental)", false),
+            ping_in_sight = groups.tickbase:checkbox("Fake ping only in sight", false),
         },
 
         safe_defensive = groups.ragebot:checkbox("Defensive safepoint"),
@@ -1141,7 +1270,6 @@ local ui = {
         builder = {
             enable = groups.settings:checkbox("Custom antiaim"),
             edge_yaw = groups.settings:checkbox("Edge yaw"),
-            random_side = groups.settings:checkbox("Random desync side", true),
             anti_brute = groups.settings:checkbox("Anti bruteforce", true),
 
             pitch = groups.antiaim:selection(
@@ -1181,22 +1309,9 @@ local ui = {
                 "Safe head",
                 {
                     "Air knife",
-                    "Allow defensive"
-                }
-            ),
-
-            warmup = groups.features:multi_selection(
-                "Randomization",
-                {
-                    "No enemies alive",
-                    "Warmup"
-                }
-            ),
-
-            correction = groups.features:multi_selection(
-                "Crouch correction",
-                {
-                    "Yaw"
+                    "Allow defensive",
+                    "Air zeus",
+                    "Height advantage"
                 }
             )
         }
@@ -1321,7 +1436,6 @@ local ui = {
         visual_rec = groups.player:checkbox("Visual recoil"),
 
         anim_breaker = groups.player:checkbox("Animation breaker"),
-        team_anim = groups.player:checkbox("Cool team animation"),
 
         super_toss = groups.player:selection(
             "Super toss",
@@ -1346,6 +1460,8 @@ local ui = {
         fast_switch = groups.misc:checkbox("Fast weapon switch"),
         unlock_pingspike = groups.misc:checkbox("Unlock latency"),
         knifebot_helper = groups.misc:checkbox("Knifebot helper"),
+        zeus_rush = groups.misc:checkbox("Zeus vs rushers"),
+        zeus_dt = groups.misc:checkbox("Disable DT with zeus"),
         defuse_bot = groups.misc:checkbox("Auto defuse"),
         
         fake_media = {
@@ -1414,47 +1530,62 @@ local ui = {
         )
     }
 }
+-- EUI slider arguments specify step size, not a default value.
+-- Initialize before saved configurations are imported.
+ui.ragebot.smart_baim_hp.ref:set(40)
+ui.ragebot.latency_limit.ref:set(80)
+ui.ragebot.learn_rate.ref:set(100)
+ui.ragebot.def_ticks.ref:set(48)
+ui.utils.aa_stats = groups.utils:checkbox("AA stats", true)
+ui.utils.aa_stats_reset = groups.utils:button("Reset AA stats", function()
+    builder.aa_stats = {}
+    notifications.create("Specter", "Anti-aim stats have been reset!", notifications.types.success)
+end)
+ui.utils.res_stats = groups.utils:checkbox("Resolver stats", true)
+ui.utils.res_stats_reset = groups.utils:button("Reset resolver stats", function()
+    resolver.stats = {}
+    notifications.create("Specter", "Resolver stats have been reset!", notifications.types.success)
+end)
+ui.utils.res_stats_print = groups.utils:button("Resolver stats to console", function()
+    local lines = resolver.stat_lines()
+    print("resolver stats per state:")
+    for _, line in ipairs(lines) do print(line) end
+    if (#lines == 0) then print("no shots yet") end
+end)
+ui.utils.profile = groups.utils:button("Profile 10 s (dev)", function()
+    perf.start()
+end)
 
+-- The anti-aim of a state (owners, Oct 21 2026): 2-7 ways with a yaw each, how they are played, the desync and a basic defensive
+local WAY_YAWS = { -30, 20, -10, 30, -20, 10, 0 }
+local STATE_WAYS = { 3, 5, 3, 4, 5, 3, 3, 3, 3, 2, 2 }
 for i = 1, #states do
-    ui.antiaim.builder[i] = {
+    local n = shortstates[i]
+    local cfg = {
         override = groups.yaw:checkbox("Override - " .. states[i]),
-        yaw_mode = groups.yaw:selection(shortstates[i] .. " | Yaw mode", {"Static", "Classic", "Advanced"}),
-        yaw_val = groups.yaw:slider(shortstates[i] .. " | Yaw", -90, 90, 1, 0, "°"),
-        
-        yaw_left = groups.yaw:slider(shortstates[i] .. " | Left", -90, 90, 1, 0, "°"),
-        yaw_right = groups.yaw:slider(shortstates[i] .. " | Right", -90, 90, 1, 0, "°"),
-        
-        yaw_meta_left = groups.yaw:slider(shortstates[i] .. " | Left randomization", -90, 90, 1, 0, "°"),
-        yaw_meta_right = groups.yaw:slider(shortstates[i] .. " | Right randomization", -90, 90, 1, 0, "°"),
-        
-        yaw_delay = groups.yaw:slider(shortstates[i] .. " | Delay", 2, 32, 1, 0, "t"),
-        meta_delay = groups.yaw:slider(shortstates[i] .. " | Delay fluctuation", 0, 16, 1, 0, "t"),
-
-        yaw_modifier = groups.jitter:selection(shortstates[i] .. " | Modifier mode", {"None", "Offset", "Center", "3Way", "5Way"}),
-        
-        modifier_degree = groups.jitter:slider(shortstates[i] .. " | Modifier degree", -180, 180, 1, 0, "°"),
-        modifier_random = groups.jitter:slider(shortstates[i] .. " | Modifier randomization", -180, 180, 1, 0, "°"),
-        
-        desync = groups.desync:selection(shortstates[i] .. " | Desync", {"Left", "Right", "Jitter", "Peek fake"}),
-        
-        desync_left = groups.desync:slider(shortstates[i] .. " | Fake left", 0, 60, 1, 0, "°"),
-        desync_right = groups.desync:slider(shortstates[i] .. " | Fake right", 0, 60, 1, 0, "°"),
-        
-        desync_meta_left = groups.desync:slider(shortstates[i] .. " | Left randomization", -60, 60, 1, 0, "°"),
-        desync_meta_right = groups.desync:slider(shortstates[i] .. " | Right randomization", -60, 60, 1, 0, "°"),
-        
-        trigger_defensive = groups.defensive:selection(shortstates[i] .. " | Defensive", {"Off", "On peek", "Force", "Antiaim", "Dynamic"}),
-        defensive_pitch = groups.defensive:selection(shortstates[i] .. " | Defensive pitch", {"Inherit", "Off", "Down", "Up", "Zero", "Jitter", "Random", "Custom", "Switch", "Clock"}),
-        
-        defensive_pitch_val = groups.defensive:slider(shortstates[i] .. " | Pitch value (1)", -90, 90, 1, 0, "°"),
-        defensive_pitch_val2 = groups.defensive:slider(shortstates[i] .. " | Pitch value (2)", -90, 90, 1, 0, "°"),
-        
-        defensive_yaw = groups.defensive:selection(shortstates[i] .. " | Defensive yaw", {"Inherit", "Static", "Sideways", "Switch", "Spin", "Random", "5Way", "Clock"}),
-        defensive_yaw_val = groups.defensive:slider(shortstates[i] .. " | Yaw value", -180, 180, 1, 0, "°"),
-        
-        defensive_speed = groups.defensive:slider(shortstates[i] .. " | Spin speed", 0, 100, 1, 0, "%"),
-        defensive_range = groups.defensive:slider(shortstates[i] .. " | Spin range", 0, 360, 1, 0, "°")
+        ways = groups.yaw:slider(n .. " | Ways", 2, 7, 1, 0, ""),
+        order = groups.yaw:selection(n .. " | Way order", {"Skip", "Linear"}),
+        hold = groups.yaw:slider(n .. " | Hold", 1, 8, 1, 0, "p"),
+        hold_alt = groups.yaw:slider(n .. " | Hold on odd steps", 0, 8, 1, 0, "p"),
+        brute = groups.yaw:slider(n .. " | Brute shift", 0, 30, 1, 0, "°"),
+        side = groups.desync:selection(n .. " | Desync side", {"Thue-Morse", "Alternate", "Left", "Right"}),
+        amount = groups.desync:slider(n .. " | Desync amount", 0, 60, 1, 0, "°"),
+        def_trigger = groups.defensive:selection(n .. " | Def trigger", {"Off", "On peek", "Shot at", "Peek + shot at", "Always"}),
+        def_pitch = groups.defensive:selection(n .. " | Def pitch", {"Off", "Down", "Up", "Zero", "Sweep"}),
+        def_yaw = groups.defensive:selection(n .. " | Def yaw", {"Off", "Static", "Sideways", "Flick", "Spin"}),
+        def_val = groups.defensive:slider(n .. " | Def value", -180, 180, 1, 0, "°"),
     }
+    for k = 1, 7 do
+        cfg["yaw" .. k] = groups.yaw:slider(n .. " | Way " .. k, -90, 90, 1, 0, "°")
+        cfg["yaw" .. k].ref:set(WAY_YAWS[k])
+    end
+    cfg.ways.ref:set(STATE_WAYS[i])
+    cfg.hold.ref:set(2)
+    cfg.hold_alt.ref:set(1)
+    cfg.brute.ref:set(10)
+    cfg.amount.ref:set(58)
+    cfg.def_val.ref:set(90)
+    ui.antiaim.builder[i] = cfg
 end
 
 local global = {
@@ -1511,7 +1642,9 @@ local global = {
                     self.current_state_number = 11
                 end
 
-                if (manual) then 
+                -- manual left / right (Primordial's manual keys): the "manual" here was an undefined global, the state
+                -- never came
+                if (refs.left:get() or refs.right:get()) then 
                     self.current_state = "manual"
                     self.current_state_number = 10
                 end
@@ -1525,6 +1658,7 @@ local accent_color = color_t(222, 153, 185, 255)
 local text_color = color_t(140, 71, 247, 255)
 
 ui.quick_fall = groups.exploits:keybind(ui.exploits.quick_fall, "Rubberbang keybind")
+ui.air_stop = groups.movement:keybind(ui.misc.jumpshot, "Air stop keybind")
 ui.edge_yaw = groups.antiaim:keybind(ui.antiaim.builder.edge_yaw, "EdgeYaw keybind")
 
 ui.accent_color = groups.nav:color_picker(ui.nav.text, "Accent color", accent_color)
@@ -1566,8 +1700,12 @@ local nav_pages = {
     { name = "Config", subs = { { "Configs", 1 }, { "Statistics", 2 } } },
     { name = "Ragebot", subs = { { "Resolver", 3 }, { "Aimbot", 10 }, { "Tickbase", 11 }, { "Exploits", 5 } } },
     { name = "Anti-Aim", subs = { { "Builder", 4 }, { "Yaw / Jitter", 12 }, { "Desync", 13 }, { "Defensive", 14 } } },
-    { name = "Misc", subs = { { "Visuals", 6 }, { "Player", 7 }, { "Movement", 8 }, { "Utils", 9 } } },
+    { name = "Misc", subs = { { "Visuals", 6 }, { "Player", 7 }, { "Movement", 8 }, { "Utils", 9 }, { "Servers", 15 } } },
+    { name = "Info", subs = { { "Information", 16 } } },
 }
+-- the symbol in front of every main button (owners, Oct 21 2026: "csinálj ugyan úgy szimbólumokat a menübe"); the menu draws text only, so these are
+-- characters of the menu font: one that shows as a box in game is swapped here
+local NAV_SYMBOLS = { Config = "☾", Ragebot = "◎", ["Anti-Aim"] = "✦", Misc = "❖", Info = "ℹ" }
 if (info.plan == "beta") then
     table.remove(nav_pages[2].subs, 1)
 end
@@ -1576,7 +1714,7 @@ ui.nav.mains = {}
 ui.nav.subs = {}
 
 for i, main in ipairs(nav_pages) do
-    ui.nav.mains[i] = groups.nav:button(main.name,
+    ui.nav.mains[i] = groups.nav:button((NAV_SYMBOLS[main.name] or "•") .. "  " .. main.name,
         function()
             ui.nav.slider.ref:set(main.subs[1][2])
         end
@@ -1595,6 +1733,25 @@ for i, main in ipairs(nav_pages) do
         ) })
     end
 end
+
+-- the Information page (owners, Oct 21 2026: "külön tab information és oda dc link"): what this is, the Discord, a copy / open button
+ui.about = {
+    title = groups.about:text("☾  Specter v" .. client_version .. info.beta_text2 .. "  ·  " .. info.plan),
+    sep = groups.about:separator(),
+    discord = groups.about:text("◈  Discord  " .. PM_DISCORD),
+    support = groups.about:text("✉  Support, configs and updates are on the Discord"),
+    copy = groups.about:button("⧉  Copy the Discord invite", function()
+        clipboard.set("https://" .. PM_DISCORD)
+        notifications.create("Specter", "Discord invite copied!", notifications.types.success)
+    end),
+    open = groups.about:button("➜  Open the Discord", function()
+        local api = libs.tools.js2 and libs.tools.js2.SteamOverlayAPI
+        if (not (api ~= nil and pcall(api.OpenExternalBrowserURL, "https://" .. PM_DISCORD))) then
+            clipboard.set("https://" .. PM_DISCORD)
+            notifications.create("Specter", "Could not open the browser, the invite was copied.", notifications.types.warning)
+        end
+    end),
+}
 
 --- @endregion
 
@@ -2377,7 +2534,7 @@ end
 -- cloud based
 
 -- default.cfg: the owner's config (resolver, anti-aim and the rest), applied on the first start (no csgo/specter folder yet)
-configs.default_config = "eyJIZWxwZXJzIjpbWyJGaXggY29ycmVjdGlvbiIsdHJ1ZV0sWyJSdWJiZXJiYW5nIix0cnVlXSxbIkxhZyBvbiBzaG9vdCIsZmFsc2VdXSwiQ29tbXVuaWNhdGlvbiI6W1siVHJhc2ggdGFsayIsMV0sWyJUYWxrIGJhY2siLGZhbHNlXSxbIlZvaWNlIHN0YXRlIiwzXV0sIk1pc2MiOltbIkZha2UgdHlwZSIsW1siSGVhZHNob3QiLGZhbHNlXSxbIldhbGxiYW5nIixmYWxzZV0sWyJObyBTY29wZSIsZmFsc2VdLFsiRmxhc2hlZCIsZmFsc2VdLFsiVGhydSBzbW9rZSIsZmFsc2VdLFsiRG9taW5hdGVkIixmYWxzZV0sWyJSZXZlbmdlIixmYWxzZV1dXSxbIktuaWZlYm90IGhlbHBlciIsdHJ1ZV0sWyJVbmxvY2sgbGF0ZW5jeSIsdHJ1ZV0sWyJGYXN0IHdlYXBvbiBzd2l0Y2giLHRydWVdLFsiQXV0byBkZWZ1c2UiLHRydWVdLFsiRmFrZSBtZWRpYSIsZmFsc2VdXSwiUGxheWVyIjpbWyJBbmltYXRpb24gYnJlYWtlciIsZmFsc2VdLFsiU3VwZXIgdG9zcyIsMV0sWyJDb29sIHRlYW0gYW5pbWF0aW9uIixmYWxzZV0sWyJWaXN1YWwgcmVjb2lsIixmYWxzZV0sWyJGYXN0IGxhZGRlciIsW1siVXAiLHRydWVdLFsiRG93biIsdHJ1ZV1dXV0sIlRpY2tiYXNlIjpbWyJJbXByb3ZlIGJhY2t0cmFjayIsdHJ1ZV0sWyJSZWNvcmQgd2VpZ2h0aW5nIHR5cGUiLDFdLFsiQWdncmVzc2l2ZSBmYWN0b3IiLDE1XSxbIkJhY2t0cmFjayBleHBpcmF0aW9uIiwxXSxbIkxvdyBwZXJmb3JtYW5jZSBtb2RlIixmYWxzZV0sWyJFeHRlbmRlZCBiYWNrdHJhY2siLGZhbHNlXSxbIk1heCB0YXJnZXRzIiwyXSxbIkFkanVzdCB0aWNrcyBkeW5hbWljYWxseSIsMl0sWyJFbmFibGUgaW50ZXJwb2xhdGlvbiIsdHJ1ZV0sWyJQcmlvcml0aXplIG9sZGVyIHJlY29yZHMiLGZhbHNlXSxbIlByZWRpY3Rpb24gZmFjdG9yIiwxMV0sWyJCYWNrdHJhY2sgc21vb3RoaW5nIiw5XSxbIlNtb290aCB0cmFuc2l0aW9uIix0cnVlXSxbIlRyYW5zaXRpb24gc3BlZWQiLDI1XSxbIkVuYWJsZSBleHRyYXBvbGF0aW9uIix0cnVlXSxbIkFnZ3Jlc3NpdmUgYmFja3RyYWNrIix0cnVlXSxbIlRyYW5zaXRpb24gcHJpb3JpdHkiLDJdXSwiUmVzb2x2ZXIiOltbIkxvZ2ljIHJlc29sdmVyIix0cnVlXSxbIkltcHJvdmUgcmVzb2x2ZXIiLHRydWVdXSwiRXhwbG9pdHMiOltbIkRUIFNwZWVkIiwxMl0sWyJCZXR0ZXIgaGlkZXNob3RzIix0cnVlXSxbIkltcHJvdmUgZG91YmxldGFwIix0cnVlXSxbIk9wdGltaXplIGRvdWJsZXRhcCIsdHJ1ZV0sWyJTYWZlIHJlY2hhcmdlIix0cnVlXSxbIk1vZGUiLDFdLFsiU3BlZWQgY2FsY3VsYXRpb24iLDJdXSwiR2xvYmFsIjpbWyJQaXRjaCIsMl0sWyJCYXNlIiwyXSxbIkRlZmVuc2l2ZSBtb2RlIiwyXV0sIlV0aWxzIjpbWyJHbG93IGVmZmVjdHMiLHRydWVdLFsiVGVzbGEgY29sb3IiLDI1NSw4MCw4MCwyNTVdLFsiQ29uc29sZSBjb2xvciIsNTUsNTUsNTUsMTU0XSxbIkFsdCBjb2xvciIsMjAwLDE5OSwxOTcsMjU1XSxbIldhdGVybWFyayIsZmFsc2VdLFsiS2V5YmluZHMiLGZhbHNlXSxbIk1haW4gY29sb3IiLDE3NywyNTUsODcsMjU1XSxbIkJveCBjb2xvciIsNDcsMTE3LDIyMSwyNTVdLFsiU3BlY3RhdG9ycyIsZmFsc2VdLFsiTG9ncyBzZWxlY3Rpb24iLFtbIlNob3cgc3RhdHMiLHRydWVdLFsiSGl0cyIsdHJ1ZV0sWyJQdXJjaGFzZXMiLGZhbHNlXSxbIkh1cnRzIix0cnVlXSxbIk1pc3NlcyIsdHJ1ZV0sWyJFdmFkZXMiLHRydWVdXV1dLCJDbG91ZCBjb25maWdzIjpbXSwiTW92ZW1lbnQiOltbIkp1bXBzaG90IGhlbHBlciIsdHJ1ZV0sWyJObyBmYWxsIGRhbWFnZSIsdHJ1ZV0sWyJBbnRpIGFmayIsZmFsc2VdXSwiQ29uZmlndXJhdGlvbiAoYmV0YSkiOltbIkF0IGRpc2FibGVyIiwzXSxbIllhdyBjYWxjdWxhdGlvbiIsM10sWyJEaXNhYmxlcnMiLFtbIkluIGFpciIsZmFsc2VdLFsiSW4gYWlyZHVjayIsZmFsc2VdLFsiQXQgZHVjayIsZmFsc2VdLFsiQXQgcGVlayIsZmFsc2VdLFsiQXQgc2NvcGUiLGZhbHNlXSxbIkF0IG5vc2NvcGUiLGZhbHNlXSxbIldpdGggZG91YmxldGFwIixmYWxzZV0sWyJXaXRoIGhpZGVzaG90cyIsZmFsc2VdLFsiTG93IGZwcyAoPDc1ZnBzKSIsdHJ1ZV0sWyJIaWdoIHBpbmcgKD44MG1zKSIsdHJ1ZV1dXV0sIlN0YXRpc3RpY3MiOltdLCJIb21lIHwgYXp1cmEgdjUuNCAoYmV0YSkiOltbIlRleHQgY29sb3IiLDE0MCw3MSwyNDcsMjU1XSxbImF6dXJhLnVubyB8IHRlZSBoZWUhPDMiLDFdLFsiQWNjZW50IGNvbG9yIiwyMjIsMTUzLDE4NSwyNTVdXSwiVmlzdWFscyI6W1siQ2hpbmEgaGF0IixmYWxzZV0sWyJUZXNsYSBvbiBzaG9vdCIsZmFsc2VdLFsiQ3Jvc3NoYWlyIGluZGljYXRvcnMiLFtbIkRvdWJsZSB0YXAiLHRydWVdLFsiSGlkZSBzaG90cyIsdHJ1ZV0sWyJNaW5pbXVtIGRtZyIsdHJ1ZV0sWyJRdWljayBwZWVrIix0cnVlXSxbIkZyZWVzdGFuZCIsdHJ1ZV0sWyJQaW5nIHNwaWtlIix0cnVlXSxbIkZvcmNlIGJvZHlhaW0iLHRydWVdLFsiRm9yY2Ugc2FmZXBvaW50Iix0cnVlXSxbIk92ZXJyaWRlIGhpdGJveCIsdHJ1ZV0sWyJPdmVycmlkZSBoaXRjaGFuY2UiLHRydWVdXV0sWyJDb25zb2xlIGNvbG9yIix0cnVlXSxbIkVTUCBGb250IiwzXSxbIkRlYnVnIGxhZ2NvbXAiLHRydWVdLFsiUmlnaHQgaW5kaWNhdG9ycyIsW1siRG91YmxlIHRhcCIsdHJ1ZV0sWyJIaWRlIHNob3RzIix0cnVlXSxbIk1pbmltdW0gZG1nIix0cnVlXSxbIlF1aWNrIHBlZWsiLHRydWVdLFsiRnJlZXN0YW5kIix0cnVlXSxbIlBpbmcgc3Bpa2UiLHRydWVdLFsiRm9yY2UgYm9keWFpbSIsdHJ1ZV0sWyJGb3JjZSBzYWZlcG9pbnQiLHRydWVdLFsiT3ZlcnJpZGUgaGl0Ym94Iix0cnVlXSxbIk92ZXJyaWRlIGhpdGNoYW5jZSIsdHJ1ZV1dXSxbIkhhdCBjb2xvciIsODksMjM3LDI1NSwyNTVdXSwiRmVhdHVyZXMiOltbIkF2b2lkIG9uc2hvdCIsdHJ1ZV0sWyJBbnRpIGJhY2tzdGFiIix0cnVlXSxbIkNyb3VjaCBjb3JyZWN0aW9uIixbWyJZYXciLHRydWVdXV0sWyJSYW5kb21pemF0aW9uIixbWyJObyBlbmVtaWVzIGFsaXZlIixmYWxzZV0sWyJXYXJtdXAiLGZhbHNlXV1dLFsiU2FmZSBoZWFkIixbWyJBaXIga25pZmUiLHRydWVdLFsiQWxsb3cgZGVmZW5zaXZlIix0cnVlXV1dXSwiUmVzb2x2ZXIgKGJldGEpIjpbWyJTaG90IHByZWRpY3Rpb24iLDRdLFsiQ2FsY3VsYXRlIGJveCIsMTldLFsiQ3VzdG9tIHJlc29sdmVyIix0cnVlXSxbIkF1dG8gZHVjayIsdHJ1ZV0sWyJVbnNhZmUgcmVzb2x2ZXIiLHRydWVdLFsiU2FmZSBwZWVrIix0cnVlXSxbIlBvc2UgcmVzb2x2ZXIiLHRydWVdLFsiU2FmZSBtb2RlIiw0XSxbIkR1Y2sgbW9kZSIsZmFsc2VdLFsiSGl0IHNlbnNpdGl2aXR5IiwyNV0sWyJQcmVkaWN0aW9uIHNlbCIsMjBdXSwiUmFnZWJvdCI6W1siRGVmZW5zaXZlIHNhZmVwb2ludCIsdHJ1ZV0sWyJCb29zdGVyIG1vZGUiLDFdLFsiQWNjdXJhY3kgYm9vc3RlciIsdHJ1ZV0sWyJNdWx0aXBvaW50IGNvcnJlY3Rpb24iLHRydWVdXSwiWWF3IjpbWyJTVyB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLDBdLFsiT3ZlcnJpZGUgLSBBaXIgZHVjayIsdHJ1ZV0sWyJGIHwgTGVmdCIsMF0sWyJHIHwgTGVmdCIsLTE1XSxbIk0gfCBSaWdodCByYW5kb21pemF0aW9uIiwxOF0sWyJHIHwgWWF3IiwwXSxbIkQgfCBZYXcgbW9kZSIsM10sWyJBIHwgUmlnaHQgcmFuZG9taXphdGlvbiIsMjBdLFsiU1cgfCBZYXciLDBdLFsiRE0gfCBMZWZ0IiwtMThdLFsiQSB8IFlhdyBtb2RlIiwzXSxbIlNXIHwgTGVmdCByYW5kb21pemF0aW9uIiwwXSxbIk0gfCBZYXcgbW9kZSIsM10sWyJHIHwgWWF3IG1vZGUiLDJdLFsiUyB8IFlhdyIsMF0sWyJGUiB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLDldLFsiRlIgfCBSaWdodCIsMTFdLFsiUyB8IERlbGF5Iiw0XSxbIkcgfCBSaWdodCByYW5kb21pemF0aW9uIiwwXSxbIk0gfCBEZWxheSIsNV0sWyJETSB8IERlbGF5IiwyXSxbIkFEIHwgWWF3IiwwXSxbIlNXIHwgTGVmdCIsLTIwXSxbIkQgfCBEZWxheSIsMl0sWyJETSB8IExlZnQgcmFuZG9taXphdGlvbiIsMF0sWyJHIHwgRGVsYXkiLDVdLFsiRE0gfCBZYXciLDBdLFsiQSB8IERlbGF5IiwzXSxbIkZSIHwgRGVsYXkgZmx1Y3R1YXRpb24iLDNdLFsiRlIgfCBEZWxheSIsNV0sWyJNTiB8IExlZnQgcmFuZG9taXphdGlvbiIsMF0sWyJPdmVycmlkZSAtIE1vdmUiLHRydWVdLFsiUyB8IExlZnQgcmFuZG9taXphdGlvbiIsMF0sWyJPdmVycmlkZSAtIEFpciIsdHJ1ZV0sWyJEIHwgTGVmdCIsLTE1XSxbIk0gfCBSaWdodCIsMTBdLFsiRlIgfCBMZWZ0IHJhbmRvbWl6YXRpb24iLC0xMl0sWyJBIHwgWWF3IiwwXSxbIkZSIHwgWWF3IG1vZGUiLDJdLFsiT3ZlcnJpZGUgLSBHbG9iYWwiLHRydWVdLFsiQUQgfCBSaWdodCIsN10sWyJTVyB8IFlhdyBtb2RlIiwyXSxbIlMgfCBZYXcgbW9kZSIsMl0sWyJGUiB8IExlZnQiLC0xMV0sWyJHIHwgTGVmdCByYW5kb21pemF0aW9uIiwwXSxbIkQgfCBMZWZ0IHJhbmRvbWl6YXRpb24iLC0xMV0sWyJBRCB8IExlZnQiLC0xNV0sWyJPdmVycmlkZSAtIER1Y2siLHRydWVdLFsiTU4gfCBEZWxheSBmbHVjdHVhdGlvbiIsMF0sWyJPdmVycmlkZSAtIFNsb3cgd2FsayIsdHJ1ZV0sWyJBIHwgTGVmdCByYW5kb21pemF0aW9uIiwtMjBdLFsiRiB8IExlZnQgcmFuZG9taXphdGlvbiIsMF0sWyJGUiB8IFlhdyIsMF0sWyJTIHwgRGVsYXkgZmx1Y3R1YXRpb24iLDBdLFsiT3ZlcnJpZGUgLSBEdWNrIG1vdmUiLHRydWVdLFsiTSB8IERlbGF5IGZsdWN0dWF0aW9uIiw4XSxbIk92ZXJyaWRlIC0gRnJlZXN0YW5kIix0cnVlXSxbIk92ZXJyaWRlIC0gU3RhbmQiLHRydWVdLFsiTU4gfCBEZWxheSIsMl0sWyJNTiB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLDBdLFsiU1cgfCBEZWxheSIsOF0sWyJNTiB8IFJpZ2h0IiwwXSxbIkYgfCBEZWxheSBmbHVjdHVhdGlvbiIsMF0sWyJNTiB8IExlZnQiLDBdLFsiTU4gfCBZYXciLDBdLFsiRyB8IERlbGF5IGZsdWN0dWF0aW9uIiwwXSxbIk92ZXJyaWRlIC0gTWFudWFsIixmYWxzZV0sWyJBIHwgRGVsYXkgZmx1Y3R1YXRpb24iLDhdLFsiRCB8IERlbGF5IGZsdWN0dWF0aW9uIiw0XSxbIk1OIHwgWWF3IG1vZGUiLDFdLFsiTSB8IExlZnQgcmFuZG9taXphdGlvbiIsLTE4XSxbIkYgfCBEZWxheSIsMl0sWyJGIHwgUmlnaHQgcmFuZG9taXphdGlvbiIsMF0sWyJGIHwgWWF3IG1vZGUiLDFdLFsiRCB8IFJpZ2h0IiwxMF0sWyJGIHwgWWF3IiwwXSxbIkYgfCBSaWdodCIsMF0sWyJHIHwgUmlnaHQiLDEwXSxbIkFEIHwgTGVmdCByYW5kb21pemF0aW9uIiwwXSxbIkEgfCBSaWdodCIsMjVdLFsiRE0gfCBEZWxheSBmbHVjdHVhdGlvbiIsMF0sWyJTIHwgTGVmdCIsLTIzXSxbIkFEIHwgRGVsYXkgZmx1Y3R1YXRpb24iLDBdLFsiQUQgfCBEZWxheSIsNV0sWyJBRCB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLDBdLFsiQUQgfCBZYXcgbW9kZSIsMl0sWyJETSB8IFJpZ2h0IiwxNV0sWyJETSB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLDBdLFsiTSB8IFlhdyIsMF0sWyJTIHwgUmlnaHQgcmFuZG9taXphdGlvbiIsMF0sWyJTVyB8IFJpZ2h0IiwxNV0sWyJNIHwgTGVmdCIsLTEwXSxbIkQgfCBSaWdodCByYW5kb21pemF0aW9uIiwxMV0sWyJTIHwgUmlnaHQiLDI0XSxbIkRNIHwgWWF3IG1vZGUiLDJdLFsiU1cgfCBEZWxheSBmbHVjdHVhdGlvbiIsMF0sWyJPdmVycmlkZSAtIEZha2VsYWciLGZhbHNlXSxbIkEgfCBMZWZ0IiwtMjVdLFsiRCB8IFlhdyIsMF1dLCJTeXN0ZW0iOltbInZlcnNpb24iLCIxLjAiXSxbImJ1aWxkIiwiYmV0YSJdXSwiRGVmZW5zaXZlIjpbWyJGUiB8IERlZmVuc2l2ZSIsMV0sWyJTVyB8IFNwaW4gcmFuZ2UiLDBdLFsiQUQgfCBTcGluIHNwZWVkIiwxMDBdLFsiRE0gfCBTcGluIHJhbmdlIiwwXSxbIkEgfCBQaXRjaCB2YWx1ZSAoMSkiLC05MF0sWyJTVyB8IFlhdyB2YWx1ZSIsMF0sWyJBRCB8IERlZmVuc2l2ZSIsMl0sWyJGIHwgUGl0Y2ggdmFsdWUgKDEpIiwwXSxbIkQgfCBQaXRjaCB2YWx1ZSAoMSkiLC00N10sWyJTIHwgUGl0Y2ggdmFsdWUgKDIpIiwwXSxbIk1OIHwgRGVmZW5zaXZlIiwxXSxbIk0gfCBTcGluIHNwZWVkIiwwXSxbIkEgfCBEZWZlbnNpdmUiLDJdLFsiUyB8IFBpdGNoIHZhbHVlICgxKSIsMF0sWyJBIHwgWWF3IHZhbHVlIiwtOTBdLFsiRCB8IFlhdyB2YWx1ZSIsLTE4MF0sWyJBIHwgRGVmZW5zaXZlIHlhdyIsM10sWyJTIHwgU3BpbiByYW5nZSIsMF0sWyJBRCB8IFNwaW4gcmFuZ2UiLDM2MF0sWyJGIHwgRGVmZW5zaXZlIHlhdyIsMV0sWyJEIHwgRGVmZW5zaXZlIHlhdyIsNV0sWyJHIHwgRGVmZW5zaXZlIHlhdyIsNV0sWyJNTiB8IERlZmVuc2l2ZSB5YXciLDFdLFsiRiB8IFNwaW4gcmFuZ2UiLDBdLFsiRE0gfCBEZWZlbnNpdmUiLDFdLFsiRCB8IFNwaW4gc3BlZWQiLDEwMF0sWyJEIHwgU3BpbiByYW5nZSIsMzYwXSxbIkcgfCBTcGluIHNwZWVkIiwxMDBdLFsiQSB8IFNwaW4gc3BlZWQiLDEwMF0sWyJETSB8IFBpdGNoIHZhbHVlICgyKSIsLTI4XSxbIlMgfCBZYXcgdmFsdWUiLDBdLFsiRiB8IFNwaW4gc3BlZWQiLDBdLFsiRlIgfCBTcGluIHNwZWVkIiwxMDBdLFsiU1cgfCBEZWZlbnNpdmUgeWF3Iiw2XSxbIkZSIHwgRGVmZW5zaXZlIHlhdyIsM10sWyJGUiB8IFBpdGNoIHZhbHVlICgyKSIsLTkwXSxbIk1OIHwgUGl0Y2ggdmFsdWUgKDIpIiwwXSxbIk1OIHwgU3BpbiByYW5nZSIsMF0sWyJNIHwgU3BpbiByYW5nZSIsMF0sWyJBIHwgRGVmZW5zaXZlIHBpdGNoIiw5XSxbIkYgfCBZYXcgdmFsdWUiLDBdLFsiRlIgfCBEZWZlbnNpdmUgcGl0Y2giLDhdLFsiRyB8IFlhdyB2YWx1ZSIsMF0sWyJTVyB8IERlZmVuc2l2ZSBwaXRjaCIsN10sWyJBRCB8IFBpdGNoIHZhbHVlICgyKSIsLTkwXSxbIk1OIHwgRGVmZW5zaXZlIHBpdGNoIiwxXSxbIkRNIHwgUGl0Y2ggdmFsdWUgKDEpIiwtNTVdLFsiRE0gfCBZYXcgdmFsdWUiLC0xODBdLFsiTSB8IFlhdyB2YWx1ZSIsMF0sWyJNTiB8IFBpdGNoIHZhbHVlICgxKSIsMF0sWyJBIHwgU3BpbiByYW5nZSIsMzYwXSxbIk1OIHwgU3BpbiBzcGVlZCIsMF0sWyJGUiB8IFNwaW4gcmFuZ2UiLDM2MF0sWyJHIHwgRGVmZW5zaXZlIHBpdGNoIiwxMF0sWyJGUiB8IFBpdGNoIHZhbHVlICgxKSIsLTkwXSxbIkRNIHwgRGVmZW5zaXZlIHBpdGNoIiwxMF0sWyJHIHwgRGVmZW5zaXZlIiwxXSxbIkQgfCBEZWZlbnNpdmUiLDFdLFsiTSB8IFBpdGNoIHZhbHVlICgyKSIsMF0sWyJNIHwgRGVmZW5zaXZlIHBpdGNoIiw3XSxbIkFEIHwgRGVmZW5zaXZlIHBpdGNoIiw5XSxbIkZSIHwgWWF3IHZhbHVlIiwtOTBdLFsiTSB8IERlZmVuc2l2ZSIsMV0sWyJBRCB8IFBpdGNoIHZhbHVlICgxKSIsLTkwXSxbIkYgfCBEZWZlbnNpdmUgcGl0Y2giLDFdLFsiRiB8IERlZmVuc2l2ZSIsMV0sWyJBRCB8IERlZmVuc2l2ZSB5YXciLDNdLFsiTSB8IERlZmVuc2l2ZSB5YXciLDZdLFsiUyB8IERlZmVuc2l2ZSIsMV0sWyJTVyB8IFBpdGNoIHZhbHVlICgyKSIsMF0sWyJETSB8IERlZmVuc2l2ZSB5YXciLDRdLFsiU1cgfCBEZWZlbnNpdmUiLDFdLFsiRyB8IFBpdGNoIHZhbHVlICgyKSIsMF0sWyJETSB8IFNwaW4gc3BlZWQiLDBdLFsiUyB8IFNwaW4gc3BlZWQiLDBdLFsiU1cgfCBQaXRjaCB2YWx1ZSAoMSkiLDBdLFsiRyB8IFNwaW4gcmFuZ2UiLDM2MF0sWyJTIHwgRGVmZW5zaXZlIHlhdyIsNl0sWyJBRCB8IFlhdyB2YWx1ZSIsLTkwXSxbIkEgfCBQaXRjaCB2YWx1ZSAoMikiLC05MF0sWyJEIHwgRGVmZW5zaXZlIHBpdGNoIiw5XSxbIkYgfCBQaXRjaCB2YWx1ZSAoMikiLDBdLFsiU1cgfCBTcGluIHNwZWVkIiwwXSxbIkQgfCBQaXRjaCB2YWx1ZSAoMikiLC0yMF0sWyJNIHwgUGl0Y2ggdmFsdWUgKDEpIiwwXSxbIlMgfCBEZWZlbnNpdmUgcGl0Y2giLDddLFsiTU4gfCBZYXcgdmFsdWUiLDBdLFsiRyB8IFBpdGNoIHZhbHVlICgxKSIsMF1dLCJDdXN0b21pemF0aW9uIjpbWyJUZXNsYSDCtyBiZWFtcyIsMjBdLFsiSGF0IG1vZGUiLDFdLFsiVGVzbGEgwrcgd2lkdGgiLDddLFsiVGVzbGEgwrcgZGVsYXkiLDJdLFsiVGVzbGEgwrcgcmFkaXVzIiwxMDFdXSwiU3luY2hyb25pemF0aW9uIjpbWyJTeW5jZWQgcGxheWVycyIsW1siRGlzYWJsZSB0cmFzaC10YWxrIix0cnVlXSxbIklnbm9yZSB0YWxrLWJhY2siLHRydWVdLFsiQ2hhdCBtZW50aW9ucyIsdHJ1ZV1dXSxbIkNsYW4gdGFnIixmYWxzZV0sWyJTaGFyZWQgRVNQIix0cnVlXV0sIkRlc3luYyI6W1siRCB8IEZha2UgbGVmdCIsNjBdLFsiQSB8IEZha2UgbGVmdCIsNjBdLFsiU1cgfCBEZXN5bmMiLDFdLFsiRyB8IEZha2UgbGVmdCIsNjBdLFsiRiB8IEZha2UgbGVmdCIsMF0sWyJHIHwgTGVmdCByYW5kb21pemF0aW9uIiwtMTBdLFsiRCB8IExlZnQgcmFuZG9taXphdGlvbiIsLTIwXSxbIk1OIHwgRmFrZSByaWdodCIsMF0sWyJNIHwgUmlnaHQgcmFuZG9taXphdGlvbiIsMjBdLFsiQSB8IExlZnQgcmFuZG9taXphdGlvbiIsLTI1XSxbIlMgfCBGYWtlIHJpZ2h0Iiw2MF0sWyJTIHwgRmFrZSBsZWZ0Iiw2MF0sWyJETSB8IEZha2UgbGVmdCIsNTBdLFsiRlIgfCBGYWtlIHJpZ2h0Iiw2MF0sWyJTVyB8IEZha2UgbGVmdCIsNDVdLFsiTU4gfCBEZXN5bmMiLDFdLFsiRiB8IEZha2UgcmlnaHQiLDBdLFsiRlIgfCBMZWZ0IHJhbmRvbWl6YXRpb24iLC0yMF0sWyJGUiB8IEZha2UgbGVmdCIsNjBdLFsiRyB8IEZha2UgcmlnaHQiLDYwXSxbIkRNIHwgRmFrZSByaWdodCIsNTBdLFsiQSB8IEZha2UgcmlnaHQiLDYwXSxbIkQgfCBGYWtlIHJpZ2h0Iiw2MF0sWyJTIHwgRGVzeW5jIiwzXSxbIk1OIHwgUmlnaHQgcmFuZG9taXphdGlvbiIsMF0sWyJBIHwgRGVzeW5jIiwzXSxbIk0gfCBMZWZ0IHJhbmRvbWl6YXRpb24iLC0yMF0sWyJTVyB8IExlZnQgcmFuZG9taXphdGlvbiIsLTE1XSxbIkQgfCBEZXN5bmMiLDNdLFsiRlIgfCBSaWdodCByYW5kb21pemF0aW9uIiwyNV0sWyJGIHwgRGVzeW5jIiwxXSxbIkcgfCBEZXN5bmMiLDNdLFsiRiB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLDBdLFsiRyB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLC0xMF0sWyJEIHwgUmlnaHQgcmFuZG9taXphdGlvbiIsLTIwXSxbIkYgfCBMZWZ0IHJhbmRvbWl6YXRpb24iLDBdLFsiQUQgfCBSaWdodCByYW5kb21pemF0aW9uIiwxNF0sWyJNIHwgRGVzeW5jIiwzXSxbIk0gfCBGYWtlIGxlZnQiLDU1XSxbIkFEIHwgTGVmdCByYW5kb21pemF0aW9uIiwtMTFdLFsiQUQgfCBGYWtlIGxlZnQiLDYwXSxbIk0gfCBGYWtlIHJpZ2h0Iiw0NV0sWyJBRCB8IEZha2UgcmlnaHQiLDYwXSxbIkRNIHwgTGVmdCByYW5kb21pemF0aW9uIiwtMTRdLFsiQUQgfCBEZXN5bmMiLDFdLFsiUyB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLC0yMF0sWyJTVyB8IEZha2UgcmlnaHQiLDQ1XSxbIkEgfCBSaWdodCByYW5kb21pemF0aW9uIiwtMjBdLFsiTU4gfCBGYWtlIGxlZnQiLDBdLFsiRE0gfCBEZXN5bmMiLDNdLFsiTU4gfCBMZWZ0IHJhbmRvbWl6YXRpb24iLDBdLFsiU1cgfCBSaWdodCByYW5kb21pemF0aW9uIiwyMF0sWyJTIHwgTGVmdCByYW5kb21pemF0aW9uIiwtMjddLFsiRE0gfCBSaWdodCByYW5kb21pemF0aW9uIiwxNF0sWyJGUiB8IERlc3luYyIsMl1dLCJKaXR0ZXIiOltbIkZSIHwgTW9kaWZpZXIgbW9kZSIsMV0sWyJTVyB8IE1vZGlmaWVyIG1vZGUiLDNdLFsiU1cgfCBNb2RpZmllciByYW5kb21pemF0aW9uIiwxN10sWyJGUiB8IE1vZGlmaWVyIGRlZ3JlZSIsLTE4XSxbIkFEIHwgTW9kaWZpZXIgZGVncmVlIiwtMTBdLFsiRE0gfCBNb2RpZmllciByYW5kb21pemF0aW9uIiwtMTBdLFsiU1cgfCBNb2RpZmllciBkZWdyZWUiLC0yN10sWyJBIHwgTW9kaWZpZXIgZGVncmVlIiwtMzBdLFsiQUQgfCBNb2RpZmllciBtb2RlIiwzXSxbIkZSIHwgTW9kaWZpZXIgcmFuZG9taXphdGlvbiIsMTVdLFsiUyB8IE1vZGlmaWVyIGRlZ3JlZSIsLTE1XSxbIkEgfCBNb2RpZmllciBtb2RlIiwzXSxbIkcgfCBNb2RpZmllciBkZWdyZWUiLC0yNV0sWyJEIHwgTW9kaWZpZXIgZGVncmVlIiwtMjBdLFsiRyB8IE1vZGlmaWVyIG1vZGUiLDNdLFsiRiB8IE1vZGlmaWVyIGRlZ3JlZSIsMF0sWyJEIHwgTW9kaWZpZXIgbW9kZSIsMV0sWyJGIHwgTW9kaWZpZXIgbW9kZSIsMV0sWyJETSB8IE1vZGlmaWVyIG1vZGUiLDFdLFsiTU4gfCBNb2RpZmllciBkZWdyZWUiLDBdLFsiRCB8IE1vZGlmaWVyIHJhbmRvbWl6YXRpb24iLDE1XSxbIkcgfCBNb2RpZmllciByYW5kb21pemF0aW9uIiwxM10sWyJGIHwgTW9kaWZpZXIgcmFuZG9taXphdGlvbiIsMF0sWyJNIHwgTW9kaWZpZXIgbW9kZSIsMV0sWyJNIHwgTW9kaWZpZXIgcmFuZG9taXphdGlvbiIsMTddLFsiTU4gfCBNb2RpZmllciByYW5kb21pemF0aW9uIiwwXSxbIlMgfCBNb2RpZmllciBtb2RlIiwxXSxbIlMgfCBNb2RpZmllciByYW5kb21pemF0aW9uIiw4XSxbIkRNIHwgTW9kaWZpZXIgZGVncmVlIiwtMjVdLFsiTSB8IE1vZGlmaWVyIGRlZ3JlZSIsLTMxXSxbIkEgfCBNb2RpZmllciByYW5kb21pemF0aW9uIiwtMTVdLFsiTU4gfCBNb2RpZmllciBtb2RlIiwxXSxbIkFEIHwgTW9kaWZpZXIgcmFuZG9taXphdGlvbiIsMTVdXSwiQ29uZmlncyI6W10sIlNldHRpbmdzIjpbWyJDdXN0b20gYW50aWFpbSIsdHJ1ZV0sWyJDb25kaXRpb24iLDddLFsiRWRnZSB5YXciLGZhbHNlXV19"
+configs.default_config = "eyJIZWxwZXJzIjpbWyJGaXggY29ycmVjdGlvbiIsdHJ1ZV0sWyJSdWJiZXJiYW5nIix0cnVlXSxbIkxhZyBvbiBzaG9vdCIsZmFsc2VdXSwiQ29tbXVuaWNhdGlvbiI6W1siVHJhc2ggdGFsayIsMV0sWyJUYWxrIGJhY2siLGZhbHNlXSxbIlZvaWNlIHN0YXRlIiwzXV0sIk1pc2MiOltbIkZha2UgdHlwZSIsW1siSGVhZHNob3QiLGZhbHNlXSxbIldhbGxiYW5nIixmYWxzZV0sWyJObyBTY29wZSIsZmFsc2VdLFsiRmxhc2hlZCIsZmFsc2VdLFsiVGhydSBzbW9rZSIsZmFsc2VdLFsiRG9taW5hdGVkIixmYWxzZV0sWyJSZXZlbmdlIixmYWxzZV1dXSxbIktuaWZlYm90IGhlbHBlciIsdHJ1ZV0sWyJVbmxvY2sgbGF0ZW5jeSIsdHJ1ZV0sWyJGYXN0IHdlYXBvbiBzd2l0Y2giLHRydWVdLFsiQXV0byBkZWZ1c2UiLHRydWVdLFsiRmFrZSBtZWRpYSIsZmFsc2VdLFsiWmV1cyB2cyBydXNoZXJzIix0cnVlXSxbIkRpc2FibGUgRFQgd2l0aCB6ZXVzIix0cnVlXV0sIlBsYXllciI6W1siQW5pbWF0aW9uIGJyZWFrZXIiLGZhbHNlXSxbIlN1cGVyIHRvc3MiLDFdLFsiQ29vbCB0ZWFtIGFuaW1hdGlvbiIsZmFsc2VdLFsiVmlzdWFsIHJlY29pbCIsZmFsc2VdLFsiRmFzdCBsYWRkZXIiLFtbIlVwIix0cnVlXSxbIkRvd24iLHRydWVdXV1dLCJUaWNrYmFzZSI6W1siSW1wcm92ZSBiYWNrdHJhY2siLHRydWVdLFsiUmVjb3JkIHdlaWdodGluZyB0eXBlIiwxXSxbIkFnZ3Jlc3NpdmUgZmFjdG9yIiwxNV0sWyJCYWNrdHJhY2sgZXhwaXJhdGlvbiIsMV0sWyJMb3cgcGVyZm9ybWFuY2UgbW9kZSIsZmFsc2VdLFsiRXh0ZW5kZWQgYmFja3RyYWNrIixmYWxzZV0sWyJNYXggdGFyZ2V0cyIsMl0sWyJBZGp1c3QgdGlja3MgZHluYW1pY2FsbHkiLDJdLFsiRW5hYmxlIGludGVycG9sYXRpb24iLHRydWVdLFsiUHJpb3JpdGl6ZSBvbGRlciByZWNvcmRzIixmYWxzZV0sWyJQcmVkaWN0aW9uIGZhY3RvciIsMTFdLFsiQmFja3RyYWNrIHNtb290aGluZyIsOV0sWyJTbW9vdGggdHJhbnNpdGlvbiIsdHJ1ZV0sWyJUcmFuc2l0aW9uIHNwZWVkIiwyNV0sWyJFbmFibGUgZXh0cmFwb2xhdGlvbiIsdHJ1ZV0sWyJBZ2dyZXNzaXZlIGJhY2t0cmFjayIsdHJ1ZV0sWyJUcmFuc2l0aW9uIHByaW9yaXR5IiwyXV0sIlJlc29sdmVyIjpbWyJMb2dpYyByZXNvbHZlciIsdHJ1ZV0sWyJJbXByb3ZlIHJlc29sdmVyIix0cnVlXV0sIkV4cGxvaXRzIjpbWyJEVCBTcGVlZCIsMTJdLFsiQmV0dGVyIGhpZGVzaG90cyIsdHJ1ZV0sWyJJbXByb3ZlIGRvdWJsZXRhcCIsdHJ1ZV0sWyJPcHRpbWl6ZSBkb3VibGV0YXAiLHRydWVdLFsiU2FmZSByZWNoYXJnZSIsdHJ1ZV0sWyJNb2RlIiwxXSxbIlNwZWVkIGNhbGN1bGF0aW9uIiwyXV0sIkdsb2JhbCI6W1siUGl0Y2giLDJdLFsiQmFzZSIsMl0sWyJEZWZlbnNpdmUgbW9kZSIsMl1dLCJVdGlscyI6W1siR2xvdyBlZmZlY3RzIix0cnVlXSxbIlRlc2xhIGNvbG9yIiwyNTUsODAsODAsMjU1XSxbIkNvbnNvbGUgY29sb3IiLDU1LDU1LDU1LDE1NF0sWyJBbHQgY29sb3IiLDIwMCwxOTksMTk3LDI1NV0sWyJXYXRlcm1hcmsiLGZhbHNlXSxbIktleWJpbmRzIixmYWxzZV0sWyJNYWluIGNvbG9yIiwxNzcsMjU1LDg3LDI1NV0sWyJCb3ggY29sb3IiLDQ3LDExNywyMjEsMjU1XSxbIlNwZWN0YXRvcnMiLGZhbHNlXSxbIkxvZ3Mgc2VsZWN0aW9uIixbWyJTaG93IHN0YXRzIix0cnVlXSxbIkhpdHMiLHRydWVdLFsiUHVyY2hhc2VzIixmYWxzZV0sWyJIdXJ0cyIsdHJ1ZV0sWyJNaXNzZXMiLHRydWVdLFsiRXZhZGVzIix0cnVlXV1dXSwiQ2xvdWQgY29uZmlncyI6W10sIk1vdmVtZW50IjpbWyJKdW1wc2hvdCBoZWxwZXIiLHRydWVdLFsiTm8gZmFsbCBkYW1hZ2UiLHRydWVdLFsiQW50aSBhZmsiLGZhbHNlXV0sIkNvbmZpZ3VyYXRpb24gKGJldGEpIjpbWyJBdCBkaXNhYmxlciIsM10sWyJZYXcgY2FsY3VsYXRpb24iLDNdLFsiRGlzYWJsZXJzIixbWyJJbiBhaXIiLGZhbHNlXSxbIkluIGFpcmR1Y2siLGZhbHNlXSxbIkF0IGR1Y2siLGZhbHNlXSxbIkF0IHBlZWsiLGZhbHNlXSxbIkF0IHNjb3BlIixmYWxzZV0sWyJBdCBub3Njb3BlIixmYWxzZV0sWyJXaXRoIGRvdWJsZXRhcCIsZmFsc2VdLFsiV2l0aCBoaWRlc2hvdHMiLGZhbHNlXSxbIkxvdyBmcHMgKDw3NWZwcykiLHRydWVdLFsiSGlnaCBwaW5nICg+ODBtcykiLHRydWVdXV1dLCJTdGF0aXN0aWNzIjpbXSwiSG9tZSB8IGF6dXJhIHY1LjQgKGJldGEpIjpbWyJUZXh0IGNvbG9yIiwxNDAsNzEsMjQ3LDI1NV0sWyJhenVyYS51bm8gfCB0ZWUgaGVlITwzIiwxXSxbIkFjY2VudCBjb2xvciIsMjIyLDE1MywxODUsMjU1XV0sIlZpc3VhbHMiOltbIkNoaW5hIGhhdCIsZmFsc2VdLFsiVGVzbGEgb24gc2hvb3QiLGZhbHNlXSxbIkNyb3NzaGFpciBpbmRpY2F0b3JzIixbWyJEb3VibGUgdGFwIix0cnVlXSxbIkhpZGUgc2hvdHMiLHRydWVdLFsiTWluaW11bSBkbWciLHRydWVdLFsiUXVpY2sgcGVlayIsdHJ1ZV0sWyJGcmVlc3RhbmQiLHRydWVdLFsiUGluZyBzcGlrZSIsdHJ1ZV0sWyJGb3JjZSBib2R5YWltIix0cnVlXSxbIkZvcmNlIHNhZmVwb2ludCIsdHJ1ZV0sWyJPdmVycmlkZSBoaXRib3giLHRydWVdLFsiT3ZlcnJpZGUgaGl0Y2hhbmNlIix0cnVlXV1dLFsiQ29uc29sZSBjb2xvciIsdHJ1ZV0sWyJFU1AgRm9udCIsM10sWyJEZWJ1ZyBsYWdjb21wIix0cnVlXSxbIlJpZ2h0IGluZGljYXRvcnMiLFtbIkRvdWJsZSB0YXAiLHRydWVdLFsiSGlkZSBzaG90cyIsdHJ1ZV0sWyJNaW5pbXVtIGRtZyIsdHJ1ZV0sWyJRdWljayBwZWVrIix0cnVlXSxbIkZyZWVzdGFuZCIsdHJ1ZV0sWyJQaW5nIHNwaWtlIix0cnVlXSxbIkZvcmNlIGJvZHlhaW0iLHRydWVdLFsiRm9yY2Ugc2FmZXBvaW50Iix0cnVlXSxbIk92ZXJyaWRlIGhpdGJveCIsdHJ1ZV0sWyJPdmVycmlkZSBoaXRjaGFuY2UiLHRydWVdXV0sWyJIYXQgY29sb3IiLDg5LDIzNywyNTUsMjU1XV0sIkZlYXR1cmVzIjpbWyJBdm9pZCBvbnNob3QiLHRydWVdLFsiQW50aSBiYWNrc3RhYiIsdHJ1ZV0sWyJDcm91Y2ggY29ycmVjdGlvbiIsW1siWWF3Iix0cnVlXV1dLFsiUmFuZG9taXphdGlvbiIsW1siTm8gZW5lbWllcyBhbGl2ZSIsZmFsc2VdLFsiV2FybXVwIixmYWxzZV1dXSxbIlNhZmUgaGVhZCIsW1siQWlyIGtuaWZlIix0cnVlXSxbIkFsbG93IGRlZmVuc2l2ZSIsdHJ1ZV0sWyJBaXIgemV1cyIsZmFsc2VdLFsiSGVpZ2h0IGFkdmFudGFnZSIsdHJ1ZV1dXSxbIkZha2VsYWcgdmFyaWFuY2UiLHRydWVdXSwiUmVzb2x2ZXIgKGJldGEpIjpbWyJTaG90IHByZWRpY3Rpb24iLDRdLFsiQ2FsY3VsYXRlIGJveCIsMTldLFsiQ3VzdG9tIHJlc29sdmVyIix0cnVlXSxbIkF1dG8gZHVjayIsdHJ1ZV0sWyJVbnNhZmUgcmVzb2x2ZXIiLHRydWVdLFsiU2FmZSBwZWVrIix0cnVlXSxbIlBvc2UgcmVzb2x2ZXIiLHRydWVdLFsiU2FmZSBtb2RlIiw0XSxbIkR1Y2sgbW9kZSIsZmFsc2VdLFsiUHJlZGljdGlvbiBzZWwiLDIwXV0sIlJhZ2Vib3QiOltbIkRlZmVuc2l2ZSBzYWZlcG9pbnQiLHRydWVdLFsiQm9vc3RlciBtb2RlIiwxXSxbIkFjY3VyYWN5IGJvb3N0ZXIiLHRydWVdLFsiTXVsdGlwb2ludCBjb3JyZWN0aW9uIix0cnVlXV0sIllhdyI6W1siU1cgfCBSaWdodCByYW5kb21pemF0aW9uIiwwXSxbIk92ZXJyaWRlIC0gQWlyIGR1Y2siLHRydWVdLFsiRiB8IExlZnQiLDBdLFsiRyB8IExlZnQiLC0xNV0sWyJNIHwgUmlnaHQgcmFuZG9taXphdGlvbiIsMThdLFsiRyB8IFlhdyIsMF0sWyJEIHwgWWF3IG1vZGUiLDRdLFsiQSB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLDIwXSxbIlNXIHwgWWF3IiwwXSxbIkRNIHwgTGVmdCIsLTE4XSxbIkEgfCBZYXcgbW9kZSIsNF0sWyJTVyB8IExlZnQgcmFuZG9taXphdGlvbiIsMF0sWyJNIHwgWWF3IG1vZGUiLDVdLFsiRyB8IFlhdyBtb2RlIiw0XSxbIlMgfCBZYXciLDBdLFsiRlIgfCBSaWdodCByYW5kb21pemF0aW9uIiw5XSxbIkZSIHwgUmlnaHQiLDExXSxbIlMgfCBEZWxheSIsNF0sWyJHIHwgUmlnaHQgcmFuZG9taXphdGlvbiIsMF0sWyJNIHwgRGVsYXkiLDVdLFsiRE0gfCBEZWxheSIsMl0sWyJBRCB8IFlhdyIsMF0sWyJTVyB8IExlZnQiLC0yMF0sWyJEIHwgRGVsYXkiLDJdLFsiRE0gfCBMZWZ0IHJhbmRvbWl6YXRpb24iLDBdLFsiRyB8IERlbGF5Iiw1XSxbIkRNIHwgWWF3IiwwXSxbIkEgfCBEZWxheSIsM10sWyJGUiB8IERlbGF5IGZsdWN0dWF0aW9uIiwzXSxbIkZSIHwgRGVsYXkiLDVdLFsiTU4gfCBMZWZ0IHJhbmRvbWl6YXRpb24iLDBdLFsiT3ZlcnJpZGUgLSBNb3ZlIix0cnVlXSxbIlMgfCBMZWZ0IHJhbmRvbWl6YXRpb24iLDBdLFsiT3ZlcnJpZGUgLSBBaXIiLHRydWVdLFsiRCB8IExlZnQiLC0xNV0sWyJNIHwgUmlnaHQiLDEwXSxbIkZSIHwgTGVmdCByYW5kb21pemF0aW9uIiwtMTJdLFsiQSB8IFlhdyIsMF0sWyJGUiB8IFlhdyBtb2RlIiwyXSxbIk92ZXJyaWRlIC0gR2xvYmFsIix0cnVlXSxbIkFEIHwgUmlnaHQiLDddLFsiU1cgfCBZYXcgbW9kZSIsNl0sWyJTIHwgWWF3IG1vZGUiLDRdLFsiRlIgfCBMZWZ0IiwtMTFdLFsiRyB8IExlZnQgcmFuZG9taXphdGlvbiIsMF0sWyJEIHwgTGVmdCByYW5kb21pemF0aW9uIiwtMTFdLFsiQUQgfCBMZWZ0IiwtMTVdLFsiT3ZlcnJpZGUgLSBEdWNrIix0cnVlXSxbIk1OIHwgRGVsYXkgZmx1Y3R1YXRpb24iLDBdLFsiT3ZlcnJpZGUgLSBTbG93IHdhbGsiLHRydWVdLFsiQSB8IExlZnQgcmFuZG9taXphdGlvbiIsLTIwXSxbIkYgfCBMZWZ0IHJhbmRvbWl6YXRpb24iLDBdLFsiRlIgfCBZYXciLDBdLFsiUyB8IERlbGF5IGZsdWN0dWF0aW9uIiwwXSxbIk92ZXJyaWRlIC0gRHVjayBtb3ZlIix0cnVlXSxbIk0gfCBEZWxheSBmbHVjdHVhdGlvbiIsOF0sWyJPdmVycmlkZSAtIEZyZWVzdGFuZCIsdHJ1ZV0sWyJPdmVycmlkZSAtIFN0YW5kIix0cnVlXSxbIk1OIHwgRGVsYXkiLDJdLFsiTU4gfCBSaWdodCByYW5kb21pemF0aW9uIiwwXSxbIlNXIHwgRGVsYXkiLDhdLFsiTU4gfCBSaWdodCIsMF0sWyJGIHwgRGVsYXkgZmx1Y3R1YXRpb24iLDBdLFsiTU4gfCBMZWZ0IiwwXSxbIk1OIHwgWWF3IiwwXSxbIkcgfCBEZWxheSBmbHVjdHVhdGlvbiIsMF0sWyJPdmVycmlkZSAtIE1hbnVhbCIsZmFsc2VdLFsiQSB8IERlbGF5IGZsdWN0dWF0aW9uIiw4XSxbIkQgfCBEZWxheSBmbHVjdHVhdGlvbiIsNF0sWyJNTiB8IFlhdyBtb2RlIiwxXSxbIk0gfCBMZWZ0IHJhbmRvbWl6YXRpb24iLC0xOF0sWyJGIHwgRGVsYXkiLDJdLFsiRiB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLDBdLFsiRiB8IFlhdyBtb2RlIiwxXSxbIkQgfCBSaWdodCIsMTBdLFsiRiB8IFlhdyIsMF0sWyJGIHwgUmlnaHQiLDBdLFsiRyB8IFJpZ2h0IiwxMF0sWyJBRCB8IExlZnQgcmFuZG9taXphdGlvbiIsMF0sWyJBIHwgUmlnaHQiLDI1XSxbIkRNIHwgRGVsYXkgZmx1Y3R1YXRpb24iLDBdLFsiUyB8IExlZnQiLC0yM10sWyJBRCB8IERlbGF5IGZsdWN0dWF0aW9uIiwwXSxbIkFEIHwgRGVsYXkiLDVdLFsiQUQgfCBSaWdodCByYW5kb21pemF0aW9uIiwwXSxbIkFEIHwgWWF3IG1vZGUiLDRdLFsiRE0gfCBSaWdodCIsMTVdLFsiRE0gfCBSaWdodCByYW5kb21pemF0aW9uIiwwXSxbIk0gfCBZYXciLDBdLFsiUyB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLDBdLFsiU1cgfCBSaWdodCIsMTVdLFsiTSB8IExlZnQiLC0xMF0sWyJEIHwgUmlnaHQgcmFuZG9taXphdGlvbiIsMTFdLFsiUyB8IFJpZ2h0IiwyNF0sWyJETSB8IFlhdyBtb2RlIiw1XSxbIlNXIHwgRGVsYXkgZmx1Y3R1YXRpb24iLDBdLFsiT3ZlcnJpZGUgLSBGYWtlbGFnIixmYWxzZV0sWyJBIHwgTGVmdCIsLTI1XSxbIkQgfCBZYXciLDBdLFsiRyB8IFdheXMiLDVdLFsiRyB8IFJhbmdlIiwyNV0sWyJHIHwgSG9sZCIsMl0sWyJHIHwgU3dheSBzcGVlZCIsNDBdLFsiRyB8IFNuYXAgY2hhbmNlIiwxNV0sWyJTIHwgV2F5cyIsNV0sWyJTIHwgUmFuZ2UiLDI1XSxbIlMgfCBIb2xkIiwyXSxbIlMgfCBTd2F5IHNwZWVkIiw0MF0sWyJTIHwgU25hcCBjaGFuY2UiLDE1XSxbIk0gfCBXYXlzIiw1XSxbIk0gfCBSYW5nZSIsMjJdLFsiTSB8IEhvbGQiLDJdLFsiTSB8IFN3YXkgc3BlZWQiLDQwXSxbIk0gfCBTbmFwIGNoYW5jZSIsMTVdLFsiU1cgfCBXYXlzIiw1XSxbIlNXIHwgUmFuZ2UiLDIyXSxbIlNXIHwgSG9sZCIsM10sWyJTVyB8IFN3YXkgc3BlZWQiLDQwXSxbIlNXIHwgU25hcCBjaGFuY2UiLDE1XSxbIkQgfCBXYXlzIiwzXSxbIkQgfCBSYW5nZSIsMThdLFsiRCB8IEhvbGQiLDJdLFsiRCB8IFN3YXkgc3BlZWQiLDQwXSxbIkQgfCBTbmFwIGNoYW5jZSIsMTVdLFsiRE0gfCBXYXlzIiw1XSxbIkRNIHwgUmFuZ2UiLDE4XSxbIkRNIHwgSG9sZCIsMl0sWyJETSB8IFN3YXkgc3BlZWQiLDQ1XSxbIkRNIHwgU25hcCBjaGFuY2UiLDIwXSxbIkEgfCBXYXlzIiw1XSxbIkEgfCBSYW5nZSIsMzBdLFsiQSB8IEhvbGQiLDFdLFsiQSB8IFN3YXkgc3BlZWQiLDQwXSxbIkEgfCBTbmFwIGNoYW5jZSIsMTVdLFsiQUQgfCBXYXlzIiw3XSxbIkFEIHwgUmFuZ2UiLDMyXSxbIkFEIHwgSG9sZCIsMV0sWyJBRCB8IFN3YXkgc3BlZWQiLDQwXSxbIkFEIHwgU25hcCBjaGFuY2UiLDE1XV0sIlN5c3RlbSI6W1sidmVyc2lvbiIsIjEuMCJdLFsiYnVpbGQiLCJiZXRhIl1dLCJEZWZlbnNpdmUiOltbIkZSIHwgRGVmZW5zaXZlIiwxXSxbIlNXIHwgU3BpbiByYW5nZSIsMF0sWyJBRCB8IFNwaW4gc3BlZWQiLDEwMF0sWyJETSB8IFNwaW4gcmFuZ2UiLDBdLFsiQSB8IFBpdGNoIHZhbHVlICgxKSIsLTg5XSxbIlNXIHwgWWF3IHZhbHVlIiwxMjBdLFsiQUQgfCBEZWZlbnNpdmUiLDFdLFsiRiB8IFBpdGNoIHZhbHVlICgxKSIsMF0sWyJEIHwgUGl0Y2ggdmFsdWUgKDEpIiwtODldLFsiUyB8IFBpdGNoIHZhbHVlICgyKSIsODldLFsiTU4gfCBEZWZlbnNpdmUiLDFdLFsiTSB8IFNwaW4gc3BlZWQiLDBdLFsiQSB8IERlZmVuc2l2ZSIsMV0sWyJTIHwgUGl0Y2ggdmFsdWUgKDEpIiwtODldLFsiQSB8IFlhdyB2YWx1ZSIsMTIwXSxbIkQgfCBZYXcgdmFsdWUiLDEyMF0sWyJBIHwgRGVmZW5zaXZlIHlhdyIsMTJdLFsiUyB8IFNwaW4gcmFuZ2UiLDBdLFsiQUQgfCBTcGluIHJhbmdlIiwzNjBdLFsiRiB8IERlZmVuc2l2ZSB5YXciLDFdLFsiRCB8IERlZmVuc2l2ZSB5YXciLDEwXSxbIkcgfCBEZWZlbnNpdmUgeWF3IiwxMF0sWyJNTiB8IERlZmVuc2l2ZSB5YXciLDFdLFsiRiB8IFNwaW4gcmFuZ2UiLDBdLFsiRE0gfCBEZWZlbnNpdmUiLDFdLFsiRCB8IFNwaW4gc3BlZWQiLDEwMF0sWyJEIHwgU3BpbiByYW5nZSIsMzYwXSxbIkcgfCBTcGluIHNwZWVkIiwxMDBdLFsiQSB8IFNwaW4gc3BlZWQiLDEwMF0sWyJETSB8IFBpdGNoIHZhbHVlICgyKSIsODldLFsiUyB8IFlhdyB2YWx1ZSIsMTIwXSxbIkYgfCBTcGluIHNwZWVkIiwwXSxbIkZSIHwgU3BpbiBzcGVlZCIsMTAwXSxbIlNXIHwgRGVmZW5zaXZlIHlhdyIsMTBdLFsiRlIgfCBEZWZlbnNpdmUgeWF3IiwxMF0sWyJGUiB8IFBpdGNoIHZhbHVlICgyKSIsODldLFsiTU4gfCBQaXRjaCB2YWx1ZSAoMikiLDBdLFsiTU4gfCBTcGluIHJhbmdlIiwwXSxbIk0gfCBTcGluIHJhbmdlIiwwXSxbIkEgfCBEZWZlbnNpdmUgcGl0Y2giLDEyXSxbIkYgfCBZYXcgdmFsdWUiLDBdLFsiRlIgfCBEZWZlbnNpdmUgcGl0Y2giLDExXSxbIkcgfCBZYXcgdmFsdWUiLDEyMF0sWyJTVyB8IERlZmVuc2l2ZSBwaXRjaCIsMTFdLFsiQUQgfCBQaXRjaCB2YWx1ZSAoMikiLDg5XSxbIk1OIHwgRGVmZW5zaXZlIHBpdGNoIiwxXSxbIkRNIHwgUGl0Y2ggdmFsdWUgKDEpIiwtODldLFsiRE0gfCBZYXcgdmFsdWUiLDEwMF0sWyJNIHwgWWF3IHZhbHVlIiwxMjBdLFsiTU4gfCBQaXRjaCB2YWx1ZSAoMSkiLDBdLFsiQSB8IFNwaW4gcmFuZ2UiLDM2MF0sWyJNTiB8IFNwaW4gc3BlZWQiLDBdLFsiRlIgfCBTcGluIHJhbmdlIiwzNjBdLFsiRyB8IERlZmVuc2l2ZSBwaXRjaCIsMTFdLFsiRlIgfCBQaXRjaCB2YWx1ZSAoMSkiLC04OV0sWyJETSB8IERlZmVuc2l2ZSBwaXRjaCIsMTFdLFsiRyB8IERlZmVuc2l2ZSIsMV0sWyJEIHwgRGVmZW5zaXZlIiwxXSxbIk0gfCBQaXRjaCB2YWx1ZSAoMikiLDg5XSxbIk0gfCBEZWZlbnNpdmUgcGl0Y2giLDExXSxbIkFEIHwgRGVmZW5zaXZlIHBpdGNoIiwxMV0sWyJGUiB8IFlhdyB2YWx1ZSIsMTIwXSxbIk0gfCBEZWZlbnNpdmUiLDFdLFsiQUQgfCBQaXRjaCB2YWx1ZSAoMSkiLC04OV0sWyJGIHwgRGVmZW5zaXZlIHBpdGNoIiwxXSxbIkYgfCBEZWZlbnNpdmUiLDFdLFsiQUQgfCBEZWZlbnNpdmUgeWF3IiwxMV0sWyJNIHwgRGVmZW5zaXZlIHlhdyIsMTJdLFsiUyB8IERlZmVuc2l2ZSIsMV0sWyJTVyB8IFBpdGNoIHZhbHVlICgyKSIsODldLFsiRE0gfCBEZWZlbnNpdmUgeWF3IiwxMl0sWyJTVyB8IERlZmVuc2l2ZSIsMV0sWyJHIHwgUGl0Y2ggdmFsdWUgKDIpIiw4OV0sWyJETSB8IFNwaW4gc3BlZWQiLDBdLFsiUyB8IFNwaW4gc3BlZWQiLDBdLFsiU1cgfCBQaXRjaCB2YWx1ZSAoMSkiLC04OV0sWyJHIHwgU3BpbiByYW5nZSIsMzYwXSxbIlMgfCBEZWZlbnNpdmUgeWF3IiwxMF0sWyJBRCB8IFlhdyB2YWx1ZSIsMTQwXSxbIkEgfCBQaXRjaCB2YWx1ZSAoMikiLDg5XSxbIkQgfCBEZWZlbnNpdmUgcGl0Y2giLDExXSxbIkYgfCBQaXRjaCB2YWx1ZSAoMikiLDBdLFsiU1cgfCBTcGluIHNwZWVkIiwwXSxbIkQgfCBQaXRjaCB2YWx1ZSAoMikiLDg5XSxbIk0gfCBQaXRjaCB2YWx1ZSAoMSkiLC04OV0sWyJTIHwgRGVmZW5zaXZlIHBpdGNoIiwxMV0sWyJNTiB8IFlhdyB2YWx1ZSIsMF0sWyJHIHwgUGl0Y2ggdmFsdWUgKDEpIiwtODldLFsiRyB8IFNtYXJ0IHRyaWdnZXJzIixbWyJQZWVrIixmYWxzZV0sWyJTaG90IGF0IixmYWxzZV0sWyJBaXIiLGZhbHNlXSxbIlRocmVhdCBhaW0iLGZhbHNlXSxbIlJhbmRvbSIsZmFsc2VdXV0sWyJTIHwgU21hcnQgdHJpZ2dlcnMiLFtbIlBlZWsiLGZhbHNlXSxbIlNob3QgYXQiLGZhbHNlXSxbIkFpciIsZmFsc2VdLFsiVGhyZWF0IGFpbSIsZmFsc2VdLFsiUmFuZG9tIixmYWxzZV1dXSxbIk0gfCBTbWFydCB0cmlnZ2VycyIsW1siUGVlayIsdHJ1ZV0sWyJTaG90IGF0IixmYWxzZV0sWyJBaXIiLGZhbHNlXSxbIlRocmVhdCBhaW0iLGZhbHNlXSxbIlJhbmRvbSIsZmFsc2VdXV0sWyJTVyB8IFNtYXJ0IHRyaWdnZXJzIixbWyJQZWVrIixmYWxzZV0sWyJTaG90IGF0IixmYWxzZV0sWyJBaXIiLGZhbHNlXSxbIlRocmVhdCBhaW0iLGZhbHNlXSxbIlJhbmRvbSIsZmFsc2VdXV0sWyJEIHwgU21hcnQgdHJpZ2dlcnMiLFtbIlBlZWsiLGZhbHNlXSxbIlNob3QgYXQiLGZhbHNlXSxbIkFpciIsZmFsc2VdLFsiVGhyZWF0IGFpbSIsZmFsc2VdLFsiUmFuZG9tIixmYWxzZV1dXSxbIkRNIHwgU21hcnQgdHJpZ2dlcnMiLFtbIlBlZWsiLGZhbHNlXSxbIlNob3QgYXQiLGZhbHNlXSxbIkFpciIsZmFsc2VdLFsiVGhyZWF0IGFpbSIsZmFsc2VdLFsiUmFuZG9tIixmYWxzZV1dXSxbIkEgfCBTbWFydCB0cmlnZ2VycyIsW1siUGVlayIsZmFsc2VdLFsiU2hvdCBhdCIsZmFsc2VdLFsiQWlyIix0cnVlXSxbIlRocmVhdCBhaW0iLGZhbHNlXSxbIlJhbmRvbSIsZmFsc2VdXV0sWyJBRCB8IFNtYXJ0IHRyaWdnZXJzIixbWyJQZWVrIixmYWxzZV0sWyJTaG90IGF0IixmYWxzZV0sWyJBaXIiLGZhbHNlXSxbIlRocmVhdCBhaW0iLGZhbHNlXSxbIlJhbmRvbSIsZmFsc2VdXV0sWyJGUiB8IFNtYXJ0IHRyaWdnZXJzIixbWyJQZWVrIixmYWxzZV0sWyJTaG90IGF0IixmYWxzZV0sWyJBaXIiLGZhbHNlXSxbIlRocmVhdCBhaW0iLGZhbHNlXSxbIlJhbmRvbSIsZmFsc2VdXV1dLCJDdXN0b21pemF0aW9uIjpbWyJUZXNsYSDCtyBiZWFtcyIsMjBdLFsiSGF0IG1vZGUiLDFdLFsiVGVzbGEgwrcgd2lkdGgiLDddLFsiVGVzbGEgwrcgZGVsYXkiLDJdLFsiVGVzbGEgwrcgcmFkaXVzIiwxMDFdXSwiU3luY2hyb25pemF0aW9uIjpbWyJTeW5jZWQgcGxheWVycyIsW1siRGlzYWJsZSB0cmFzaC10YWxrIix0cnVlXSxbIklnbm9yZSB0YWxrLWJhY2siLHRydWVdLFsiQ2hhdCBtZW50aW9ucyIsdHJ1ZV1dXSxbIkNsYW4gdGFnIixmYWxzZV0sWyJTaGFyZWQgRVNQIix0cnVlXV0sIkRlc3luYyI6W1siRCB8IEZha2UgbGVmdCIsNjBdLFsiQSB8IEZha2UgbGVmdCIsNjBdLFsiU1cgfCBEZXN5bmMiLDVdLFsiRyB8IEZha2UgbGVmdCIsNjBdLFsiRiB8IEZha2UgbGVmdCIsMF0sWyJHIHwgTGVmdCByYW5kb21pemF0aW9uIiwwXSxbIkQgfCBMZWZ0IHJhbmRvbWl6YXRpb24iLDBdLFsiTU4gfCBGYWtlIHJpZ2h0IiwwXSxbIk0gfCBSaWdodCByYW5kb21pemF0aW9uIiwwXSxbIkEgfCBMZWZ0IHJhbmRvbWl6YXRpb24iLDBdLFsiUyB8IEZha2UgcmlnaHQiLDYwXSxbIlMgfCBGYWtlIGxlZnQiLDYwXSxbIkRNIHwgRmFrZSBsZWZ0Iiw2MF0sWyJGUiB8IEZha2UgcmlnaHQiLDYwXSxbIlNXIHwgRmFrZSBsZWZ0Iiw2MF0sWyJNTiB8IERlc3luYyIsMV0sWyJGIHwgRmFrZSByaWdodCIsMF0sWyJGUiB8IExlZnQgcmFuZG9taXphdGlvbiIsMF0sWyJGUiB8IEZha2UgbGVmdCIsNjBdLFsiRyB8IEZha2UgcmlnaHQiLDYwXSxbIkRNIHwgRmFrZSByaWdodCIsNjBdLFsiQSB8IEZha2UgcmlnaHQiLDYwXSxbIkQgfCBGYWtlIHJpZ2h0Iiw2MF0sWyJTIHwgRGVzeW5jIiw1XSxbIk1OIHwgUmlnaHQgcmFuZG9taXphdGlvbiIsMF0sWyJBIHwgRGVzeW5jIiw1XSxbIk0gfCBMZWZ0IHJhbmRvbWl6YXRpb24iLDBdLFsiU1cgfCBMZWZ0IHJhbmRvbWl6YXRpb24iLDBdLFsiRCB8IERlc3luYyIsNV0sWyJGUiB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLDBdLFsiRiB8IERlc3luYyIsMV0sWyJHIHwgRGVzeW5jIiw1XSxbIkYgfCBSaWdodCByYW5kb21pemF0aW9uIiwwXSxbIkcgfCBSaWdodCByYW5kb21pemF0aW9uIiwwXSxbIkQgfCBSaWdodCByYW5kb21pemF0aW9uIiwwXSxbIkYgfCBMZWZ0IHJhbmRvbWl6YXRpb24iLDBdLFsiQUQgfCBSaWdodCByYW5kb21pemF0aW9uIiwwXSxbIk0gfCBEZXN5bmMiLDVdLFsiTSB8IEZha2UgbGVmdCIsNjBdLFsiQUQgfCBMZWZ0IHJhbmRvbWl6YXRpb24iLDBdLFsiQUQgfCBGYWtlIGxlZnQiLDYwXSxbIk0gfCBGYWtlIHJpZ2h0Iiw2MF0sWyJBRCB8IEZha2UgcmlnaHQiLDYwXSxbIkRNIHwgTGVmdCByYW5kb21pemF0aW9uIiwwXSxbIkFEIHwgRGVzeW5jIiw1XSxbIlMgfCBSaWdodCByYW5kb21pemF0aW9uIiwwXSxbIlNXIHwgRmFrZSByaWdodCIsNjBdLFsiQSB8IFJpZ2h0IHJhbmRvbWl6YXRpb24iLDBdLFsiTU4gfCBGYWtlIGxlZnQiLDBdLFsiRE0gfCBEZXN5bmMiLDVdLFsiTU4gfCBMZWZ0IHJhbmRvbWl6YXRpb24iLDBdLFsiU1cgfCBSaWdodCByYW5kb21pemF0aW9uIiwwXSxbIlMgfCBMZWZ0IHJhbmRvbWl6YXRpb24iLDBdLFsiRE0gfCBSaWdodCByYW5kb21pemF0aW9uIiwwXSxbIkZSIHwgRGVzeW5jIiw1XV0sIkppdHRlciI6W1siRlIgfCBNb2RpZmllciBtb2RlIiw2XSxbIlNXIHwgTW9kaWZpZXIgbW9kZSIsNl0sWyJTVyB8IE1vZGlmaWVyIHJhbmRvbWl6YXRpb24iLDBdLFsiRlIgfCBNb2RpZmllciBkZWdyZWUiLDhdLFsiQUQgfCBNb2RpZmllciBkZWdyZWUiLDE0XSxbIkRNIHwgTW9kaWZpZXIgcmFuZG9taXphdGlvbiIsMF0sWyJTVyB8IE1vZGlmaWVyIGRlZ3JlZSIsMTBdLFsiQSB8IE1vZGlmaWVyIGRlZ3JlZSIsMTZdLFsiQUQgfCBNb2RpZmllciBtb2RlIiw2XSxbIkZSIHwgTW9kaWZpZXIgcmFuZG9taXphdGlvbiIsMF0sWyJTIHwgTW9kaWZpZXIgZGVncmVlIiwxMl0sWyJBIHwgTW9kaWZpZXIgbW9kZSIsN10sWyJHIHwgTW9kaWZpZXIgZGVncmVlIiwxMl0sWyJEIHwgTW9kaWZpZXIgZGVncmVlIiw4XSxbIkcgfCBNb2RpZmllciBtb2RlIiw2XSxbIkYgfCBNb2RpZmllciBkZWdyZWUiLDBdLFsiRCB8IE1vZGlmaWVyIG1vZGUiLDZdLFsiRiB8IE1vZGlmaWVyIG1vZGUiLDFdLFsiRE0gfCBNb2RpZmllciBtb2RlIiw2XSxbIk1OIHwgTW9kaWZpZXIgZGVncmVlIiwwXSxbIkQgfCBNb2RpZmllciByYW5kb21pemF0aW9uIiwwXSxbIkcgfCBNb2RpZmllciByYW5kb21pemF0aW9uIiwwXSxbIkYgfCBNb2RpZmllciByYW5kb21pemF0aW9uIiwwXSxbIk0gfCBNb2RpZmllciBtb2RlIiw3XSxbIk0gfCBNb2RpZmllciByYW5kb21pemF0aW9uIiw4XSxbIk1OIHwgTW9kaWZpZXIgcmFuZG9taXphdGlvbiIsMF0sWyJTIHwgTW9kaWZpZXIgbW9kZSIsNl0sWyJTIHwgTW9kaWZpZXIgcmFuZG9taXphdGlvbiIsMF0sWyJETSB8IE1vZGlmaWVyIGRlZ3JlZSIsMTBdLFsiTSB8IE1vZGlmaWVyIGRlZ3JlZSIsMTRdLFsiQSB8IE1vZGlmaWVyIHJhbmRvbWl6YXRpb24iLDEwXSxbIk1OIHwgTW9kaWZpZXIgbW9kZSIsMV0sWyJBRCB8IE1vZGlmaWVyIHJhbmRvbWl6YXRpb24iLDBdXSwiQ29uZmlncyI6W10sIlNldHRpbmdzIjpbWyJDdXN0b20gYW50aWFpbSIsdHJ1ZV0sWyJDb25kaXRpb24iLDFdLFsiRWRnZSB5YXciLGZhbHNlXSxbIlJhbmRvbSBkZXN5bmMgc2lkZSIsdHJ1ZV0sWyJBbnRpIGJydXRlZm9yY2UiLHRydWVdLFsiQW50aSBicnV0ZSBtb2RlIiwyXSxbIkFkYXB0aXZlIEFBIix0cnVlXV19"
 
 configs.apply_default = function()
     pcall(libs.eui.import, libs.base64.decode(configs.default_config))
@@ -2396,281 +2553,251 @@ configs.reload_configs = function()
     ui.configs.list.ref:set_items(libs.filesystem.get_files())
 end
 
-configs.reload_cloud_configs = function()
-    local encoded_data = {
-        type = "refresh_list",
-        is_beta = tostring(info.beta_build)
-    }
-    app_client.send(libs.json.encode(encoded_data))
+-- cloud configs (owners, Oct 2026: "a cloud cfg ... nem működik"): the old azura.uno socket is gone, the configs are on
+-- our license server next to the gamesense lua's (lua=pm keeps them apart). The list and loading need nothing; sharing,
+-- updating and deleting need the key: the Primordial loader keeps it in csgo/specter/key.txt (the dev build reads it
+-- from there too), the HWID is the loader's (the server locked the key to it). A config goes up in 3000 char parts
+-- (a URL can not carry it whole): part 0 first (it starts the upload on the server), then the rest together
+local cloud = { items = {}, part = 3000 }
 
-    local response_success, response_result = app_client.receive(65535)
-    if (not response_success) then
-        notifications.create("Specter", "Cloud is offline!", notifications.types.warning)
+cloud.url = function(s)
+    return (tostring(s):gsub("([^%w%-_.~])", function(c) return string.format("%%%02X", c:byte()) end))
+end
+
+-- the HWID of the Primordial loader (same text, same hash)
+cloud.hwid = function()
+    local raw = "specter-pm"
+    pcall(ffi.cdef, [[
+        int GetVolumeInformationA(const char*, char*, unsigned long, unsigned long*, unsigned long*, unsigned long*, char*, unsigned long);
+        int GetComputerNameA(char*, unsigned long*);
+    ]])
+    pcall(function()
+        local serial = ffi.new("unsigned long[1]")
+        if (ffi.C.GetVolumeInformationA("C:\\", nil, 0, serial, nil, nil, nil, 0) ~= 0) then
+            raw = raw .. "|" .. tostring(tonumber(serial[0]))
+        end
+        local name, size = ffi.new("char[256]"), ffi.new("unsigned long[1]", 256)
+        if (ffi.C.GetComputerNameA(name, size) ~= 0) then
+            raw = raw .. "|" .. ffi.string(name)
+        end
+    end)
+    local h1, h2 = 5381, 52711
+    for i = 1, #raw do
+        local c = raw:byte(i)
+        h1 = (h1 * 33 + c) % 4294967296
+        h2 = (h2 * 31 + c * 7) % 4294967296
+    end
+    return string.format("PM-%08X%08X", h1, h2)
+end
+
+-- "&key=..&hwid=.." for the server, nil (and a message) without a saved key
+cloud.auth = function()
+    local ok, exists = pcall(libs.filesystem.exists, "specter/key.txt", "MOD")
+    local key = ""
+    if (ok and exists) then
+        local ok2, text = pcall(libs.filesystem.read, "specter/key.txt")
+        key = ok2 and tostring(text):match("^%s*(.-)%s*$") or ""
+    end
+    if (key == "" and info.plan == "dev") then
+        -- the dev build has no key: the server takes it as dev=1 + the user name (owners, Oct 2026: "dev can upload to cloud too")
+        return "&dev=1&who=" .. cloud.url(info.user)
+    end
+    if (key == "") then
+        notifications.create("Specter", "Log in once with the Specter loader to share configs (your key is saved then).",
+            notifications.types.warning)
+        return nil
+    end
+    return "&key=" .. cloud.url(key) .. "&hwid=" .. cloud.url(cloud.hwid())
+end
+
+-- GET from the server, the callback gets the parsed JSON (nil when the server did not answer / sent no JSON)
+cloud.get = function(path, callback)
+    libs.tools.http:get(presence.server .. path, function(response)
+        local ok, data = pcall(libs.json.parse, response.body or "")
+        callback((ok and type(data) == "table") and data or nil)
+    end)
+end
+
+-- the selected row of the cloud list: { name, author }
+cloud.selected = function()
+    local ok, item = pcall(ui.configs.cloud_list.ref.get_active_item_name, ui.configs.cloud_list.ref)
+    return ok and cloud.items[item] or nil
+end
+
+-- "10-17 14:05 (3h ago)" for the upload time `ms` of a cloud config (the server's clock in ms; the local hour from our own clock, the
+-- time zone is the difference between that and UTC)
+cloud.stamp = function(ms)
+    ms = tonumber(ms)
+    if (ms == nil or ms ~= ms or ms <= 0) then return nil end
+    local now, at = client_get_unix_time(), math.floor(ms / 1000)
+    local lh, lm = client_get_local_time()
+    local shift = (lh * 60 + lm) - math.floor((now % 86400) / 60)
+    shift = (shift + 720) % 1440 - 720
+    local local_at = at + shift * 60
+    local days, rest = math.floor(local_at / 86400), local_at % 86400
+    -- civil date from the day count (Howard Hinnant's algorithm)
+    local z = days + 719468
+    local era = math.floor(z / 146097)
+    local doe = z - era * 146097
+    local yoe = math.floor((doe - math.floor(doe / 1460) + math.floor(doe / 36524) - math.floor(doe / 146096)) / 365)
+    local doy = doe - (365 * yoe + math.floor(yoe / 4) - math.floor(yoe / 100))
+    local mp = math.floor((5 * doy + 2) / 153)
+    local day = doy - math.floor((153 * mp + 2) / 5) + 1
+    local month = mp < 10 and mp + 3 or mp - 9
+    local age = math.max(0, now - at)
+    local ago = age < 60 and "now" or age < 3600 and (math.floor(age / 60) .. "m ago")
+        or age < 86400 and (math.floor(age / 3600) .. "h ago") or (math.floor(age / 86400) .. "d ago")
+    return string.format("%02d-%02d %02d:%02d (%s)", month, day, math.floor(rest / 3600), math.floor(rest % 3600 / 60), ago)
+end
+
+configs.reload_cloud_configs = function(report)
+    cloud.get("/configs?lua=pm", function(list)
+        if (list == nil) then
+            if (report) then
+                notifications.create("Specter", "The cloud did not answer, try again.", notifications.types.warning)
+            end
+            return
+        end
+        table.sort(list, function(x, y) return (x.ts or 0) > (y.ts or 0) end)
+        local rows = {}
+        cloud.items = {}
+        for _, c in ipairs(list) do
+            if (type(c.name) == "string" and type(c.author) == "string") then
+                local stamp = cloud.stamp(c.ts)
+                local row = c.author .. " ~ " .. c.name .. (stamp and ("  " .. stamp) or "")
+                cloud.items[row] = { name = c.name, author = c.author }
+                rows[#rows + 1] = row
+            end
+        end
+        ui.configs.cloud_list.ref:set_items(rows)
+        if (report) then
+            notifications.create("Specter", #rows .. " cloud config" .. (#rows == 1 and "" or "s") .. ".", notifications.types.information)
+        end
+    end)
+end
+
+-- the current settings to the cloud under `name` (a config of ours with that name is replaced)
+cloud.upload = function(name)
+    name = tostring(name or ""):match("^%s*(.-)%s*$")
+    if (name == "" or #name > 32) then
+        notifications.create("Specter", "Pick a config name (1-32 characters).", notifications.types.warning)
         return
     end
-
-    local decode_success, decode_result = libs.json.parse(response_success)
-    if (not decode_success) then
-        print("connection has failed. ", get_text_color(), "(error parsing response)")
-        error("specter · an internal error has occurred ~ 0xA9EFD4")
+    local auth = cloud.auth()
+    if (auth == nil) then
+        return
     end
-
-    if (decode_success.status == "refresh_list") then
-        local decoded_data = decode(decode_success.encrypted_data)
-        local data = libs.json.parse(decoded_data)
-
-        if (data) then
-            ui.configs.cloud_list.ref:set_items(data or {})
-        else
-            print("connection has failed. ", get_text_color(), "(error parsing data)")
-            error("specter · an internal error has occurred ~ 0x2C4E78")
+    local ok, config_table = pcall(libs.json.parse, libs.eui.export())
+    if (not ok or type(config_table) ~= "table") then
+        notifications.create("Specter", "Unable to export the config!", notifications.types.failure)
+        return
+    end
+    config_table["System"] = { { "version", config_version }, { "build", config_build } }
+    local data = libs.base64.encode(libs.json.encode(config_table))
+    local parts = {}
+    for i = 1, #data, cloud.part do
+        parts[#parts + 1] = data:sub(i, i + cloud.part - 1)
+    end
+    local base = "/configs/upload_part?lua=pm" .. auth .. "&name=" .. cloud.url(name) .. "&total=" .. #parts
+    local done = false
+    local function finished(res)
+        if (done or res == nil) then
+            return
         end
-    else
-        print("connection has failed. ", get_text_color(), "(unexpected response)")
-        error("specter · an internal error has occurred ~ 0xFF9847")
+        if (res.ok == false) then
+            done = true
+            notifications.create("Specter", "The cloud refused the config (" .. tostring(res.reason) .. ").", notifications.types.failure)
+        elseif (res.done) then
+            done = true
+            notifications.create("Specter", "Config \"" .. name .. "\" shared to the cloud by " .. tostring(res.author) .. ".",
+                notifications.types.success)
+            configs.reload_cloud_configs()
+        end
     end
+    notifications.create("Specter", "Uploading the config to the cloud...", notifications.types.information)
+    cloud.get(base .. "&idx=0&data=" .. cloud.url(parts[1]), function(res)
+        finished(res)
+        if (done or res == nil) then
+            if (res == nil) then
+                notifications.create("Specter", "The cloud did not answer, try again.", notifications.types.warning)
+            end
+            return
+        end
+        for i = 2, #parts do
+            cloud.get(base .. "&idx=" .. (i - 1) .. "&data=" .. cloud.url(parts[i]), finished)
+        end
+    end)
 end
 
 ui.reload_cloud_config = menu_add_button("Cloud configs", "Refresh",
     function()
-        configs.reload_cloud_configs()
+        configs.reload_cloud_configs(true)
     end
 )
 
+-- Update: the current settings to the selected cloud config's name (yours: replaced, someone else's: your own copy)
 ui.update_cloud_config = menu_add_button("Cloud configs", "Update",
     function()
-        local config = libs.eui.export()
-        local config_table = libs.json.parse(config)
-        
-        config_table["System"] = {
-            {"version", config_version},
-            {"build", config_build}
-        }
-
-        local encoded_data = {
-            type = "update_config",
-
-            username = encode(tostring(info.user)),
-            is_beta = tostring(info.beta_build),
-
-            config_name = encode(ui.configs.cloud_list.ref:get_active_item_name():match("~ (.+)$")),
-            config_data = libs.base64.encode(libs.json.encode(config_table))
-        }
-        app_client.send(libs.json.encode(encoded_data))
-
-        local response_success, response_result = app_client.receive(65535)
-        if (not response_success) then
-            notifications.create("Specter", "Cloud is offline!", notifications.types.warning)
+        local sel = cloud.selected()
+        if (sel == nil) then
+            notifications.create("Specter", "Select a cloud config first.", notifications.types.warning)
             return
         end
-
-        local decode_success, decode_result = libs.json.parse(response_success)
-        if (not decode_success) then
-            print("connection has failed. ", get_text_color(), "(error parsing response)")
-            error("specter · an internal error has occurred ~ 0x3AB6D1")
-        end
-
-        if (decode_success.status == "update_config") then
-            local decoded_data = decode(decode_success.encrypted_data)
-            local data = libs.json.parse(decoded_data)
-    
-            if (data) then
-                if (data.status == "success") then
-                    notifications.create("Specter", "Config update completed! Changes saved to the cloud.", notifications.types.success)
-                    print("config has been synced to the cloud.")
-                elseif (data.message == "no_perm") then
-                    notifications.create("Specter", "Insufficient permissions to modify this config!", notifications.types.warning)
-                    print("modification of this config is not permitted.")
-                elseif (data.message == "bad_cfg") then
-                    notifications.create("Specter", "The config does not appear to exist!", notifications.types.failure)
-                    print("config does not appear to exist.")
-                else
-                    print("connection has failed. ", get_text_color(), "(", data.message or "unknown error", ")")
-                    error("specter · an internal error has occurred ~ 0x9E25C8")
-                end
-            else
-                print("connection has failed. ", get_text_color(), "(error parsing data)")
-                error("specter · an internal error has occurred ~ 0xB74C8E")
-            end
-        else
-            print("connection has failed. ", get_text_color(), "(unexpected response)")
-            error("specter · an internal error has occurred ~ 0xF47E9A")
-        end
+        cloud.upload(sel.name)
     end
 )
 
 ui.delete_cloud_config = menu_add_button("Cloud configs", "Delete",
     function()
-        local encoded_data = {
-            type = "delete_config",
-            
-            username = encode(tostring(info.user)),
-            config_name = encode(ui.configs.cloud_list.ref:get_active_item_name():match("~ (.+)$"))
-        }
-        app_client.send(libs.json.encode(encoded_data))
-
-        local response_success, response_result = app_client.receive(65535)
-        if (not response_success) then
-            notifications.create("Specter", "Cloud is offline!", notifications.types.warning)
+        local sel = cloud.selected()
+        local auth = sel and cloud.auth()
+        if (sel == nil or auth == nil) then
             return
         end
-
-        local decode_success, decode_result = libs.json.parse(response_success)
-        if (not decode_success) then
-            print("connection has failed. ", get_text_color(), "(error parsing response)")
-            error("specter · an internal error has occurred ~ 0x7C58E3")
-        end
-
-        if (decode_success.status == "delete_config") then
-            local decoded_data = decode(decode_success.encrypted_data)
-            local data = libs.json.parse(decoded_data)
-    
-            if (data) then
-                if (data.status == "success") then
-                    notifications.create("Specter", "Config deleted successfully from the cloud!", notifications.types.success)
-                    print("config has been deleted from the cloud.")
-
-                    configs.reload_cloud_configs()
-                elseif (data.message == "no_perm") then
-                    notifications.create("Specter", "Insufficient permissions to delete this config!", notifications.types.warning)
-                    print("deletion of this config is not permitted.")
-                elseif (data.message == "bad_cfg") then
-                    notifications.create("Specter", "The config does not appear to exist!", notifications.types.failure)
-                    print("config does not appear to exist.")
-                else
-                    print("connection has failed. ", get_text_color(), "(", data.message or "unknown error", ")")
-                    error("specter · an internal error has occurred ~ 0xD4A83F")
-                end
+        cloud.get("/configs/delete?lua=pm" .. auth .. "&name=" .. cloud.url(sel.name), function(res)
+            if (res ~= nil and res.ok) then
+                notifications.create("Specter", "Config deleted from the cloud.", notifications.types.success)
+                configs.reload_cloud_configs()
+            elseif (res ~= nil and res.reason == "not_found") then
+                notifications.create("Specter", "You can only delete your own configs.", notifications.types.warning)
             else
-                print("connection has failed. ", get_text_color(), "(error parsing data)")
-                error("specter · an internal error has occurred ~ 0xD4E78B")
+                notifications.create("Specter", "The cloud refused it (" .. tostring(res and res.reason or "no answer") .. ").",
+                    notifications.types.failure)
             end
-        else
-            print("connection has failed. ", get_text_color(), "(unexpected response)")
-            error("specter · an internal error has occurred ~ 0x4FA6BD")
-        end
+        end)
     end
 )
 
 ui.load_cloud_config = menu_add_button("Cloud configs", "Use",
     function()
-        local active_item_name = ui.configs.cloud_list.ref:get_active_item_name()
-        
-        local username = active_item_name:match("^(.-) %~")
-        local config_name = active_item_name:match("~ (.+)$")
-    
-        local encoded_data = {
-            type = "load_config",
-
-            username = encode(username),
-            config_name = encode(config_name)
-        }
-        app_client.send(libs.json.encode(encoded_data))
-    
-        local response_success, response_result = app_client.receive(65535)
-        if (not response_success) then
-            notifications.create("Specter", "Cloud is offline!", notifications.types.warning)
+        local sel = cloud.selected()
+        if (sel == nil) then
+            notifications.create("Specter", "Select a cloud config first.", notifications.types.warning)
             return
         end
-
-        local decode_success, decode_result = libs.json.parse(response_success)
-        if (not decode_success) then
-            print("connection has failed. ", get_text_color(), "(error parsing response)")
-            error("specter · an internal error has occurred ~ 0xB8459E")
-        end
-
-        if (decode_success.status == "load_config") then
-            local decoded_data = libs.base64.decode(decode_success.encrypted_data)
-            local data = libs.json.parse(decoded_data)
-
-            if (data.status ~= "success") then
-                if (data.message == "bad_cfg") then
-                    notifications.create("Specter", "The config does not appear to exist!", notifications.types.failure)
-                    print("config does not appear to exist.")
-                else
-                    print("connection has failed. ", get_text_color(), "(", data and data.message or "unknown error", ")")
-                    error("specter · an internal error has occurred ~ 0x47DA9F")
-                end
-            else
-                local run_success, run_result = pcall(libs.base64.decode, data.message)
-                if (not run_success) then
-                    notifications.create("Specter", "Unable to decode the config!", notifications.types.failure)
-                    print("failed to decode config. (" .. run_result .. ")")
-                    
-                    return
-                end
-            
-                run_success, config_table = pcall(libs.json.parse, run_result)
-                if (not run_success) then
-                    notifications.create("Specter", "Unable to parse the config!", notifications.types.failure)
-                    print("failed to parse config. (" .. config_table .. ")")
-                    
-                    return
-                end
-            
-                if (type(config_table) ~= "table") then
-                    notifications.create("Specter", "The config is not a valid table!", notifications.types.failure)
-                    print("config is not a valid table.")
-                    
-                    return
-                end
-            
-                local system_data = config_table["System"]
-                if (not system_data) then
-                    notifications.create("Specter", "The config lacks build informations!", notifications.types.warning)
-                    print("config does not contain build informations.")
-                    
-                    return
-                end
-            
-                local version, build
-                for _, entry in ipairs(system_data) do
-                    if (type(entry) == "table" and #entry == 2) then
-                        if (entry[1] == "version") then
-                            version = entry[2]
-                        elseif (entry[1] == "build") then
-                            build = entry[2]
-                        end
-                    end
-                end
-            
-                if (version ~= config_version) then
-                    notifications.create("Specter", "Config version mismatch!", notifications.types.warning)
-                    print("config version does not match.")
-                    
-                    return
-                end
-            
-                if (build ~= config_build) then
-                    notifications.create("Specter", "Config build mismatch!", notifications.types.warning)
-                    print("config build does not match.")
-                    
-                    return
-                end
-            
-                local tmp = ui.nav.slider:get()
-                run_success, run_result = pcall(libs.eui.import, libs.json.encode(config_table))
-            
-                if (not run_success) then
-                    notifications.create("Specter", "Unable to import the config!", notifications.types.failure)
-                    print("failed to import config. (" .. run_result .. ")")
-                else
-                    notifications.create("Specter", "Config loaded successfully from the cloud!", notifications.types.success)
-                    print("config has been loaded from the cloud.")   
-
-                    local settings = read_settings()
-        
-                    settings.accent_color = get_accent_color() or settings.accent_color
-                    settings.text_color = get_text_color() or settings.text_color
-                    
-                    libs.filesystem.write(settings_file, libs.json.encode(settings))
-                    ui.nav.slider.ref:set(tmp)
-                end
+        cloud.get("/configs/get?lua=pm&name=" .. cloud.url(sel.name) .. "&author=" .. cloud.url(sel.author), function(res)
+            if (res == nil or not res.ok or type(res.data) ~= "string") then
+                notifications.create("Specter", "The config is not on the cloud any more.", notifications.types.failure)
+                return
             end
-        else
-            print("connection has failed. ", get_text_color(), "(unexpected response)")
-            error("specter · an internal error has occurred ~ 0x2E9F71")
-        end
+            -- the server keeps the config as JSON text (it decodes the uploaded parts); an older one may still be base64
+            local ok, decoded = true, res.data
+            if (decoded:match("^%s*{") == nil) then
+                ok, decoded = pcall(libs.base64.decode, res.data)
+            end
+            local tmp = ui.nav.slider:get()
+            if (not ok or not pcall(libs.eui.import, decoded)) then
+                notifications.create("Specter", "Unable to import the config!", notifications.types.failure)
+                return
+            end
+            ui.nav.slider.ref:set(tmp)
+            local settings = read_settings()
+            settings.accent_color = get_accent_color() or settings.accent_color
+            settings.text_color = get_text_color() or settings.text_color
+            libs.filesystem.write(settings_file, libs.json.encode(settings))
+            notifications.create("Specter", "Loaded \"" .. sel.name .. "\" by " .. sel.author .. " from the cloud.",
+                notifications.types.success)
+        end)
     end
 )
 
@@ -2688,7 +2815,7 @@ ui.import_config = menu_add_button("Configs", "Import from clipboard", function(
     run_success, config_table = pcall(libs.json.parse, run_result)
     if (not run_success) then
         notifications.create("Specter", "Unable to parse the config!", notifications.types.failure)
-        print("failed to parse config. (" .. config_table .. ")")
+        print("failed to parse config. (" .. tostring(config_table) .. ")")
         
         return
     end
@@ -2780,66 +2907,11 @@ ui.reload_config = menu_add_button("Configs", "Refresh",
     end
 )
 
+-- Upload: the current settings to the cloud under the selected local config's name
 ui.upload_config = menu_add_button("Configs", "Upload",
     function()
-        local config = libs.eui.export()
-        local config_table = libs.json.parse(config)
-        
-        config_table["System"] = {
-            {"version", config_version},
-            {"build", config_build}
-        }
-
-        local encoded_data = {
-            type = "upload_config",
-            
-            username = encode(tostring(info.user)),
-            is_beta = tostring(info.beta_build),
-
-            config_name = encode(ui.configs.list.ref:get_active_item_name():gsub("%.cfg$", "")),
-            config_data = libs.base64.encode(libs.json.encode(config_table))
-        }
-        app_client.send(libs.json.encode(encoded_data))
-
-        local response_success, response_result = app_client.receive(65535)
-        if (not response_success) then
-            notifications.create("Specter", "Cloud is offline!", notifications.types.warning)
-            return
-        end
-    
-        local decode_success, decode_result = libs.json.parse(response_success)
-        if (not decode_success) then
-            print("connection has failed. ", get_text_color(), "(error parsing response)")
-            error("specter · an internal error has occurred ~ 0xB892EF")
-        end
-    
-        if (decode_success.status == "upload_config") then
-            local decoded_data = decode(decode_success.encrypted_data)
-            local data = libs.json.parse(decoded_data)
-    
-            if (data) then
-                if (data.status ~= "success") then
-                    if (data.message == "cfg_alr") then
-                        notifications.create("Specter", "Config already exists in the cloud!", notifications.types.warning)
-                        print("config already exists in the cloud.")
-                    else
-                        print("connection has failed. ", get_text_color(), "(", data.message or "unknown error", ")")
-                        error("specter · an internal error has occurred ~ 0x83D2FA")
-                    end
-                else
-                    notifications.create("Specter", "Config uploaded to the cloud successfully!", notifications.types.success)
-                    print("config has been uploaded.")
-                    
-                    configs.reload_cloud_configs()
-                end
-            else
-                print("connection has failed. ", get_text_color(), "(error parsing data)")
-                error("specter · an internal error has occurred ~ 0x9C42F3")
-            end
-        else
-            print("connection has failed. ", get_text_color(), "(unexpected response)")
-            error("specter · an internal error has occurred ~ 0x3F4D6A")
-        end
+        local ok, item = pcall(ui.configs.list.ref.get_active_item_name, ui.configs.list.ref)
+        cloud.upload(ok and tostring(item or ""):gsub("%.cfg$", "") or "")
     end
 )
 
@@ -2917,17 +2989,20 @@ ui.save_config = menu_add_button("Configs", "Save", function()
     
     config = libs.base64.encode(libs.json.encode(config_table))
     libs.filesystem.write(dir, config)
+    configs.remember(cur)
     
     notifications.create("Specter", "Config saved successfully!", notifications.types.success)
     print("config has been saved successfully.")
 end)
 
-ui.load_config = menu_add_button("Configs", "Use", function()
-    local cur = ui.configs.list.ref:get_active_item_name()
+-- loads a config file of csgo/specter/ (the Use button, and the start of the lua: the last config used comes back by itself, owners,
+-- Oct 2026: "when you reload it, it automatically puts up the last config you used"); quiet = no notifications at the start
+configs.load_named = function(cur, quiet)
+    local notify = quiet and function() end or notifications.create
     local dir = configs.dir .. cur
 
     if (not libs.filesystem.exists(dir)) then
-        notifications.create("Specter", "The specified config does not exist!", notifications.types.failure)
+        notify("Specter", "The specified config does not exist!", notifications.types.failure)
         print("config does not exist.")
         
         return
@@ -2935,30 +3010,30 @@ ui.load_config = menu_add_button("Configs", "Use", function()
 
     local config, read_error = libs.filesystem.read(dir)
     if (not config) then
-        notifications.create("Specter", "Unable to read config!", notifications.types.failure)
-        print("failed to read config. (" .. read_error .. ")")
+        notify("Specter", "Unable to read config!", notifications.types.failure)
+        print("failed to read config. (" .. tostring(read_error) .. ")")
         
         return
     end
 
     local success, decoded_config = pcall(libs.base64.decode, config)
     if (not success) then
-        notifications.create("Specter", "Unable to decode the config!", notifications.types.failure)
-        print("failed to decode config. (" .. decoded_data .. ")")
+        notify("Specter", "Unable to decode the config!", notifications.types.failure)
+        print("failed to decode config. (" .. tostring(decoded_config) .. ")")
         
         return
     end
 
     success, config_table = pcall(libs.json.parse, decoded_config)
     if (not success) then
-        notifications.create("Specter", "Unable to parse the config!", notifications.types.failure)
-        print("failed to parse config. (" .. config_table .. ")")
+        notify("Specter", "Unable to parse the config!", notifications.types.failure)
+        print("failed to parse config. (" .. tostring(config_table) .. ")")
         
         return
     end
 
     if (type(config_table) ~= "table") then
-        notifications.create("Specter", "Config is not a valid table!", notifications.types.failure)
+        notify("Specter", "Config is not a valid table!", notifications.types.failure)
         print("config is not a valid table.")
         
         return
@@ -2966,7 +3041,7 @@ ui.load_config = menu_add_button("Configs", "Use", function()
 
     local system_data = config_table["System"]
     if (not system_data) then
-        notifications.create("Specter", "The config lacks build informations!", notifications.types.warning)
+        notify("Specter", "The config lacks build informations!", notifications.types.warning)
         print("config does not contain build informations.")
         
         return
@@ -2984,14 +3059,14 @@ ui.load_config = menu_add_button("Configs", "Use", function()
     end
 
     if (version ~= config_version) then
-        notifications.create("Specter", "Config version mismatch!", notifications.types.warning)
+        notify("Specter", "Config version mismatch!", notifications.types.warning)
         print("config version does not match.")
         
         return
     end
 
     if (build ~= config_build) then
-        notifications.create("Specter", "Config build mismatch!", notifications.types.warning)
+        notify("Specter", "Config build mismatch!", notifications.types.warning)
         print("config build does not match.")
         
         return
@@ -3001,20 +3076,43 @@ ui.load_config = menu_add_button("Configs", "Use", function()
     success, import_error = pcall(libs.eui.import, decoded_config)
 
     if (not success) then
-        notifications.create("Specter", "Unable to import the config!", notifications.types.failure)
-        print("failed to import config. (" .. import_error .. ")")
+        notify("Specter", "Unable to import the config!", notifications.types.failure)
+        print("failed to import config. (" .. tostring(import_error) .. ")")
     else
-        notifications.create("Specter", "Config loaded successfully!", notifications.types.success)
+        notify("Specter", "Config loaded successfully!", notifications.types.success)
         print("config has been loaded successfully.")
 
         local settings = read_settings()
 
         settings.accent_color = get_accent_color() or settings.accent_color
         settings.text_color = get_text_color() or settings.text_color
+        settings.last_config = cur
 
         libs.filesystem.write(settings_file, libs.json.encode(settings))
         ui.nav.slider.ref:set(tmp)
     end
+end
+
+-- the last config that was loaded or saved is remembered in settings.json
+configs.remember = function(name)
+    local settings = read_settings()
+    if (settings.last_config ~= name) then
+        settings.last_config = name
+        libs.filesystem.write(settings_file, libs.json.encode(settings))
+    end
+end
+
+-- at the start: the config used last, when it is still there (the first start applies the default one, see reload_configs)
+configs.restore_last = function()
+    local name = read_settings().last_config
+    if (type(name) ~= "string" or name == "" or name == "default.cfg" or not libs.filesystem.exists(configs.dir .. name)) then
+        return
+    end
+    configs.load_named(name, true)
+end
+
+ui.load_config = menu_add_button("Configs", "Use", function()
+    configs.load_named(ui.configs.list.ref:get_active_item_name(), false)
 end)
 
 --- @endregion
@@ -3044,140 +3142,375 @@ presence.hash = function(s)
     return string.format("%08x%08x", h1, h2)
 end
 
+-- Steam64 must never pass through a Lua double: it exceeds exact integer precision.
+presence.account_steam64 = function(account)
+    account = tonumber(account)
+    if (account == nil or account ~= account or account < 1 or account > 4294967295
+        or account ~= math.floor(account)) then return nil end
+    local base, add, out, carry = "76561197960265728", string.format("%.0f", account), {}, 0
+    for i = #base, 1, -1 do
+        local j = #add - (#base - i)
+        local value = tonumber(base:sub(i, i)) + (j > 0 and tonumber(add:sub(j, j)) or 0) + carry
+        out[i], carry = tostring(value % 10), math.floor(value / 10)
+    end
+    return table.concat(out)
+end
+presence.normalize_id = function(value)
+    if (type(value) == "number") then return presence.account_steam64(value) end
+    if (type(value) ~= "string" and type(value) ~= "cdata") then return nil end
+    local text = tostring(value):gsub("ULL$", ""):gsub("LL$", ""):match("^%s*(.-)%s*$")
+    if (#text == 17 and text:match("^%d+$") and text > "76561197960265728"
+        and text <= "76561202255233023") then return text end
+    local parity, half = text:match("^STEAM_[01]:([01]):(%d+)$")
+    if (parity) then
+        half = tonumber(half)
+        return half and presence.account_steam64(half * 2 + tonumber(parity)) or nil
+    end
+    local account = text:match("^%[U:1:(%d+)%]$") or (#text <= 10 and text:match("^%d+$"))
+    return account and presence.account_steam64(account) or nil
+end
+presence.identity = function(player)
+    if (player == nil) then return nil end
+    local ok, first, second = pcall(function() return player:get_steamids() end)
+    local a, b = ok and presence.normalize_id(first) or nil, ok and presence.normalize_id(second) or nil
+    local sid = b or a
+    if (sid == nil) then
+        local api = libs.tools.js2 and libs.tools.js2.GameStateAPI
+        local success, value = pcall(function() return api.GetPlayerXuidStringFromEntIndex(player:get_index()) end)
+        sid = success and presence.normalize_id(value) or nil
+    end
+    if (sid == nil) then return nil end
+    local aliases, seen = { sid }, { [sid] = true }
+    for _, value in ipairs({ first or false, second or false }) do
+        if (type(value) == "string" and presence.normalize_id(value) == sid and not seen[value]) then
+            aliases[#aliases + 1], seen[value] = value, true
+        end
+    end
+    return { sid = sid, aliases = aliases }
+end
 presence.steamid = function(player)
-    local ok, sid = pcall(player.get_steamids, player)
-    if (ok and type(sid) == "string" and sid:find("%d%d%d%d")) then
-        return sid
-    end
-    return nil
+    local identity = presence.identity(player)
+    return identity and identity.sid or nil
 end
-
--- the moon for the scoreboard, downloaded once into the game's panorama icons
+presence.is_user = function(player)
+    local sid = presence.steamid(player)
+    for _, known in ipairs(esp.sync_user) do
+        if (sid ~= nil and sid == known) then return true end
+    end
+    return false
+end
+-- the two moons (owners, Oct 21 2026): lilac for a Specter user of this lua, green for one of the gamesense lua; the scoreboard row
+-- of a user gets the one of its kind
+presence.ICONS = { "pm", "gs" }
+presence.icon_path = function(kind)
+    return "file://{images}/icons/specter_moon_" .. kind .. ".png"
+end
+presence.refresh_icons = function()
+    for idx, row in pairs(presence.shown) do
+        local kind = row.version == "gs" and "gs" or "pm"
+        pcall(libs.tools.js.update, idx, presence.icon_path(kind), presence.icon_ready, row.sid, kind)
+    end
+end
+-- An "S" badge remains visible while the moons are unavailable; one file after the other, retry image failures.
 presence.install_icon = function()
-    local path = "materials/panorama/images/icons/specter_moon.png"
-    local ok, exists = pcall(libs.filesystem.exists, path, "MOD")
-    if (ok and exists) then
-        return
+    local now = globals.real_time()
+    if (now < presence.icon_next - 60) then presence.icon_next = 0 end
+    if (presence.icon_ready or presence.icon_busy or now < presence.icon_next) then return end
+    for _, kind in ipairs(presence.ICONS) do
+        local path = "materials/panorama/images/icons/specter_moon_" .. kind .. ".png"
+        local ok, exists = pcall(libs.filesystem.exists, path, "MOD")
+        if (not (ok and exists)) then
+            pcall(libs.filesystem.create_directory, "materials/panorama/images/icons", "MOD")
+            presence.icon_busy, presence.icon_next = now, now + 30
+            local sent = pcall(libs.tools.http.download_image, libs.tools.http, presence.server .. "/moon_" .. kind .. ".png", path,
+                function(success)
+                    presence.icon_busy = nil
+                    local checked, saved = pcall(libs.filesystem.exists, path, "MOD")
+                    if (success == true and checked and saved == true) then
+                        presence.icon_next = 0
+                        presence.install_icon()
+                    end
+                end)
+            if (not sent) then presence.icon_busy = nil end
+            return
+        end
     end
-    pcall(libs.filesystem.create_directory, "materials/panorama/images/icons", "MOD")
-    pcall(libs.tools.http.download_image, libs.tools.http, presence.server .. "/moon.png", path)
+    presence.icon_ready = true
+    presence.refresh_icons()
 end
-
--- forgets who was found (map change, game end, "Restart esp")
-presence.reset = function(announce)
-    presence.shown = {}
-    esp.sync_user = {}
-    for _, item in ipairs(shared_data) do
-        ui.nav.shared_esp.ref:remove_item(item)
-    end
-    shared_data = {}
+presence.clear_view = function()
+    presence.shown, esp.sync_user, shared_data = {}, {}, {}
+    pcall(ui.nav.shared_esp.ref.set_items, ui.nav.shared_esp.ref, {})
     pcall(libs.tools.js.clear)
-    pcall(libs.tools.js.destroy_panel)
+end
+-- Invalidates pending callbacks as well as clearing map-local UI state.
+presence.reset = function(announce)
+    presence.epoch, presence.sequence = presence.epoch + 1, presence.sequence + 1
+    presence.busy, presence.next, presence.last_success = nil, 0, nil
+    presence.announced, presence.failures = {}, 0
+    presence.clear_view()
     if (announce) then
         notifications.create("Specter", "Shared data has been reset!", notifications.types.success)
         print("shared data has been reset.")
     end
 end
-
--- the answer of the server: hash -> version of every Specter user among the players we asked about
+presence.failure = function(why)
+    local now = globals.real_time()
+    presence.failures = math.min(4, presence.failures + 1)
+    presence.next = now + math.min(30, 2 ^ presence.failures * 2)
+    presence.status = tostring(why)
+    if (presence.report) then
+        presence.report = false
+        notifications.create("Specter", "Shared ESP: " .. presence.status .. ".", notifications.types.warning)
+    end
+end
+-- what a user is called in the list / notification: "gs user" runs the gamesense lua (same hash, tag "gs"), "prim user" this one
+presence.kind = function(version)
+    return version == "gs" and "gs user" or ("prim user (" .. tostring(version) .. ")")
+end
+-- Verify each returned slot against the identity captured when the request began.
 presence.apply = function(on, asked)
-    local found, changed = {}, false
-    for hash, idx in pairs(asked) do
-        if (on[hash] ~= nil) then
-            found[idx] = tostring(on[hash])
-            changed = changed or presence.shown[idx] == nil
-        end
-    end
-    for idx in pairs(presence.shown) do
-        changed = changed or found[idx] == nil
-    end
-
-    if (changed) then
-        presence.reset(false)
-        local names = {}
-        for idx, version in pairs(found) do
-            local player = entity_list_get_entity(idx)
-            local local_player = entity_list_get_local_player()
-            if (player ~= nil and local_player ~= nil and idx == local_player:get_index()) then
-                pcall(libs.tools.js.update, idx, presence.icon) -- our own row: the moon only
-                presence.shown[idx] = true
-            elseif (player ~= nil) then
-                local name = tostring(player:get_name())
-                pcall(libs.tools.js.update, idx, presence.icon)
-                ui.nav.shared_esp.ref:add_item(name .. " ~ " .. version)
-                shared_data[#shared_data + 1] = name .. " ~ " .. version
-                esp.sync_user[#esp.sync_user + 1] = presence.steamid(player)
-                presence.shown[idx] = true
-                if (not presence.announced[name]) then
-                    presence.announced[name] = true
-                    names[#names + 1] = name
+    local found, changed, names, unique = {}, false, {}, {}
+    local me = entity_list_get_local_player()
+    for hash, entry in pairs(asked) do
+        local version = on[hash]
+        if (version == "dev" or version == "beta" or version == "nightly" or version == "gs") then
+            local player = entity_list_get_entity(entry.idx)
+            if (presence.steamid(player) == entry.sid) then
+                local previous = found[entry.idx]
+                if (previous == nil or entry.canonical) then
+                    found[entry.idx] = { sid = entry.sid, version = version, name = tostring(player:get_name()) }
                 end
             end
         end
-        if (#names > 0) then
-            notifications.create("Specter", "Specter user" .. (#names > 1 and "s" or "") .. " here: " .. table.concat(names, ", "), notifications.types.information)
-            print("found users who use Specter: ", get_text_color(), table.concat(names, ", "))
-        end
+        unique[entry.idx] = true
     end
-
+    for idx, row in pairs(found) do
+        local old = presence.shown[idx]
+        if (old == nil or old.sid ~= row.sid or old.name ~= row.name or old.version ~= row.version) then changed = true end
+    end
+    for idx in pairs(presence.shown) do if (found[idx] == nil) then changed = true end end
+    if (changed) then
+        presence.clear_view()
+        local order = {}
+        for idx in pairs(found) do order[#order + 1] = idx end
+        table.sort(order)
+        for _, idx in ipairs(order) do
+            local row = found[idx]
+            presence.shown[idx] = row
+            if (me ~= nil and idx == me:get_index()) then
+                -- our own row is listed too (owners, Oct 2026: "my name didn't appear"), first, never announced
+                table.insert(shared_data, 1, row.name .. " (you) ~ " .. presence.kind(row.version))
+            else
+                shared_data[#shared_data + 1] = row.name .. " ~ " .. presence.kind(row.version)
+                esp.sync_user[#esp.sync_user + 1] = row.sid
+                if (not presence.announced[row.sid]) then
+                    presence.announced[row.sid] = true
+                    names[#names + 1] = row.name .. (row.version == "gs" and " (gs)" or " (prim)")
+                end
+            end
+        end
+        pcall(ui.nav.shared_esp.ref.set_items, ui.nav.shared_esp.ref, shared_data)
+        presence.refresh_icons()
+    end
+    if (#names > 0) then
+        notifications.create("Specter", "Specter users here: " .. table.concat(names, ", "), notifications.types.information)
+    end
     if (presence.report) then
         presence.report = false
-        if (#shared_data == 0) then
-            notifications.create("Specter", "No other Specter users in this game.", notifications.types.information)
-        end
+        local count = 0
+        for _ in pairs(unique) do count = count + 1 end
+        local visible = me ~= nil and found[me:get_index()] ~= nil
+        local visibility = visible and "your badge is active"
+            or (ui.utils.shared_esp:get() and "your badge is not confirmed yet" or "your visibility is off")
+        local others = #shared_data - (visible and 1 or 0)
+        notifications.create("Specter", "Shared ESP: " .. others .. " other user(s) found, " .. count
+            .. " player(s) checked; " .. visibility .. ".",
+            notifications.types.information)
     end
 end
-
-presence.update = function(force)
-    local now = globals.real_time()
-    if (presence.busy and now - presence.busy < 20 and now >= presence.busy) then
-        return
+-- The lobby (owners, Oct 2026: "a shared esp ne csak meccsben mukodjon hanem lobbyba is"): outside a game the party members
+-- (PartyListAPI) are asked the same way, our own badge goes out with the same heartbeat (Shared ESP on), the found ones are listed
+-- by name (no entity, so no scoreboard moon) and announced once.
+presence.lobby_members = function()
+    local api = libs.tools.js2 and libs.tools.js2.PartyListAPI
+    local out = {}
+    if (api == nil) then return out end
+    local ok, count = pcall(function() return api.GetCount() end)
+    count = ok and tonumber(count) or 0
+    for i = 0, math.min(count, 10) - 1 do
+        local got, xuid = pcall(function() return api.GetXuidByIndex(i) end)
+        local sid = got and presence.normalize_id(xuid) or nil
+        if (sid ~= nil) then
+            local named, name = pcall(function() return api.GetFriendName(xuid) end)
+            out[#out + 1] = { sid = sid, name = named and tostring(name) or "player" }
+        end
     end
-    if (not force and now < presence.next and now > presence.next - 60) then
-        return
+    return out
+end
+presence.lobby_own = function()
+    local api = libs.tools.js2 and libs.tools.js2.MyPersonaAPI
+    local ok, xuid = pcall(function() return api.GetXuid() end)
+    return ok and presence.normalize_id(xuid) or nil
+end
+presence.lobby = function()
+    local now, enabled = globals.real_time(), ui.utils.shared_esp:get()
+    if (presence.lobby_busy ~= nil) then
+        if (now >= presence.lobby_busy and now - presence.lobby_busy < 25) then return end
+        presence.lobby_busy = nil
     end
-    presence.next = now + 30
-
-    local me = entity_list_get_local_player()
-    if (me == nil) then
-        return
-    end
+    if (presence.lobby_next ~= nil and now < presence.lobby_next and now > presence.lobby_next - 60) then return end
+    presence.lobby_next = now + 30
+    local own = presence.lobby_own()
     local asked, list = {}, {}
-    for _, player in pairs(entity_list_get_players() or {}) do
-        if (player:get_index() ~= me:get_index() and #list < 63) then
-            local sid = presence.steamid(player)
-            if (sid ~= nil) then
-                local hash = presence.hash(sid)
-                asked[hash] = player:get_index()
+    for _, member in ipairs(presence.lobby_members()) do
+        if (member.sid ~= own) then
+            local hash = presence.hash(member.sid)
+            asked[hash] = member
+            list[#list + 1] = hash
+        end
+    end
+    if (not enabled and #list == 0) then return end
+    local version = presence.version == "beta" and "beta" or presence.version == "nightly" and "nightly" or "dev"
+    local url = presence.server .. "/presence?t=" .. version .. "&q=" .. table.concat(list, ",")
+    if (enabled and own ~= nil) then url = url .. "&me=" .. presence.hash(own) end
+    local epoch = presence.epoch
+    presence.lobby_busy = now
+    local sent = pcall(libs.tools.http.get, libs.tools.http, url, function(response)
+        presence.lobby_busy = nil
+        if (epoch ~= presence.epoch or presence.connected ~= false or check_conditions()) then return end
+        local ok, data = pcall(libs.json.parse, response and response.body or "")
+        if (not ok or type(data) ~= "table" or data.ok ~= true or type(data.on) ~= "table") then return end
+        local rows, names = {}, {}
+        for hash, member in pairs(asked) do
+            local kind = data.on[hash]
+            if (kind == "dev" or kind == "beta" or kind == "nightly" or kind == "gs") then
+                rows[#rows + 1] = member.name .. " ~ " .. presence.kind(kind)
+                if (not presence.announced[member.sid]) then
+                    presence.announced[member.sid] = true
+                    names[#names + 1] = member.name .. (kind == "gs" and " (gs)" or " (prim)")
+                end
+            end
+        end
+        table.sort(rows)
+        shared_data = rows
+        pcall(ui.nav.shared_esp.ref.set_items, ui.nav.shared_esp.ref, rows)
+        if (#names > 0) then
+            notifications.create("Specter", "Specter users in the lobby: " .. table.concat(names, ", "),
+                notifications.types.information)
+        end
+    end)
+    if (not sent) then presence.lobby_busy = nil end
+end
+presence.update = function(force)
+    -- PAINT also calls this outside a match so disconnects invalidate late replies.
+    local connected = check_conditions()
+    if (not connected) then
+        if (presence.connected ~= false) then presence.reset(false) end
+        presence.connected = false
+        presence.lobby()
+        return
+    end
+    presence.lobby_next, presence.lobby_busy = nil, nil
+    if (presence.connected == false) then presence.reset(false) end
+    presence.connected = true
+    local now, enabled = globals.real_time(), ui.utils.shared_esp:get()
+    if (presence.enabled ~= nil and enabled ~= presence.enabled) then presence.reset(false) end
+    presence.enabled = enabled
+    local map = engine_get_level_name and engine_get_level_name() or nil
+    if (presence.map ~= nil and map ~= presence.map) then presence.reset(false) end
+    presence.map = map
+    if (presence.last_success ~= nil and (now < presence.last_success or now - presence.last_success > 75)) then
+        presence.clear_view()
+        presence.last_success = nil
+    end
+    if (presence.icon_busy and (now < presence.icon_busy or now - presence.icon_busy > 25)) then
+        presence.icon_busy = nil
+        presence.icon_next = 0
+    end
+    presence.install_icon()
+    if (presence.busy ~= nil) then
+        if (now >= presence.busy.time and now - presence.busy.time < 25) then return end
+        presence.sequence = presence.sequence + 1
+        presence.busy = nil
+        presence.failure("presence request timed out; retrying")
+    end
+    if (not force and now < presence.next and now > presence.next - 60) then return end
+    local me = entity_list_get_local_player()
+    local own = presence.identity(me)
+    if (me == nil or own == nil) then
+        if (next(presence.shown) ~= nil) then presence.clear_view() end
+        presence.next = now + 2
+        if (presence.report) then presence.failure("local Steam identity is not available yet; retrying") end
+        return
+    end
+    local asked, list, own_hash = {}, {}, enabled and presence.hash(own.sid) or nil
+    local function add(player, identity, aliases)
+        for i, sid in ipairs(identity.aliases) do
+            local hash = presence.hash(sid)
+            if ((aliases or i == 1) and asked[hash] == nil and #list < 64) then
+                asked[hash] = { idx = player:get_index(), sid = identity.sid, canonical = i == 1 }
                 list[#list + 1] = hash
             end
         end
     end
-
-    local own = presence.steamid(me)
-    if (ui.utils.shared_esp:get() and own ~= nil) then
-        local hash = presence.hash(own)
-        asked[hash] = me:get_index()
-        list[#list + 1] = hash
+    local peers = {}
+    if (enabled) then add(me, own, false) end
+    for _, player in pairs(entity_list_get_players() or {}) do
+        if (player:get_index() ~= me:get_index()) then
+            local identity = presence.identity(player)
+            if (identity ~= nil) then
+                add(player, identity, false)
+                peers[#peers + 1] = { player = player, identity = identity }
+            end
+        end
     end
-    local url = presence.server .. "/presence?t=" .. presence.version .. "&q=" .. table.concat(list, ",")
-    if (asked[list[#list]] == me:get_index()) then
-        url = url .. "&me=" .. list[#list]
-    end
-    presence.busy = now
-    libs.tools.http:get(url, function(response)
+    for _, peer in ipairs(peers) do add(peer.player, peer.identity, true) end
+    local version = presence.version == "beta" and "beta" or presence.version == "nightly" and "nightly" or "dev"
+    local url = presence.server .. "/presence?t=" .. version .. "&q=" .. table.concat(list, ",")
+    if (own_hash ~= nil) then url = url .. "&me=" .. own_hash end
+    presence.sequence = presence.sequence + 1
+    local request = { id = presence.sequence, epoch = presence.epoch, time = now, sid = own.sid, map = map }
+    presence.busy, presence.next = request, now + 30
+    local sent = pcall(libs.tools.http.get, libs.tools.http, url, function(response)
+        if (presence.busy ~= request or request.epoch ~= presence.epoch) then return end
         presence.busy = nil
-        local ok, data = pcall(libs.json.parse, response.body or "")
-        if (ok and type(data) == "table" and type(data.on) == "table") then
+        local current = entity_list_get_local_player()
+        if (not check_conditions() or presence.steamid(current) ~= request.sid or ui.utils.shared_esp:get() ~= enabled
+            or (engine_get_level_name and engine_get_level_name() ~= request.map)) then
+            presence.clear_view()
+            presence.next = 0
+            return
+        end
+        local ok, data = pcall(libs.json.parse, response and response.body or "")
+        if (ok and type(data) == "table" and data.ok == true and type(data.on) == "table") then
+            presence.last_success, presence.failures, presence.status = globals.real_time(), 0, "online"
             presence.apply(data.on, asked)
+            -- Older scripts hash their primary Steam string. Register that alias
+            -- as well while migrating, without sending a raw Steam ID or name.
+            if (enabled and own.aliases[2] ~= nil) then
+                local legacy = presence.hash(own.aliases[2])
+                pcall(libs.tools.http.get, libs.tools.http, presence.server .. "/presence?t=" .. version
+                    .. "&q=&me=" .. legacy, function() end)
+            end
+        else
+            local why = ok and type(data) == "table" and data.reason or (response == nil and "no answer") or "bad answer"
+            presence.failure("server error (" .. tostring(why) .. "); retrying")
         end
     end)
+    if (not sent) then
+        presence.busy = nil
+        presence.failure("could not send presence request; retrying")
+    end
 end
 
-on_shared_players = function()
+-- report = the "Refresh players" button (the round start / connect refreshes say nothing)
+on_shared_players = function(report)
     if (check_conditions()) then
-        presence.report = true
+        presence.report = presence.report or report == true
         presence.update(true)
+    elseif (report == true) then
+        notifications.create("Specter", "Shared ESP: join a game before refreshing players.", notifications.types.information)
     end
 end
 
@@ -3186,37 +3519,190 @@ on_shared_esp = function(announce)
 end
 
 on_chatsync = function(event)
-    if (ui.utils.synced_players:get(3)) then
-        local entity = entity_list_get_player_from_userid(event.userid)
-        if (entity ~= nil) then
-            if (entity:get_steamids() ~= entity_list_get_local_player():get_steamids()) then
-                local steamid, _ = entity:get_steamids()
-                local is_sync = false
+    if (not ui.utils.synced_players:get(3)) then return end
+    local entity = entity_list_get_player_from_userid(event.userid)
+    local me = entity_list_get_local_player()
+    if (entity ~= nil and me ~= nil and entity:get_index() ~= me:get_index() and presence.is_user(entity)) then
+        chat_print("{blue}[{lightgreen}Specter{blue}]{white}:{yellow} A user said something on the chat{white}!")
+    end
+end
 
-                for i = 1, #esp.sync_user do
-                    local chat_sync = esp.sync_user[i]
-                    if (chat_sync == steamid) then
-                        is_sync = true
-                    end
-                end
-
-                if (is_sync) then
-                    chat_print("{blue}[{lightgreen}Specter{blue}]{white}:{yellow} A user said something on the chat{white}!")
-                end
-                return
-            else
-                return
-            end
-        else
-            return
+-- server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni"):
+-- the "Servers" page lists the Specter users who switched "Share my server" on (their server's ip:port, name, map, players) and
+-- connects to the selected one. Opt in, off at every start; our own address is read from the net channel (GetAddress) and goes
+-- to the license server (/servers) only while the box is on. The address of a row is checked before "connect" (a server list
+-- is somebody else's text: never a console command)
+servers = { next = 0, rows = {}, labels = "", sharing = false }
+servers.valid = function(srv)
+    if (type(srv) ~= "string") then return false end
+    local a, b, c, d, port = srv:match("^(%d+)%.(%d+)%.(%d+)%.(%d+):(%d+)$")
+    if (a == nil) then return false end
+    a, b, c, d, port = tonumber(a), tonumber(b), tonumber(c), tonumber(d), tonumber(port)
+    if (a > 255 or b > 255 or c > 255 or d > 255 or port < 1 or port > 65535) then return false end
+    return not (a == 0 or a == 10 or a == 127 or a >= 224 or (a == 192 and b == 168) or (a == 172 and b >= 16 and b <= 31)
+        or (a == 169 and b == 254) or (a == 100 and b >= 64 and b <= 127))
+end
+servers.address = function()
+    local ok, text = pcall(function()
+        local iface = memory_create_interface("engine.dll", "VEngineClient014")
+        local get_channel = ffi.cast("void*(__thiscall*)(void*)", memory_get_vfunc(iface, 78))
+        local channel = get_channel(ffi.cast("void***", iface))
+        local address = tonumber(ffi.cast("unsigned long", channel))
+        if (address == nil or address == 0) then return nil end
+        local get_address = ffi.cast("const char*(__thiscall*)(void*)", memory_get_vfunc(address, 1))
+        local raw = get_address(ffi.cast("void***", channel))
+        return raw ~= nil and ffi.string(raw) or nil
+    end)
+    return ok and servers.valid(text) and text or nil
+end
+servers.me = function()
+    local own = presence.identity(entity_list_get_local_player())
+    return own ~= nil and presence.hash(own.sid) or nil
+end
+servers.send = function(query, done)
+    local version = presence.version == "beta" and "beta" or presence.version == "nightly" and "nightly" or "dev"
+    pcall(libs.tools.http.get, libs.tools.http, presence.server .. "/servers?t=" .. version .. query, done or function() end)
+end
+servers.show = function(list)
+    local rows, labels = {}, {}
+    for _, row in ipairs(list) do
+        if (type(row) == "table" and servers.valid(row.srv)) then
+            local label = string.format("%s ~ %s ~ %d pl ~ %s", tostring(row.name):sub(1, 20), tostring(row.map):sub(1, 32),
+                tonumber(row.players) or 0, row.srv)
+            rows[label] = row
+            labels[#labels + 1] = label
         end
-    else
+    end
+    servers.rows = rows
+    local joined = table.concat(labels, "\n")
+    if (joined ~= servers.labels) then
+        servers.labels = joined
+        pcall(ui.servers.list.set_items, ui.servers.list, labels)
+    end
+end
+servers.update = function(force)
+    local now = globals.real_time()
+    local share, open = ui.servers.share:get(), ui.nav.slider:get() == 15
+    if (servers.sharing and not share) then
+        servers.sharing = false
+        local me = servers.me()
+        if (me ~= nil) then servers.send("&me=" .. me .. "&off=1") end
+    end
+    if (not force and not share and not open) then return end
+    if (servers.busy ~= nil and now >= servers.busy and now - servers.busy < 15) then return end
+    if (not force and now < servers.next and now > servers.next - 60) then return end
+    servers.next = now + 20
+    local query = ""
+    local me = check_conditions() and servers.me() or nil
+    local address = share and me ~= nil and servers.address() or nil
+    if (address ~= nil) then
+        local name = tostring(entity_list_get_local_player():get_name() or "user"):gsub(" ", "_"):gsub("[^%w_%-]", "")
+        local map = tostring(engine_get_level_name_short and engine_get_level_name_short() or "?"):gsub("[^%w_]", "")
+        local players = 0
+        for _ in pairs(entity_list_get_players() or {}) do players = players + 1 end
+        query = "&me=" .. me .. "&srv=" .. address .. "&nm=" .. name:sub(1, 20) .. "&mp=" .. (map ~= "" and map or "?") .. "&pl=" .. players
+        servers.sharing = true
+    elseif (me ~= nil) then
+        query = "&me=" .. me
+    end
+    servers.busy = now
+    servers.send(query, function(response)
+        servers.busy = nil
+        local ok, data = pcall(libs.json.parse, response and response.body or "")
+        if (ok and type(data) == "table" and data.ok == true and type(data.list) == "table") then
+            servers.show(data.list)
+        elseif (force) then
+            notifications.create("Specter", "Server list: no answer from the server.", notifications.types.warning)
+        end
+    end)
+end
+servers.connect = function()
+    local ok, label = pcall(ui.servers.list.get_active_item_name, ui.servers.list)
+    local row = ok and label and servers.rows[label] or nil
+    if (row == nil or not servers.valid(row.srv)) then
+        notifications.create("Specter", "Select a server in the list first.", notifications.types.warning)
         return
     end
+    notifications.create("Specter", "Connecting to " .. row.name .. " (" .. row.srv .. ")", notifications.types.information)
+    engine_execute_cmd("connect " .. row.srv)
+end
+servers.leave = function()
+    if (servers.sharing) then
+        servers.sharing = false
+        local me = servers.me()
+        if (me ~= nil) then servers.send("&me=" .. me .. "&off=1") end
+    end
+end
+
+-- hvh.gg servers (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg"): the Servers page also lists the HvH
+-- servers of hvh.gg and connects to the selected one. The lua does NOT ask hvh.gg itself (a big page through the steam http library crashed
+-- the game after a refresh): our license server reads the site and answers a small clean list (`GET /hvhgg`), every 60 s while the page
+-- is open. Each row is checked again here (types, a public address by servers.valid) and before "connect"
+servers.hvh = { next = 0, rows = {}, labels = "" }
+servers.hvh_rows = function(body)
+    local ok, data = pcall(libs.json.parse, body or "")
+    local out = {}
+    if (not ok or type(data) ~= "table" or data.ok ~= true or type(data.list) ~= "table") then return nil end
+    for i, row in ipairs(data.list) do
+        if (i > 20) then break end
+        if (type(row) == "table" and servers.valid(row.srv)) then
+            out[#out + 1] = { srv = row.srv, name = tostring(row.name or "hvh.gg"):gsub("[^%w%s%-_.]", ""):sub(1, 24),
+                map = tostring(row.map or "?"):gsub("[^%w_]", ""):sub(1, 24), players = math.floor(tonumber(row.players) or 0) }
+        end
+    end
+    return out
+end
+servers.hvh_show = function(list)
+    local rows, labels = {}, {}
+    for _, row in ipairs(list) do
+        -- only the name and the address, short enough for the list to need no scrolling (owners, Oct 2026)
+        local label = string.format("%s  %s", row.name:sub(1, 28), row.srv)
+        rows[label] = row
+        labels[#labels + 1] = label
+    end
+    servers.hvh.rows = rows
+    local joined = table.concat(labels, "\n")
+    if (joined ~= servers.hvh.labels) then
+        servers.hvh.labels = joined
+        pcall(ui.servers.hvh_list.set_items, ui.servers.hvh_list, labels)
+    end
+end
+servers.hvh_update = function(force)
+    local now = globals.real_time()
+    if (not force and ui.nav.slider:get() ~= 15) then return end
+    local hvh = servers.hvh
+    if (hvh.busy ~= nil and now >= hvh.busy and now - hvh.busy < 20) then return end
+    if (not force and now < hvh.next and now > hvh.next - 120) then return end
+    hvh.next, hvh.busy = now + 60, now
+    local sent = pcall(libs.tools.http.get, libs.tools.http, presence.server .. "/hvhgg", function(response)
+        hvh.busy = nil
+        local list = servers.hvh_rows(response and response.body or "")
+        if (list ~= nil and #list > 0) then
+            servers.hvh_show(list)
+            if (force) then
+                notifications.create("Specter", "hvh.gg: " .. #list .. " server(s).", notifications.types.information)
+            end
+        elseif (force) then
+            notifications.create("Specter", "hvh.gg: no server found (no answer, or the page changed).", notifications.types.warning)
+        end
+    end)
+    if (not sent) then hvh.busy = nil end
+end
+servers.hvh_connect = function()
+    local ok, label = pcall(ui.servers.hvh_list.get_active_item_name, ui.servers.hvh_list)
+    local row = ok and label and servers.hvh.rows[label] or nil
+    if (row == nil or not servers.valid(row.srv)) then
+        notifications.create("Specter", "Select an hvh.gg server in the list first.", notifications.types.warning)
+        return
+    end
+    notifications.create("Specter", "Connecting to " .. row.name .. " (" .. row.srv .. ")", notifications.types.information)
+    engine_execute_cmd("connect " .. row.srv)
 end
 
 lets_sync = function()
     presence.update(false)
+    servers.update(false)
+    servers.hvh_update(false)
 end
 
 run_clantag = function()
@@ -3450,7 +3936,8 @@ end
 
 no_fall = function(cmd)
     if (ui.misc.nofall_dmg:get()) then
-        local velocity = entity_list_get_local_player():get_prop("m_vecVelocity").z
+        local fall = engine_prediction.vector(entity_list_get_local_player(), "m_vecVelocity")
+        local velocity = fall ~= nil and fall.z or 0
         local no_falldmg = nil
 
         if (velocity >= -500) then
@@ -3483,7 +3970,32 @@ end
 --- @info: defensive safepoint
 --- @region: safe def
 
+-- Network budgets are measured in seconds; menu thresholds are milliseconds.
+resolver.network = function()
+    local function finite(value, lo, hi)
+        value = tonumber(value)
+        if (value == nil or value ~= value or math.abs(value) == math.huge) then return lo end
+        return math.max(lo, math.min(hi, value))
+    end
+    local outgoing = finite(engine_get_latency(e_latency_flows.OUTGOING), 0, 1)
+    local incoming = finite(engine_get_latency(e_latency_flows.INCOMING), 0, 1)
+    local ping = (outgoing + incoming) * 1000
+    local guarded = ui.ragebot.latency_guard:get()
+        and ping >= ui.ragebot.latency_limit:get()
+    return { outgoing = outgoing, incoming = incoming, ping = ping, high = guarded }
+end
+resolver.fast_target = function(ent)
+    if (ent == nil or not ui.ragebot.fast_peek:get()) then return false end
+    local flags = tonumber(ent:get_prop("m_fFlags")) or 0
+    local p = resolver.data[ent:get_index()]
+    local peek = ragebot_get_autopeek_pos()
+    return bit.band(flags, 2) ~= 0 or (peek ~= nil and peek ~= false)
+        or resolver.network().high
+        or (p ~= nil and (p.defensive_until or 0) > globals.real_time())
+end
 safe_defensive = function(ctx, cmd, unpredicted_data)
+    if (ctx.player == nil or resolver.fast_target(ctx.player)
+        or (resolver.safe and (resolver.safe[ctx.player:get_index()] or 0) >= 3)) then return end
     if (ui.ragebot.safe_defensive:get()) then
         if (defensive:is_active(ctx.player)) then
             ctx:set_safepoint_state(true, e_hitscan_groups.HEAD)
@@ -3533,43 +4045,61 @@ local damage = {
     end
 }
 
+-- HITSCAN runs per command and target (double tap: many in one frame): the group is picked once per tick and target
+local dmg_pick = {}
 dmg_prediction = function(ctx, cmd, unpredicted_data)
     if (ui.ragebot.multipoint_pred:get()) then
         if (not defensive:is_active(ctx.player)) then
-            local local_pos = entity_list_get_local_player():get_eye_position()
             local enemy = ctx.player
-
-            local enemy_pos = {
-                head = enemy:get_hitbox_pos(e_hitboxes.HEAD),
-                chest = enemy:get_hitbox_pos(e_hitboxes.CHEST),
-                stomach = enemy:get_hitbox_pos(e_hitboxes.PELVIS)
-            }
-        
-            local enemy_dmg = {
-                head = damage:calculate(enemy, "head"),
-                chest = damage:calculate(enemy, "chest"),
-                stomach = damage:calculate(enemy, "stomach")
-            }
-        
-            for k, v in pairs(enemy_dmg) do
-                if (v > enemy:get_prop("m_iHealth") or v > get_dmg()) then
-                    local bullet = trace_bullet(local_pos, enemy_pos[k], entity_list_get_local_player(), enemy)
-                    if (bullet.valid and (client_get_hitgroup_name(bullet.hitgroup) == k)) then
-                        local hitgroup = e_hitscan_groups[string.upper(k)]
-        
-                        ctx:set_hitchance(70, hitgroup)
-                        ctx:set_hitscan_group_state(hitgroup, true, false)
-                        
-                        break
-                    end
-                end
+            local nohead = resolver.safe ~= nil and (resolver.safe[enemy:get_index()] or 0) >= 3
+            local tick = globals.tick_count()
+            local cached = dmg_pick[enemy:get_index()]
+            local k
+            if (cached ~= nil and cached.tick == tick and cached.nohead == nohead) then
+                k = cached.k
+            else
+                k = dmg_prediction_pick(enemy, nohead)
+                dmg_pick[enemy:get_index()] = { tick = tick, nohead = nohead, k = k }
             end
-        else
-            return
+            if (k) then
+                local hitgroup = e_hitscan_groups[string.upper(k)]
+                if (not resolver.fast_target(enemy)) then
+                    ctx:set_hitchance(70, hitgroup)
+                end
+                ctx:set_hitscan_group_state(hitgroup, true, false)
+            end
         end
-    else
-        return
     end
+end
+
+-- the first of head, chest, stomach that kills or does the min damage and a bullet reaches, false: none
+dmg_prediction_pick = function(enemy, nohead)
+    local local_player = entity_list_get_local_player()
+    local local_pos = local_player:get_eye_position()
+    local enemy_pos = {
+        head = enemy:get_hitbox_pos(e_hitboxes.HEAD),
+        chest = enemy:get_hitbox_pos(e_hitboxes.CHEST),
+        stomach = enemy:get_hitbox_pos(e_hitboxes.PELVIS)
+    }
+    local enemy_dmg = {
+        head = damage:calculate(enemy, "head"),
+        chest = damage:calculate(enemy, "chest"),
+        stomach = damage:calculate(enemy, "stomach")
+    }
+
+    -- head first (owners, Oct 2026: "nagyon sok a body hit"): `pairs` went through the three in the table's hash
+    -- order, so the chest / stomach got the 70 % hitchance and the push while the head was shootable too. The head
+    -- is skipped when Smart body aim took it out for this target (resolver.safe 3: only a lethal body shot)
+    for _, k in ipairs({ "head", "chest", "stomach" }) do
+        local v = enemy_dmg[k]
+        if ((k ~= "head" or not nohead) and (v > enemy:get_prop("m_iHealth") or v > get_dmg())) then
+            local bullet = trace_bullet(local_pos, enemy_pos[k], local_player, enemy)
+            if (bullet.valid and (client_get_hitgroup_name(bullet.hitgroup) == k)) then
+                return k
+            end
+        end
+    end
+    return false
 end
 
 --- @endregion
@@ -3578,6 +4108,9 @@ end
 --- @region: accuracy boost
 
 accuracy_boost = function(ctx, cmd, unpredicted_data)
+    -- Preserve native accuracy requirements on latency-sensitive peeks.
+    -- Do not inject the script's 90% damage-accuracy requirement here.
+    if (resolver.fast_target(ctx.player)) then return end
     if (ui.ragebot.accuracy_boost.enable_booster:get()) then
         if (ui.ragebot.accuracy_boost.booster_mode:get() == 1) then
             ctx:set_damage_accuracy(45)
@@ -3714,6 +4247,137 @@ knifebot_helper = function(cmd)
         return
     end
 end
+
+--- @info: zeus vs rushers
+--- @region: zeus rush
+
+-- (owners, Oct 2026: "ha valaki jön felém késsel akkor zeust vesz elő és lezeusolja, és ha valaki zeussal akkor is zeust, ha
+-- egy helyben állsz hamarabb lő a zeus"): an enemy that runs at us with a knife or a zeus makes us take our own zeus out, and the
+-- zeus is fired by the lua once the enemy is in its range. The decision is a pure function (`zeus.decide`, tested); the game
+-- calls are in `zeus_rush`. Standing still the shot is taken at the very edge of the range (the aim is not disturbed by our
+-- own movement), moving it waits for a margin so the bolt does not fall short
+-- the zeus is taken out only from a scout or an awp (owners, Oct 2026: "csak akkor valtson ha scout vagy awp van a kezembe"): with
+-- any other weapon in hand nothing is switched
+zeus = { RANGE = 182, EQUIP = { knife = 450, taser = 520 }, SNIPERS = { ssg08 = true, awp = true }, taken = false, equip_at = 0, threat_at = 0 }
+-- enemies: { dist, closing (units / s towards us), holds = "knife" | "taser" | other, see = function() -> bool }
+-- returns "equip" | "fire" | "restore" | nil
+zeus.decide = function(st, now)
+    local best_equip, best_fire
+    for _, e in ipairs(st.enemies) do
+        local limit = zeus.EQUIP[e.holds]
+        if (limit ~= nil and e.dist <= limit and (e.closing > 40 or e.dist < 220)) then
+            best_equip = true
+        end
+        local edge = zeus.RANGE - (st.speed < 5 and 2 or 12)
+        if (e.dist <= edge and (best_fire == nil or e.dist < best_fire.dist)) then
+            best_fire = e
+        end
+    end
+    if (st.weapon == "taser") then
+        if (st.clip ~= nil and st.clip <= 0) then
+            return st.taken and "restore" or nil
+        end
+        if (best_fire ~= nil and best_fire.see()) then
+            return "fire", best_fire
+        end
+        if (best_equip) then
+            return nil
+        end
+        if (st.taken and now - st.threat_at > 1.5) then
+            return "restore"
+        end
+        return nil
+    end
+    if (best_equip and st.has_zeus and zeus.SNIPERS[st.weapon] and now - st.equip_at > 0.6) then
+        return "equip"
+    end
+    return nil
+end
+
+zeus_rush = function(cmd)
+    if (not ui.misc.zeus_rush:get()) then return end
+    local me = entity_list_get_local_player()
+    if (me == nil or not me:is_alive() or game_rules_get_prop("m_bFreezePeriod") == true) then return end
+    local now = globals.real_time()
+    local weapon = entity_list_get_entity(me:get_prop("m_hActiveWeapon"))
+    local name = weapon ~= nil and weapon:get_name() or ""
+    -- "taken" = the zeus in hand is the one WE took out (only then it is put away); a "use" that did not give a zeus (we have
+    -- none) is not repeated for a few seconds
+    if (name == "taser") then
+        if (zeus.pending) then zeus.taken, zeus.pending = true, false end
+    else
+        zeus.taken = false
+        if (zeus.pending and now - zeus.equip_at > 0.7) then zeus.pending, zeus.equip_at = false, now + 4 end
+    end
+    local ok, st = pcall(function()
+        local eye, vel = me:get_eye_position(), me:get_prop("m_vecVelocity")
+        local enemies, shown = {}, 0
+        for _, enemy in pairs(entity_list_get_players(true) or {}) do
+            if (enemy:is_alive() and not enemy:is_dormant() and shown < 6) then
+                local pos = enemy:get_hitbox_pos(e_hitboxes.CHEST)
+                local held = entity_list_get_entity(enemy:get_prop("m_hActiveWeapon"))
+                local held_name = held ~= nil and held:get_name() or ""
+                if (held_name:find("knife", 1, true) or held_name == "bayonet") then held_name = "knife" end
+                if (pos ~= nil) then
+                    local dx, dy, dz = pos.x - eye.x, pos.y - eye.y, pos.z - eye.z
+                    local dist = math.sqrt(dx * dx + dy * dy + dz * dz)
+                    if (dist < 700) then
+                        shown = shown + 1
+                        local ev = enemy:get_prop("m_vecVelocity")
+                        local flat = math.max(0.001, math.sqrt(dx * dx + dy * dy))
+                        local closing = ev ~= nil and -((ev.x * dx + ev.y * dy) / flat) or 0
+                        enemies[#enemies + 1] = { dist = dist, closing = closing, holds = held_name, pos = pos, enemy = enemy,
+                            see = function()
+                                local tr = trace_line(eye, pos, enemy, 0x400B)
+                                return tr ~= nil and type(tr.fraction) == "number" and tr.fraction >= 0.97
+                            end }
+                    end
+                end
+            end
+        end
+        return { enemies = enemies, speed = vel ~= nil and math.sqrt(vel.x * vel.x + vel.y * vel.y) or 0, weapon = name,
+            clip = weapon ~= nil and tonumber(weapon:get_prop("m_iClip1")) or nil, taken = zeus.taken,
+            has_zeus = true, equip_at = zeus.equip_at, threat_at = zeus.threat_at }, eye
+    end)
+    if (not ok or st == nil) then return end
+    for _, e in ipairs(st.enemies) do
+        if (zeus.EQUIP[e.holds] and e.dist <= zeus.EQUIP[e.holds]) then zeus.threat_at = now end
+    end
+    st.threat_at = zeus.threat_at
+    local action, target = zeus.decide(st, now)
+    if (action == "equip") then
+        zeus.equip_at, zeus.pending = now, true
+        engine_execute_cmd("use weapon_taser")
+    elseif (action == "restore") then
+        zeus.taken = false
+        engine_execute_cmd("lastinv")
+    elseif (action == "fire" and target ~= nil) then
+        local eye = me:get_eye_position()
+        local dx, dy, dz = target.pos.x - eye.x, target.pos.y - eye.y, target.pos.z - eye.z
+        cmd.viewangles.x = math.deg(-math.atan2(dz, math.sqrt(dx * dx + dy * dy)))
+        cmd.viewangles.y = math.deg(math.atan2(dy, dx))
+        cmd:add_button(e_cmd_buttons.ATTACK)
+        zeus.threat_at = now
+    end
+end
+
+-- the double tap is off while the zeus is in hand (owners, Oct 2026: "ha zeusz van nálam automatikusan kikapcsolja a dt-t"): the charge is
+-- emptied and kept empty (the same calls as the knifebot helper), given back as soon as another weapon is out
+zeus.dt_off = false
+zeus_dt = function()
+    local me = entity_list_get_local_player()
+    local weapon = me ~= nil and me:is_alive() and entity_list_get_entity(me:get_prop("m_hActiveWeapon")) or nil
+    if (ui.misc.zeus_dt:get() and weapon ~= nil and weapon:get_name() == "taser") then
+        zeus.dt_off = true
+        exploits_force_uncharge()
+        exploits_block_recharge()
+    elseif (zeus.dt_off) then
+        zeus.dt_off = false
+        exploits_allow_recharge()
+    end
+end
+
+--- @endregion
 
 on_knifebot = function(event)
     if (ui.misc.knifebot_helper:get()) then
@@ -3906,7 +4570,7 @@ on_brute = function(event)
                     local shooter_idx_str = tostring(shooter_idx)
             
                     local local_player = entity_list_get_local_player()
-                    if (local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
+                    if (local_player ~= nil and local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
                         for idx, lp_origin in pairs(evades.backtrack_poses) do
                             local box_min, box_max = local_player:get_bounds()
 
@@ -3962,7 +4626,7 @@ on_brute = function(event)
                                         local percentage = (hit / (hit + miss)) * 100
                                         local rounded_percentage = math.floor(percentage * 100) / 100
 
-                                        if (local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
+                                        if (local_player ~= nil and local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
                                             print("shot by ", get_text_color(), name, get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "state: ", specter_color_t(168, 168, 168), global.current_state, ", ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), bt_end, "t") -- specter_color_t(108, 108, 108), "total: ", specter_color_t(168, 168, 168), t_enm_data.shots.hit, "/", t_enm_data.shots.miss + t_enm_data.shots.hit, specter_color_t(108, 108, 108), " (", specter_color_t(168, 168, 168), rounded_percentage, "%%", specter_color_t(108, 108, 108), ")")
                                         end
                                     else
@@ -3985,7 +4649,7 @@ on_brute = function(event)
                                         local percentage = (hit / (hit + miss)) * 100
                                         local rounded_percentage = math.floor(percentage * 100) / 100
 
-                                        if (local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
+                                        if (local_player ~= nil and local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
                                             if (local_player:get_name() ~= name) then
                                                 print("evaded ", get_text_color(), name, specter_color_t(168, 168, 168), "'s shot", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "state: ", specter_color_t(168, 168, 168), global.current_state, ", ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), bt_end, "t") -- specter_color_t(108, 108, 108), "total: ", specter_color_t(168, 168, 168), t_enm_data.shots.hit, "/", t_enm_data.shots.miss + t_enm_data.shots.hit, specter_color_t(108, 108, 108), " (", specter_color_t(168, 168, 168), rounded_percentage, "%%", specter_color_t(108, 108, 108), ")")
                                                 evades.send_data = true
@@ -4021,8 +4685,8 @@ on_brute = function(event)
                     local hit_user_id = event.userid
                     local hit_player = entity_list_get_player_from_userid(hit_user_id)
             
-                    if (hit_player:is_valid() and hit_player:is_player()) then
-                        if (local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
+                    if (hit_player ~= nil and hit_player:is_valid() and hit_player:is_player()) then
+                        if (local_player ~= nil and local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
                             if (hit_player:get_index() == local_player:get_index()) then
                                 local user_idx = shooter:get_index()
                                 local user_idx_str = tostring(user_idx)
@@ -4059,7 +4723,7 @@ on_brute = function(event)
 
             if (dead_player ~= nil) then
                 if (dead_player:is_enemy()) then
-                    if (local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
+                    if (local_player ~= nil and local_player:is_valid() and local_player:is_alive() and local_player:is_player()) then
                         local enm_idx = dead_player:get_index()
                         if (local_player:get_index() == enm_idx) then
                             local time = global_vars_tick_count()
@@ -4104,16 +4768,9 @@ on_talkback = function(event)
     if (ui.player.talk_back:get()) then
         local entity = entity_list_get_player_from_userid(event.userid)
         if (entity ~= nil) then
-            if (entity:get_steamids() ~= entity_list_get_local_player():get_steamids()) then
-                local steamid, _ = entity:get_steamids()
-                local is_sync = false
-
-                for i = 1, #esp.sync_user do
-                    local chat_sync = esp.sync_user[i]
-                    if (chat_sync == steamid) then
-                        is_sync = true
-                    end
-                end
+            local me = entity_list_get_local_player()
+            if (me ~= nil and entity:get_index() ~= me:get_index()) then
+                local is_sync = presence.is_user(entity)
 
                 if (is_sync) then
                     if (ui.utils.synced_players:get(2)) then
@@ -4295,6 +4952,146 @@ end
 -- crosshair minus extra "dynamic ticks", so a shot the aimbot left the tick count of went to a time it did not aim at.
 -- What a lua can add: more fake latency (the server takes records within 0.2 s of our real + fake latency, so older
 -- records become hittable) and the order the aimbot picks targets in.
+--- @region: engine prediction
+-- Our own movement run through the game's prediction (owners, Oct 2026: "miaz hogy nincs ffi nezd meg ujra"): the Primordial lua has ffi,
+-- memory_create_interface / memory_find_pattern / memory_get_vfunc, so CPrediction::SetupMove, CGameMovement::ProcessMovement and
+-- CPrediction::FinishMove can be called with a user command of our own. EXPERIMENTAL and off by default: the vtable indexes and
+-- the netvar offsets below are those of the 2018 CS:GO client, a wrong one is a native crash that pcall can not catch. So the
+-- offsets are checked against the lua netvars (get_prop) before the first run, and nothing is called when they differ.
+-- Only the OUTPUT is used: the predicted origin shifts our eye in the peek prediction (backtrack.predict); no state is kept.
+engine_prediction = { state = "off", max_ticks = 16, input = { forward = 0, side = 0, pitch = 0, yaw = 0, jump = false, duck = false },
+    result = { x = 0, y = 0, z = 0 } }
+engine_prediction.OFFSETS = { flags = 0x104, velocity = 0x114, origin = 0x138, punch = 0x303C, tickbase = 0x3430 }
+-- the layout of the backup buffer: flags 0, velocity 4, origin 16, punch 28, tickbase 40
+engine_prediction.SAVE = { flags = { 0, 4 }, velocity = { 4, 12 }, origin = { 16, 12 }, punch = { 28, 12 }, tickbase = { 40, 4 } }
+engine_prediction.fail = function(why)
+    if (engine_prediction.state ~= "bad") then
+        print("specter · engine prediction off: " .. tostring(why))
+    end
+    engine_prediction.state = "bad"
+    return false
+end
+engine_prediction.init = function()
+    if (engine_prediction.state == "ready") then return true end
+    if (engine_prediction.state == "bad") then return false end
+    local ok, err = pcall(function()
+        pcall(ffi.cdef, [[
+            typedef struct {
+                void* vtable; int command_number; int tick_count; float viewangles[3]; float aimdirection[3];
+                float forwardmove; float sidemove; float upmove; int buttons; unsigned char impulse;
+                int weaponselect; int weaponsubtype; int random_seed; short mousedx; short mousedy; bool predicted;
+            } specter_usercmd_t;
+        ]])
+        local prediction = memory_create_interface("client.dll", "VClientPrediction001")
+        local movement = memory_create_interface("client.dll", "GameMovement001")
+        local sig = memory_find_pattern("client.dll", "8B 0D ? ? ? ? 8B 46 08 68")
+        assert(prediction ~= nil and movement ~= nil and sig ~= nil, "interfaces not found")
+        local st = engine_prediction
+        st.prediction, st.movement = ffi.cast("void*", prediction), ffi.cast("void*", movement)
+        -- IMoveHelper* : "mov ecx, [address]"
+        st.helper = ffi.cast("void**", ffi.cast("uintptr_t*", ffi.cast("uintptr_t", sig) + 2)[0])[0]
+        assert(st.helper ~= nil, "move helper not found")
+        st.setup_move = ffi.cast("void(__thiscall*)(void*, void*, void*, void*, void*)", memory_get_vfunc(prediction, 20))
+        st.process_movement = ffi.cast("void(__thiscall*)(void*, void*, void*)", memory_get_vfunc(movement, 1))
+        st.finish_move = ffi.cast("void(__thiscall*)(void*, void*, void*, void*)", memory_get_vfunc(prediction, 21))
+        -- CGlobalVarsBase*: curtime 0x10, frametime 0x14, tickcount 0x1C, interval_per_tick 0x20; used only when it reads back the
+        -- tick count and the tick interval the lua api gives (else curtime / frametime are simply not synced)
+        local gsig = memory_find_pattern("client.dll", "A1 ? ? ? ? 5F 8B 40 10")
+        if (gsig ~= nil) then
+            local pointer = ffi.cast("char**", ffi.cast("uintptr_t*", ffi.cast("uintptr_t", gsig) + 1)[0])[0]
+            if (pointer ~= nil
+                and math.abs(ffi.cast("int*", pointer + 0x1C)[0] - globals.tick_count()) <= 2
+                and math.abs(ffi.cast("float*", pointer + 0x20)[0] - globals.interval_per_tick()) < 1e-6) then
+                st.globals = pointer
+            end
+        end
+        st.cmd = ffi.new("specter_usercmd_t[1]")
+        st.move_data = ffi.new("char[512]")
+        st.saved = ffi.new("char[64]")
+    end)
+    if (not ok) then return engine_prediction.fail(err) end
+    engine_prediction.state = "linked"
+    return true
+end
+-- m_vecOrigin / m_vecVelocity come as a 2D vector in Primordial (indexing .z raises): z is the "name[2]" element or 0
+engine_prediction.vector = function(ent, name)
+    local v = ent:get_prop(name)
+    if (v == nil) then return nil end
+    local okx, x = pcall(function() return v.x end)
+    local oky, y = pcall(function() return v.y end)
+    local okz, z = pcall(function() return v.z end)
+    if (not okz or type(z) ~= "number") then z = tonumber(ent:get_prop(name .. "[2]")) or 0 end
+    if (not okx or not oky or type(x) ~= "number" or type(y) ~= "number") then return nil end
+    return { x = x, y = y, z = z }
+end
+-- the offsets must give back what the lua netvars say, else nothing is ever called
+engine_prediction.verify = function(player, base)
+    local function near(a, b) return type(a) == "number" and type(b) == "number" and math.abs(a - b) < 0.5 end
+    local o = engine_prediction.OFFSETS
+    local origin, velocity = engine_prediction.vector(player, "m_vecOrigin"), engine_prediction.vector(player, "m_vecVelocity")
+    if (origin == nil or velocity == nil) then return false end
+    local f, v, p, tb = ffi.cast("float*", base + o.origin), ffi.cast("float*", base + o.velocity), nil, nil
+    local flags = tonumber(player:get_prop("m_fFlags"))
+    local base_tick = tonumber(player:get_prop("m_nTickBase"))
+    if (not (near(f[0], origin.x) and near(f[1], origin.y) and near(f[2], origin.z)
+        and near(v[0], velocity.x) and near(v[1], velocity.y) and near(v[2], velocity.z)
+        and flags ~= nil and ffi.cast("int*", base + o.flags)[0] == flags
+        and base_tick ~= nil and ffi.cast("int*", base + o.tickbase)[0] == base_tick)) then
+        return false
+    end
+    return true
+end
+engine_prediction.capture = function(cmd)
+    local input = engine_prediction.input
+    input.forward, input.side = cmd.move.x, cmd.move.y
+    input.pitch, input.yaw = cmd.viewangles.x, cmd.viewangles.y
+    input.jump, input.duck = cmd:has_button(e_cmd_buttons.JUMP), cmd:has_button(e_cmd_buttons.DUCK)
+end
+-- runs `ticks` commands with the current input and returns the origin after them (a reused table), the player is restored
+engine_prediction.origin_after = function(player, ticks)
+    local st = engine_prediction
+    if (st.state == "bad" or not st.init()) then return nil end
+    local address = entity.get_address(player:get_index())
+    if (address == nil or address == 0) then return nil end
+    local base = ffi.cast("char*", address)
+    if (st.state ~= "ready") then
+        if (not st.verify(player, base)) then st.fail("offsets differ from the netvars") return nil end
+        st.state = "ready"
+    end
+    ticks = math.max(1, math.min(st.max_ticks, math.floor(ticks)))
+    local o, save = st.OFFSETS, st.SAVE
+    -- state backup (m_fFlags, m_vecVelocity, m_vecOrigin, m_aimPunchAngle, m_nTickBase)
+    for key, slot in pairs(save) do ffi.copy(st.saved + slot[1], base + o[key], slot[2]) end
+    local tickbase = ffi.cast("int*", base + o.tickbase)
+    local start_tick, now_tick = tickbase[0], globals.tick_count()
+    local input, uc = st.input, st.cmd[0]
+    -- g_pGlobals->curtime / frametime follow the predicted tick (tickbase x interval), restored below
+    local times, interval = st.globals ~= nil and ffi.cast("float*", st.globals + 0x10) or nil, globals.interval_per_tick()
+    local old_curtime, old_frametime
+    if (times ~= nil) then old_curtime, old_frametime = times[0], times[1] end
+    local ok = pcall(function()
+        uc.viewangles[0], uc.viewangles[1], uc.viewangles[2] = input.pitch, input.yaw, 0
+        uc.forwardmove, uc.sidemove, uc.upmove = input.forward, input.side, 0
+        uc.buttons = (input.jump and 2 or 0) + (input.duck and 4 or 0)
+        for k = 1, ticks do
+            uc.command_number, uc.tick_count = now_tick + k, now_tick + k
+            tickbase[0] = start_tick + k - 1
+            if (times ~= nil) then times[0], times[1] = tickbase[0] * interval, interval end
+            ffi.fill(st.move_data, 512, 0)
+            st.setup_move(st.prediction, address, st.cmd, st.helper, st.move_data)
+            st.process_movement(st.movement, address, st.move_data)
+            st.finish_move(st.prediction, address, st.cmd, st.move_data)
+        end
+        local f = ffi.cast("float*", base + o.origin)
+        st.result.x, st.result.y, st.result.z = f[0], f[1], f[2]
+    end)
+    -- restore: the player and the globals must look untouched to everything after this
+    if (times ~= nil) then times[0], times[1] = old_curtime, old_frametime end
+    for key, slot in pairs(save) do ffi.copy(base + o[key], st.saved + slot[1], slot[2]) end
+    return ok and st.result or nil
+end
+--- @endregion
+
 local backtrack = { amount = nil, saved = nil, peekers = {}, predict_tick = 0,
     no_ping = { knife = true, bayonet = true, hegrenade = true, flashbang = true, smokegrenade = true, molotov = true,
                 incgrenade = true, decoy = true, c4 = true } }
@@ -4303,8 +5100,8 @@ do
     backtrack.ping = ok and item or nil
 end
 
--- the fake ping amount: 100 ms (Extended backtrack: 200 ms) while an enemy is alive, 0 with a knife / grenade / bomb out
--- or nobody to shoot; written on change only, the own value back when Improve backtrack goes off
+-- Fake ping uses a 100/200 ms total RTT budget with protection enabled.
+-- Guarded high ping adds nothing; the saved value returns when disabled.
 backtrack.update = function(local_player)
     if (backtrack.ping == nil) then
         return
@@ -4318,42 +5115,90 @@ backtrack.update = function(local_player)
         return
     end
 
+    -- "Fake ping only in sight" (owners, Oct 2026: "az antiaim nagyon hittelheto"): the fake ping delays what WE see, so while it ran
+    -- all the time we walked into enemies that had been aiming at the corner for 100-200 ms (the AA logs: head hits were 12 % of the events
+    -- under 40 ms and 24-30 % with the fake ping on). It is only needed to hit somebody, so it runs while an enemy is in sight
+    -- (not dormant) and for 1 s after, not while we are holding / peeking an angle nobody is seen at yet
+    local now_t = globals.real_time()
     local want = 0
     local weapon = local_player:get_active_weapon()
     if (weapon ~= nil and not backtrack.no_ping[weapon:get_name()]) then
+        local in_sight = not ui.ragebot.backtrack.ping_in_sight:get()
         for _, enemy in pairs(entity_list_get_players(true) or {}) do
-            if (enemy:is_alive()) then
-                want = ui.ragebot.backtrack.extended_backtrack:get() and 200 or 100
+            if (enemy:is_alive() and (in_sight or not enemy:is_dormant())) then
+                backtrack.seen_until = now_t + 1
                 break
             end
         end
-    end
-
-    if (want ~= backtrack.amount) then
-        if (backtrack.saved == nil) then
-            backtrack.saved = backtrack.ping:get()
+        if ((backtrack.seen_until or 0) > now_t and (backtrack.seen_until or 0) - now_t <= 1) then
+            want = ui.ragebot.backtrack.extended_backtrack:get() and 500 or 100
         end
+    end
+    if (ui.ragebot.latency_guard:get()) then
+        local net = resolver.network()
+        local now = globals.real_time()
+        if (net.high) then backtrack.high_until = now + 0.5 end
+        -- Added fake latency must fit inside the desired TOTAL RTT budget.
+        want = (backtrack.high_until or 0) > now and 0 or math.max(0, math.floor(want - net.ping))
+    end
+    -- a value the user set by hand wins: we only write when the slider still holds what we wrote last, else it is
+    -- theirs now (kept as the floor, so the round change / no enemy / knife never drops it)
+    local cur = backtrack.ping:get()
+    if (backtrack.saved == nil or (backtrack.amount ~= nil and cur ~= backtrack.amount)) then
+        backtrack.saved = cur
+    end
+    if (backtrack.saved ~= nil and backtrack.saved > want and (backtrack.high_until or 0) <= globals.real_time()) then
+        want = backtrack.saved
+    end
+    if (backtrack.cap ~= nil and want > backtrack.cap) then want = backtrack.cap end
+    if (want ~= backtrack.amount) then
         backtrack.ping:set(want)
+        if (want > 200 and backtrack.ping:get() < want) then
+            backtrack.cap = backtrack.ping:get()
+        end
         backtrack.amount = want
     end
 end
-
--- advanced prediction: where every moving enemy's head will be after our latency + 4 ticks (its velocity, stopped by
--- walls); one that can be shot there but not now is about to peek: it goes first in the target selection
+backtrack.horizon = function(net, ducking)
+    local interval = math.max(0.001, math.min(0.1, globals.interval_per_tick()))
+    local limit = ducking and 0.04 or net.high and 0.06 or 0.10
+    return math.min(limit, math.max(interval, net.outgoing + interval * 2))
+end
+-- a bullet from `a` to `b` that hurts the target
+backtrack.hurts = function(local_player, enemy, a, b)
+    local bullet = trace_bullet(a, b, local_player, enemy)
+    return bullet ~= nil and bullet.valid and (bullet.damage or 0) > 0
+end
 backtrack.predict = function(local_player)
     local tick = globals.tick_count()
+    if (tick >= backtrack.predict_tick and tick - backtrack.predict_tick < 2) then return end
+    backtrack.peekers, backtrack.peek_until = {}, 0
     if (not ui.ragebot.backtrack.prediction:get()) then
-        backtrack.peekers = {}
         return
     end
-    if (tick - backtrack.predict_tick < 2 and tick >= backtrack.predict_tick) then
-        return
-    end
+    -- Lists expire after three ticks; skipped scans never extend their life.
     backtrack.predict_tick = tick
 
     local eye = local_player:get_eye_position()
-    local ahead = engine_get_latency(e_latency_flows.OUTGOING) + engine_get_latency(e_latency_flows.INCOMING)
-        + 4 * globals.interval_per_tick()
+    if (eye == nil) then return end
+    local net = resolver.network()
+    local own_velocity = local_player:get_prop("m_vecVelocity")
+    -- our own movement run through the game's prediction (experimental option); nil = the velocity estimate below
+    local own_shift
+    if (ui.ragebot.backtrack.engine_pred:get()) then
+        -- an error here would unload the script: the whole thing is guarded, a failure falls back to the velocity estimate
+        local okp, origin, after = pcall(function()
+            local here = engine_prediction.vector(local_player, "m_vecOrigin")
+            return here, here ~= nil and engine_prediction.origin_after(local_player,
+                backtrack.horizon(net, false) / globals.interval_per_tick()) or nil
+        end)
+        if (not okp) then origin, after = nil, nil end
+        if (after ~= nil and origin ~= nil) then
+            backtrack.shift = backtrack.shift or {}
+            backtrack.shift.x, backtrack.shift.y, backtrack.shift.z = after.x - origin.x, after.y - origin.y, after.z - origin.z
+            own_shift = backtrack.shift
+        end
+    end
     local peekers, checked = {}, 0
     for _, enemy in pairs(entity_list_get_players(true) or {}) do
         if (checked >= 5) then
@@ -4362,28 +5207,76 @@ backtrack.predict = function(local_player)
         if (enemy:is_alive() and not enemy:is_dormant()) then
             local head = enemy:get_hitbox_pos(e_hitboxes.HEAD)
             local velocity = enemy:get_prop("m_vecVelocity")
-            if (head ~= nil and velocity ~= nil and math.vec_length2d(velocity) > 40) then
+            local sim = tonumber(enemy:get_prop("m_flSimulationTime"))
+            backtrack.records = backtrack.records or {}
+            local record = backtrack.records[enemy:get_index()]
+            local now = globals.real_time()
+            if (sim == nil or sim ~= sim or math.abs(sim) == math.huge) then
+                record = nil
+                backtrack.records[enemy:get_index()] = nil
+            elseif (record == nil or record.sim ~= sim) then
+                local rewound = record ~= nil and sim < record.sim
+                record = { sim = sim, time = now, defensive_until = rewound and now + 0.25
+                    or (record and record.defensive_until or 0) }
+                backtrack.records[enemy:get_index()] = record
+            end
+            local fresh = record ~= nil and now >= record.time and now - record.time <= 0.12
+                and now >= record.defensive_until
+            if (fresh and head ~= nil and velocity ~= nil and math.vec_length2d(velocity) > 8) then
                 checked = checked + 1
+                local ducking = bit.band(tonumber(enemy:get_prop("m_fFlags")) or 0, 2) ~= 0
+                local ahead = backtrack.horizon(net, ducking)
                 local to = vec3_t(head.x + velocity.x * ahead, head.y + velocity.y * ahead, head.z)
-                local wall = trace_line(head, to, enemy, 0x400B).fraction
-                to = vec3_t(head.x + (to.x - head.x) * wall, head.y + (to.y - head.y) * wall, head.z)
-
-                local later = trace_bullet(eye, to, local_player, enemy)
-                if (later.valid and later.damage > 0) then
-                    local now = trace_bullet(eye, head, local_player, enemy)
-                    if (not (now.valid and now.damage > 0)) then
-                        peekers[#peekers + 1] = enemy:get_index()
+                local tracked = resolver.data[enemy:get_index()]
+                local predicted = resolver.advanced ~= nil and resolver.advanced.forecast(tracked, enemy,
+                    math.ceil(ahead / globals.interval_per_tick())) or nil
+                if (predicted ~= nil and not predicted.blocked) then
+                    local origin = tracked.advanced.last
+                    to = vec3_t(head.x + predicted.x - origin.x, head.y + predicted.y - origin.y,
+                        head.z + predicted.z - origin.z)
+                end
+                local wall = trace_line(head, to, enemy, 0x400B)
+                if (wall ~= nil and type(wall.fraction) == "number" and wall.fraction == wall.fraction
+                    and wall.fraction >= 0.98) then
+                    -- we move too (auto peek, strafing): the shot leaves from where OUR eye will be, not from where it is now
+                    local from = eye
+                    if (own_shift ~= nil or (own_velocity ~= nil and math.vec_length2d(own_velocity) > 8)) then
+                        local moved = own_shift ~= nil and vec3_t(eye.x + own_shift.x, eye.y + own_shift.y, eye.z + own_shift.z)
+                            or vec3_t(eye.x + own_velocity.x * ahead, eye.y + own_velocity.y * ahead, eye.z)
+                        local step = trace_line(eye, moved, local_player, 0x400B)
+                        if (step ~= nil and type(step.fraction) == "number" and step.fraction == step.fraction
+                            and step.fraction >= 0.98) then
+                            from = moved
+                        end
+                    end
+                    -- the aimbot also takes the body: a target that gives only its chest next is a peeker too (it was the head only). Traces
+                    -- are cheaper than before: a head we can already hit is no peeker and ends the check, the chest is traced only when the
+                    -- head fails
+                    if (not backtrack.hurts(local_player, enemy, eye, head)) then
+                        local peeking = backtrack.hurts(local_player, enemy, from, to)
+                        local chest = not peeking and enemy:get_hitbox_pos(e_hitboxes.CHEST) or nil
+                        if (chest ~= nil and not backtrack.hurts(local_player, enemy, eye, chest)) then
+                            peeking = backtrack.hurts(local_player, enemy, from,
+                                vec3_t(chest.x + to.x - head.x, chest.y + to.y - head.y, chest.z + to.z - head.z))
+                        end
+                        if (peeking) then
+                            peekers[#peekers + 1] = enemy:get_index()
+                        end
                     end
                 end
             end
         end
     end
     backtrack.peekers = peekers
+    backtrack.peek_until = globals.real_time() + math.min(0.10, globals.interval_per_tick() * 3)
 end
 
 backtrack.target_selection = function(ctx)
+    local now = globals.real_time()
+    if (now > (backtrack.peek_until or 0) or now < (backtrack.peek_until or 0) - 0.10) then return end
     for _, idx in ipairs(backtrack.peekers) do
-        ctx:prioritize_target(idx)
+        local enemy = entity_list_get_entity(idx)
+        if (enemy ~= nil and enemy:is_alive() and not enemy:is_dormant()) then ctx:prioritize_target(idx) end
     end
 end
 
@@ -4395,6 +5288,72 @@ end
 
 --- @endregion
 
+-- Statistics per state of the target (owners, Oct 2026: "/state, hogy megnézzük mire missel a legtöbbet, és könnyebb
+-- lenne fixálni a resolvert mint egybe az egészet"): shots, hits, the miss reasons (a shot spoiled by a defensive shift /
+-- a lag break is relabelled "defensive" / "lag break": Primordial reports it as "jitter" / "resolver") and how often
+-- each hypothesis was used and hit. The row "jitter" counts the shots at a jittering target in any state
+resolver.HYP = { "side", "-side", "side/2", "-side/2", "none", "feet", "-feet", "next", "-next" }
+resolver.record = function(snap, hit_ok, reason)
+    local label
+    if (not hit_ok) then
+        label = tostring(reason or "?")
+        if (label == "resolver" or label == "jitter") then
+            label = snap.defensive and "defensive" or snap.lagbreak and "lag break" or label
+        end
+    end
+    local function add(name)
+        local r = resolver.stats[name]
+        if (r == nil) then
+            r = { name = name, n = 0, hit = 0, why = {}, hyp = {} }
+            resolver.stats[name] = r
+        end
+        r.n = r.n + 1
+        if (hit_ok) then
+            r.hit = r.hit + 1
+        else
+            r.why[label] = (r.why[label] or 0) + 1
+        end
+        if (snap.candidate ~= nil) then
+            local h = r.hyp[snap.candidate] or { n = 0, hit = 0 }
+            r.hyp[snap.candidate] = h
+            h.n = h.n + 1
+            h.hit = h.hit + (hit_ok and 1 or 0)
+        end
+    end
+    add(snap.state or "?")
+    if (snap.key == "jitter") then
+        add("jitter")
+    end
+end
+-- the rows in a fixed order: { name, n, hit, rate (0..100), miss = { { label, count } by count }, hyp = { { name, n, hit } } }
+resolver.stat_rows = function()
+    local order, rows = { "stand", "slow", "move", "duck", "cmove", "air", "airduck", "jitter" }, {}
+    for _, name in ipairs(order) do
+        local r = resolver.stats[name]
+        if (r ~= nil and r.n > 0) then
+            local miss, hyp = {}, {}
+            for label, count in pairs(r.why) do miss[#miss + 1] = { label, count } end
+            table.sort(miss, function(a, b) return a[2] > b[2] or (a[2] == b[2] and a[1] < b[1]) end)
+            for i, h in pairs(r.hyp) do hyp[#hyp + 1] = { resolver.HYP[i] or tostring(i), h.n, h.hit } end
+            table.sort(hyp, function(a, b) return a[2] > b[2] or (a[2] == b[2] and a[1] < b[1]) end)
+            rows[#rows + 1] = { name = name, n = r.n, hit = r.hit, rate = math.floor(r.hit / r.n * 100 + 0.5), miss = miss, hyp = hyp }
+        end
+    end
+    return rows
+end
+resolver.stat_lines = function()
+    local lines = {}
+    for _, r in ipairs(resolver.stat_rows()) do
+        local miss, hyp = {}, {}
+        for _, m in ipairs(r.miss) do miss[#miss + 1] = m[1] .. " " .. m[2] end
+        for i, h in ipairs(r.hyp) do
+            if (i <= 4) then hyp[#hyp + 1] = string.format("%s %d/%d", h[1], h[3], h[2]) end
+        end
+        lines[#lines + 1] = string.format("%s: %d shots, %d%% hit | miss: %s | hypotheses (hit/used): %s", r.name, r.n, r.rate,
+            #miss > 0 and table.concat(miss, ", ") or "-", #hyp > 0 and table.concat(hyp, ", ") or "-")
+    end
+    return lines
+end
 --- @info: resolver: side from freestanding / jitter, learned per player and state from hits and misses
 --- @region: resolver
 -- [pm-resolver:begin] the loader's beta version is built without this part (make_primordial_beta in discord_bot.py)
@@ -4405,8 +5364,6 @@ end
 --   Improve resolver / Logic resolver / Pose resolver / Custom resolver: any of them turns the resolver layer on
 --   Logic resolver: head safe point after 2 resolver misses in a row on that player (Custom resolver: Hit sensitivity)
 --   Custom resolver: the options below it
---   Lua side override (experimental): Primordial's own resolver off and the side below forced into the animstate
---   (side from freestanding / jitter, max desync, learned from hits / misses); off by default, unproven in game
 --   Duck mode / Auto duck / Safe peek / Safe mode: head safe point on crouching targets / with Auto, AWP, Deagle, other /
 --   while we quick peek / on targets at or below that HP. Hit sensitivity: head safe point after that many misses in a row
 --   Prediction sel: the reduced desync size (% of max). Calculate box: freestanding trace width. Shot prediction: jitter step
@@ -4414,12 +5371,13 @@ end
 --   Disablers + At disabler: while one of them holds, the resolver is off / head safe point / keeps resolving
 local RES_NOCHOKE = 8                      -- updates without a choked tick in a row: no desync possible, nothing forced
 local RES_FS_TICKS = 8                     -- freestanding traces once per this many ticks per player
-local RES_STATE_NUM = { stand = 1, slow = 2, move = 3, duck = 4, air = 6, jitter = 7 }
+local RES_STATE_NUM = { stand = 1, slow = 2, move = 3, duck = 4, cmove = 5, air = 6, jitter = 7, airduck = 8 }
 local RES_SCOPE_CFG = { 0, 1, 2, 6 }
 local RES_SAFE_CFG = { 0, 2, 3, 7 }
 
 local function res_clamp(v, lo, hi)
-    if (v ~= v) then
+    v = tonumber(v)
+    if (v == nil or v ~= v or v == math.huge or v == -math.huge) then
         return lo
     end
     if (v < lo) then
@@ -4432,6 +5390,10 @@ local function res_clamp(v, lo, hi)
 end
 
 local function res_norm(a)
+    a = tonumber(a)
+    if (a == nil or a ~= a or a == math.huge or a == -math.huge) then
+        return 0
+    end
     a = math.fmod(a + 180, 360)
     if (a ~= a) then
         return 0
@@ -4452,7 +5414,7 @@ end
 
 resolver.animstate = function(idx)
     local ptr = get_entity_address(idx)
-    if (ptr == nil) then
+    if (ptr == nil or ptr == ffi.NULL or tonumber(ffi.cast("uintptr_t", ptr)) == 0) then
         return nil
     end
     local state = ffi.cast("CPlayer_animation_State**", ffi.cast("uintptr_t", ptr) + 0x9960)[0]
@@ -4478,15 +5440,16 @@ resolver.max_desync = function(st)
 end
 
 resolver.state_of = function(ent)
-    local flags = ent:get_prop("m_fFlags")
+    local flags = tonumber(ent:get_prop("m_fFlags")) or 0
     if (bit.band(flags, 1) == 0) then
-        return "air"
+        return bit.band(flags, 2) ~= 0 and "airduck" or "air"
     end
+    local velocity = ent:get_prop("m_vecVelocity")
+    local speed = velocity and math.vec_length2d(velocity) or 0
     if (bit.band(flags, 2) ~= 0) then
-        return "duck"
+        -- a crouched player who walks has the eye-following feet and the small crouch limit: its own state
+        return speed > 5 and "cmove" or "duck"
     end
-
-    local speed = math.vec_length2d(ent:get_prop("m_vecVelocity"))
     if (speed > 100) then
         return "move"
     elseif (speed > 5) then
@@ -4511,8 +5474,12 @@ resolver.freestand = function(local_player, ent)
 
     local width = res_custom() and res_clamp(ui.ragebot.resolver.calc_box:get(), 10, 35) or 25
     local rx, ry = -dy / len * width, dx / len * width
-    local left = trace_line(eye, vec3_t(head.x + rx, head.y + ry, head.z), local_player, 0x200400B).fraction
-    local right = trace_line(eye, vec3_t(head.x - rx, head.y - ry, head.z), local_player, 0x200400B).fraction
+    local lt = trace_line(eye, vec3_t(head.x + rx, head.y + ry, head.z), local_player, 0x200400B)
+    local rt = trace_line(eye, vec3_t(head.x - rx, head.y - ry, head.z), local_player, 0x200400B)
+    if (lt == nil or rt == nil or lt.fraction == nil or rt.fraction == nil) then
+        return 0
+    end
+    local left, right = res_clamp(lt.fraction, 0, 1), res_clamp(rt.fraction, 0, 1)
     if (math.abs(left - right) < 0.05) then
         return 0
     end
@@ -4549,9 +5516,729 @@ resolver.memory = function(idx, key, kind)
         resolver.mem[idx] = mem
     end
     if (mem[key] == nil) then
-        mem[key] = { rel = (kind and resolver.trust[kind] < 0) and -1 or 1, flip = true, misses = 0, half = false }
+        mem[key] = { rel = 1, misses = 0, candidates = {}, selected = 1 }
+        for i = 1, resolver.NCAND do
+            mem[key].candidates[i] = { good = 1, bad = 1 }
+        end
     end
     return mem[key]
+end
+-- Per-target/per-state hypotheses. Side hint is evidence, not a guarantee.
+-- the hypotheses of a target (value = the body yaw of the record, relative to its eye yaw; see resolver.hypothesis):
+-- 1 / 2 the side hint, full size, as is / mirrored; 3 / 4 the same, half size; 5 no desync; 6 / 7 the computed body
+-- yaw of the feet model, as is / mirrored; 8 / 9 the side the jitter pattern predicts for the NEXT record, as is / mirrored
+resolver.NCAND = 9
+resolver.MIRROR = { [1] = 2, [2] = 1, [3] = 4, [4] = 3, [6] = 7, [7] = 6, [8] = 9, [9] = 8 }
+resolver.PRIOR = { 0.14, 0.02, 0.08, 0.00, -0.03, 0.0, 0.0, 0.0, 0.0 }
+-- opt.skip[i] = the hypothesis does not apply now, opt.bonus[i] = what the situation says for it before any result
+-- what the common anti-aims do in each state (read from the Primordial workshop builders: Formal Yaw, Anti-Aim Builder, Destroy,
+-- T1ny, Star-Project): standing = a held side / inverter with a near full body yaw (the side hint and the LBY feet model are
+-- right); walking, running, crouch walking = the desync flips every tick / delay with the yaw jitter (the half size and the
+-- jitter pattern pay); in the air = the largest jitter and a flipping desync, the feet lag (half size + pattern, no feet model);
+-- crouched still = held like standing, but the limit is smaller. Added to the candidate bonus: a prior, the results overrule it
+resolver.STATE_PRIOR = {
+    stand = { [1] = 0.04, [6] = 0.04 },
+    slow = { [1] = 0.02, [3] = 0.03, [6] = 0.02, [8] = 0.03 },
+    move = { [3] = 0.04, [8] = 0.05 },
+    duck = { [1] = 0.03, [3] = 0.02, [6] = 0.04 },
+    cmove = { [3] = 0.04, [6] = 0.01, [8] = 0.04 },
+    air = { [3] = 0.05, [8] = 0.06 },
+    airduck = { [3] = 0.05, [8] = 0.06 },
+}
+
+resolver.choose = function(mem, confidence, allow_half, opt)
+    local best, score = 1, -math.huge
+    local skip, bonus = opt and opt.skip or {}, opt and opt.bonus or {}
+    for i, c in ipairs(mem.candidates) do
+        if (not skip[i]) then
+            local n = c.good + c.bad
+            local prior = (resolver.PRIOR[i] or 0) * confidence + (bonus[i] or 0)
+            local value = c.good / n + 0.10 / math.sqrt(n) + prior
+            if (mem.last_failed == i) then
+                value = value - 0.25
+            end
+            if ((allow_half ~= false or (i ~= 3 and i ~= 4)) and value > score) then
+                best, score = i, value
+            end
+        end
+    end
+    mem.selected = best
+    return best
+end
+resolver.shot_id = function(event)
+    return event and (event.id or event.shot_id) or nil
+end
+resolver.prune_shots = function(now)
+    for i = #resolver.shots, 1, -1 do
+        local s = resolver.shots[i]
+        if (now < s.time or now - s.time > 4 or s.epoch ~= resolver.epoch) then
+            table.remove(resolver.shots, i)
+        end
+    end
+end
+resolver.capture = function(shot)
+    if (shot == nil or shot.player == nil) then return end
+    local now, idx = globals.real_time(), shot.player:get_index()
+    resolver.prune_shots(now)
+    local p, prev = resolver.data[idx], resolver.previous[idx]
+    local s = { id = resolver.shot_id(shot), idx = idx, time = now,
+        epoch = resolver.epoch, track = p, aimpos = shot.player:get_hitbox_pos(1) }
+    if (prev ~= nil) then
+        s.key, s.kind, s.rel = prev.key, prev.kind, prev.rel
+        s.candidate, s.desync = prev.candidate, prev.m_flDesync
+        s.model, s.nxt = prev.model, prev.nxt
+        s.phase, s.reliab = prev.phase, prev.reliab
+    end
+    -- classified at the result (resolver.spoiled): the round trip and the state of the target at the shot
+    s.rtt = resolver.network().ping / 1000
+    -- animation layer 6 (movement) of the target at the shot: logged next to the body yaw we gave, to find out from the real
+    -- logs whether its playback rate tells the side (res_fix_att does that from the rate alone); read only, nil when missing
+    local okl, rate, weight = pcall(function()
+        local layer = get_anim_layer(get_entity_address(idx), 6)
+        return layer.m_flPlaybackRate, layer.m_flWeight
+    end)
+    if (okl) then s.l6, s.l6w = rate, weight end
+    -- layer 3 (the stop / adjust animation: it fires when the LBY updates or the target changes direction) and the sequences of
+    -- both layers: logged to see whether they tell an LBY break or the side (owners, Oct 2026), read only, nil when missing
+    local ok3, rate3, weight3, cycle3, seq3, seq6 = pcall(function()
+        local address = get_entity_address(idx)
+        local three, six = get_anim_layer(address, 3), get_anim_layer(address, 6)
+        return three.m_flPlaybackRate, three.m_flWeight, three.m_flCycle, three.m_nSequence, six.m_nSequence
+    end)
+    if (ok3) then s.l3, s.l3w, s.l3c, s.l3s, s.l6s = rate3, weight3, cycle3, seq3, seq6 end
+    s.state = resolver.state_of(shot.player)
+    s.aat = resolver.aa_type(p)
+    -- what the shot log carries from the moment of the shot (it read these after the result was counted): the policy of the scan
+    -- (`sp`), the miss streak and how long ago the target's last tickbase shift / lag break was seen (the data that tells
+    -- how long "Defensive lock ticks" has to be)
+    s.sp = resolver.safe and resolver.safe[s.idx] or nil
+    s.misses = resolver.misses[s.idx] or 0
+    local last = p ~= nil and p.events ~= nil and p.events[#p.events] or nil
+    s.evage = last ~= nil and now - last.obs or nil
+    resolver.shots[#resolver.shots + 1] = s
+    if (#resolver.shots > 128) then table.remove(resolver.shots, 1) end
+end
+resolver.take_shot = function(event, idx)
+    resolver.prune_shots(globals.real_time())
+    local id, found, count = resolver.shot_id(event), nil, 0
+    for i, s in ipairs(resolver.shots) do
+        if (s.idx == idx and (id == nil or s.id == id)) then
+            found, count = i, count + 1
+        end
+    end
+    -- Without a usable unique ID, overlapping shots are ambiguous.
+    -- Never train against the latest global shot or guess their order.
+    if (count ~= 1) then
+        if (id == nil and count > 1) then
+            for _, s in ipairs(resolver.shots) do
+                if (s.idx == idx) then s.ambiguous = true end
+            end
+        end
+        return nil
+    end
+    if (id == nil and resolver.shots[found].ambiguous) then return nil end
+    return table.remove(resolver.shots, found)
+end
+local RES_JIT_N = 12
+local RES_JIT_MIN = 20
+local RES_JIT_HOLD = 0.25
+local RES_JIT_SMALL = 4
+local RES_JIT_TOL = 1.5
+local RES_JIT_RETURNS = 6
+
+resolver.jit_returns = function(yaws)
+    local returns = 0
+    for i = 1, #yaws - 2 do
+        if (math.abs(res_norm(yaws[i] - yaws[i + 1])) >= RES_JIT_SMALL) then
+            for k = 2, 4 do
+                local old = yaws[i + k]
+                if (old ~= nil and math.abs(res_norm(yaws[i] - old)) <= RES_JIT_TOL) then
+                    returns = returns + 1
+                    break
+                end
+            end
+        end
+    end
+    return returns
+end
+
+-- Deterministic against stochastic jitter (owners, Oct 2026): the eye yaws of the last records are grouped into levels (within
+-- RES_LEVEL_TOL). A cyclic AA keeps coming back to 2-3 levels that each recur, a random one spreads over many levels with no
+-- recurring centre. Returns "cyclic", "random" or nil (not enough records / in between)
+local RES_LEVEL_TOL = 3
+resolver.jit_levels = function(yaws)
+    if (#yaws < 8) then return nil end
+    local levels = {}
+    for _, y in ipairs(yaws) do
+        local found = false
+        for _, l in ipairs(levels) do
+            if (math.abs(res_norm(y - l.at)) <= RES_LEVEL_TOL) then
+                l.n, found = l.n + 1, true
+                break
+            end
+        end
+        if (not found) then levels[#levels + 1] = { at = y, n = 1 } end
+    end
+    local recurring = 0
+    for _, l in ipairs(levels) do
+        if (l.n >= 2) then recurring = recurring + 1 end
+    end
+    if (#levels <= 3 and recurring == #levels) then return "cyclic" end
+    if (#levels >= 6 and recurring <= 2) then return "random" end
+    return nil
+end
+resolver.jit_classify = function(steps, min, yaws)
+    if (yaws ~= nil and resolver.jit_returns(yaws) >= RES_JIT_RETURNS) then
+        return true
+    end
+    local big, flips, net, total, last = 0, 0, 0, 0, 0
+    for i = 1, #steps do
+        local d = steps[i]
+        net = net + d
+        total = total + math.abs(d)
+        if (math.abs(d) >= min) then
+            local sign = d < 0 and -1 or 1
+            big = big + 1
+            if (last ~= 0 and sign ~= last) then
+                flips = flips + 1
+            end
+            last = sign
+        end
+    end
+    return big >= 3 and flips >= 2 and math.abs(net) <= total * 0.5
+end
+
+resolver.K = {
+    zero = 20,          -- |computed body yaw| below this: the feet model sees no desync (micromovement keeps the LBY on the eye yaw)
+    shift = 0.5,        -- a sim time that goes back by less (s) is a tickbase shift (defensive), not a reset
+    lby_period = 1.1,   -- a standing target's LBY target updates this often (s)
+    lby_window = 0.1,   -- the share around the update where "no desync" gets a small bonus
+    idle = 2,           -- seconds a situation can go unused before its learning starts to fade
+    idle_tau = 8,       -- the fade: exp(-(unused - idle) / idle_tau)
+    round_keep = 0.5,   -- how much of what was learned about a player stays into the next round
+    change_keep = 0.35, -- the same when its yaw pattern changed
+    change = 10,        -- records in a row with another pattern = the pattern changed
+    forget = 0.97,      -- every counted result pulls all hypotheses of that situation back toward the start
+    lc_window = 0.5,    -- seconds a broken lag compensation (a teleport) spoils the shots fired after it
+    ev_margin = 0.06,   -- timing slack (s) of the shot / event matching
+    ev_keep = 3,        -- seconds the observed shift / lag break events are kept
+}
+
+-- Defensive / lag break events of a target, as WE observe them (p.events, newest last). A shot is tested by the server
+-- against the target's state when it arrives there, but we see the target's packets one way latency late, so the shift
+-- that spoils a shot fired at t is observed about one round trip LATER, inside [t + rtt - dur, t + rtt]: dur = how long
+-- the shift lasts (the size of the sim time step back, like defensive:is_active) or the lag comp window. So a shot is
+-- classified when its RESULT arrives, from the events seen since it was fired
+resolver.event = function(p, now, dur)
+    p.events = p.events or {}
+    p.events[#p.events + 1] = { obs = now, dur = dur }
+    while (#p.events > 0 and now - p.events[1].obs > resolver.K.ev_keep) do
+        table.remove(p.events, 1)
+    end
+end
+-- true when an event of that kind spoils a shot fired at t_fire with a round trip of rtt, the result arriving at now
+resolver.spoiled = function(p, t_fire, rtt, now, kind)
+    local m = resolver.K.ev_margin
+    for _, ev in ipairs(p.events or {}) do
+        if (ev.kind == kind and ev.obs >= t_fire + rtt - ev.dur - m and ev.obs <= now + m) then
+            return true
+        end
+    end
+    return false
+end
+
+-- steam id of an entity: the learning follows the player, not the slot
+resolver.sid = function(ent)
+    local ok, a, b = pcall(ent.get_steamids, ent)
+    if (not ok) then return nil end
+    local id = (type(b) == "string" and #b >= 5) and b or tonumber(a)
+    return id ~= nil and id ~= 0 and tostring(id) or nil
+end
+
+-- ── feet model (owners, Oct 2026: the GS lua's resolver works on it; the server's feet logic on netvars) ──
+-- Standing, the feet turn to the lower body yaw target (100 deg/s); moving or in the air, they follow the eye yaw
+-- (30-50 deg/s). They are never further than the max body yaw from the eye yaw: eye yaw - feet = the body yaw of the record
+resolver.feet_limit = function(speed, duck)
+    local ratio = 1 - 0.35 * res_clamp(speed / 250, 0, 1)
+    duck = res_clamp(duck, 0, 1)
+    if (duck > 0) then
+        ratio = ratio + duck * res_clamp(speed / 85, 0, 1) * (0.5 - ratio)
+    end
+    return 58 * res_clamp(ratio, 0.5, 1)
+end
+
+resolver.approach = function(target, cur, step)
+    local d = res_norm(target - cur)
+    if (math.abs(d) <= step) then
+        return res_norm(target)
+    end
+    return res_norm(cur + (d > 0 and step or -step))
+end
+
+-- how the feet model is read per state (owners: "minden statere külön resolver logic"). The feet follow the LBY while the target
+-- stands (phase "lby": the model is built on it, full trust) and the eye yaw while it moves or is in the air (phase "eye": the
+-- feet lag behind a changing yaw, so the model is trusted less). rel also grows with the records the model has seen (it starts
+-- from the first record's yaw, a few records are needed to converge); zero = below this body yaw the model says "no desync"
+resolver.profile = function(speed, air, steps, crouch)
+    local eye = air or speed > 5
+    local conv = res_clamp((steps or 0) / 6, 0.25, 1)
+    local base = eye and (crouch and 0.5 or 0.35) or 1
+    return { phase = eye and "eye" or "lby", rel = base * conv, zero = eye and 12 or resolver.K.zero }
+end
+
+-- one record at tick t (the arrival tick: a shifted update's sim time says nothing about how long the server animated)
+resolver.feet_step = function(p, eye, lby, speed, air, maxd, t, interval)
+    local moving = speed > 5 or air
+    local target = moving and eye or lby
+    if (target == nil) then
+        p.model = nil
+        return nil
+    end
+    if (p.feet == nil or p.feet_t == nil or t < p.feet_t) then
+        p.feet, p.feet_t = target, t
+    end
+    local dt = res_clamp((t - p.feet_t) * interval, 0, 0.25)
+    p.feet_t = t
+    local rate = moving and (30 + 20 * res_clamp((speed - 70) / 65, 0, 1)) or 100
+    p.feet = resolver.approach(target, p.feet, rate * dt)
+    p.feet_steps = (p.feet_steps or 0) + 1
+    local d = res_norm(eye - p.feet)
+    if (d > maxd) then
+        p.feet = res_norm(eye - maxd)
+    elseif (d < -maxd) then
+        p.feet = res_norm(eye + maxd)
+    end
+    p.model = res_norm(eye - p.feet)
+    return p.model
+end
+
+-- ── jitter pattern: how long the target holds a side (owners: "periódus és fázis") ──
+-- runs = the lengths (records) of the finished runs on one side, run_len = the current one, side = +1 / -1.
+-- Returns the side of the NEXT record, the fixed period (or nil) and how sure that is (0..1). A fixed period (the last three
+-- runs the same length: a delay jitter) switches exactly when the run reaches it; else it switches when most runs that
+-- got as long as the current one ended there (a tick jitter every record, a random hold at the length it ends most often)
+resolver.run_predict = function(runs, run_len, side)
+    local n = #runs
+    if (side == nil or n < 2) then
+        return nil, nil, 0
+    end
+    local period = runs[n]
+    local k = 0
+    for i = n, 1, -1 do
+        if (runs[i] ~= period) then break end
+        k = k + 1
+    end
+    if (k >= 3) then
+        local conf = math.min(1, 0.5 + 0.1 * k)
+        return (run_len >= period) and -side or side, period, conf
+    end
+    local ended, longer = 0, 0
+    for _, len in ipairs(runs) do
+        if (len == run_len) then ended = ended + 1 end
+        if (len >= run_len) then longer = longer + 1 end
+    end
+    if (longer == 0) then
+        return -side, nil, 0.3
+    end
+    local sw = ended * 2 >= longer
+    return sw and -side or side, nil, 0.5 * (sw and ended or longer - ended) / longer
+end
+
+resolver.run_update = function(p)
+    if (not p.jitter) then
+        p.run_side, p.run_len, p.next_side, p.period, p.period_conf = nil, 0, nil, nil, 0
+        return
+    end
+    p.runs = p.runs or {}
+    if (p.dir == p.run_side) then
+        p.run_len = (p.run_len or 0) + 1
+    else
+        if (p.run_side ~= nil and (p.run_len or 0) > 0) then
+            p.runs[#p.runs + 1] = p.run_len
+            while (#p.runs > 24) do table.remove(p.runs, 1) end
+        end
+        p.run_side, p.run_len = p.dir, 1
+    end
+    p.next_side, p.period, p.period_conf = resolver.run_predict(p.runs, p.run_len, p.run_side)
+end
+
+-- the yaw pattern of a jitterer from its newest eye yaws (newest first): how many yaw positions it uses and their spread
+resolver.pattern = function(yaws)
+    local n = #yaws
+    if (n < 6) then return nil end
+    local v = {}
+    for i = 1, n do v[i] = res_norm(yaws[i] - yaws[1]) end
+    table.sort(v)
+    local clusters, last = 0, nil
+    for i = 1, n do
+        if (last == nil or v[i] - last > 8) then clusters = clusters + 1 end
+        last = v[i]
+    end
+    return { kind = clusters <= 1 and "static" or clusters == 2 and "two" or clusters <= 5 and "multi" or "random",
+             span = v[n] - v[1] }
+end
+
+-- true when a jitterer kept another pattern for resolver.K.change records in a row (the AA was changed: what was learned
+-- about it is worth less). Mouse turns do not count: only while the jitter detector holds
+resolver.pattern_update = function(p)
+    if (not p.jitter) then
+        p.sig, p.sig_new, p.sig_n = nil, nil, 0
+        return false
+    end
+    local sig = resolver.pattern(p.jy)
+    if (sig == nil) then return false end
+    local function differs(a, b) return a.kind ~= b.kind or math.abs(a.span - b.span) > 25 end
+    if (p.sig == nil) then
+        p.sig, p.sig_new, p.sig_n = sig, nil, 0
+        return false
+    end
+    if (not differs(sig, p.sig)) then
+        p.sig_new, p.sig_n = nil, 0
+        return false
+    end
+    if (p.sig_new ~= nil and not differs(sig, p.sig_new)) then
+        p.sig_n = p.sig_n + 1
+    else
+        p.sig_new, p.sig_n = sig, 1
+    end
+    if (p.sig_n >= resolver.K.change) then
+        p.sig, p.sig_new, p.sig_n = sig, nil, 0
+        return true
+    end
+    return false
+end
+
+-- pulls what was learned about a player toward the start (keep = how much stays)
+resolver.decay_memory = function(player_mem, keep)
+    for _, m in pairs(player_mem or {}) do
+        for _, c in ipairs(m.candidates) do
+            c.good = 1 + (c.good - 1) * keep
+            c.bad = 1 + (c.bad - 1) * keep
+        end
+        m.misses, m.last_failed = 0, nil
+    end
+end
+
+-- the body yaw (value) a hypothesis gives for the record
+resolver.hypothesis = function(i, hint, nhint, half, maxd, c)
+    if (i <= 5) then
+        return ({ 1, -1, half, -half, 0 })[i] * hint * maxd
+    elseif (i <= 7) then
+        local v = res_clamp(c or 0, -maxd, maxd)
+        return i == 6 and -v or v
+    end
+    return (i == 8 and nhint or -nhint) * maxd
+end
+
+-- one record: its eye yaw step, the jitter state; p.dir = the direction of the newest big step (the lua side override)
+resolver.jit_record = function(p, delta, sim, min, eye)
+    table.insert(p.jd, 1, delta)
+    p.jd[RES_JIT_N + 1] = nil
+    table.insert(p.jy, 1, eye)
+    p.jy[RES_JIT_N + 1] = nil
+    if (math.abs(delta) >= min) then
+        p.dir = delta < 0 and -1 or 1
+    end
+    if (resolver.jit_classify(p.jd, min, p.jy)) then
+        p.jit_sim = sim
+    end
+    -- a high ping shoots older records: the jitter flag is held longer by the one way latency
+    local ping = resolver.network and resolver.network() or nil
+    local hold = RES_JIT_HOLD + res_clamp(ping and ping.ping or 0, 0, 250) / 2000
+    p.jitter = p.jit_sim ~= nil and sim - p.jit_sim >= 0 and sim - p.jit_sim <= hold
+    local big, flips, last, total, net = 0, 0, 0, 0, 0
+    for _, d in ipairs(p.jd) do
+        total, net = total + math.abs(d), net + d
+        if (math.abs(d) >= min) then
+            local sign = res_sign(d)
+            big = big + 1
+            if (last ~= 0 and last ~= sign) then flips = flips + 1 end
+            last = sign
+        end
+    end
+    p.confidence = big >= 3 and res_clamp((flips / math.max(1, big - 1))
+        * (1 - math.abs(net) / math.max(1, total)), 0, 1) or 0
+    if (resolver.jit_returns(p.jy) >= RES_JIT_RETURNS) then
+        p.confidence = math.max(p.confidence, 0.75)
+    end
+    p.jit_kind = resolver.jit_levels(p.jy)
+    resolver.run_update(p)
+    if (resolver.pattern_update(p)) then
+        p.changed, p.runs, p.run_side, p.run_len = true, {}, nil, 0
+    end
+end
+
+-- the enemy's anti-aim TYPE (owners, Oct 21 2026: the "Extended AA detection" of other luas, "peeking" and "stacking"): how often the target
+-- jitters while it stands against while it moves (a decayed count per class, kept over the state changes that wipe the jitter history).
+-- Types: "static" (no jitter), "jitter" (a random-looking jitter), "stack" (the jitter recurs on 2-3 fixed yaw positions = stacked), "peek" (still
+-- on a fixed yaw while it stands, jitters once it moves = the AA that switches when it peeks). Info for the shot log first: no resolver rule
+-- uses it until the logs say how the hit rate differs by type
+resolver.aa_note = function(p, state)
+    local aa = p.aa
+    if (aa == nil) then
+        aa = { still = { 0, 0 }, moving = { 0, 0 } }
+        p.aa = aa
+    end
+    local class = (state == "stand" or state == "duck") and aa.still
+        or ((state == "move" or state == "slow" or state == "cmove") and aa.moving or nil)
+    if (class ~= nil) then
+        class[1], class[2] = class[1] * 0.985 + 1, class[2] * 0.985 + (p.jitter and 1 or 0)
+    end
+end
+resolver.aa_type = function(p)
+    if (p == nil) then
+        return nil
+    end
+    local aa = p.aa
+    if (aa ~= nil and aa.still[1] >= 8 and aa.moving[1] >= 8
+        and aa.still[2] / aa.still[1] <= 0.25 and aa.moving[2] / aa.moving[1] >= 0.6) then
+        return "peek"
+    end
+    if (p.jitter) then
+        return p.jit_kind == "cyclic" and "stack" or "jitter"
+    end
+    return "static"
+end
+
+-- every enemy, every net update, whichever resolver is on (also none): choke count and the jitter detector
+resolver.track = function(ent, eye)
+    local idx = ent:get_index()
+    local p = resolver.data[idx]
+    local sim = ent:get_prop("m_flSimulationTime")
+    if (type(sim) ~= "number" or sim ~= sim or sim == math.huge or sim == -math.huge) then
+        return nil
+    end
+    local spawn = ent:get_prop("m_flSpawnTime")
+    local state, now = resolver.state_of(ent), globals.real_time()
+    -- a tickbase shift (defensive / double tap) sends a sim time that does not move forward: not a record (the server
+    -- keeps no lag record of it, its angles say nothing about the real AA) but the server animates it. What was learned
+    -- stays (every shift used to wipe it), only a short grace window
+    if (p ~= nil and sim < p.sim and p.sim - sim <= resolver.K.shift
+        and (spawn == nil or p.spawn == nil or spawn == p.spawn)) then
+        p.defensive_until, p.nochoke = now + 0.25, 0
+        resolver.event(p, now, math.min(p.sim - sim, 1))
+        p.events[#p.events].kind = "def"
+        return p
+    end
+    if (p == nil or sim < p.sim or sim - p.sim > 1
+        or (spawn ~= nil and p.spawn ~= nil and spawn ~= p.spawn)) then
+        local rewind = p ~= nil and sim < p.sim
+        local sid = resolver.sid(ent)
+        -- what was learned stays with the PLAYER (steam id), not the slot or the record: it came back after a dormant
+        -- phase / a respawn / a round change (it used to be wiped at every one of them)
+        local keep = nil
+        if (sid ~= nil) then
+            if (p ~= nil and p.sid == sid) then
+                keep = resolver.mem[idx]
+            elseif (resolver.carry ~= nil and resolver.carry[sid] ~= nil) then
+                keep = resolver.carry[sid]
+                resolver.carry[sid] = nil
+            end
+        end
+        resolver.mem[idx], resolver.previous[idx], resolver.misses[idx] = keep, nil, nil
+        p = { sim = sim, eye = eye, nochoke = 0, jd = {}, jy = {}, dir = 1,
+            jitter = false, fs = 0, fs_tick = -RES_FS_TICKS, confidence = 0,
+            spawn = spawn, samples = 0, choke = 0, state = state, sid = sid, rec_n = 0,
+            updated = now, defensive_until = rewind and now + 0.25 or 0, events = {} }
+        resolver.data[idx] = p
+        return p
+    end
+    local ticks = time_to_ticks(sim - p.sim)
+    if (state ~= p.state) then
+        p.jd, p.jy, p.jit_sim, p.jitter, p.confidence = {}, {}, nil, false, 0
+        p.state, p.eye, p.nochoke = state, eye, 0
+    end
+    if (ticks >= 1) then
+        p.samples = p.samples + 1
+        p.rec_n = (p.rec_n or 0) + 1
+        -- lag compensation broken: more than 64 units between two records = the server keeps no old record of him
+        -- (teleport / lag break), the aimbot can only shoot the newest one extrapolated: a miss on it is about the
+        -- position, not the angle
+        local o = resolver.advanced.read(ent, "m_vecOrigin")
+        if (o ~= nil) then
+            if (p.last_o ~= nil and ticks <= 32) then
+                local dx, dy, dz = o.x - p.last_o[1], o.y - p.last_o[2], o.z - p.last_o[3]
+                if (dx * dx + dy * dy + dz * dz > 4096) then
+                    resolver.event(p, now, resolver.K.lc_window)
+                    p.events[#p.events].kind = "lc"
+                end
+            end
+            p.last_o = { o.x, o.y, o.z }
+        end
+        p.choke = res_clamp(ticks - 1, 0, 64)
+        p.nochoke = (ticks == 1) and (p.nochoke + 1) or 0
+        local min = res_custom() and res_clamp(ui.ragebot.resolver.shot_pred:get(), 15, 65) or RES_JIT_MIN
+        resolver.jit_record(p, res_norm(eye - p.eye), sim, min, eye)
+        resolver.aa_note(p, state)
+        p.sim, p.eye = sim, eye
+        p.updated = now
+    end
+    return p
+end
+resolver.fresh = function(p)
+    if (p == nil or p.updated == nil) then return false end
+    local now = globals.real_time()
+    return now >= p.updated and now - p.updated <= 0.12
+        and now >= (p.defensive_until or 0)
+end
+-- ── movement observer + forecast (owners' fixed file, Oct 2026): per target the last 64 records (origin, velocity, yaw, state),
+-- a per state yaw predictor (static / linear / alternating, the one with the least error) and a forecast of the origin `ticks`
+-- ahead (velocity fading, gravity in the air, bullet-solid walls stop it). Used by the advanced prediction of the peek check ──
+resolver.advanced = { version = 2, limit = 64 }
+resolver.advanced.finite = function(x)
+    return type(x) == "number" and x == x and math.abs(x) < 1e12
+end
+-- a netvar vector as { x, y, z } or nil. Some of them arrive as a 2D vector (x, y only: indexing .z raises "not a numeric type"
+-- and stops the whole callback), then z is the netvar's own "[2]" element, else 0
+resolver.advanced.read = function(ent, name)
+    local A = resolver.advanced
+    local v = ent:get_prop(name)
+    if v == nil or type(v) == "number" then
+        return nil
+    end
+    local ok, x, y = pcall(function() return v.x, v.y end)
+    if not ok or not A.finite(x) or not A.finite(y) then
+        return nil
+    end
+    local okz, z = pcall(function() return v.z end)
+    if not okz or not A.finite(z) then
+        z = tonumber(ent:get_prop(name .. "[2]"))
+        z = A.finite(z) and z or 0
+    end
+    return { x = x, y = y, z = z }
+end
+resolver.advanced.observe = function(p, ent, eye)
+    local A = resolver.advanced
+    local sim, dt = ent:get_prop("m_flSimulationTime"), globals.interval_per_tick()
+    if not A.finite(sim) or not A.finite(eye) or not A.finite(dt) or dt <= 0 then return end
+    local o, v = A.read(ent, "m_vecOrigin"), A.read(ent, "m_vecVelocity")
+    if not o or not v then return end
+    local h = p.advanced
+    if not h then h = { records = {}, states = {}, transitions = {} }; p.advanced = h end
+    local last = h.records[#h.records]
+    if last and sim <= last.sim then return end
+    local state, flags = resolver.state_of(ent), tonumber(ent:get_prop("m_fFlags")) or 0
+    local r = {sim=sim, yaw=res_norm(eye), x=o.x, y=o.y, z=o.z,
+        vx=v.x, vy=v.y, vz=v.z, state=state, ground=bit.band(flags,1)~=0,
+        duck=bit.band(flags,2)~=0, ax=0, ay=0, time=globals.real_time()}
+    if last then
+        local elapsed=sim-last.sim
+        local dx,dy,dz=r.x-last.x,r.y-last.y,r.z-last.z
+        r.gap=math.floor(elapsed/dt+0.5)
+        r.discontinuity=elapsed>64*dt or dx*dx+dy*dy+dz*dz>4096
+        if not r.discontinuity and last.state==state then
+            r.ax=res_clamp((r.vx-last.vx)/elapsed,-1000,1000)
+            r.ay=res_clamp((r.vy-last.vy)/elapsed,-1000,1000)
+        end
+        if last.state~=state then
+            local t=h.transitions[last.state] or {}; h.transitions[last.state]=t
+            t[state]=math.min(10000,(t[state] or 0)+1)
+        end
+    end
+    local m=h.states[state]
+    if not m then m={samples={}, errors={static=45,linear=45,alternating=45},n=0}; h.states[state]=m end
+    local a,b=m.samples[#m.samples],m.samples[#m.samples-1]
+    if a and last and last.state==state and not r.discontinuity and sim-a.sim<=dt*4 then
+        local rate=b and res_norm(a.yaw-b.yaw)/math.max(dt,a.sim-b.sim) or 0
+        local pred={static=a.yaw,linear=res_norm(a.yaw+rate*(sim-a.sim)),alternating=b and b.yaw or a.yaw}
+        for name,yaw in pairs(pred) do m.errors[name]=m.errors[name]*0.85+math.abs(res_norm(r.yaw-yaw))*0.15 end
+        m.n=math.min(10000,m.n+1)
+    end
+    if r.discontinuity or (last and last.state~=state) then m.samples={} end
+    m.samples[#m.samples+1]=r
+    if #m.samples>32 then table.remove(m.samples,1) end
+    m.kind,m.error="static",m.errors.static
+    for _,name in ipairs({"linear","alternating"}) do
+        if m.errors[name]<m.error then m.kind,m.error=name,m.errors[name] end
+    end
+    m.confidence=math.min(1,m.n/16)*math.max(0,1-m.error/90)
+    m.last=r
+    h.records[#h.records+1]=r
+    while #h.records>1 and (#h.records>65 or sim-h.records[1].sim>64*dt) do table.remove(h.records,1) end
+    h.last,h.model=r,m
+end
+resolver.advanced.interpolate = function(p,time)
+    local A=resolver.advanced
+    local h=p and p.advanced
+    if not h or not A.finite(time) then return nil end
+    for i=2,#h.records do
+        local a,b=h.records[i-1],h.records[i]
+        if time>=a.sim and time<=b.sim and not b.discontinuity then
+            local u=(time-a.sim)/(b.sim-a.sim)
+            return {x=a.x+(b.x-a.x)*u,y=a.y+(b.y-a.y)*u,z=a.z+(b.z-a.z)*u,
+                yaw=res_norm(a.yaw+res_norm(b.yaw-a.yaw)*u),sim=time}
+        end
+    end
+    return nil
+end
+resolver.advanced.forecast = function(p,ent,ticks)
+    local A=resolver.advanced
+    local h=p and p.advanced
+    local r=h and h.last
+    local dt,now=globals.interval_per_tick(),globals.real_time()
+    ticks=tonumber(ticks)
+    if not r or r.discontinuity or not A.finite(ticks) or not A.finite(dt) or dt<=0
+        or now<r.time or now-r.time>0.12 or now<(p.defensive_until or 0) then return nil end
+    ticks=math.floor(res_clamp(ticks,1,64))
+    local cache=h.prediction
+    if cache and cache.source==r and cache.requested_ticks==ticks then return cache end
+    local gravity=800
+    local ok,g=pcall(function() return cvars.sv_gravity:get_float() end)
+    if ok and A.finite(g) and g>0 then gravity=g end
+    local x,y,z,vx,vy,vz=r.x,r.y,r.z,r.vx,r.vy,r.vz
+    local landing,blocked,steps=nil,false,0
+    for i=1,ticks do
+        local fade=math.exp(-(i-1)/4)
+        local ax,ay=r.ax*fade,r.ay*fade
+        local nx,ny=x+vx*dt+ax*dt*dt*0.5,y+vy*dt+ay*dt*dt*0.5
+        local nz=r.ground and z or z+vz*dt-gravity*dt*dt*0.5
+        local tr=trace_line(vec3_t(x,y,z+2),vec3_t(nx,ny,nz+2),ent,0x400B)
+        if not tr or not A.finite(tr.fraction) then return nil end
+        local f=res_clamp(tr.fraction,0,1)
+        x,y,z=x+(nx-x)*f,y+(ny-y)*f,z+(nz-z)*f
+        steps=i
+        if f<0.999 then
+            blocked=true
+            local normal=tr.plane_normal
+            local floor=normal~=nil and A.finite(normal.z) and normal.z>=0.7
+            if not r.ground and vz<0 then
+                landing={x=x,y=y,z=z,tick=i,verified=false,floor_hint=floor}
+            end
+            break
+        end
+        vx,vy=vx+ax*dt,vy+ay*dt
+        if not r.ground then vz=vz-gravity*dt end
+    end
+    local predicted_state=r.state
+    if landing and landing.floor_hint then
+        local speed=math.sqrt(vx*vx+vy*vy)
+        predicted_state=r.duck and (speed>5 and "cmove" or "duck")
+            or (speed>100 and "move" or speed>5 and "slow" or "stand")
+    end
+    local m=h.states[predicted_state]
+    local yaw,confidence=r.yaw,0
+    if m and m.last then
+        yaw=m.last.yaw
+        confidence=m.confidence*math.exp(-math.max(0,r.sim-m.last.sim)/2)
+        local a,b=m.samples[#m.samples],m.samples[#m.samples-1]
+        if a and b and predicted_state==r.state then
+            if m.kind=="linear" then
+                yaw=res_norm(a.yaw+res_norm(a.yaw-b.yaw)/math.max(dt,a.sim-b.sim)*steps*dt)
+            elseif m.kind=="alternating" and steps%2==1 then yaw=b.yaw end
+        end
+    end
+    local out={x=x,y=y,z=z,yaw=yaw,state=predicted_state,landing=landing,blocked=blocked,
+        pattern=m and m.kind or "unknown",confidence=confidence*math.exp(-steps/16),
+        ticks=steps,requested_ticks=ticks,source=r}
+    h.prediction=out
+    return out
+end
+resolver.advanced.base_track = resolver.track
+resolver.track = function(ent,eye)
+    local p=resolver.advanced.base_track(ent,eye)
+    -- the forecast is an extra: whatever goes wrong in it must not stop the NET_UPDATE callback
+    if p then pcall(resolver.advanced.observe,p,ent,eye) end
+    return p
 end
 
 resolver.update = function(local_player, ent)
@@ -4566,46 +6253,15 @@ resolver.update = function(local_player, ent)
         return
     end
 
-    local p = resolver.data[idx]
-    if (p == nil) then
-        p = { sim = 0, eye = eye, nochoke = 0, steps = {}, dir = 1, fs = 0, fs_tick = -RES_FS_TICKS }
-        resolver.data[idx] = p
-    end
-
-    -- a new record (the sim time moved forward): choke and jitter history
-    local sim = ent:get_prop("m_flSimulationTime")
-    local ticks = time_to_ticks(sim - p.sim)
-    if (ticks >= 1) then
-        p.nochoke = (ticks == 1) and (p.nochoke + 1) or 0
-
-        local jitter_step = res_custom() and res_clamp(ui.ragebot.resolver.shot_pred:get(), 15, 65) or 30
-        local delta = res_norm(eye - p.eye)
-        local step = 0
-        if (math.abs(delta) > jitter_step) then
-            step = res_sign(delta)
-            p.dir = step
-        end
-        table.insert(p.steps, 1, step)
-        p.steps[9] = nil
-
-        p.sim, p.eye = sim, eye
-    end
-
-    local steps = 0
-    for i = 1, #p.steps do
-        if (p.steps[i] ~= 0) then
-            steps = steps + 1
-        end
-    end
-
-    -- the hint the side is relative to: the jitter direction, the covered side of the head, else none
+    local p = resolver.track(ent, eye)
+    if (p == nil) then return end
     local state = resolver.state_of(ent)
     local key, kind, hint
-    if (steps >= 3) then
+    if (p.jitter and p.confidence >= 0.60 and p.choke <= 2 and resolver.fresh(p)) then
         key, kind, hint = "jitter", "jitter", -p.dir
     else
         key, hint = state, 1
-        if (ui.ragebot.pose_reso:get()) then
+        do
             local tick = globals.tick_count()
             if (tick - p.fs_tick >= RES_FS_TICKS or tick < p.fs_tick) then
                 p.fs = resolver.freestand(local_player, ent)
@@ -4617,22 +6273,91 @@ resolver.update = function(local_player, ent)
         end
     end
 
+    -- the yaw pattern of a jitterer changed: what was learned about him is worth less
+    if (p.changed) then
+        p.changed = false
+        resolver.decay_memory(resolver.mem[idx], resolver.K.change_keep)
+    end
+
+    -- the computed body yaw of the newest record (the server's feet logic on netvars)
+    local vel = ent:get_prop("m_vecVelocity")
+    local speed = vel and math.vec_length2d(vel) or 0
+    local flags = tonumber(ent:get_prop("m_fFlags")) or 0
+    if (p.feet_n ~= p.rec_n) then
+        p.feet_n = p.rec_n
+        local lby = ent:get_prop("m_flLowerBodyYawTarget")
+        lby = (type(lby) == "number" and lby == lby and math.abs(lby) <= 1e6) and lby or nil
+        -- when the LBY target last changed (it updates 1.1 s after the last move standing, 0.22 s while moving): the age is in the shot log
+        if (lby ~= nil and lby ~= p.lby_last) then
+            p.lby_last, p.lby_at = lby, globals.real_time()
+        end
+        resolver.feet_step(p, eye, lby, speed, bit.band(flags, 1) == 0,
+            resolver.feet_limit(speed, tonumber(ent:get_prop("m_flDuckAmount"))), globals.tick_count(), globals.interval_per_tick())
+    end
+
     local mem = resolver.memory(idx, key, kind)
-    local size = 1
-    if (mem.half and ui.ragebot.reso_cfg.yaw_calc:get() == 3) then
-        size = res_custom() and res_clamp(ui.ragebot.resolver.pred_sel:get(), 25, 70) / 100 or 0.5
+    -- a situation that was not seen for a while (a standing target that suddenly peeks) fades toward the start, exponentially,
+    -- instead of keeping a stale bias (owners, Oct 2026)
+    local now_t = globals.real_time()
+    if (mem.seen_at ~= nil and now_t - mem.seen_at > resolver.K.idle) then
+        local keep = math.exp(-(now_t - mem.seen_at - resolver.K.idle) / resolver.K.idle_tau)
+        for _, h in ipairs(mem.candidates) do
+            h.good = 1 + (h.good - 1) * keep
+            h.bad = 1 + (h.bad - 1) * keep
+        end
     end
-
+    mem.seen_at = now_t
+    local confidence = kind == "jitter" and p.confidence or kind == "fs" and 0.55 or 0.25
+    local c = p.model
+    local nx = kind == "jitter" and p.next_side or nil
+    local prof = resolver.profile(speed, bit.band(flags, 1) == 0, p.feet_steps, bit.band(flags, 2) ~= 0)
+    local opt = { skip = {}, bonus = {} }
+    if (c == nil or math.abs(c) < prof.zero) then
+        opt.skip[6], opt.skip[7] = true, true
+    else
+        opt.bonus[6] = 0.12 * prof.rel
+    end
+    for i, v in pairs(resolver.STATE_PRIOR[state] or {}) do
+        opt.bonus[i] = (opt.bonus[i] or 0) + v
+    end
+    if (nx == nil or p.jit_kind == "random") then
+        -- a random jitter has no next side to read
+        opt.skip[8], opt.skip[9] = true, true
+    else
+        opt.bonus[8] = 0.15 * (p.period_conf or 0) + (p.jit_kind == "cyclic" and 0.04 or 0)
+    end
+    -- after a resolver miss the OPPOSITE side of the hypothesis that failed is preferred at once (owners, Oct 2026)
+    local mirror = mem.last_failed and resolver.MIRROR[mem.last_failed]
+    if (mirror ~= nil and not opt.skip[mirror]) then
+        opt.bonus[mirror] = (opt.bonus[mirror] or 0) + 0.08
+    end
+    -- a standing target's LBY target updates every 1.1 s: around that moment the feet swing to the eye yaw (no desync)
+    if (p.lby_at ~= nil and speed < 5 and bit.band(flags, 1) ~= 0) then
+        local phase = (globals.real_time() - p.lby_at) % resolver.K.lby_period
+        if (phase >= resolver.K.lby_period - resolver.K.lby_window or phase <= resolver.K.lby_window) then
+            opt.bonus[5] = (opt.bonus[5] or 0) + 0.06
+        end
+    end
+    local candidate = resolver.choose(mem, confidence, ui.ragebot.reso_cfg.yaw_calc:get() == 3, opt)
+    local half = res_custom() and res_clamp(ui.ragebot.resolver.pred_sel:get(), 25, 70) / 100 or 0.5
     local value = 0
-    if (p.nochoke < RES_NOCHOKE) then
-        value = hint * mem.rel * size * resolver.max_desync(st)
-        st.m_flGoalFeetYaw = res_norm(eye + value)
-    end
-
     local prev = resolver.previous[idx]
     if (prev == nil) then
         prev = {}
         resolver.previous[idx] = prev
+    end
+    local able = p.samples >= 2 and p.nochoke < RES_NOCHOKE
+    local applied = able and resolver.fresh(p)
+    if (applied) then
+        value = resolver.hypothesis(candidate, hint, nx and -nx or 0, half, resolver.max_desync(st), c)
+        st.m_flGoalFeetYaw = res_norm(eye + value)
+        prev.held, prev.held_candidate, prev.held_at = value, candidate, globals.real_time()
+    elseif (able and prev.held ~= nil and globals.real_time() - prev.held_at <= 0.6) then
+        -- no newer record than 0.12 s (a choking target updates every 8-15 ticks, a defensive shift is no record): the last
+        -- value stays (owners, Oct 2026: "nem jol meri fel a szoget ... jitternel", 59 % of the real shots had no value
+        -- at all, 0 deg, and hit 63 % against 84 % with one)
+        value, candidate, applied = prev.held, prev.held_candidate, true
+        st.m_flGoalFeetYaw = res_norm(eye + value)
     end
     prev.m_flDesync = value
     prev.m_flSide = value < 0 and -1 or 1
@@ -4642,13 +6367,24 @@ resolver.update = function(local_player, ent)
     prev.state = state
     prev.key = key
     prev.kind = kind
-    prev.rel = value ~= 0 and mem.rel or 0
+    prev.rel = value ~= 0 and res_sign(value * hint) or 0
+    prev.candidate, prev.confidence = applied and candidate or nil, confidence
+    prev.model, prev.nxt = c, nx
+    prev.phase, prev.reliab = prof.phase, prof.rel
 end
-
--- one result per shot (Logic resolver). A resolver miss takes the other side ("flip"), or keeps it against an
--- anti-aim that switches sides after our miss ("stay"); two misses in a row switch between the two, four between
--- full and reduced size
-resolver.on_result = function(target, hit_ok, resolver_miss)
+resolver.on_result = function(target, hit_ok, resolver_miss, event, reason)
+    local snapshot = target and resolver.take_shot(event, target:get_index()) or nil
+    resolver.last_result = snapshot
+    if (snapshot == nil or snapshot.track == nil or snapshot.track ~= resolver.data[snapshot.idx]) then return end
+    -- a shot that the server tested against a target in a defensive shift / a broken lag comp: a miss says nothing about
+    -- the body yaw we gave (it is lag comp), and Primordial reports it as "jitter" / "resolver". Hits still count
+    local now = globals.real_time()
+    snapshot.defensive = resolver.spoiled(snapshot.track, snapshot.time, snapshot.rtt or 0, now, "def") or nil
+    snapshot.lagbreak = resolver.spoiled(snapshot.track, snapshot.time, snapshot.rtt or 0, now, "lc") or nil
+    if (not hit_ok and (snapshot.defensive or snapshot.lagbreak)) then
+        resolver_miss = false
+    end
+    resolver.record(snapshot, hit_ok, reason)
     if (target ~= nil) then
         local idx = target:get_index()
         if (hit_ok) then
@@ -4657,95 +6393,205 @@ resolver.on_result = function(target, hit_ok, resolver_miss)
             resolver.misses[idx] = (resolver.misses[idx] or 0) + 1
         end
     end
-    if (target == nil or reso.idx ~= target:get_index() or reso.key == nil or not reso.rel or reso.rel == 0) then
+    if (snapshot.key == nil or snapshot.candidate == nil) then
         return
     end
-
-    local mem = resolver.memory(reso.idx, reso.key, reso.kind)
+    local mem = resolver.memory(snapshot.idx, snapshot.key, snapshot.kind)
+    local c = mem.candidates[snapshot.candidate]
+    if (c == nil) then return end
+    -- "Resolver learning" (owners, Oct 2026): how much of a result goes into the hypotheses, 100 = full, 0 = the resolver learns nothing
+    local weight = res_clamp(ui.ragebot.learn_rate:get(), 0, 100) / 100
+    if (hit_ok or resolver_miss) then
+        -- a changing target is followed: every counted result pulls all hypotheses of the situation back toward the start
+        local keep = 1 - (1 - resolver.K.forget) * weight
+        for _, h in ipairs(mem.candidates) do
+            h.good = 1 + (h.good - 1) * keep
+            h.bad = 1 + (h.bad - 1) * keep
+        end
+    end
     if (hit_ok) then
         mem.misses = 0
-        if (ui.ragebot.logic_reso:get()) then
-            mem.rel = reso.rel
-            if (reso.kind) then
-                resolver.trust[reso.kind] = res_clamp(resolver.trust[reso.kind] + reso.rel, -8, 8)
-            end
-        end
+        mem.last_failed = nil
+        -- a hit on the body says little about the body yaw we chose (the torso hitbox is big, 83 - 92 % of the body shots hit in the
+        -- logs against 75 % of the head shots): it counts half. No aim group in the event = a full point
+        local aimed = event and tonumber(event.aim_hitgroup)
+        c.good = c.good + weight * ((aimed ~= nil and aimed ~= 1) and 0.5 or 1)
     elseif (resolver_miss) then
         mem.misses = mem.misses + 1
-        if (ui.ragebot.logic_reso:get()) then
-            if (mem.flip) then
-                mem.rel = -reso.rel
-            end
-            if (mem.misses % 2 == 0) then
-                mem.flip = not mem.flip
-            end
-            if (mem.misses % 4 == 0) then
-                mem.half = not mem.half
-            end
-            if (reso.kind) then
-                resolver.trust[reso.kind] = res_clamp(resolver.trust[reso.kind] - reso.rel * 0.5, -8, 8)
+        -- a miss at a low hit chance is more likely the spread than the resolver: 0.5 of a point at hit chance 0, a full one at 100
+        local chance = tonumber(event and event.aim_hitchance)
+        c.bad = c.bad + weight * (chance ~= nil and res_clamp(0.5 + chance / 200, 0.5, 1) or 1)
+        mem.last_failed = snapshot.candidate
+    end
+end
+resolver.body_damage = function(ent)
+    local local_player = entity_list_get_local_player()
+    if (local_player == nil or ent == nil) then return 0 end
+    -- once per tick and target (HITSCAN runs per command, double tap sends many in one frame)
+    resolver.body_damage_seen = resolver.body_damage_seen or {}
+    local tick, seen = globals.tick_count(), resolver.body_damage_seen[ent:get_index()]
+    if (seen ~= nil and seen.tick == tick) then return seen.damage end
+    local best = resolver.body_damage_now(local_player, ent)
+    resolver.body_damage_seen[ent:get_index()] = { tick = tick, damage = best }
+    return best
+end
+resolver.body_damage_now = function(local_player, ent)
+    local eye = local_player:get_eye_position()
+    if (eye == nil) then return 0 end
+    local best = 0
+    for _, hitbox in ipairs({ e_hitboxes.CHEST, e_hitboxes.PELVIS }) do
+        local point = ent:get_hitbox_pos(hitbox)
+        if (point ~= nil) then
+            local bullet = trace_bullet(eye, point, local_player, ent)
+            if (bullet ~= nil and bullet.valid and (bullet.hitgroup == 2 or bullet.hitgroup == 3)) then
+                best = math.max(best, res_clamp(bullet.damage, 0, 500))
             end
         end
     end
-    reso.rel = nil
+    return best
+end
+resolver.enforce_body = function(ctx)
+    ctx:set_hitscan_group_state(e_hitscan_groups.HEAD, false, false)
+    ctx:set_hitscan_group_state(e_hitscan_groups.CHEST, true, false)
+    ctx:set_hitscan_group_state(e_hitscan_groups.STOMACH, true, false)
+    for _, name in ipairs({ "ARMS", "LEGS", "FEET" }) do
+        local group = e_hitscan_groups[name]
+        if (group ~= nil) then ctx:set_hitscan_group_state(group, false, false) end
+    end
 end
 
--- head safe point for the aimbot's target (Custom resolver options, "At disabler" = safe point)
+-- safe points / smart body aim for the aimbot's target.
+-- Health-threshold body aim is independent of resolver activation. Additional
+-- safety requires active, fresh evidence and respects the fast-peek policy.
 resolver.hitscan = function(ctx)
     local ent = ctx.player
-    if (not resolver.active or ent == nil) then
+    if (ent == nil) then
         return
     end
 
     local idx = ent:get_index()
     local misses = resolver.misses[idx] or 0
-    local safe = resolver.safe_all or (ui.ragebot.logic_reso:get() and not res_custom() and misses >= 2)
-    if (res_custom()) then
-        local opt = ui.ragebot.resolver
-
-        safe = safe
-            or misses >= res_clamp(opt.hit_sens:get(), 1, 47)
-            or (opt.duck_mode:get() and bit.band(ent:get_prop("m_fFlags"), 2) ~= 0)
-            or (opt.auto_duck:get() and table.contains(RES_SAFE_CFG, ragebot_get_active_cfg()))
-            or (opt.safe_peek:get() and ragebot_get_autopeek_pos())
-            or (ent:get_prop("m_iHealth") <= opt.safe_mode:get())
+    local p = resolver.data[idx]
+    local fast = resolver.fast_target(ent)
+    -- a jittering target gets head + chest safe points no matter the resolver toggles (owners, Oct 2026: "ALWAYS ...
+    -- every resolver toggle off too, not beta"): Primordial's own resolver can not be told the side, so a safe point is
+    -- the only safe shot. The real shot logs (Oct 2026, 86 shots) had jitter as the top miss cause (16 / 32) with almost
+    -- no shot carrying a safe point, because this was gated behind resolver.active
+    local fresh = resolver.fresh(p)
+    local jitter = fresh and p.jitter == true and (p.confidence or 0) >= 0.65
+    local jitter_safe = jitter and not fast
+    -- safe_all (a disabler set to "head safe point") forces safety even on a fast peek, as before
+    local safe = resolver.active and resolver.safe_all == true
+    if (not fast) then
+        safe = safe or jitter
+        if (resolver.active) then
+            safe = safe or misses >= 2
+        end
+        if (resolver.active and res_custom()) then
+            local opt = ui.ragebot.resolver
+            safe = safe
+                or (opt.duck_mode:get() and bit.band(tonumber(ent:get_prop("m_fFlags")) or 0, 2) ~= 0)
+                or (opt.auto_duck:get() and bit.band(tonumber(ent:get_prop("m_fFlags")) or 0, 2) ~= 0
+                    and table.contains(RES_SAFE_CFG, ragebot_get_active_cfg()))
+                or (opt.safe_peek:get() and ragebot_get_autopeek_pos())
+                or ((tonumber(ent:get_prop("m_iHealth")) or 100) <= opt.safe_mode:get())
+        end
     end
 
-    if (safe) then
+    -- Below the configured HP: body only. On risky targets above the threshold,
+    -- the optional lethal fallback requires an actual valid body bullet trace.
+    local body = false
+    if (ui.ragebot.smart_baim:get()) then
+        local hp = tonumber(ent:get_prop("m_iHealth")) or 100
+        local threshold = res_clamp(ui.ragebot.smart_baim_hp:get(), 0, 100)
+        body = hp > 0 and hp < threshold
+        if (not body and hp > 0 and ui.ragebot.smart_baim_lethal:get() and (jitter or misses >= 1)) then
+            body = hp <= resolver.body_damage(ent)
+        end
+    end
+
+    -- "Body only on defensive" (owners' logs of Oct 16 / 17: head shots at a target that shifted its tickbase or broke its lag
+    -- compensation hit 13 of 63, the body groups 31 of 47; they are 37 % of all head shots): while the target's last shift / lag break
+    -- was seen less than `Defensive lock ticks` ago the head group is off, when a body bullet can hurt it at all
+    local locked = false
+    if (not body and ui.ragebot.def_hold:get() and p ~= nil) then
+        local event = p.events ~= nil and p.events[#p.events] or nil
+        if (event ~= nil and globals.real_time() - event.obs <= ui.ragebot.def_ticks:get() * globals.interval_per_tick()
+            and resolver.body_damage(ent) > 0) then
+            body, locked = true, true
+        end
+    end
+
+    -- what the shot logs carry: 4 = body while the target is on a defensive / lag break, 3 = body (smart body aim), 2 = a safe
+    -- point for a jittering target, 1 = for another reason
+    resolver.safe = resolver.safe or {}
+    resolver.safe[idx] = locked and 4 or body and 3 or (jitter_safe and 2) or (safe and 1) or nil
+    if (body) then
+        resolver.enforce_body(ctx)
+    end
+    if (safe and not body) then
         ctx:set_safepoint_state(true, e_hitscan_groups.HEAD)
+    end
+    if ((body and safe) or jitter_safe) then
+        ctx:set_safepoint_state(true, e_hitscan_groups.CHEST)
     end
 end
 
 resolver.reset = function()
+    resolver.carry = {}
     resolver.data = {}
     resolver.mem = {}
     resolver.previous = {}
     resolver.misses = {}
+    resolver.safe = {}
+    resolver.shots, resolver.last_result = {}, nil
+    resolver.epoch = resolver.epoch + 1
+    resolver.trust = { fs = 0, jitter = 0 }
+    backtrack.peekers, backtrack.records, backtrack.peek_until, backtrack.predict_tick = {}, {}, 0, -1
+    backtrack.high_until = 0
 end
-
--- Primordial's own resolver is off while this one runs (unless Unsafe resolver is off) and back to its saved value after
-resolver.native = function(off)
-    if (resolver.native_off ~= off) then
-        menu_find("Aimbot", "General", "Aimbot", "Resolve Antiaim"):set((not off) and auto_cfg.resolve_antiaim == true)
+-- a new round (owners: "minden körben újra scanneli az aa-t, változott-e"): the players are new records (positions,
+-- feet, runs start over) but what was learned about each stays, halved: an AA mostly stays between rounds, and the
+-- first results of the new round overrule it fast if it was changed
+resolver.new_round = function()
+    local carry = {}
+    for idx, mem in pairs(resolver.mem) do
+        local p = resolver.data[idx]
+        if (p ~= nil and p.sid ~= nil) then
+            resolver.decay_memory(mem, resolver.K.round_keep)
+            carry[p.sid] = mem
+        end
+    end
+    resolver.reset()
+    resolver.carry = carry
+end
+resolver.native = function(off, fallback)
+    local want = not off and (fallback == true or auto_cfg.resolve_antiaim == true)
+    if (resolver.native_on ~= want) then
+        menu_find("Aimbot", "General", "Aimbot", "Resolve Antiaim"):set(want)
         resolver.native_off = off
+        resolver.native_on = want
     end
 end
 
 update_target = function(ctx)
-    resolver.previous.target = ctx.player:get_index()
+    if (ctx.player ~= nil) then resolver.previous.target = ctx.player:get_index() end
 end
 
 lets_resolve = function()
     local local_player = entity_list_get_local_player()
-    local on = local_player ~= nil and info.plan ~= "beta" and (ui.ragebot.nexzu_reso:get() or ui.ragebot.logic_reso:get()
-        or ui.ragebot.pose_reso:get() or res_custom())
+    -- OUR resolver always runs (owners, Oct 2026: "a Primo resolver outdated és rosszul működik"): no resolver toggle
+    -- needed, Primordial's own "Resolve Antiaim" is only the fallback while the ping is high / the target data is stale
+    local on = local_player ~= nil and info.plan ~= "beta"
     local mode = on and resolver.disabler(local_player) or 0
 
     resolver.active = on and mode ~= 1
     resolver.safe_all = mode == 2
-    local override = resolver.active and res_custom() and ui.ragebot.resolver.unsafe_reso:get()
-    resolver.native(override)
-    if (not override) then
+    -- no fallback to Primordial's resolver at any ping (owners, Oct 2026: "mindig a sima Primo resot használja": the shot
+    -- logs, 120-160 ms ping, were all native = true, High ping protection had switched ours off)
+    local override = resolver.active
+    resolver.native(override, false)
+    if (local_player == nil) then
         return
     end
 
@@ -4756,7 +6602,29 @@ lets_resolve = function()
 
     for _, v in pairs(enemies) do
         if (v:is_alive() and not v:is_dormant()) then
-            resolver.update(local_player, v)
+            if (override) then
+                resolver.update(local_player, v)
+            else
+                resolver.previous[v:get_index()] = nil
+                local eye = v:get_prop("m_angEyeAngles[1]")
+                if (type(eye) == "number" and eye == eye and math.abs(eye) <= 1e6) then
+                    resolver.track(v, eye)
+                end
+            end
+        else
+            local idx = v:get_index()
+            local p = resolver.data[idx]
+            if (not v:is_alive()) then
+                -- dead: the learning waits for the next life of that player (by steam id)
+                if (p ~= nil and p.sid ~= nil and resolver.mem[idx] ~= nil) then
+                    resolver.carry = resolver.carry or {}
+                    resolver.carry[p.sid] = resolver.mem[idx]
+                end
+                resolver.data[idx], resolver.mem[idx] = nil, nil
+            end
+            -- dormant: the record goes stale (nothing is written, no safe point from it), what was learned stays
+            resolver.previous[idx], resolver.misses[idx] = nil, nil
+            if (resolver.safe) then resolver.safe[idx] = nil end
         end
     end
 end
@@ -4789,6 +6657,75 @@ shotlog.num = function(v, digits)
     end
     local m = 10 ^ (digits or 0)
     return math.floor(v * m + 0.5) / m
+end
+
+-- an anti-aim result (kind "aa"): which state / modes were on when an enemy hit us or a bullet passed the head. The
+-- dev build only (with a key nothing is sent)
+shotlog.aa = function(kind, snap, hitgroup, damage)
+    if (info.plan ~= "dev") then
+        return
+    end
+    local row = {
+        lua = "primordial", v = 1, kind = "aa", r = kind, t = client_get_unix_time(),
+        map = engine_get_level_name and engine_get_level_name() or nil, ping = get_user_ping(),
+        st = snap.name, wy = snap.ways, def = snap.def or nil, ab = snap.ab or nil,
+        hg = hitgroup, dmg = shotlog.num(damage),
+        -- the fake ping we added (the total ping above is mostly that + the real one) and our speed: with them the next logs can
+        -- tell whether the head hits come with the fake ping (head hits were 12 % of the events under 40 ms and 24-30 % above)
+        fp = backtrack.amount, spd = shotlog.num(snap.speed),
+    }
+    local ok, line = pcall(libs.json.encode, row)
+    if (ok and type(line) == "string") then
+        shotlog.buf[#shotlog.buf + 1] = line
+    end
+    if (#shotlog.buf >= 40) then
+        shotlog.send()
+    end
+end
+
+-- the FPS profiler (see perf at the top): 10 s of timings, then the most expensive parts in ms per frame
+perf.start = function()
+    if (not perf.usable) then
+        notifications.create("Specter", "No performance counter on this PC.", notifications.types.failure)
+        return
+    end
+    perf.t, perf.n, perf.frames = {}, {}, 0
+    perf.until_t = globals.real_time() + 10
+    perf.on = true
+    notifications.create("Specter", "Profiling for 10 seconds, play normally.", notifications.types.information)
+end
+
+perf.tick = function()
+    if (not perf.on) then
+        return
+    end
+    perf.frames = perf.frames + 1
+    if (globals.real_time() < perf.until_t) then
+        return
+    end
+    perf.on = false
+    local frames = math.max(1, perf.frames)
+    local rows = {}
+    for name, ms in pairs(perf.t) do
+        rows[#rows + 1] = { name = name, ms = ms / frames, calls = perf.n[name] or 0 }
+    end
+    table.sort(rows, function(a, b) return a.ms > b.ms end)
+    print(string.format("specter perf: %d frames in 10 s (%.0f fps), ms per frame:", frames, frames / 10))
+    local parts = {}
+    for i = 1, math.min(#rows, 14) do
+        local r = rows[i]
+        print(string.format("  %-16s %7.3f ms  (%d calls)", r.name, r.ms, r.calls))
+        parts[r.name] = math.floor(r.ms * 1000 + 0.5) / 1000
+    end
+    notifications.create("Specter", "Profile done, the results are in the console.", notifications.types.success)
+    if (info.plan == "dev") then
+        local ok, line = pcall(libs.json.encode, { lua = "primordial", v = 1, kind = "perf", t = client_get_unix_time(),
+            fps = math.floor(frames / 10), ms = parts })
+        if (ok and type(line) == "string") then
+            shotlog.buf[#shotlog.buf + 1] = line
+            pcall(shotlog.send)
+        end
+    end
 end
 
 shotlog.send = function()
@@ -4847,12 +6784,28 @@ shotlog.result = function(shot, hit)
         tg = shotlog.hash(steamid or idx), r = hit and "hit" or "miss",
         ahg = shot.aim_hitgroup, bt = shotlog.num(shot.backtrack_ticks), hc = shotlog.num(shot.aim_hitchance),
         adm = shotlog.num(shot.aim_damage),
-        cm = resolver.misses[idx] or 0, native = not resolver.native_off, fp = backtrack.amount, peek = peeking or nil,
+        cm = resolver.misses[idx] or 0, sp = resolver.safe and resolver.safe[idx] or nil, native = not resolver.native_off, fp = backtrack.amount, peek = peeking or nil,
         spd = velocity and shotlog.num(math.vec_length2d(velocity)) or nil, fl = target:get_prop("m_fFlags"),
         eye = shotlog.num(target:get_prop("m_angEyeAngles[1]"), 1),
         lby = shotlog.num(target:get_prop("m_flLowerBodyYawTarget"), 1),
         hp = target:get_prop("m_iHealth"),
     }
+    -- what our resolver did for this shot: situation (rk), hypothesis (cd, see resolver.NCAND), the body yaw it wrote (vl),
+    -- the feet model's body yaw (md) and the side the jitter pattern predicted (nx)
+    local snap = resolver.last_result
+    local pd = resolver.data[idx]
+    row.lbt = pd and pd.lby_at and shotlog.num(globals.real_time() - pd.lby_at, 2) or nil
+    if (snap ~= nil and snap.idx == idx) then
+        row.rk, row.cd, row.vl = snap.key, snap.candidate, shotlog.num(snap.desync, 1)
+        row.md, row.nx = shotlog.num(snap.model, 1), snap.nxt
+        row.df, row.lb, row.sx = snap.defensive, snap.lagbreak, snap.state
+        row.ph, row.rl = snap.phase, shotlog.num(snap.reliab, 2)
+        row.l6, row.l6w = shotlog.num(snap.l6, 6), shotlog.num(snap.l6w, 4)
+        row.l3, row.l3w, row.l3c = shotlog.num(snap.l3, 6), shotlog.num(snap.l3w, 4), shotlog.num(snap.l3c, 3)
+        row.l3s, row.l6s = shotlog.num(snap.l3s), shotlog.num(snap.l6s)
+        row.sp, row.cm, row.ea = snap.sp, snap.misses, shotlog.num(snap.evage, 2)
+        row.aat = snap.aat
+    end
     if (hit) then
         row.hg, row.dmg = shot.hitgroup, shotlog.num(shot.damage)
         row.dead = (tonumber(row.hp) or 1) <= 0 or nil
@@ -4869,71 +6822,6 @@ shotlog.result = function(shot, hit)
     end
     if (#shotlog.buf >= 40) then
         shotlog.send()
-    end
-end
-
---- @endregion
-
---- @info: cool team animation with ffi animation
---- @region: animation
-
-team_animation = function()
-    if (ui.player.team_anim:get()) then
-        local players = entity_list_get_players()
-        local teams = entity_list_get_players(true)
-
-        if (players ~= nil and teams ~= nil) then
-            for _, v in pairs(players) do
-                local is_teammate = false
-                for _, teammate in pairs(teams) do
-                    if (v == teammate) then
-                        is_teammate = true
-                        break
-                    end
-                end
-        
-                if (v:is_alive()) then
-                    if (not is_teammate) then
-                        local anim_fix = ffi.cast("CPlayer_animation_State**", ffi.cast("uintptr_t", get_entity_address(v:get_index())) + 0x9960)[0]
-            
-                        anim_fix.m_flGoalFeetYaw = 549
-                        anim_fix.m_flCurrentFeetYaw = -256
-
-                        anim_fix.m_fDuckAmount = client_random_float(0, 1)
-            
-                        anim_fix.m_flHeadHeightOrOffsetFromHittingGroundanimation = client_random_float(-34.91, 50.6)
-                        anim_fix.m_flPitch = client_random_float(-91, 34)
-            
-                        anim_fix.m_flanimUpdateDelta = client_random_float(-2.758, 3.985)
-                        anim_fix.m_flLeanAmount = client_random_float(-29.15, 51.63)
-
-                        anim_fix.m_vOriginZ = client_random_float(-8726, 87269)
-                        anim_fix.m_vOriginY = client_random_float(-2154, 21543)
-                        anim_fix.m_vOriginX = client_random_float(-6978, 69781)
-            
-                        anim_fix.m_vvelocity_x = client_random_float(-3410, 34109)
-                        anim_fix.m_vvelocity_y = client_random_float(-9842, 98421)
-            
-                        anim_fix.m_flCurrentTorsoYaw = client_random_float(-789, 654)
-                        anim_fix.m_flFeetYawRate = client_random_float(-987, 876)
-                        anim_fix.m_flFeetCycle = client_random_float(0.194, 0.957)
-            
-                        anim_fix.m_flMagicFraction = client_random_float(-4.456, 7.987)
-                        anim_fix.m_flSpeed2D = client_random_float(-10, 2450)
-            
-                        anim_fix.m_flUpVelocity = client_random_float(-20, 100)
-                        anim_fix.m_flSpeedNormalized = client_random_float(-2.456, 5.789)
-
-                        anim_fix.m_flFeetSpeedForwardsOrsideWays = client_random_float(-30, 80)
-                        anim_fix.m_flFeetSpeedUnknownForwardOrsideways = client_random_float(-40, 60)
-                    end
-                end
-            end
-        else
-            return
-        end
-    else
-        return
     end
 end
 
@@ -4984,472 +6872,577 @@ run_exploit = function(ctx, cmd, unpredicted)
     end
 end
 
-builder.lerp = function(start, end_pos, time)
-    local val = start + (end_pos - start) * time
-    time = time * (globals.frame_time() * 170)
+-- Anti-aim (owners, Oct 21 2026: "írd át az egész aa részét ilyen simple antiaimra de profi kódolású"): one engine, only the lua api
+-- (ctx:set_yaw / set_pitch / set_desync); Primordial keeps the fakelag and the tickbase shift of the defensive. A state plays
+-- 2-7 ways, every way with its own yaw; what comes next is decided by fixed sequences, there is no random number anywhere
+builder.adv = {}
 
-    if (start == end_pos) then
-        return end_pos
+-- a yaw in -180 .. 180
+builder.adv.norm = function(yaw)
+    if (type(yaw) ~= "number" or yaw ~= yaw or math.abs(yaw) > 1e9) then
+        return 0
     end
-
-    if (math.abs(val - end_pos) < 0.01) then
-        return end_pos
-    end
-    return val
+    yaw = (yaw + 180) % 360 - 180
+    return math.max(-180, math.min(180, yaw))
 end
 
-builder.spin = function(custom_speed)
-    local currentstate = ui.antiaim.builder[global.current_state_number].override:get() and global.current_state_number or 1
-    
-    local speed = ui.antiaim.builder[currentstate].defensive_speed:get()
-    local range = ui.antiaim.builder[currentstate].defensive_range:get()
-
-    builder.speed = builder.speed + (custom_speed or speed) / 2
-    if (builder.speed < -range) then
-        builder.speed = builder.speed + (2 * range)
-    elseif (builder.speed > range) then
-        builder.speed = builder.speed - (2 * range)
-    end
-    return builder.speed
+-- the order the ways are played in: a fixed permutation per way count that never steps to the same way twice (Linear: 1, 2, 3 ...);
+-- `phase` (the anti brute) starts the round one step further
+builder.adv.WAY_ORDER = { [2] = {1, 2}, [3] = {1, 3, 2}, [4] = {1, 3, 2, 4}, [5] = {1, 3, 5, 2, 4}, [6] = {1, 4, 2, 5, 3, 6}, [7] = {1, 4, 7, 3, 6, 2, 5} }
+builder.adv.way_pos = function(ways, linear, phase, step)
+    ways = math.max(2, math.min(7, math.floor(tonumber(ways) or 3)))
+    local idx = ((step or 0) + (phase or 0)) % ways + 1
+    return linear and idx or builder.adv.WAY_ORDER[ways][idx]
 end
 
-builder.clockpitch = function()
-    if (builder.current_pitch <= -88) then
-        builder.goal_pitch = 89
-    elseif (builder.current_pitch >= 88) then
-        builder.goal_pitch = -89
-    end
-    builder.current_pitch = builder.lerp(builder.current_pitch, builder.goal_pitch, 0.10)
+-- how many sent packets a step lasts: the Hold, plus the extra on the odd steps
+builder.adv.hold_for = function(hold, extra, step)
+    return math.max(1, hold + ((step % 2 == 1) and extra or 0))
 end
 
-builder.clockyaw = function()
-    if (builder.current_yaw <= -59) then
-        builder.goal_yaw = 60
-    elseif (builder.current_yaw >= 59) then
-        builder.goal_yaw = -60
+-- the Thue-Morse sequence (the parity of the one bits of n): 0 1 1 0 1 0 0 1 ... it never becomes periodic, so a resolver that looks for
+-- a rhythm in the desync side finds none
+builder.adv.tm_side = function(n)
+    n = tonumber(n) or 0
+    if (n ~= n or n < 0 or n > 2147483647) then
+        n = 0
     end
-    builder.current_yaw = builder.lerp(builder.current_yaw, builder.goal_yaw, 0.10)
+    n = math.floor(n)
+    local ones = 0
+    while (n > 0) do
+        ones = ones + n % 2
+        n = math.floor(n / 2)
+    end
+    return ones % 2 == 1
 end
 
--- one decision per sent packet: the yaw left / right switch and the desync side, a fresh coin flip that is not tied to
--- the yaw side (a resolver that learns "yaw left = body right" from a few shots hits every shot after that)
-builder.new_packet = function()
-    local tick = globals.tick_count()
-    if (engine_get_choked_commands() == 0 and builder.packet_tick ~= tick) then
-        builder.packet_tick = tick
-        builder.yaw_flip = not builder.yaw_flip
-        builder.side_flip = math.random(2) == 1
+-- the defensive pitch: 2 down, 3 up, 4 zero, 5 sweep (a triangle wave over 24 ticks)
+builder.adv.def_pitch = function(mode, tick)
+    if (mode == 2) then
+        return 89
+    elseif (mode == 3) then
+        return -89
+    elseif (mode == 4) then
+        return 0
     end
+    local t = (tick % 24) / 24
+    return -89 + 178 * (t < 0.5 and 2 * t or 2 - 2 * t)
 end
 
--- the yaw side of the "switch every packet" modes (delay 2): our own switch, or Primordial's desync side (old behaviour)
-builder.left_now = function()
-    if (ui.antiaim.builder.random_side:get()) then
-        return builder.yaw_flip == true
+-- can this enemy fire a gun within `tol` seconds: a gun (no knife / grenade / bomb), a round in it, the next shot not further away
+builder.adv.armed = function(held, clip, ready_in, tol)
+    if (type(held) ~= "string" or held == "" or held:find("knife", 1, true) or held == "bayonet" or held == "c4"
+        or held:find("grenade", 1, true) or held == "flashbang" or held == "molotov" or held == "decoy" or held == "taser") then
+        return false
     end
-    return antiaim_get_desync_side() > 1
+    if (type(clip) == "number" and clip <= 0) then
+        return false
+    end
+    return type(ready_in) ~= "number" or ready_in <= (tol or 0.15)
 end
 
--- the desync side of the jitter / switching modes; a fixed side the user chose (static yaw, left / right / peek) stays
-builder.random_side = function(ctx, anti_aim)
-    if (not ui.antiaim.builder.random_side:get()) then
-        return
-    end
-    if (anti_aim.yaw_mode:get() == 1 and anti_aim.desync:get() ~= 3) then
-        return
-    end
-    refs.desyncside:set(2)
-    ctx:set_invert_desync(builder.side_flip == true)
-end
-
--- anti bruteforce: an enemy bullet passing near the head or a hit moves the yaw 6-14 deg for 0.5-0.85 s and restarts
--- the left / right switch, so the angle the enemy just shot at is not the next one
+-- anti brute: a hit, or an enemy bullet past the head (on_miss / player_hurt) starts the next phase: the ways start one step further, the
+-- desync side flips on every odd phase and the yaw gets +- Brute shift for 0.7 s (the sign alternates with the phase)
+builder.state = { phase = 0, shift_until = 0, trigger_tick = nil, tick = -1, packets = 0, ways = {}, hp = nil, shot_at = -100000,
+    def_ticks = 0, pitch_flip = 1, shifting = false }
 builder.anti_brute_trigger = function()
     if (not ui.antiaim.builder.enable:get() or not ui.antiaim.builder.anti_brute:get()) then
         return
     end
-    builder.ab_until = globals.tick_count() + time_to_ticks(client_random_float(0.5, 0.85))
-    builder.ab_shift = client_random_int(6, 14) * (math.random(2) == 1 and 1 or -1)
-    builder.target_delay = 0
-    builder.yaw_flip = not builder.yaw_flip
-end
-
--- the yaw add of the builder, kept apart from what is added on top of it (anti bruteforce, crouch correction)
-builder.set_yaw = function(value)
-    builder.base_yaw = value
-    refs.yawadd:set(builder.yaw_now())
-end
-
-builder.yaw_now = function()
-    local yaw = builder.base_yaw or refs.yawadd:get()
-    if ((builder.ab_until or 0) > globals.tick_count()) then
-        yaw = yaw + builder.ab_shift
+    local tick, sm = globals.tick_count(), builder.state
+    if (sm.trigger_tick ~= nil and tick >= sm.trigger_tick and tick - sm.trigger_tick < math.max(1, time_to_ticks(0.15))) then
+        return
     end
-    return math.max(-180, math.min(180, yaw))
+    sm.trigger_tick = tick
+    sm.phase = sm.phase + 1
+    sm.shift_until = tick + time_to_ticks(0.7)
+    sm.ways = {}
+end
+
+-- a new round / a rewound tick clock starts the ways over
+builder.reset = function()
+    local sm = builder.state
+    sm.ways, sm.shift_until, sm.trigger_tick, sm.tick = {}, 0, nil, -1
 end
 
 builder.closest_point_on_ray = function(ray_from, ray_to, desired_point)
     local to = desired_point - ray_from
     local direction = ray_to - ray_from
     local ray_length = #direction
-    
+    if (ray_length <= 0.000001) then return ray_from end
     direction.x = direction.x / ray_length
     direction.y = direction.y / ray_length
     direction.z = direction.z / ray_length
-    
+
     local direction_along = direction.x * to.x + direction.y * to.y + direction.z * to.z
     if (direction_along < 0) then
         return ray_from
     end
-    
+
     if (direction_along > ray_length) then
         return ray_to
     end
     return vec3_t(ray_from.x + direction.x * direction_along, ray_from.y + direction.y * direction_along, ray_from.z + direction.z * direction_along)
 end
 
-run_antiaim = function(ctx, cmd, unpredicted)
-    if (ui.antiaim.builder.enable:get()) then
-        refs.overridemove:set(false)
-        refs.overridemovesw:set(false)
-        
-        local currentstate = ui.antiaim.builder[global.current_state_number].override:get() and global.current_state_number or 1
-        local anti_aim = ui.antiaim.builder[currentstate]
+-- AA stats (owners, Oct 2026: "melyikkel hányszor találnak el"): per state and way count how often an enemy hit us and how often a
+-- bullet passed the head without a hit; shown by draw_aa_stats, and from the dev build one shot log line each (kind "aa")
+builder.aa_stats = {}
 
-        local local_player = entity_list_get_local_player()
-        local should_safe = 0
-        local enemies = 0
-        
-        local visible = false
-        local knifed = false
+-- the config entry of a state: its own when "Override" is on, else the Global one
+builder.cfg_index = function(n)
+    local own = ui.antiaim.builder[n]
+    return (own ~= nil and own.override:get()) and n or 1
+end
 
-        local players = entity_list_get_players(true)
-        local abs_origin = local_player:get_prop('m_vecAbsOrigin')
-        
-        local local_vel = local_player:get_prop("m_vecVelocity")
-        local local_wep = local_player:get_active_weapon()
-
-        local safe_defensive = ui.antiaim.builder.defensive_ping:get() == 1
-        local antiaim_side = antiaim_get_desync_side() > 1 and 1 or -1
-
-        local on_defensive = (anti_aim.trigger_defensive:get() == 2 or anti_aim.trigger_defensive:get() == 4)
-        local is_defensive = refs.double_tap:get() and (exploits_get_charge() == exploits_get_max_charge()) and not refs.fake_duck:get()
-
-        local body_yaw = local_player:get_prop("m_flPoseParameter", 11) * 120 - 60
-        local side = body_yaw > 0 and 1 or -1
-
-        local localmod = vec3_t(local_vel.x / 2, local_vel.y / 2, local_vel.z / 2)
-        local int_vel = local_vel:length()
-        
-        builder.warmup = game_rules_get_prop("m_bWarmupPeriod")
-        builder.onpeek = anti_aim.trigger_defensive:get() == 2
-
-        if (builder.old_defensive ~= defensive:is_active(local_player, safe_defensive) and defensive:is_active(local_player, safe_defensive) == false) then
-            builder.invert_defensive = not builder.invert_defensive
-        end
-    
-        if (game_rules_get_prop("m_gamePhase") == 4 or game_rules_get_prop("m_gamePhase") == 5) then
-            refs.pitch:set(1)
-            
-            refs.yawbase:set(1)
-            refs.jittermode:set(1)
-            
-            refs.desyncside:set(0)
-            
-            refs.fsstate:set(1, false)
-            refs.fsstate:set(2, false)
-            refs.fsstate:set(3, false)
-            
-            return
-        end
-    
-        refs.fsstate:set(1, true)
-        refs.fsstate:set(2, true)
-        refs.fsstate:set(3, true)
-    
-        builder.anti_bruteforce = {
-            [0] = {
-                sides = {-120, 120},
-                pitch = {-90, -90},
-                mode = 1
-            },
-
-            [1] = {
-                sides = {80, 80},
-                pitch = {0, 0},
-                mode = 2
-            },
-
-            [2] = {
-                sides = {-90, -90},
-                pitch = {math.random(-45, 60), math.random(-45, 60)},
-                mode = 0
-            },
-
-            [3] = {
-                sides = {90, 90},
-                pitch = {math.random(-45, 60), math.random(-45, 60)},
-                mode = 0
-            }
-        }
-
-        for _, player in pairs(players) do
-            if (player:is_alive() and player:is_player()) then
-                enemies = enemies + 1
-    
-                if (anti_aim.trigger_defensive:get() == 2) then
-                    if (not player:is_dormant()) then
-                        local vel = player:get_prop("m_vecVelocity")
-                        
-                        local origin = player:get_eye_position()
-                        local tickinterval = globals.interval_per_tick()
-                        
-                        if (vel or origin) then
-                            local ticks_to_predict = 3
-    
-                            local mod = vec3_t(vel.x * tickinterval * ticks_to_predict, vel.y * tickinterval * ticks_to_predict, vel.z * tickinterval * ticks_to_predict)
-        
-                            local traced = trace_bullet(origin + mod, abs_origin, local_player, player)
-                            local tracent = trace_bullet(abs_origin + localmod, player:get_hitbox_pos(e_hitboxes.BODY), local_player, player)
-
-                            if (traced.valid and traced.damage > 3) or (tracent.valid and tracent.damage > 3) then
-                                visible = true
-                            end
-                        end
-                    end
-                end
-    
-                if (ui.antiaim.features.antibackstab:get()) then
-                    if (not player:is_dormant()) then
-                        local enemy_weapon = player:get_active_weapon()
-                        if (enemy_weapon ~= nil) then
-                            if (enemy_weapon:get_class_name() == "CKnife") then
-                                if (local_player:get_render_origin():dist(player:get_render_origin()) < 250) then
-                                    knifed = player
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-
-        if (not cmd:has_button(e_cmd_buttons.USE)) then
-            if (ui.antiaim.features.warmup:get(1) and enemies == 0) or (builder.warmup and ui.antiaim.features.warmup:get(2) and builder.warmup > 0) then
-                if (local_player:get_prop("m_bInBombZone") == 1) then
-                    exploits.force_anti_exploit_shift(true)
-                    
-                    refs.yawadd:set(0)
-                    refs.pitch:set(4)
-                    
-                    refs.jittermode:set(2)
-                    refs.rotate:set(true)
-                    
-                    refs.rotaterange:set(360)
-                    refs.rotatespeed:set(75)
-                    
-                    refs.desyncside:set(5)
-                    
-                    return
-                end
-                return
-            end
-        
-            builder.new_packet()
-            refs.jittertype:set(2)
-            refs.rotate:set(false)
-            
-            refs.pitch:set(ui.antiaim.builder.pitch:get())
-            refs.yawbase:set(ui.antiaim.builder.yaw:get() + 1)
-            
-            refs.leftamount:set(anti_aim.desync_left:get() / 60 * 100 + math.random(0, anti_aim.desync_meta_left:get()))
-            refs.rightamount:set(anti_aim.desync_right:get() / 60 * 100 + math.random(0, anti_aim.desync_meta_right:get()))
-        
-            if (anti_aim.yaw_modifier:get() ~= 1) then
-                refs.jittermode:set(2)
-                
-                refs.jittertype:set(anti_aim.yaw_modifier:get() - 1)
-                refs.jitterrange:set(anti_aim.modifier_degree:get() * -1 + anti_aim.modifier_random:get())
-            else
-                refs.jittermode:set(1)
-            end
-        
-            if (ui.antiaim.features.safehead:get("Air knife")) then
-                local weapon = entity_list_get_entity(local_player:get_prop("m_hActiveWeapon"))
-                if (weapon ~= nil) then
-                    local weapon_name = weapon:get_name()
-                    if (weapon_name == "knife") then
-                        if (global.current_state == "air duck") then
-                            ctx:set_pitch(90)
-                            refs.yawadd:set(0)
-                            
-                            refs.desyncside:set(2)
-                            refs.leftamount:set(0)
-                            
-                            refs.jittermode:set(1)
-                            refs.rotate:set(false)
-        
-                            should_safe = ui.antiaim.features.safehead:get("Allow defensive") and 2 or 1
-                        end
-                    end
-                end
-            end
-        
-            if (should_safe == 0) then
-                if (anti_aim.yaw_mode:get() == 1) then
-                    builder.set_yaw(anti_aim.yaw_val:get())
-                    refs.desyncside:set(anti_aim.desync:get() + 1)
-                elseif (anti_aim.yaw_mode:get() == 2) then
-                    if (anti_aim.yaw_delay:get() == 2) then
-                        builder.set_yaw(builder.left_now() and anti_aim.yaw_left:get() or anti_aim.yaw_right:get())
-                        refs.desyncside:set(anti_aim.desync:get() + 1)
-                    else
-                        if (engine_get_choked_commands() == 0) then
-                            if (globals.tick_count() > builder.target_delay) then
-                                builder.target_delay = globals.tick_count() + anti_aim.yaw_delay:get()
-                                builder.invert_delay = not builder.invert_delay
-                            end
-        
-                            refs.desyncside:set(builder.invert_delay and 2 or 3)
-                            builder.set_yaw(builder.invert_delay and anti_aim.yaw_left:get() or anti_aim.yaw_right:get())
-                        end
-                    end
-                elseif (anti_aim.yaw_mode:get() == 3) then
-                    local left = anti_aim.yaw_left:get() + math.random(0, anti_aim.yaw_meta_left:get())
-                    local right = anti_aim.yaw_right:get() + math.random(0, anti_aim.yaw_meta_right:get())
-                    
-                    if (anti_aim.yaw_delay:get() == 2 and anti_aim.meta_delay:get() == 0) then
-                        builder.set_yaw(builder.left_now() and left or right)
-                        refs.desyncside:set(anti_aim.desync:get() + 1)
-                    else
-                        if (engine_get_choked_commands() == 0) then
-                            if (globals.tick_count() > builder.target_delay) then
-                                builder.target_delay = globals.tick_count() + anti_aim.yaw_delay:get() + math.random(0, anti_aim.meta_delay:get())
-                                builder.invert_delay = not builder.invert_delay
-                            end
-        
-                            refs.desyncside:set(builder.invert_delay and 2 or 3)
-                            builder.set_yaw(builder.invert_delay and left or right)
-                        end
-                    end
-                end
-
-                builder.random_side(ctx, anti_aim)
-            end
-        
-            if (should_safe == 0 and builder.base_yaw ~= nil) then
-                refs.yawadd:set(builder.yaw_now())
-            end
-
-            if (anti_aim.trigger_defensive:get() == 2 and visible) then
-                defensive:trigger()
-            elseif (anti_aim.trigger_defensive:get() > 2) then
-                defensive:trigger()
-            end
-        
-            if (not (should_safe == 1)) then
-                if (defensive:is_active(local_player, safe_defensive) and is_defensive and on_defensive) then
-                    if (anti_aim.defensive_pitch:get() == 10) then
-                        ctx:set_pitch(builder.current_pitch)
-                    elseif (anti_aim.defensive_pitch:get() == 7) then
-                        ctx:set_pitch(math.random(anti_aim.defensive_pitch_val:get(), anti_aim.defensive_pitch_val2:get()))
-                    elseif (anti_aim.defensive_pitch:get() == 8) then
-                        ctx:set_pitch(anti_aim.defensive_pitch_val:get())
-                    elseif (anti_aim.defensive_pitch:get() == 9) then
-                        ctx:set_pitch(builder.invert_defensive and anti_aim.defensive_pitch_val:get() or anti_aim.defensive_pitch_val2:get())
-                    elseif (anti_aim.defensive_pitch:get() > 1) then
-                        refs.pitch:set(anti_aim.defensive_pitch:get() - 1)
-                    end
-        
-                    if (anti_aim.defensive_yaw:get() == 2) then
-                        if (currentstate == 11) then
-                            ctx:set_yaw(builder.save_yaw + (60 * antiaim_side) - anti_aim.defensive_yaw_val:get())
-                        else
-                            refs.yawadd:set(anti_aim.defensive_yaw_val:get())
-                        end
-                    elseif (anti_aim.defensive_yaw:get() == 3) then
-                        refs.desyncside:set(4)
-                        refs.yawadd:set(anti_aim.defensive_yaw_val:get() * antiaim_side)
-                    elseif (anti_aim.defensive_yaw:get() == 4) then
-                        refs.yawadd:set(globals.server_tick() % 24 > 11 and -anti_aim.defensive_yaw_val:get() or anti_aim.defensive_yaw_val:get())
-                        refs.desyncside:set(globals.server_tick() % 24 > 11 and 2 or 3)
-                    elseif (anti_aim.defensive_yaw:get() == 5) then
-                        ctx:set_yaw(builder.spin(ui.antiaim.builder[currentstate].defensive_speed:get()))
-                        refs.desyncside:set(5)
-                    elseif (anti_aim.defensive_yaw:get() == 6) then
-                        ctx:set_yaw(math.random(0, 360))
-                    elseif (ui.antiaim.builder[currentstate].defensive_yaw:get() == 7) then
-                        refs.jittermode:set(2)
-                        refs.jittertype:set(4)
-                        refs.jitterrange:set(180)
-                        refs.desyncside:set(4)
-                    elseif (ui.antiaim.builder[currentstate].defensive_yaw:get() == 8) then
-                        refs.yawadd:set(builder.current_yaw)
-                        refs.desyncside:set(builder.goal_yaw < 0 and 3 or 2)
-                    end
-                end
-        
-                if (not (defensive:is_active(local_player, true, true).tick > globals.tick_count())) then
-                    builder.save_yaw = antiaim_get_real_angle()
-                end
-        
-                if (anti_aim.trigger_defensive:get() == 5) then
-                    if (is_defensive) then
-                        if (defensive:is_active(local_player, safe_defensive)) then
-                            local side = antiaim_get_desync_side() > 1 and 1 or 2
-        
-                            ctx:set_pitch(builder.anti_bruteforce[builder.misses].pitch[side])
-                            if (builder.anti_bruteforce[builder.misses].mode == 1) then
-                                refs.jittermode:set(2)
-                                refs.jittertype:set(2)
-                                
-                                refs.yawadd:set(0)
-                                refs.jitterrange:set(builder.anti_bruteforce[builder.misses].sides[1])
-                            elseif (builder.anti_bruteforce[builder.misses].mode == 0) then
-                                refs.yawadd:set(builder.anti_bruteforce[builder.misses].sides[side])
-                            elseif (builder.anti_bruteforce[builder.misses].mode == 2) then
-                                ctx:set_yaw(builder.spin(builder.anti_bruteforce[builder.misses].sides[side]))
-                            end
-                        end
-                    end
-                end
-            end
-        
-            local forward = cmd:has_button(e_cmd_buttons.FORWARD)
-            
-            local right = cmd:has_button(e_cmd_buttons.MOVERIGHT)
-            local left = cmd:has_button(e_cmd_buttons.MOVELEFT)
-            
-            local use = cmd:has_button(e_cmd_buttons.USE)
-            local speed = math.vec_length2d(local_vel)
-            
-            local ivgleft = speed / 80 * 2
-            local ivgright = speed / 80 * 10
-        
-            if (knifed ~= false) then
-                ctx:set_yaw(math.yaw_to_player(knifed, true))
-                refs.rotate:set(false)
-                
-                refs.desyncside:set(2)
-                refs.leftamount:set(0)
-            end
-        
-            if (ui.antiaim.features.correction:get("Yaw") and (global.current_state_number == 5 or global.current_state_number == 6)) then
-                if (not defensive:is_active(local_player, safe_defensive)) then
-                    if (right and forward) then
-                        refs.yawadd:set(builder.yaw_now() + ivgright * (ui.antiaim.builder[currentstate].yaw_mode:get() == 3 and 1 or 1.3))
-                    end
-                    
-                    if (left and forward) then
-                        refs.yawadd:set(builder.yaw_now() - ivgleft)
-                    end
-                end
-            end
-            builder.old_defensive = defensive:is_active(local_player, safe_defensive)
-        end
-    else
+-- the anti-aim as it is now
+builder.aa_snapshot = function()
+    local n = global.current_state_number
+    if (states[n] == nil) then
+        n = 1
+    end
+    local cfg = ui.antiaim.builder[builder.cfg_index(n)]
+    local me = entity_list_get_local_player()
+    local vel = me ~= nil and me:get_prop("m_vecVelocity") or nil
+    return {
+        n = n,
+        name = states[n],
+        ways = cfg.ways:get(),
+        def = builder.state.shifting == true,
+        ab = builder.state.shift_until > globals.tick_count(),
+        speed = vel ~= nil and math.vec_length2d(vel) or nil,
+        time = globals.real_time(),
+    }
+end
+-- Capture enemy fire before delayed bullet-impact/hurt feedback.
+builder.incoming = {}
+builder.capture_incoming = function(entity)
+    if (entity == nil or not entity:is_enemy() or not ui.antiaim.builder.enable:get()) then return end
+    local now = globals.real_time()
+    for idx, row in pairs(builder.incoming) do
+        if (now < row.time or now - row.time > 2) then builder.incoming[idx] = nil end
+    end
+    local snap = builder.aa_snapshot()
+    snap.hurt, snap.evaded = false, false
+    local previous = builder.incoming[entity:get_index()]
+    snap.ambiguous = previous ~= nil and now - previous.time < 0.15
+        and not previous.hurt and not previous.evaded
+    builder.incoming[entity:get_index()] = snap
+end
+builder.incoming_snapshot = function(entity)
+    local snap = entity and builder.incoming[entity:get_index()] or nil
+    local now = globals.real_time()
+    if (snap ~= nil and not snap.ambiguous and now >= snap.time and now - snap.time <= 2) then return snap end
+    return nil
+end
+builder.aa_record = function(kind, hitgroup, damage, attacker, snapshot)
+    if (not ui.antiaim.builder.enable:get()) then
         return
     end
+    local snap = snapshot or builder.aa_snapshot()
+    local key = snap.name .. " · " .. snap.ways .. "-way"
+    local row = builder.aa_stats[key]
+    if (row == nil) then
+        row = { n = snap.n, label = key, hit = 0, head = 0, evaded = 0 }
+        builder.aa_stats[key] = row
+    end
+    if (kind == "hit") then
+        row.hit = row.hit + 1
+        if (hitgroup == 1) then
+            row.head = row.head + 1
+        end
+        if (ui.utils.aa_stats:get()) then
+            print("hit in ", get_text_color(), key, specter_color_t(168, 168, 168), " · ", get_text_color(),
+                tostring(client_get_hitgroup_name(hitgroup) or "?"), specter_color_t(168, 168, 168), " · ", get_text_color(),
+                tostring(damage or 0), specter_color_t(168, 168, 168), " dmg by ", get_text_color(), tostring(attacker or "?"))
+        end
+    else
+        row.evaded = row.evaded + 1
+    end
+    pcall(shotlog.aa, kind, snap, hitgroup, damage)
+end
+
+-- own freestanding: which side of our head the threat can not see. The fractions of the two traces from its eye to our head moved W
+-- units left / right: one side behind a wall (fraction < 0.97) and the other open = hide on that side (+1 left, -1 right); both
+-- covered = keep the side we had (the head is hidden either way, no flicking), none covered = 0 (the normal anti-aim)
+builder.adv.fs_pick = function(left, right, prev)
+    local lb, rb = left < 0.97, right < 0.97
+    if (lb and not rb) then
+        return 1
+    elseif (rb and not lb) then
+        return -1
+    elseif (lb and rb) then
+        return prev
+    end
+    return 0
+end
+
+builder.own_fs = { side = 0, tick = -100, yaw = nil }
+-- the freestanding yaw (absolute), nil when no wall covers one side; traces every 4 ticks
+builder.own_freestand = function(local_player)
+    if (local_player == nil) then
+        return nil
+    end
+    local fs, tick = builder.own_fs, globals.tick_count()
+    if (tick - fs.tick < 4 and tick >= fs.tick) then
+        return fs.yaw
+    end
+    fs.tick = tick
+    fs.yaw = nil
+    local head = local_player:get_hitbox_pos(e_hitboxes.HEAD)
+    local view = engine_get_view_angles()
+    if (head == nil or view == nil or type(view.y) ~= "number") then
+        return nil
+    end
+    -- the threat: the enemy nearest the crosshair
+    local threat, best
+    for _, enemy in pairs(entity_list_get_players(true) or {}) do
+        if (enemy:is_alive() and not enemy:is_dormant()) then
+            local o = enemy:get_render_origin()
+            local off = o ~= nil and math.abs(builder.adv.norm(math.deg(math.atan2(o.y - head.y, o.x - head.x)) - view.y))
+            if (off and (best == nil or off < best)) then
+                threat, best = enemy, off
+            end
+        end
+    end
+    if (threat == nil) then
+        fs.side = 0
+        return nil
+    end
+    local eye = threat:get_eye_position()
+    if (eye == nil) then
+        return nil
+    end
+    local to = math.atan2(eye.y - head.y, eye.x - head.x)
+    local w = 24
+    local lx, ly = math.cos(to + math.pi / 2) * w, math.sin(to + math.pi / 2) * w
+    -- walls only (0x400B, no player models: our own body would count as a wall)
+    local left = trace_line(eye, vec3_t(head.x + lx, head.y + ly, head.z), threat, 0x400B)
+    local right = trace_line(eye, vec3_t(head.x - lx, head.y - ly, head.z), threat, 0x400B)
+    left, right = left and left.fraction, right and right.fraction
+    if (type(left) ~= "number" or type(right) ~= "number" or left ~= left or right ~= right) then
+        return nil
+    end
+    fs.side = builder.adv.fs_pick(left, right, fs.side)
+    if (fs.side ~= 0) then
+        fs.yaw = builder.adv.norm(math.deg(to) + 90 * fs.side)
+    end
+    return fs.yaw
+end
+
+-- manual left / right / back (Primordial's manual keys): our yaw relative to the view, nil when none is held
+builder.own_manual = function()
+    if (refs.left:get()) then
+        return 90
+    elseif (refs.right:get()) then
+        return -90
+    elseif (refs.back:get()) then
+        return 180
+    end
+    return nil
+end
+
+
+-- the yaw the anti-aim looks away from: 2 the view, 3 the enemy nearest the crosshair, 4 the nearest enemy (the base
+-- items of the builder + 1); nil = no yaw at all (1, the round end)
+builder.base_yaw = function(local_player, mode)
+    if (mode == nil or mode <= 1) then
+        return nil
+    end
+    local view = engine_get_view_angles()
+    if (view == nil or type(view.y) ~= "number" or view.y ~= view.y) then
+        return nil
+    end
+    if (mode == 2) then
+        return view.y
+    end
+    local eye = local_player:get_eye_position()
+    if (eye == nil) then
+        return view.y
+    end
+    local best, best_val
+    for _, enemy in pairs(entity_list_get_players(true) or {}) do
+        if (enemy:is_alive() and not enemy:is_dormant()) then
+            local o = enemy:get_render_origin()
+            if (o ~= nil) then
+                local yaw = math.deg(math.atan2(o.y - eye.y, o.x - eye.x))
+                local val = mode == 3 and math.abs(builder.adv.norm(yaw - view.y)) or ((o.x - eye.x) ^ 2 + (o.y - eye.y) ^ 2)
+                if (best_val == nil or val < best_val) then
+                    best, best_val = yaw, val
+                end
+            end
+        end
+    end
+    return best or view.y
+end
+
+-- the on peek defensive check = an UNSAFE peek (owners, Oct 2026: "ha unsafe a peek akkor kapcsolja be ... jelenleg a defensive nem
+-- segít semmit, csak hátráltat"): an enemy that can really shoot us - a gun with a round in it that is ready to fire - and whose
+-- bullet reaches our head or chest 3 ticks from now. It was "he can hit our feet OR we can hit him", so a peek the enemy could do
+-- nothing about (his gun empty / knife out / wall at our head) shifted the double tap and left us without a shot. Two bullet traces
+-- per enemy, and Primordial runs the anti-aim once per command: double tap sends many commands in one frame (owners, Oct 2026:
+-- "lagging only in mid mirage with dt": an open map with every enemy in view and long traces). Each enemy is traced at most once
+-- per 4 ticks, at most 2 enemies per frame; meanwhile its last result stays
+builder.peek_seen, builder.peek_budget = {}, { frame = -1, left = 0 }
+builder.peek_visible = function(local_player, player, abs_origin, localmod)
+    local tick, idx = globals.tick_count(), player:get_index()
+    local seen = builder.peek_seen[idx]
+    if (seen ~= nil and tick >= seen.tick and tick - seen.tick < 4) then
+        return seen.visible
+    end
+    local budget, frame = builder.peek_budget, global_vars_frame_count()
+    if (budget.frame ~= frame) then
+        budget.frame, budget.left = frame, 2
+    end
+    if (budget.left <= 0) then
+        return seen ~= nil and seen.visible
+    end
+    budget.left = budget.left - 1
+    local visible = false
+    local weapon = player:get_active_weapon()
+    local ready = true
+    if (weapon ~= nil) then
+        local next_shot = tonumber(weapon:get_prop("m_flNextPrimaryAttack"))
+        ready = builder.adv.armed(weapon:get_name(), tonumber(weapon:get_prop("m_iClip1")),
+            next_shot and next_shot - globals.cur_time() or nil)
+    end
+    local vel, origin = player:get_prop("m_vecVelocity"), player:get_eye_position()
+    local head = local_player:get_eye_position()
+    if (ready and vel ~= nil and origin ~= nil and head ~= nil) then
+        local ahead = globals.interval_per_tick() * 3
+        local from = origin + vec3_t(vel.x * ahead, vel.y * ahead, vel.z * ahead)
+        local at_head = trace_bullet(from, head + localmod, local_player, player)
+        visible = at_head.valid and at_head.damage > 3
+        if (not visible) then
+            local at_body = trace_bullet(from, abs_origin + localmod + vec3_t(0, 0, 40), local_player, player)
+            visible = at_body.valid and at_body.damage > 3
+        end
+    end
+    builder.peek_seen[idx] = { tick = tick, visible = visible }
+    return visible
+end
+
+-- safe head by height (the gamesense lua's trace, owners, Oct 2026: "add safehead to the aa"): an enemy more than 5 units below
+-- us whose bullet reaches our head. Looked at most every 4 ticks and 2 enemies at a time (a trace per command is too much)
+builder.height = { tick = -100, on = false }
+builder.height_safe = function(local_player)
+    local tick, h = globals.tick_count(), builder.height
+    if (tick >= h.tick and tick - h.tick < 4) then
+        return h.on
+    end
+    h.tick, h.on = tick, false
+    -- a netvar that comes in another shape than expected must not stop the callback (pcall)
+    pcall(function()
+        local origin, head = local_player:get_prop("m_vecAbsOrigin"), local_player:get_hitbox_pos(e_hitboxes.HEAD)
+        if (origin == nil or head == nil) then
+            return
+        end
+        local looked = 0
+        for _, enemy in pairs(entity_list_get_players(true) or {}) do
+            local o = enemy:is_alive() and not enemy:is_dormant() and enemy:get_prop("m_vecAbsOrigin") or nil
+            if (o ~= nil and origin.z - o.z > 5) then
+                looked = looked + 1
+                local eye = enemy:get_eye_position()
+                local traced = eye ~= nil and trace_bullet(eye, head + vec3_t(0, 0, 6), enemy, local_player) or nil
+                if (traced ~= nil and traced.valid and (traced.damage or 0) > 0) then
+                    h.on = true
+                    return
+                end
+                if (looked >= 2) then
+                    return
+                end
+            end
+        end
+    end)
+    return h.on
+end
+
+-- safe head: pitch down, yaw to the target, no desync. Air knife / Air zeus = crouched in the air with that weapon out, Height
+-- advantage = an enemy below us can hit the head
+builder.safe_head = function(local_player)
+    local option = ui.antiaim.features.safehead
+    if (global.current_state == "air duck" and (option:get("Air knife") or option:get("Air zeus"))) then
+        local weapon = entity_list_get_entity(local_player:get_prop("m_hActiveWeapon"))
+        local name = weapon ~= nil and weapon:get_name() or nil
+        if ((name == "knife" and option:get("Air knife")) or (name == "taser" and option:get("Air zeus"))) then
+            return true
+        end
+    end
+    return option:get("Height advantage") and builder.height_safe(local_player) or false
+end
+
+-- the knife behind us: look at the enemy (Anti backstab)
+builder.knife_yaw = function(local_player)
+    for _, enemy in pairs(entity_list_get_players(true) or {}) do
+        if (enemy:is_alive() and not enemy:is_dormant()) then
+            local weapon = enemy:get_active_weapon()
+            if (weapon ~= nil and weapon:get_class_name() == "CKnife"
+                and local_player:get_render_origin():dist(enemy:get_render_origin()) < 250) then
+                return math.yaw_to_player(enemy, true)
+            end
+        end
+    end
+    return nil
+end
+
+-- one decision per sent packet: the way (its yaw), the desync side. Held until the next sent packet
+builder.step = function(cfg, index)
+    local sm = builder.state
+    local tick = globals.tick_count()
+    if (tick < sm.tick) then
+        builder.reset()
+    end
+    local st = sm.ways[index]
+    local new = st == nil
+    if (new) then
+        st = { step = 0, left = 0, yaw = 0, side = true }
+        sm.ways[index] = st
+    end
+    if (new or (engine_get_choked_commands() == 0 and sm.tick ~= tick)) then
+        sm.tick = tick
+        sm.packets = sm.packets + 1
+        if (st.left <= 0) then
+            st.step = st.step + 1
+            st.left = builder.adv.hold_for(cfg.hold:get(), cfg.hold_alt:get(), st.step)
+            st.yaw = cfg["yaw" .. builder.adv.way_pos(cfg.ways:get(), cfg.order:get() == 2, sm.phase, st.step - 1)]:get()
+        end
+        st.left = st.left - 1
+        local mode = cfg.side:get()
+        if (mode == 1) then
+            st.side = builder.adv.tm_side(sm.packets)
+        elseif (mode == 2) then
+            st.side = not st.side
+        else
+            st.side = mode == 3
+        end
+        if (sm.phase % 2 == 1) then
+            st.side = not st.side
+        end
+        sm.pitch_flip = -sm.pitch_flip
+    end
+    return st
+end
+
+-- the defensive: the trigger asks for the shift (Primordial's double tap does it), the angles apply while it lasts
+builder.defensive_run = function(local_player, cmd, cfg)
+    local sm, trigger = builder.state, cfg.def_trigger:get()
+    sm.shifting = false
+    if (trigger == 1) then
+        sm.def_ticks = 0
+        return false
+    end
+    local tick = globals.tick_count()
+    local hp = local_player:get_prop("m_iHealth")
+    if (sm.hp ~= nil and hp ~= nil and hp < sm.hp) then
+        sm.shot_at = tick
+    end
+    sm.hp = hp
+    local shot_at = trigger >= 3 and tick - sm.shot_at < time_to_ticks(1.5)
+    local peek = false
+    if (trigger == 2 or trigger == 4) then
+        local vel = local_player:get_prop("m_vecVelocity")
+        local localmod = vec3_t(vel.x / 2, vel.y / 2, vel.z / 2)
+        local origin = local_player:get_prop("m_vecAbsOrigin")
+        for _, enemy in pairs(entity_list_get_players(true) or {}) do
+            if (enemy:is_alive() and not enemy:is_dormant() and builder.peek_visible(local_player, enemy, origin, localmod)) then
+                peek = true
+                break
+            end
+        end
+    end
+    if (trigger == 5 or shot_at or peek) then
+        defensive:trigger(shot_at, cmd:has_button(e_cmd_buttons.ATTACK))
+    end
+    local charged = refs.double_tap:get() and exploits_get_charge() == exploits_get_max_charge() and not refs.fake_duck:get()
+    sm.shifting = charged and defensive:is_active(local_player, ui.antiaim.builder.defensive_ping:get() == 1) or false
+    sm.def_ticks = sm.shifting and sm.def_ticks + 1 or 0
+    return sm.shifting
+end
+
+run_antiaim = function(ctx, cmd)
+    local b = ui.antiaim.builder
+    if (not b.enable:get()) then
+        return
+    end
+    local me = entity_list_get_local_player()
+    if (me == nil) then
+        return
+    end
+    refs.overridemove:set(false)
+    refs.overridemovesw:set(false)
+    refs.yawadd:set(0)
+    refs.jittermode:set(1)
+    refs.rotate:set(false)
+    refs.pitch:set(1)
+    local phase = game_rules_get_prop("m_gamePhase")
+    if (phase == 4 or phase == 5) then
+        return
+    end
+    for k = 1, 3 do
+        refs.fsstate:set(k, true)
+    end
+
+    local index = builder.cfg_index(global.current_state_number)
+    local cfg = b[index]
+    local base = builder.base_yaw(me, b.yaw:get() + 1)
+    if (base == nil) then
+        return
+    end
+    local sm = builder.state
+    local st = builder.step(cfg, index)
+    local safe = builder.safe_head(me)
+
+    -- the angle: safe head, manual keys, the freestand key, the knife behind us, else the way (+ the brute shift)
+    local yaw = st.yaw
+    if (sm.shift_until > globals.tick_count()) then
+        yaw = yaw + (sm.phase % 2 == 1 and 1 or -1) * cfg.brute:get()
+    end
+    local out = base + 180 + yaw
+    local manual = builder.own_manual()
+    if (safe) then
+        out = base + 180
+    elseif (manual ~= nil) then
+        out = engine_get_view_angles().y + manual
+    elseif (refs.freestand ~= nil and refs.freestand:get() == true) then
+        out = builder.own_freestand(me) or out
+    elseif (ui.antiaim.features.antibackstab:get()) then
+        out = builder.knife_yaw(me) or out
+    end
+
+    -- pitch of the menu: 1 off, 2 down, 3 up, 4 zero, 5 jitter (up / down per packet)
+    local pitch = ({ [2] = 89, [3] = -89, [4] = 0, [5] = 89 * sm.pitch_flip })[b.pitch:get()]
+    if (safe) then
+        pitch = 90
+    end
+
+    local shifting = builder.defensive_run(me, cmd, cfg)
+    if (shifting and (not safe or ui.antiaim.features.safehead:get("Allow defensive"))) then
+        local value, mode = cfg.def_val:get(), cfg.def_yaw:get()
+        if (mode == 2) then
+            out = base + 180 + value
+        elseif (mode == 3) then
+            out = base + 180 + (st.side and -1 or 1) * value
+        elseif (mode == 4) then
+            out = base + 180 + yaw + (builder.adv.tm_side(sm.def_ticks) and value or -value)
+        elseif (mode == 5) then
+            out = base + 180 + (sm.def_ticks * value / 2) % 360
+        end
+        if (cfg.def_pitch:get() > 1) then
+            pitch = builder.adv.def_pitch(cfg.def_pitch:get(), globals.tick_count())
+        end
+    end
+
+    ctx:set_yaw(builder.adv.norm(out))
+    if (pitch ~= nil) then
+        ctx:set_pitch(pitch)
+    end
+    -- desync: left is negative; the menu side stays "left" at full amount, the sign carries the side
+    local amount = safe and 0 or math.max(0, math.min(60, cfg.amount:get())) / 60
+    refs.desyncside:set(2)
+    refs.leftamount:set(100)
+    refs.rightamount:set(100)
+    ctx:set_invert_desync(false)
+    ctx:set_desync(st.side and -amount or amount)
 end
 
 on_miss = function(event)
@@ -5459,7 +7452,7 @@ on_miss = function(event)
             local entity = entity_list_get_player_from_userid(userid)
             if (entity ~= nil) then
                 local local_player = entity_list_get_local_player()
-                if (local_player:is_player() and local_player:is_alive()) then
+                if (local_player ~= nil and local_player:is_player() and local_player:is_alive()) then
                     if (entity:is_player() and entity:is_enemy()) then
                         local eye_pos = entity:get_eye_position()
                         if (eye_pos) then
@@ -5467,15 +7460,20 @@ on_miss = function(event)
                             
                             local localrecord = eye_pos:dist(bullet_impact)
                             local localorigin = eye_pos
-                            
+                            local snapshot = builder.incoming_snapshot(entity)
                             misstable[#misstable + 1] = eye_pos:dist(bullet_impact)
                             client_delay_call(function()
                                 if (localrecord == misstable[#misstable]) then
                                     local eye_pos = local_player:get_eye_position()
                                     if (eye_pos) then
                                         if (builder.closest_point_on_ray(localorigin, bullet_impact, eye_pos):dist(eye_pos) < 50) then
-                                            builder.misses = builder.misses < #builder.anti_bruteforce and builder.misses + 1 or 0
+                                            builder.misses = builder.misses + 1
                                             builder.anti_brute_trigger()
+                                            if (snapshot ~= nil and not snapshot.hurt and not snapshot.evaded
+                                                and globals.tick_count() - hurt_tick > 8) then
+                                                snapshot.evaded = true
+                                                builder.aa_record("evaded", nil, nil, nil, snapshot)
+                                            end
                                         end
 
                                         misstable = {}
@@ -5486,7 +7484,7 @@ on_miss = function(event)
                                 else
                                     return
                                 end
-                            end, 0.01)
+                            end, 0.15)
                         else
                             return
                         end
@@ -5601,47 +7599,75 @@ better_hs = function(cmd)
     end
 end
 
-custom_dt = function()
-    if (ui.exploits.better_dt.better_dt:get()) then
-        if (menu_find("aimbot", "general", "exploits", "doubletap", "enable")[2]:get()) then
-            if (ui.exploits.better_dt.dt_mode:get() == 1) then
-                local enemies = entity_list_get_players(true)
-                if (enemies ~= nil) then
-                    local local_player = entity_list_get_local_player()
-                    for _, player in pairs(enemies) do
-                        if (ui.exploits.better_dt.speed_calc:get() == 1) then
-                            cvars.sv_maxusrcmdprocessticks:set_int(17)
-                        elseif (ui.exploits.better_dt.speed_calc:get() == 2) then
-                            if (distance(local_player:get_render_origin(), vec3_t(0.0, 0.0, 0.0)) < 600) then
-                                cvars.sv_maxusrcmdprocessticks:set_int(17)
-                            elseif (distance(local_player:get_render_origin(), vec3_t(0.0, 0.0, 0.0)) > 600) then
-                                cvars.sv_maxusrcmdprocessticks:set_int(14)
-                            end
-                        elseif (ui.exploits.better_dt.speed_calc:get() == 3) then
-                            if (distance(local_player:get_render_origin(), vec3_t(0.0, 0.0, 0.0)) < 600) then
-                                cvars.sv_maxusrcmdprocessticks:set_int(17)
-                            elseif (distance(local_player:get_render_origin(), vec3_t(0.0, 0.0, 0.0)) > 600 and distance(local_player:get_render_origin(), vec3_t(0.0, 0.0, 0.0)) < 1000) then
-                                cvars.sv_maxusrcmdprocessticks:set_int(14)
-                            elseif (distance(local_player:get_render_origin(), vec3_t(0.0, 0.0, 0.0)) > 1000) then
-                                cvars.sv_maxusrcmdprocessticks:set_int(12)
-                            end
-                        end
-                    end
-                    return
-                else
-                    return
-                end
-            else
-                cvars.sv_maxusrcmdprocessticks:set_int(ui.exploits.better_dt.dt_speed:get())
-            end
-            return
-        else
-            return
-        end
-    else
-        cvars.sv_maxusrcmdprocessticks:set_int(15)
+-- the double tap speed (sv_maxusrcmdprocessticks), written only when it changes: it was set every frame (15 with Better
+-- DT off, once per enemy with the distance modes), a cvar write per call (owners, Oct 2026: 70 fps).
+-- Never more than the SERVER allows (owners, Oct 2026: "az improve doubletap miatt laggolok, nem tudok mozogni"): the cvar is
+-- replicated, so what the client reads before we write it is the server's limit (16 by default, community servers differ).
+-- Better DT asked for 17 (Static, the default), 14 / 12 or the slider's 5-17 whatever that limit was, and a server that gets
+-- more user commands than it allows drops them: rubber banding, no movement. `dt_limit_value` is that limit; the server sending
+-- its value again (a new connect) is noticed because the cvar no longer holds what we wrote
+local dt_ticks_set, dt_limit_value = nil, nil
+local function dt_limit()
+    local ok, current = pcall(function() return cvars.sv_maxusrcmdprocessticks:get_int() end)
+    current = ok and tonumber(current) or nil
+    if (current ~= nil and (dt_ticks_set == nil or current ~= dt_ticks_set)) then
+        dt_limit_value, dt_ticks_set = current, nil
     end
-    return
+    return dt_limit_value
+end
+-- the ticks to write: the wanted number, but at most the server's limit (nil = leave the cvar alone)
+local function dt_ticks_for(wanted, limit)
+    if (wanted == nil or limit == nil or limit < 1) then return nil end
+    return math.min(wanted, limit)
+end
+local function set_dt_ticks(wanted)
+    local ticks = dt_ticks_for(wanted, dt_limit())
+    if (ticks ~= nil and ticks ~= dt_ticks_set) then
+        cvars.sv_maxusrcmdprocessticks:set_int(ticks)
+        dt_ticks_set = ticks
+    end
+end
+-- Switch: 17 close, 14 far; Automatic: 17 / 14 / 12 by the distance of the nearest enemy
+local function dt_wanted(calc, dist)
+    if (calc == 2) then
+        return dist < 600 and 17 or 14
+    end
+    return dist < 600 and 17 or dist < 1000 and 14 or 12
+end
+
+custom_dt = function()
+    if (not ui.exploits.better_dt.better_dt:get()) then
+        set_dt_ticks(15)
+        return
+    end
+    if (not menu_find("aimbot", "general", "exploits", "doubletap", "enable")[2]:get()) then
+        return
+    end
+    if (ui.exploits.better_dt.dt_mode:get() ~= 1) then
+        set_dt_ticks(ui.exploits.better_dt.dt_speed:get())
+        return
+    end
+    local enemies = entity_list_get_players(true)
+    if (enemies == nil or next(enemies) == nil) then
+        return
+    end
+    local calc = ui.exploits.better_dt.speed_calc:get()
+    if (calc == 1) then
+        set_dt_ticks(17)
+        return
+    end
+    -- it measured the distance to the map's origin (0, 0), not to an enemy: the value jumped around as we moved
+    local me = entity_list_get_local_player():get_render_origin()
+    local dist = math.huge
+    for _, enemy in pairs(enemies) do
+        if (enemy:is_alive() and not enemy:is_dormant()) then
+            local o = enemy:get_render_origin()
+            dist = math.min(dist, math.sqrt((o.x - me.x) ^ 2 + (o.y - me.y) ^ 2))
+        end
+    end
+    if (dist ~= math.huge) then
+        set_dt_ticks(dt_wanted(calc, dist))
+    end
 end
 
 --- @endregion
@@ -6008,6 +8034,10 @@ hud.seg_icon = function(kind, cx, cy, a)
     elseif (kind == "ping") then
         render_circle(vec2_t(cx, cy), 4.5, c)
         render_circle_filled(vec2_t(cx, cy), 1.5, c)
+    elseif (kind == "users") then
+        render_circle_filled(vec2_t(cx - 2, cy - 2), 2.2, c)
+        render_circle_filled(vec2_t(cx + 3, cy - 1), 1.8, c)
+        render_rect_filled(vec2_t(cx - 5, cy + 1), vec2_t(7, 4), c, 2)
     elseif (kind == "tick") then
         render_rect_filled(vec2_t(cx - 4, cy), vec2_t(8, 1), c)
         render_rect_filled(vec2_t(cx, cy - 4), vec2_t(1, 8), c)
@@ -6053,6 +8083,18 @@ draw_watermark = function()
     end
     if (ui.utils.watermark_fields:get(5)) then
         segs[#segs + 1] = { "time", string.format("%02d:%02d", h, m), "", W[1], W[2], W[3] }
+    end
+
+    -- the Specter users found here (owners, Oct 2026: "minden scoreboard cucc abba a sorba felul kene irnia": the scoreboard
+    -- moon / flag never showed): their names go into this row, no scoreboard panel needed
+    local others = {}
+    for _, row in ipairs(shared_data) do
+        local name = tostring(row):match("^(.-) ~ ")
+        if (name ~= nil and not name:find(" (you)", 1, true)) then others[#others + 1] = name:sub(1, 14) end
+    end
+    if (#others > 0) then
+        local text = others[1] .. (others[2] and (", " .. others[2]) or "") .. (#others > 2 and (" +" .. (#others - 2)) or "")
+        segs[#segs + 1] = { "users", text, " specter", accent.r, accent.g, accent.b }
     end
 
     local brand_size = render_get_text_size(hud.bold, "specter")
@@ -6450,6 +8492,97 @@ notifications.render = function()
     end
 end
 
+-- a draggable pill panel: a header and one pill per row { label, right, dot = { r, g, b } }; panel = { drag, w, h } (the
+-- size is animated). Used by the AA stats and the resolver stats
+hud.pill_panel = function(panel, title, rows, empty_text)
+    if (#rows == 0 and not menu_is_open()) then
+        return
+    end
+    local ft = globals.frame_time()
+    local accent = ui.accent_color:get()
+    local HEAD, RH, GAP = 28, 26, 5
+    local need = 220
+    for _, row in ipairs(rows) do
+        need = math.max(need, 22 + render_get_text_size(hud.bold, row.label).x + 18 + render_get_text_size(hud.font, row.right).x + 12)
+    end
+    panel.w = panel.w == 0 and need or hud.lerp(panel.w, need, ft * 12)
+    local total = HEAD + (#rows == 0 and 26 or #rows * (RH + GAP))
+    panel.h = panel.h == 0 and total or hud.lerp(panel.h, total, ft * 14)
+    local w = math.floor(panel.w + 0.5)
+
+    panel.drag.size = vec2_t(w, math.floor(panel.h + 0.5))
+    panel.drag:update()
+    local x, y = math.floor(panel.drag.pos.x + 0.5), math.floor(panel.drag.pos.y + 0.5)
+
+    hud.header(x, y, w, 1, title, accent, true, function(cx, cy, c)
+        render_line(vec2_t(cx - 5, cy - 6), vec2_t(cx + 5, cy - 6), c)
+        render_line(vec2_t(cx + 5, cy - 6), vec2_t(cx + 5, cy + 1), c)
+        render_line(vec2_t(cx + 5, cy + 1), vec2_t(cx, cy + 7), c)
+        render_line(vec2_t(cx, cy + 7), vec2_t(cx - 5, cy + 1), c)
+        render_line(vec2_t(cx - 5, cy + 1), vec2_t(cx - 5, cy - 6), c)
+    end)
+
+    local ry = y + HEAD + GAP
+    for _, row in ipairs(rows) do
+        local cyr = ry + math.floor(RH / 2)
+        hud.box(x, ry, w, RH, 7, hud.PILL[1], hud.PILL[2], hud.PILL[3], 200)
+        hud.outline(x, ry, w, RH, 7, 255, 255, 255, 20)
+        render_circle_filled(vec2_t(x + 12, cyr), 3, hud.col(row.dot[1], row.dot[2], row.dot[3], 255))
+        local th = render_get_text_size(hud.bold, row.label).y
+        render_text(hud.bold, row.label, vec2_t(x + 22, cyr - math.floor(th / 2)), hud.col(hud.W[1], hud.W[2], hud.W[3], 255))
+        local rs = render_get_text_size(hud.font, row.right)
+        render_text(hud.font, row.right, vec2_t(x + w - 12 - rs.x, cyr - math.floor(rs.y / 2)), hud.col(hud.DIM[1], hud.DIM[2], hud.DIM[3], 255))
+        ry = ry + RH + GAP
+    end
+    if (#rows == 0) then
+        render_text(hud.font, empty_text, vec2_t(x + math.floor(w / 2), y + HEAD + 14), hud.col(130, 130, 140, 200), true)
+    end
+end
+
+-- AA stats panel: one pill per state / yaw mode that was shot at, hits and evaded bullets and the hit rate
+hud.aa_panel = { drag = libs.etr.new('aa_stats', vec2_t(50, screen_size.y / 2 + 160), vec2_t(0, 0)), w = 0, h = 0 }
+
+draw_aa_stats = function()
+    local list = {}
+    for _, row in pairs(builder.aa_stats) do
+        list[#list + 1] = row
+    end
+    table.sort(list, function(p, q)
+        if (p.n ~= q.n) then
+            return p.n < q.n
+        end
+        return p.label < q.label
+    end)
+    local rows = {}
+    for _, row in ipairs(list) do
+        local shots = row.hit + row.evaded
+        local rate = shots > 0 and math.floor(row.hit / shots * 100 + 0.5) or 0
+        -- the dot: green under 25 % hit, yellow under 50 %, red above
+        rows[#rows + 1] = { label = row.label, right = string.format("%d hit · %d evaded · %d%%", row.hit, row.evaded, rate),
+            dot = rate >= 50 and { 255, 110, 110 } or rate >= 25 and { 255, 200, 100 } or { 120, 220, 140 } }
+    end
+    hud.pill_panel(hud.aa_panel, "AA stats", rows, "nobody shot at you yet")
+end
+
+-- resolver stats panel (owners: "/state, hogy megnézzük mire missel a legtöbbet"): one pill per state of the target we shot
+-- at: shots, hit rate and the two most frequent miss reasons (a shot spoiled by a defensive shift / lag break is
+-- shown as "defensive" / "lag break"). The full lines (all reasons, the hypotheses) are in "Resolver stats to console"
+hud.res_panel = { drag = libs.etr.new('res_stats', vec2_t(50, screen_size.y / 2 - 80), vec2_t(0, 0)), w = 0, h = 0 }
+
+draw_res_stats = function()
+    local rows = {}
+    for _, r in ipairs(resolver.stat_rows()) do
+        local miss = {}
+        for i = 1, math.min(2, #r.miss) do
+            miss[#miss + 1] = r.miss[i][1] .. " " .. r.miss[i][2]
+        end
+        -- the dot: green from 60 % hit, yellow from 40 %, red under
+        rows[#rows + 1] = { label = r.name, dot = r.rate >= 60 and { 120, 220, 140 } or r.rate >= 40 and { 255, 200, 100 } or { 255, 110, 110 },
+            right = string.format("%d shots · %d%%%s", r.n, r.rate, #miss > 0 and (" · " .. table.concat(miss, ", ")) or "") }
+    end
+    hud.pill_panel(hud.res_panel, "Resolver stats", rows, "no shots yet")
+end
+
 draw_indicator = function()
     local local_player = entity_list_get_local_player()
     local is_scoped = local_player:get_prop("m_bIsScoped") > 0
@@ -6621,6 +8754,8 @@ materials_for_each(function(mat)
     end
 end)
 
+local console_state = nil
+local jumpshot_state = {}
 game_handle = function()
     if (ui.misc.unlock_pingspike:get()) then
         if (cvars.sv_maxunlag:get_float() ~= 0.4) then
@@ -6632,22 +8767,24 @@ game_handle = function()
         end
     end
 
+    -- the console colour: the materials are written only when the colour / console state changes (every frame before)
     if (engine_is_app_active()) then
-        local console_color = ui.console_color:get()
-        for material = 1, #cnl_material do
-            mat = cnl_material[material]
-    
-            if (ui.visuals.console:get() and console_is_visible(engine_client)) then
-                mat:color_modulate(console_color.r / 255, console_color.g / 255, console_color.b / 255)
-                mat:alpha_modulate(console_color.a / 255)
-            else
-                mat:color_modulate(1, 1, 1)
-                mat:alpha_modulate(1)
+        local c = ui.console_color:get()
+        local on = ui.visuals.console:get() and console_is_visible(engine_client)
+        local state = on and string.format("%d,%d,%d,%d", c.r, c.g, c.b, c.a) or "off"
+        if (state ~= console_state) then
+            console_state = state
+            for material = 1, #cnl_material do
+                local mat = cnl_material[material]
+                if (on) then
+                    mat:color_modulate(c.r / 255, c.g / 255, c.b / 255)
+                    mat:alpha_modulate(c.a / 255)
+                else
+                    mat:color_modulate(1, 1, 1)
+                    mat:alpha_modulate(1)
+                end
             end
         end
-        return
-    else
-        return
     end
 end
 
@@ -6712,16 +8849,16 @@ menu_handle = function()
         for _, nav_sub in ipairs(ui.nav.subs) do
             nav_sub.button:depend({nav_main_of[page] == nav_sub.main})
         end
-    
-        -- resolver (beta) (ragebot)
-        ui.ragebot.resolver.unsafe_reso:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
+        ui.ragebot.smart_baim_hp:depend({ui.ragebot.smart_baim, true})
+        ui.ragebot.smart_baim_lethal:depend({ui.ragebot.smart_baim, true})
+        ui.ragebot.latency_limit:depend({ui.ragebot.latency_guard, true})
+        ui.ragebot.def_ticks:depend({ui.ragebot.def_hold, true})
         ui.ragebot.resolver.duck_mode:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
         ui.ragebot.resolver.auto_duck:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
         ui.ragebot.resolver.safe_peek:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
         ui.ragebot.resolver.pred_sel:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
         ui.ragebot.resolver.calc_box:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
         ui.ragebot.resolver.shot_pred:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
-        ui.ragebot.resolver.hit_sens:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
         ui.ragebot.resolver.safe_mode:depend({ui.ragebot.resolver.enable_resolver, true}, {info.beta_build == true})
     
         -- configuration (beta) (ragebot)
@@ -6731,6 +8868,8 @@ menu_handle = function()
     
         -- backtrack (ragebot)
         ui.ragebot.backtrack.extended_backtrack:depend({ui.ragebot.backtrack.enable_backtrack, true})
+        ui.ragebot.backtrack.engine_pred:depend({ui.ragebot.backtrack.enable_backtrack, true})
+        ui.ragebot.backtrack.ping_in_sight:depend({ui.ragebot.backtrack.enable_backtrack, true})
     
         -- accuracy boost (ragebot)
     
@@ -6763,48 +8902,39 @@ menu_handle = function()
         -- builder (antiaim)
         ui.antiaim.builder.enable:depend({aa_page})
         ui.antiaim.builder.condition:depend({aa_page}, {ui.antiaim.builder.enable, true})
+        ui.utils.profile:depend({info.plan == "dev"})
     
         ui.antiaim.features.antibackstab:depend({aa_page}, {ui.antiaim.builder.enable, true})
         ui.antiaim.features.fakelag:depend({aa_page}, {ui.antiaim.builder.enable, true})
         ui.antiaim.features.safehead:depend({aa_page}, {ui.antiaim.builder.enable, true})
-        ui.antiaim.features.warmup:depend({aa_page}, {ui.antiaim.builder.enable, true})
-        ui.antiaim.features.correction:depend({aa_page}, {ui.antiaim.builder.enable, true})
     
         for i = 1, #states do
-            local state = ui.antiaim.builder[i]
+            local cfg = ui.antiaim.builder[i]
+            local cond = {ui.antiaim.builder.condition, i == 1 and -1 or i}
+            cfg.override:depend({aa_page}, {ui.antiaim.builder.enable, true}, cond)
             if (i == 1) then
-                state.override:depend({aa_page}, {ui.antiaim.builder.enable, true}, {ui.antiaim.builder.condition, -1})
-                state.override.ref:set(true)
-            else
-                state.override:depend({aa_page}, {ui.antiaim.builder.enable, true}, {ui.antiaim.builder.condition, i})
+                cfg.override.ref:set(true)
             end
-    
-            state.yaw_mode:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
-            state.yaw_val:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() == 1)})
-            state.yaw_left:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() ~= 1)})
-            state.yaw_right:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() ~= 1)})
-            state.yaw_meta_left:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() == 3)})
-            state.yaw_meta_right:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() == 3)})
-            state.yaw_delay:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() ~= 1)})
-            state.meta_delay:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_mode:get() == 3)})
-            state.yaw_modifier:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
-            state.modifier_degree:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_modifier:get() ~= 1)})
-            state.modifier_random:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_modifier:get() ~= 1)})
-            state.desync:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
-            state.desync_left:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
-            state.desync_right:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
-            state.desync_meta_left:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
-            state.desync_meta_right:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
-            state.trigger_defensive:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
-            state.defensive_pitch:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
-            state.defensive_pitch_val:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.defensive_pitch:get() == 8 or state.defensive_pitch:get() == 9)}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
-            state.defensive_pitch_val2:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {state.defensive_pitch, 9}, {not (state.trigger_defensive:get() == 3)}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
-            state.defensive_yaw:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
-            state.defensive_yaw_val:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.defensive_yaw:get() == 2 or state.defensive_yaw:get() == 3 or state.defensive_yaw:get() == 4)}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
-            state.defensive_speed:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.defensive_yaw:get() == 5)}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
-            state.defensive_range:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.defensive_yaw:get() == 5)}, {(state.trigger_defensive:get() == 2 or state.trigger_defensive:get() == 4)})
+            local ways = tonumber(cfg.ways:get()) or 7
+            local function put(item, extra)
+                if (extra ~= nil) then
+                    item:depend({aa_page}, {ui.antiaim.builder.enable, true}, {cfg.override, true}, cond, extra)
+                else
+                    item:depend({aa_page}, {ui.antiaim.builder.enable, true}, {cfg.override, true}, cond)
+                end
+            end
+            for _, name in ipairs({"ways", "order", "hold", "hold_alt", "brute", "side", "amount", "def_trigger"}) do
+                put(cfg[name])
+            end
+            for k = 1, 7 do
+                put(cfg["yaw" .. k], {(k <= ways)})
+            end
+            local defensive_on = cfg.def_trigger:get() ~= 1
+            put(cfg.def_pitch, {defensive_on})
+            put(cfg.def_yaw, {defensive_on})
+            put(cfg.def_val, {defensive_on and cfg.def_yaw:get() ~= 1})
         end
-    
+
         groups.nav:depend({(true)})
     
         groups.configs:depend({page == 1})
@@ -6835,6 +8965,8 @@ menu_handle = function()
         groups.movement:depend({page == 8})
         groups.utils:depend({page == 9})
         groups.sync:depend({page == 9})
+        groups.servers:depend({page == 15})
+        groups.about:depend({page == 16})
 
         if (ui.nav.slider:get() == 0) then
             menu_set_group_column("Home | Specter v" .. client_version .. "" .. info.beta_text2, 2)
@@ -6877,7 +9009,7 @@ end
 --- @region: callbacks
 
 do_player = function()
-    callbacks.add(e_callbacks.PLAYER_ESP, function(ctx)
+    perf.add(e_callbacks.PLAYER_ESP, "PLAYER_ESP", function(ctx)
         if (ui.visuals.esp_fonts:get() == 2) then
             ctx:set_font(fonts.pixel)
         elseif (ui.visuals.esp_fonts:get() == 3) then
@@ -6892,7 +9024,7 @@ do_player = function()
 end
 
 do_aimhit = function()
-    callbacks.add(e_callbacks.AIMBOT_HIT, function(hit)
+    perf.add(e_callbacks.AIMBOT_HIT, "AIMBOT_HIT", function(hit)
         if (check_conditions()) then
             local hit_group = hit_groups[hit.hitgroup]
             local aim_group = hit_groups[hit.aim_hitgroup]
@@ -6968,8 +9100,7 @@ do_aimhit = function()
                     refs.desyncside:set(0)
                 end
             end
-
-            resolver.on_result(target, hit.hitgroup == hit.aim_hitgroup, false)
+            resolver.on_result(target, hit.hitgroup == hit.aim_hitgroup, false, hit)
             pcall(shotlog.result, hit, true)
             return
         else
@@ -6979,103 +9110,60 @@ do_aimhit = function()
 end
 
 do_aimmiss = function()
-    callbacks.add(e_callbacks.AIMBOT_MISS, function(miss)
-        local miss_group = hit_groups[miss.aim_hitgroup]
-        
-        local reason = miss.reason_string
+    perf.add(e_callbacks.AIMBOT_MISS, "AIMBOT_MISS", function(miss)
+        local miss_group = hit_groups[miss.aim_hitgroup] or "?"
+        local reason = type(miss.reason_string) == "string" and miss.reason_string or "unknown"
         local target = miss.player
-
-        if (target ~= nil) then
-            cl_logs.add_log("misses")
-            resolver.on_result(target, false, reason == "resolver" or reason == "jitter")
-            pcall(shotlog.result, miss, false)
-
-            if (ui.utils.event_logs:get(5)) then
-                local actual_pos = target:get_hitbox_pos(1)
-                local distance = reso.aimpos:dist(actual_pos)
-
-                logs.add_misslog(miss)
-                if (string.find(reason, "server rejection")) then
-                    if (miss.backtrack_ticks > 5) then
-                        indicator.data["unknown"] = (indicator.data["unknown"] or 0) + 1
-                        indicator.shot_count = indicator.shot_count + 1
-
-                        print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to", get_text_color(), " unknown", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
-                        return
-                    end
-                end
-
-                if (not string.find(reason, "ping (local death)")) then
-                    if (distance > 38) then
-                        indicator.data["prediction error"] = (indicator.data["prediction error"] or 0) + 1
-                        indicator.shot_count = indicator.shot_count + 1
-
-                        print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to", get_text_color(), " prediction error", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
-                        return
-                    end
-                end
-
-                if (string.find(reason, "spread") or string.find(reason, "spread (missed safe)")) then
-                    if (globals.tick_count() - hurt_tick < 2) then
-                        indicator.data["jitter"] = (indicator.data["jitter"] or 0) + 1
-                        indicator.shot_count = indicator.shot_count + 1
-
-                        print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to", get_text_color(), " jitter", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
-                        return
-                    end
-                end
-
-                if (miss.backtrack_ticks > 15) then
-                    if (miss.backtrack_ticks > 20) then
-                        indicator.data["dormant aimbot"] = (indicator.data["dormant aimbot"] or 0) + 1
-                        indicator.shot_count = indicator.shot_count + 1
-
-                        print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to", get_text_color(), " dormant aimbot", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
-                        return
-                    end
-
-                    if (string.find(reason, "jitter")) then
-                        indicator.data["prediction error"] = (indicator.data["prediction error"] or 0) + 1
-                        indicator.shot_count = indicator.shot_count + 1
-
-                        print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to", get_text_color(), " prediction error", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
-                        return
-                    end
-
-                    indicator.data["backtrack failure"] = (indicator.data["backtrack failure"] or 0) + 1
-                    indicator.shot_count = indicator.shot_count + 1
-
-                    print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to", get_text_color(), " backtrack failure", get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
-                    return
-                end
-
-                indicator.data[reason] = (indicator.data[reason] or 0) + 1
-                indicator.shot_count = indicator.shot_count + 1
-
-                if (string.find(reason, "spread") or string.find(reason, "spread (missed safe)")) then
-                    print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to ", get_text_color(), reason, get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "hc: ", specter_color_t(168, 168, 168), miss.aim_hitchance, "%%, ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
-                    return
-                end
-                print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168), "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to ", get_text_color(), reason, get_accent_color(), "  ~  ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168), miss.backtrack_ticks, "t, ", specter_color_t(108, 108, 108), "∠: ", specter_color_t(168, 168, 168), reso.desync and math.floor(reso.desync) or "?", "°")
-            else
-                return
-            end
-            return
-        else
-            return
+        if (target == nil) then return end
+        cl_logs.add_log("misses")
+        resolver.on_result(target, false, reason == "resolver" or reason == "jitter", miss, reason)
+        pcall(shotlog.result, miss, false)
+        -- Host-reported reason is authoritative. Movement since the shot,
+        -- hurt timing and backtrack age are diagnostics, not miss causes.
+        indicator.data[reason] = (indicator.data[reason] or 0) + 1
+        indicator.shot_count = indicator.shot_count + 1
+        if (ui.utils.event_logs:get(5)) then
+            logs.add_misslog(miss)
+            local snap = resolver.last_result
+            local desync = snap and snap.desync and math.floor(snap.desync) or "?"
+            print("missed ", get_text_color(), target:get_name(), specter_color_t(168, 168, 168),
+                "'s ", get_text_color(), miss_group, specter_color_t(168, 168, 168), " due to ",
+                get_text_color(), reason, get_accent_color(), "  ~  ", specter_color_t(108, 108, 108),
+                "hc: ", specter_color_t(168, 168, 168), tostring(miss.aim_hitchance or "?"),
+                "%%, ", specter_color_t(108, 108, 108), "Δ: ", specter_color_t(168, 168, 168),
+                tostring(miss.backtrack_ticks or "?"), "t, ", specter_color_t(108, 108, 108),
+                "∠: ", specter_color_t(168, 168, 168), desync, "°")
         end
     end)
 end
 
+-- An error in the anti-aim code UNLOADS the whole script in Primordial and the anti-aim is gone for the rest of the game (the shot logs:
+-- the enemies hit 80 % of what they shoot at us even with it running). So the error is caught here: that tick Primordial's own anti-aim
+-- stays, the message goes to the console (at most one per 3 s) and the next tick tries again
+builder.aa_errors, builder.aa_error_at = 0, -100
+builder.aa_failed = function(err)
+    builder.aa_errors = builder.aa_errors + 1
+    local now = globals.real_time()
+    if (now - builder.aa_error_at >= 3 or now < builder.aa_error_at) then
+        builder.aa_error_at = now
+        print("anti-aim error (" .. builder.aa_errors .. " so far): " .. tostring(err))
+    end
+end
+
 do_antiaim = function()
-    callbacks.add(e_callbacks.ANTIAIM, function(ctx, cmd, unpredicted)
+    perf.add(e_callbacks.ANTIAIM, "ANTIAIM", function(ctx, cmd, unpredicted)
         if (check_conditions()) then
             local on_land = bit.band(entity_list_get_local_player():get_prop("m_fFlags"), bit.lshift(1, 0)) ~= 0
             local state = get_state(get_velocity())
         
-            run_antiaim(ctx, cmd, unpredicted)
-            run_exploit(ctx, cmd, unpredicted)
-            run_edgeyaw(ctx, cmd, unpredicted)
+            local ok, err = pcall(function()
+                run_antiaim(ctx, cmd)
+                run_exploit(ctx, cmd, unpredicted)
+                run_edgeyaw(ctx, cmd, unpredicted)
+            end)
+            if (not ok) then
+                builder.aa_failed(err)
+            end
 
             if (ui.exploits.lag_on_shoot:get()) then
                 if (send_lag_packet) then
@@ -7133,9 +9221,10 @@ do_antiaim = function()
 end
 
 do_aimshoot = function()
-    callbacks.add(e_callbacks.AIMBOT_SHOOT, function(shot)
-        if (check_conditions()) then
+    perf.add(e_callbacks.AIMBOT_SHOOT, "AIMBOT_SHOOT", function(shot)
+        if (check_conditions() and shot.player ~= nil) then
             local idx = shot.player:get_index()
+            if (resolver.capture ~= nil) then resolver.capture(shot) end
             reso.aimpos = shot.player:get_hitbox_pos(1)
 
             reso.desync = (resolver.previous[idx] and resolver.previous[idx].m_flDesync) and (math.floor(resolver.previous[idx].m_flDesync) or resolver.previous[idx].m_dlDesync)
@@ -7173,7 +9262,7 @@ do_aimshoot = function()
 end
 
 do_setupcmd = function()
-    callbacks.add(e_callbacks.SETUP_COMMAND, function(cmd)
+    perf.add(e_callbacks.SETUP_COMMAND, "SETUP_COMMAND", function(cmd)
         if (check_conditions()) then
             global:update(cmd)
 
@@ -7185,8 +9274,10 @@ do_setupcmd = function()
             update_bt(cmd)
         
             knifebot_helper(cmd)
+            zeus_rush(cmd)
             local bt_player = entity_list_get_local_player()
             if (bt_player ~= nil and bt_player:is_alive()) then
+                if (ui.ragebot.backtrack.engine_pred:get()) then pcall(engine_prediction.capture, cmd) end
                 backtrack.update(bt_player)
                 backtrack.predict(bt_player)
             end
@@ -7213,7 +9304,7 @@ do_setupcmd = function()
 end
 
 do_target = function()
-    callbacks.add(e_callbacks.TARGET_SELECTION, function(ctx)
+    perf.add(e_callbacks.TARGET_SELECTION, "TARGET_SELECTION", function(ctx)
         if (check_conditions()) then
             backtrack.target_selection(ctx)
         end
@@ -7221,7 +9312,7 @@ do_target = function()
 end
 
 do_hitscan = function()
-    callbacks.add(e_callbacks.HITSCAN, function(ctx, cmd, unpredicted_data)
+    perf.add(e_callbacks.HITSCAN, "HITSCAN", function(ctx, cmd, unpredicted_data)
         if (check_conditions()) then
             update_target(ctx)
             if (info.plan ~= "beta") then
@@ -7232,10 +9323,9 @@ do_hitscan = function()
             dmg_prediction(ctx, cmd, unpredicted_data)
         
             accuracy_boost(ctx, cmd, unpredicted_data)
-            if (builder.onpeek) then
-                exploits.force_anti_exploit_shift()
-            else
-                return
+            -- Final authority: later corrections cannot re-enable the head.
+            if (ctx.player ~= nil and resolver.safe and (resolver.safe[ctx.player:get_index()] or 0) >= 3) then
+                resolver.enforce_body(ctx)
             end
             return
         else
@@ -7245,10 +9335,11 @@ do_hitscan = function()
 end
 
 do_runcmd = function()
-    callbacks.add(e_callbacks.RUN_COMMAND, function(cmd, unpredicted_data)
+    perf.add(e_callbacks.RUN_COMMAND, "RUN_COMMAND", function(cmd, unpredicted_data)
         if (check_conditions()) then
             quick_fall(cmd, unpredicted_data)
             safe_recharge(cmd, unpredicted_data)
+            zeus_dt()
 
             if (ui.exploits.fix_corr:get()) then
                 cvars.cl_clock_correction:set_int(0)
@@ -7263,7 +9354,7 @@ do_runcmd = function()
 end
 
 do_event = function()
-    callbacks.add(e_callbacks.EVENT, function(event)
+    perf.add(e_callbacks.EVENT, "EVENT", function(event)
         if (check_conditions()) then
             local local_player = entity_list_get_local_player()
             local userid = event.userid
@@ -7401,6 +9492,9 @@ do_event = function()
             end
 
             if (event.name == "round_start") then
+                resolver.new_round()
+                builder.incoming = {}
+                builder.reset()
                 pcall(shotlog.send)
                 builder.misses = 0
 
@@ -7426,12 +9520,20 @@ do_event = function()
             if (event.name == "bullet_impact") then
                 on_miss(event)
             end
-
+            if (event.name == "weapon_fire") then
+                builder.capture_incoming(entity_list_get_player_from_userid(event.userid))
+            end
             if (event.name == "player_hurt") then
                 on_knifebot(event)
                 if (local_player == entity) and not (local_player == entity_list_get_player_from_userid(event.attacker)) then
                     hurt_tick = globals.tick_count()
                     builder.anti_brute_trigger()
+                    local attacker = entity_list_get_player_from_userid(event.attacker)
+                    if (attacker ~= nil and attacker:is_enemy()) then
+                        local snapshot = builder.incoming_snapshot(attacker)
+                        if (snapshot ~= nil) then snapshot.hurt = true end
+                        builder.aa_record("hit", event.hitgroup, event.dmg_health, attacker:get_name(), snapshot)
+                    end
                 end
             end
 
@@ -7488,11 +9590,9 @@ do_event = function()
 end
 
 do_net = function()
-    callbacks.add(e_callbacks.NET_UPDATE, function(ctx)
+    perf.add(e_callbacks.NET_UPDATE, "NET_UPDATE", function(ctx)
         if (check_conditions()) then
             lets_resolve()
-        
-            team_animation()
         else
             return
         end
@@ -7528,85 +9628,97 @@ do_paint = function()
         end, 8)
     end
 
-    callbacks.add(e_callbacks.PAINT, function()
-        notifications.render()
+    perf.add(e_callbacks.PAINT, "PAINT", function()
+        perf.tick()
+        perf.span("notifications", notifications.render)
         if (ui.utils.watermark:get()) then
-            draw_watermark()
-            draw_menu()
+            perf.span("watermark", draw_watermark)
+            perf.span("menu effect", draw_menu)
+        end
+        if (ui.utils.aa_stats:get() and engine_is_in_game()) then
+            perf.span("aa stats", draw_aa_stats)
+        end
+        if (ui.utils.res_stats:get() and engine_is_in_game()) then
+            perf.span("resolver stats", draw_res_stats)
         end
 
-        game_handle()
-        menu_handle()
+        perf.span("game handle", game_handle)
+        perf.span("menu handle", menu_handle)
+        perf.span("presence", lets_sync)
 
         if (engine_is_in_game() and engine_is_connected()) then
-            run_clantag()
+            perf.span("clantag", run_clantag)
         end
 
         if (check_conditions()) then
             local local_player = entity_list_get_local_player()
 
-            lets_sync()
-            handle_logs()
+            perf.span("hit logs", handle_logs)
         
             if (local_player:is_alive()) then
                 if (ui.misc.jumpshot:get()) then
+                    -- written when the state (or the weapon group) changes, not every frame
                     local m_flags = local_player:get_prop("m_fFlags")
-                    if (ent_speed_2d(local_player) > 10 and (m_flags == 256 or m_flags == 262)) then
-                        menu_find("misc","main","movement","autostrafer"):set(true)
-                        menu_find("misc","main","movement","autostrafer"):set(true)
-    
-                        menu_find("aimbot",get_active_weapon(),"accuracy","auostop options","In-Air")[3]:set(7, true)
-                    else
-                        menu_find("misc","main","movement","autostrafer"):set(false)
-                        menu_find("misc","main","movement","autostrafer"):set(false)
-    
-                        menu_find("aimbot",get_active_weapon(),"accuracy","auostop options","In-Air")[3]:set(7, false)
+                    -- the autostrafer follows the air state; the in-air autostop used to be switched on with it and stopped us in the air
+                    -- the moment an enemy was seen, so the bunny hop was over (owners, Oct 2026: "ne stuckoljunk airbe ha lat valaki")
+                    local air = ent_speed_2d(local_player) > 10 and (m_flags == 256 or m_flags == 262)
+                    if (air ~= jumpshot_state.air) then
+                        jumpshot_state.air = air
+                        menu_find("misc","main","movement","autostrafer"):set(air)
+                    end
+                    -- the in-air autostop is on the "Air stop keybind" (owners, Oct 2026: "azt bindelhetore kene tenni az airstoppot"),
+                    -- written when the key state or the weapon group changes
+                    local stop, weapon = ui.air_stop:get() == true, get_active_weapon()
+                    if (stop ~= jumpshot_state.stop or weapon ~= jumpshot_state.weapon) then
+                        jumpshot_state.stop, jumpshot_state.weapon = stop, weapon
+                        menu_find("aimbot",weapon,"accuracy","auostop options","In-Air")[3]:set(7, stop)
                     end
                 end
 
-                handle_drawing()
-                handle_playerlist()
+                perf.span("miss stats", handle_drawing)
+                perf.span("evade list", handle_playerlist)
     
-                builder.clockpitch()
-                builder.clockyaw()
-            
-                custom_dt()
-                edge_yaw()
+                perf.span("better dt", custom_dt)
+                perf.span("edge yaw", edge_yaw)
 
                 if (ui.visuals.china_hat.enable_hat:get()) then
-                    draw_hat()
+                    perf.span("china hat", draw_hat)
                 end
 
                 if (ui.utils.keybinds:get()) then
-                    draw_keybinds()
+                    perf.span("keybinds", draw_keybinds)
                 end
             
                 if (ui.utils.spectators:get()) then
-                    draw_spectators()
+                    perf.span("spectators", draw_spectators)
                 end
 
                 if (not menu_is_open()) then
                     if (ui.visuals.crosshair_indc.binds:get(1) or ui.visuals.crosshair_indc.binds:get(2) or ui.visuals.crosshair_indc.binds:get(3) or ui.visuals.crosshair_indc.binds:get(4) or ui.visuals.crosshair_indc.binds:get(5) or ui.visuals.crosshair_indc.binds:get(6) or ui.visuals.crosshair_indc.binds:get(7) or ui.visuals.crosshair_indc.binds:get(8) or ui.visuals.crosshair_indc.binds:get(9) or ui.visuals.crosshair_indc.binds:get(10)) then
-                        draw_indicator()
+                        perf.span("crosshair ind", draw_indicator)
                     end
 
                     if (ui.visuals.gs_indc.indicators:get(1) or ui.visuals.gs_indc.indicators:get(2) or ui.visuals.gs_indc.indicators:get(3) or ui.visuals.gs_indc.indicators:get(4) or ui.visuals.gs_indc.indicators:get(5) or ui.visuals.gs_indc.indicators:get(6) or ui.visuals.gs_indc.indicators:get(7) or ui.visuals.gs_indc.indicators:get(8) or ui.visuals.gs_indc.indicators:get(9) or ui.visuals.gs_indc.indicators:get(10)) then
-                        draw_gs_indicator()
+                        perf.span("gs ind", draw_gs_indicator)
                     end
                 end
             end
 
-            if (globals.tick_count() - delay.last_tick > delay.tick_delay) then
+            -- voice mute / unmute: only when it is set, and through pcall: the panorama GameStateAPI is nil at times
+            -- (an index of it stopped the whole PAINT callback)
+            local voice = ui.player.voice_state:get()
+            if (voice >= 2 and globals.tick_count() - delay.last_tick > delay.tick_delay) then
                 local players = entity_list_get_players()
-                if (players ~= nil) then
+                local api = libs.tools.js2 and libs.tools.js2.GameStateAPI
+                if (players ~= nil and api ~= nil) then
                     delay.last_tick = globals.tick_count()
                     for _, player in pairs(players) do
-                        local xuid = libs.tools.js2.GameStateAPI.GetPlayerXuidStringFromEntIndex(player:get_index())
-                        if (ui.player.voice_state:get() == 2 and libs.tools.js2.GameStateAPI.IsSelectedPlayerMuted(xuid) == false) then 
-                            libs.tools.js2.GameStateAPI.ToggleMute(xuid)
-                        elseif (ui.player.voice_state:get() == 3 and libs.tools.js2.GameStateAPI.IsSelectedPlayerMuted(xuid) == true) then
-                            libs.tools.js2.GameStateAPI.ToggleMute(xuid)
-                        end
+                        pcall(function()
+                            local xuid = api.GetPlayerXuidStringFromEntIndex(player:get_index())
+                            if (xuid and (voice == 2) == (api.IsSelectedPlayerMuted(xuid) == false)) then
+                                api.ToggleMute(xuid)
+                            end
+                        end)
                     end
                 end
             end
@@ -7648,6 +9760,7 @@ end
 
 callbacks.add(e_callbacks.SHUTDOWN, function()
     print("restoring configuration..")
+    servers.leave()
 
     client_set_clantag("")
     menu_find("antiaim", "main", "general", "ladder antiaim"):set(auto_cfg.ladder_antiaim)
@@ -7850,6 +9963,24 @@ setup = function()
         print("preparing lua..", get_text_color(), " (stage 30%%)")
     end
 
+    -- csgo/specter/cvar_dump.txt, overwritten at every start (like default.cfg): every cvar the script changes, the value it had
+    -- before (saved in `save_cfg`, given back when the script unloads) and the value it has now
+    cvar_dump = function()
+        local names = {}
+        for name in pairs(auto_cfg) do
+            if (type(name) == "string" and name:find("^[a-z][a-z0-9_]*$") and cvars[name] ~= nil) then
+                names[#names + 1] = name
+            end
+        end
+        table.sort(names)
+        local lines = { "specter cvar dump (name, value before the script, value now)" }
+        for _, name in ipairs(names) do
+            local ok, now = pcall(function() return cvars[name]:get_float() end)
+            lines[#lines + 1] = string.format("%s  %s  %s", name, tostring(auto_cfg[name]), ok and tostring(now) or "?")
+        end
+        pcall(libs.filesystem.write, configs.dir .. "cvar_dump.txt", table.concat(lines, "\n") .. "\n")
+    end
+
     fps_boost = function()
         cvars.sv_party_mode:set_int(1)
 
@@ -7915,6 +10046,8 @@ setup = function()
         groups.reso_cfg:depend({false})
         groups.utils:depend({false})
         groups.sync:depend({false})
+        groups.servers:depend({false})
+        groups.about:depend({false})
         groups.yaw:depend({false})
         groups.jitter:depend({false})
         groups.desync:depend({false})
@@ -7968,6 +10101,7 @@ setup = function()
 
     finish_up = function()
         configs.reload_configs()
+        configs.restore_last()
         configs.reload_cloud_configs()
 
         print("preparing lua..", get_text_color(), " (stage 100%%)")
@@ -7976,6 +10110,7 @@ setup = function()
     imports_setup()
     save_cfg()
     fps_boost()
+    pcall(cvar_dump)
     configure_groups()
     execute_tasks()
     finish_up()

@@ -9,7 +9,8 @@
   its changelog to #updates, its specter_loader.lua to #loader-download.
   RELEASE ("mehet cloudra", "rakd ki az updatet") = a PR `main` -> `cloud`, merged with a merge commit: its title (or the merge
   message: a short title + "- " points) IS the public #updates changelog, short and for players: "Sponsor kill added",
-  "Fixed ...". Never release without the owners asking. A PR into `main` (the dev build) is merged right away with a
+  "Fixed ...". A point only about one lua is tagged "- [GS] ..." / "- [PM] ...": it goes only into that lua's changelog
+  (`commit_points(lua=)`), an untagged point into both. Never release without the owners asking. A PR into `main` (the dev build) is merged right away with a
   merge commit once its tests pass (owners, Oct 2026: "always merge it"): every session pushes, opens the PR and merges
   it itself, the bot only posts what is on `main` (owners: "mindig be kell olvasztani"); `cloud` still only when they ask. `server.js` deploys from `main` at once: keep it compatible with the
   loader / cloud script on `cloud` (an auth change is released together with them)
@@ -26,6 +27,12 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   vgui2 VGUI_System010 calls through ffi with pcall), `spec_key <key>` in the console also sets it. Once the script runs the whole login
   menu is hidden (the script's menu is in the same tabs; `spec_logout` in the console). `python3 tests/loader_menu.py`
 - `specter_primordial_loader.lua` — the Primordial loader (see specter_primordial.lua below)
+- Loader update notice (owners, Oct 2026: "verziófigyelés a loaderben"): both loaders have `LOADER_VERSION = N` (BUMP IT
+  whenever a loader file changes). The bot (`sync_loader_versions`, AUTO_UPLOAD, every RELEASE_MINUTES) reads it from the
+  loaders of CLOUD_BRANCH and sends it to `POST /admin/loader_version` (Redis `specter:loader:gs|pm`); `/verify` answers
+  `loader_gs` / `loader_pm`, and an older loader says so (gamesense: console + 12 s on screen, "download it from
+  #loader-download"; Primordial: console + a "Specter update" menu text); the script still loads. A loader can not
+  update itself (owners' choice: no exe launcher). `python3 tests/loader_menu.py` tests the gamesense one.
 - `specter_dev_loader.lua` — DEV loader for the owners: no login / key / HWID / server. Put it into the gamesense lua folder once; it
   downloads the newest `specter_dev.lua` from GitHub raw on every load (SOURCES list: main first, then the `dev` branch), saves it
   as `specter_dev_cache.lua` and falls back to that copy offline. `python3 tests/dev_loader.py` tests it. `specter_dev.lua` itself stays
@@ -78,9 +85,24 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   the panels of the new channels at once (`sync_panels`). The #updates changelog carries the logo too, but every version is a
   new post and the old ones stay (owners: the history stays there). A new
   specter_loader.lua of `CLOUD_BRANCH` goes to #loader-download the same way every `RELEASE_MINUTES` (`sync_loader`, the
-  post's SHA-256 field says which one is out; only `is_customer_loader`). /post_* and /post_loader replace the old post too
+  post's SHA-256 field says which one is out; only `is_customer_loader`). /post_* and /post_loader replace the old post too.
+  The Primordial loader the same way (owners, Oct 2026: "ahhoz is csinálj egy külön csatornát ... cloudrol tudja
+  bepótolni"): `LOADERS` (gamesense / primordial: file, channel, check, install steps), `/post_loader lua:Primordial`
+  (from GitHub `CLOUD_BRANCH` when no file is attached), `sync_loader` posts both every RELEASE_MINUTES.
+  specter_primordial_loader.lua goes to #primordial-loader (category "🔜 Specter·Primordial", access
+  `primordial_readonly`: the Primordial role reads, Staff writes; /setup_channels adds it to a running server); only
+  `is_pm_customer_loader` (`_specter_pm_loader_loaded`, never specter_primordial.lua: it runs everything without a key)
   Logo (`logo()`): `assets/specter_icon.png` (thumbnails) / `assets/specter_logo.png` (the big image of the prices) go with
-  the messages as attachments (`Dockerfile.bot` copies assets/); `SPECTER_LOGO_URL` overrides them with a lasting link. A
+  the messages as attachments (`Dockerfile.bot` copies assets/); `SPECTER_LOGO_URL` overrides them with a lasting link.
+  Which lua a post is about (owners, Oct 2026: "rakjon elé egy Primo logót vagy egy GS logot"): `lua_badge` puts
+  "Specter for Gamesense" / "Specter for Primordial" with `assets/gs_icon.png` / `assets/primordial_icon.png` in the embed's
+  author line, above the title, on the #updates changelogs and the #staff dev build posts (`lua_of(path)`). The two PNGs are
+  the logos the owners sent (Oct 2026), 128 x 128: the GS badge, and the Primordial hourglass cut out of its black side bars. The Primordial changelog in #updates (`sync_primordial`, the release merge's message, its [PM] + untagged points) goes
+  out even before the Primordial lua is released (owners: "a changelog attól függetlenül mehet ki"; `PRIMORDIAL_UPDATES`,
+  default 1, 0 = off).
+  `/post_changelog [lua] [here] [text]` (admin; `text` = own "title | point | point") posts the newest cloud release's changelog again (owners: "újra rakd ki ... akarom
+  nézni hogy néz ki"; the loop posts a version only once), in #updates or, with `here`, in the current channel as a preview.
+  `changelog_embed` builds it for both the loop and the command. A
   Discord upload link (cdn.discordapp.com/attachments ...?ex=) expires in a day and is ignored. The PNGs are the watermark's
   look: the crescent of `sky()` (accent circle minus a 0.844 r circle at +0.49 r / -0.36 r), accent 180 160 255, panel 12 12 16
 - Railway: `Dockerfile` = license server, `Dockerfile.bot` = bot (service variable `RAILWAY_DOCKERFILE_PATH=Dockerfile.bot`)
@@ -109,32 +131,179 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 ## specter_primordial.lua (Primordial, was azura.lua)
 - The owner's own older PRIMORDIAL script "azura.uno" (author e0n3x, default user matehun111), renamed to Specter (owners,
   Oct 2026: "minden azurat írj át specterre", it will be sold as Specter for primordial). Not gamesense, nothing to do with
-  Specter's gamesense code. Every text says Specter (menu, watermark, notifications, console, killsay, a "specter" clantag
-  of the same 45 frames), configs in csgo/specter/ (the old csgo/azura/ ones are not read). Edited directly (no generator). The bot posts it to #staff like the dev build (`RELEASE_FILES`).
+  Specter's gamesense code. Every text says Specter (menu, watermark, notifications, console, killsay, a "specter.prim" clantag
+  of the same 45 frames; the gamesense lua's is "specter.gs", owners Oct 2026), configs in csgo/specter/ (the old csgo/azura/ ones are not read). Edited directly (no generator). The bot posts it to #staff like the dev build (`RELEASE_FILES`).
   That #staff file IS the Primordial dev build: no dev loader for it (owners, Oct 2026: "a devnek nem kell loader elég a
   sima lua"; a server-side dev loader was made and taken out again).
-- Offline (owners, Oct 2026): the azura.uno login / HWID check, stats upload and cloud / sync sockets are gone (dummy sockets,
-  the cloud buttons say "Cloud is offline"); settings.json and the logo PNGs that the old loader installed are optional; the
-  lagcomp debug boxes are gone. default.cfg = the owner's config (`configs.default_config`), applied on the first start.
+- Last config (owners, Oct 2026: "when you reload it, it automatically puts up the last config you used"): Use / Save write the name to
+  settings.json (`last_config`, `configs.remember`), the start (`finish_up`, after `reload_configs`) loads it quietly
+  (`configs.restore_last` -> `configs.load_named(name, true)`: no notifications, nothing when the file is gone or it is
+  default.cfg, which the first start applies itself). A cloud config is not remembered.
+- A callback that errors UNLOADS the script in Primordial ("failed to run callback EVENT ... unloading script"): `on_brute` indexed the
+  player of a `player_hurt` that was already gone (`entity_list_get_player_from_userid` gives nil) and the local player (nil when
+  dead / not in game); every entity from a userid or the local player is nil checked now (owners, Oct 2026). Keep it that way in event code.
+- Offline (owners, Oct 2026): the azura.uno login / HWID check, stats upload and cloud / sync sockets are gone; settings.json
+  and the logo PNGs that the old loader installed are optional; the
+  lagcomp debug boxes are gone. default.cfg = the owner's config (`configs.default_config`), applied on the first start
+  and written to csgo/specter/default.cfg at every start (load it from the list to get it). Its anti-aim is the advanced
+  engine (owners, Oct 2026: "csináld meg a legjobb configot ezzel"), the rest stays the owner's: states 1-8 tight X-Way /
+  Distort / Random hold (+- 18-32 deg: the owner's own yaw was +- 10-25, wider shows the head to the sides), a small lua
+  jitter, Random desync 60, Smart defensive (Random up/down or Sway pitch, Random side / Distort / Jitter flick yaw),
+  Phases anti brute, Fakelag variance; Fakelag / Manual / Freestand as the owner had them. Defensive (owners, Oct 2026: "csak
+  air és peeknél, tehát movingnál"): Smart only in Move (trigger Peek) and Air (trigger Air); Off in Global, Air duck, Stand,
+  Slow walk, Duck, Duck move, Freestand (and Fakelag / Manual as before). "Apply advanced preset" sets the
+  same values (the regress checks they match).
+- Defensive rework (owners, Oct 2026: "ha unsafe a peek akkor kapcsolja be ... jelenleg a defensive nem segít semmit, csak hátráltat"):
+  the "Peek" trigger (smart trigger 1 and the old "On peek") is now an UNSAFE peek (`builder.peek_visible`): an enemy that can shoot -
+  a gun (`builder.adv.armed`: no knife / grenade / bomb / zeus, a round in it, the next shot within 0.15 s) whose bullet, from his eye
+  3 ticks ahead, reaches our head or chest (it used to be "he can hit our feet OR we can hit him", so an empty or knife enemy, or
+  our own advantage, shifted the double tap). `defensive:trigger(urgent, shooting)`: after a shift the next one waits `DEF_COOL` 38
+  ticks (it came as soon as the double tap was charged again while the enemy stayed in view: we never had a shot), "Shot at" (HP
+  dropped) is urgent and ignores that, and no shift on the tick we press attack. Same trace budget as before (2 traces per enemy per
+  4 ticks, 2 enemies per frame; the body trace is skipped when the head one hits).
+- AA stats (owners, Oct 2026: "melyikkel hányszor találnak el"): `builder.aa_record` counts per "state · yaw mode" (the
+  builder entry in use, `aa_snapshot`) the hits an enemy made on us (player_hurt, attacker an enemy) and the bullets that
+  passed the head (on_miss < 50 units, not counted when we were hurt in the last 8 ticks). Utils "AA stats" (default on):
+  the `draw_aa_stats` panel (hotkeys look, draggable, a green / yellow / red dot by hit rate < 25 / < 50 / more), a console
+  line per hit, "Reset AA stats". The dev build also sends one shot log line per result (`shotlog.aa`, kind "aa": state,
+  yaw / jitter / desync mode, defensive on, anti brute phase on, hitgroup, damage) to shotlogs/primordial/: tune by those.
 - Resolver (owners, Oct 2026: "fixald teljesen"; their old stats: 1262 hits / 443 misses): Primordial's own "Resolve
   Antiaim" does the resolving (its records and animation fix; no workshop lua writes an enemy's feet yaw, there is no
   resolver hook). The block counts resolver misses per player (`resolver.misses`, a hit resets it) and puts a head safe
-  point through HITSCAN: Logic resolver = after 2 in a row, Custom resolver = Hit sensitivity / duck / weapons / peek / HP.
-  The lua side override (freestanding / jitter side written into the animstate, the old "Unsafe resolver" that switched
-  Primordial's resolver off) is "Lua side override (experimental)", off by default (the label changed so the old configs
-  do not switch it on).
+  point through HITSCAN. Jitter (owners, Oct 2026: "ha ki van kapcsolva mind a 3 resolver hogyan kapunk jitter misst",
+  "max 1-2 jitter 20-30 lövésenként"): the "jitter" / "resolver" miss reasons are PRIMORDIAL's resolver (it resolves
+  whatever the lua toggles say; the api gives no way to tell its aimbot the side). What the lua decides is where it may
+  shoot: ALWAYS (every resolver toggle off too, not beta) a jittering target gets head + chest safe points, a target after a
+  resolver / jitter miss a head safe point until a hit. A fast peek (our auto peek, a crouched target, a high ping, a defensive) skips the jitter safe point again (reverted, see below). Layer 6 (movement)
+  playback rate and weight of the target at the shot are in the shot log as `l6` / `l6w` (read only, `resolver.capture`): the
+  res_fix_att_712 resolver (s0daa repo) reads the side from that rate alone, not adopted without proof: compare `l6` with the
+  side of `vl` on hits, add it as a hypothesis only if it correlates. The jitter safe point (`resolver.hitscan`) is NOT gated by
+  `resolver.active` (owners, Oct 2026: "statikus resolvernél vannak problémák a jitternel"; the real shot logs, 86 shots,
+  had jitter the top miss cause 16/32 with `sp` None on 83, because it used to need a resolver toggle on). The after-miss
+  head safe point (misses >= 2) and the Custom resolver options (duck / peek / HP) stay behind `resolver.active`; `safe_all`
+  (a disabler set to head safe point) forces safety even on a fast peek. Smart body aim (Resolver page, default on; owners, Oct 2026: "ha nem
+  100% biztos a fejbe inkább safepointos vagy testre lő ... de ha 100 a kövi hitnél akkor ne test legyen"; a version that
+  turned the head off after every miss was "faszság", almost no head shots): the head is sure when the target does not
+  jitter and has no miss since the last hit; not sure -> body (head group off) only when a body hit kills (HP <= the weaker
+  of `damage:calculate` chest / stomach), else the head stays with the safe point. Shot logs, Oct 2026 (231 shots, a
+  Russian server at 100-145 ms too): the head safe point alone did not lower the jitter misses (4.4 vs 3.8 per 30 shots),
+  26 of 29 jitter misses were head shots, the next head shot after a jitter miss missed again 7 of 19 times. The jitter detector (`resolver.track` on every net update for
+  every enemy, `jit_record` / `jit_classify`): the last 12 eye yaw steps between records, jitter = 3+ big steps (20 deg,
+  Custom resolver: "Shot prediction" 15-65) that change direction 2+ times and cancel out (a mouse turn / spin does not),
+  OR small jitter (owners: "small jitter ... 5-6"): on 6+ of the last 12 records the eye yaw moved 4+ deg from the previous
+  one and is back within 1.5 deg of the yaw 2-4 records before (`jit_returns`; a smooth mouse sweep never does),
+  held 1 s of sim time after the last such window (high real / fake ping shoots ~1 s old records). The resolver toggles
+  add their safe points on top (safe_all, Custom: duck / weapons / peek / HP; "Hit sensitivity" is gone). Shot logs, Oct
+  2026: 21 of 31 misses resolver / jitter before; after the first version 6 of 35. Multipoint correction
+  (`dmg_prediction`, owners: "nagyon sok a body hit") goes through head, chest, stomach IN THAT ORDER (`pairs` gave the
+  chest / stomach the 70 % hitchance push while the head was shootable) and skips the head when Smart body aim took it
+  out (`resolver.safe[idx] == 3`). The shot logs carry `sp` (1 safe
+  point, 2 for jitter, 3 smart body aim), the AA lines `dc` (Direct control on).
+  OUR resolver is the default (owners, Oct 2026: "a Primo resolver outdated és rosszul működik"): `lets_resolve` runs it
+  for every non-beta plan with no resolver toggle needed (freestanding hint, jitter side, the learned candidates from
+  hits / misses always on), writing the side into the animstate and switching Primordial's "Resolve Antiaim" off; that
+  one is never used as a fallback (owners, Oct 2026: "mindig a sima Primo resot használja": the first version fell back to
+  it at a high ping or on stale target data, and the real logs at 120-160 ms ping were all `native` true). The menu
+  toggles (Logic / Improve / Pose / Custom resolver, "Lua side override") no longer switch it on or off, Custom resolver
+  only tunes it (pred_sel, calc_box, shot_pred, disablers). Not proven in game: judge it by the shot logs (`native`
+  false = ours, miss reasons resolver / jitter).
+  What it decides with (owners, Oct 2026: "mindegyiket csináld meg ... AA stealer"; the GS aa_stealer only reads the
+  eye yaw pattern, the desync is not networked, so nothing can read it, only infer it): per player and situation
+  (`resolver.mem[idx][key]`: state / "state fs" / "jitter") 9 hypotheses (`resolver.NCAND`), each a Beta(good, bad) that
+  the results update, chosen by `resolver.choose` (mean + exploration + a prior): 1 / 2 the side hint (freestanding /
+  jitter side) full size as is / mirrored, 3 / 4 half size, 5 none, 6 / 7 the FEET MODEL (`resolver.feet_step`: the
+  server's feet logic on netvars, a port of the GS lua's `feet_update`: standing the feet go to the LBY target at 100
+  deg/s, moving they follow the eye yaw at 30-50, never further than `feet_limit` (58 shrunk by speed / duck) from it;
+  eye - feet = the computed body yaw `p.model`, value = -model / +model; skipped under `K.zero` 20 deg: no visible
+  desync; a standing target gets a prior bonus, moving less), 8 / 9 the side the jitter PATTERN predicts for the next
+  record (`resolver.run_predict`: the last runs of one side, a fixed period = delay jitter switches exactly when the run
+  reaches it, else the run-length statistics of the GS `jitter_of`; `p.next_side` / `p.period` / `p.period_conf`,
+  bonus by the confidence). Every counted result pulls all hypotheses of the situation 3 % back toward the start
+  (`K.forget`). A tickbase shift (sim time back by < `K.shift` 0.5 s) is not a reset any more: the target and what was
+  learned stay, 0.25 s grace. Relearning: `resolver.new_round` (round_start; it was `reset`, a full wipe every round)
+  keeps the learning per STEAM ID, halved (`K.round_keep`); it is also kept over a dormant phase and a respawn (it was
+  wiped at every one: `lets_resolve` for every dormant / dead enemy, `track` at every restart; a dead player's waits in
+  `resolver.carry`, another player in the slot gets none), and a jitterer whose yaw pattern (`resolver.pattern`: yaw
+  positions + span, only while the jitter detector holds) changed for `K.change` records in a row has it cut to
+  `K.change_keep`. The shot logs carry `rk` (situation), `cd` (hypothesis), `vl` (the body yaw written), `md` (the feet
+  model's), `nx` (predicted next side): tune the priors / the hypotheses by the hit rate per `cd`.
+  ENEMY defensive / lag break detector (owners: "tökéletes defensive érzékelés", the target's, not ours; Primordial's
+  miss reasons have no "defensive": a shot at a shifted target came as "jitter" / "resolver" and was learned as a miss).
+  `resolver.track` logs events `p.events` as WE observe them: a tickbase shift (sim time back by < `K.shift` 0.5 s, the
+  size of the step = how long it lasts, like `defensive:is_active`) and a lag break (> 64 units between two records,
+  `K.lc_window` 0.5 s). Timing: the server tests our shot against the target's state when it arrives, but we see the
+  target one way latency late, so the shift that spoils a shot fired at t is observed about one round trip LATER, inside
+  [t + rtt - dur, t + rtt] (`resolver.spoiled`, `K.ev_margin`): so a shot is classified when its RESULT arrives
+  (`on_result`, from `snapshot.time` / `snapshot.rtt` of `capture`), not when it is fired. Such a MISS is no resolver
+  miss and teaches nothing (a hit still counts); the shot log carries `df` / `lb`. Not done: predicting WHEN a target
+  will use a defensive (the double tap recharge is not readable).
+  Resolver stats per state (owners: "/state hogy megnézzük mire missel a legtöbbet"): `resolver.record` per result (the
+  state of the target at the shot, the Primordial miss reason, a spoiled shot relabelled "defensive" / "lag break", the
+  hypothesis used and its hits) into `resolver.stats` (outside the beta-cut block; session wide, "Reset resolver stats"):
+  Utils "Resolver stats" = the draggable panel (`hud.pill_panel`, shared with the AA stats; state, shots, hit rate, the two
+  top miss reasons), "Resolver stats to console" = the full lines (`resolver.stat_lines`: all reasons, the four most used
+  hypotheses as hit / used), the shot log carries `sx` (state). Fix the state with the most misses first.
+  Defensive / lag break detector (owners: "nem lesz defensive detectorunk?"; Primordial's miss reasons have no
+  "defensive", a shot at a shifted target came as "jitter" / "resolver" and was learned as a miss): `resolver.track`
+  flags a target `p.def_until` for `K.def_window` 0.4 s after a tickbase shift update (sim time back by < 0.5 s) and
+  `p.lc_until` for `K.lc_window` 0.5 s after more than 64 units between two records (teleport / lag break). `capture`
+  marks a shot fired inside a window (`defensive` / `lagbreak`), `on_result` then does not count its MISS (no resolver
+  miss, no bad for the hypothesis; a hit still counts), the shot log carries `df` / `lb`. Not done: predicting WHEN a
+  target will use a defensive (the double tap recharge is not readable), the aimbot's own extrapolation is Primordial's.
+- Resolver changes of Oct 16 2026 REVERTED (owners: "resolver is missing so much rn, reverse every resolver improve that we made today"):
+  the jitter safe point on our auto peek (#125, only the safe point, the `l6` / `l6w` shot log fields stay), "Body aim on moving
+  targets" / "Body aim when the head is unsure" with `resolver.conf` (#128, #129), the miss credibility (#131), the body reachability
+  guard (#132), the hot head after a head hit (#133) and the safe head / stall body aim (#134). The resolver is back to the Oct 15 state
+  (Smart body aim by HP / lethal, the head safe point on jitter / after misses, no per state head rate). Defensive rework (#130) and
+  "Disable DT with zeus" (#127) are not resolver changes and stay. What the logs said (857 shots, Oct 2026), for the next try: ground
+  targets' head 31-48 % against air 88 % and the body 81-93 %; the "jitter" miss reason is Primordial's guess (3 of 35 on a detected
+  jitterer, its share grows with the ping); `cm` in the shot log is written after the miss is counted; the reverted code is in git
+  history (merge commits of #125 - #134). The "Lua side override (experimental)" checkbox did nothing and is gone.
+- Per state resolver (owners, Oct 2026: "minden statere külön resolver logic"): `resolver.state_of` has stand / slow / move /
+  duck (crouched, still) / cmove (crouched, walking) / air; every state has its own memory, hit rate row (`stat_rows`) and
+  `RES_STATE_NUM`. `resolver.profile(speed, air, steps, crouch)` is how the feet model is read there: phase "lby" (still: the
+  feet follow the LBY, full trust) or "eye" (moving / air: the feet lag behind the eye yaw, rel 0.35, crouched 0.5), x a
+  convergence factor (`p.feet_steps` records seen, 6 = converged, min 0.25); `zero` = the body yaw under which the model says
+  "no desync" (20 still, 12 moving). It sets the feet model hypotheses' bonus (`0.12 * rel`) and when they are skipped. The
+  shot logs carry `ph` (phase) and `rl` (rel). Judge it by the per state stats and these, not by the sims; not proven in game.
+- State priors (owners, Oct 2026: "minden statere külön resolver logika ... ami a legvalószínűbb hogy azt használják"): read
+  from the workshop builders (Formal Yaw, Anti-Aim Builder, Destroy, T1ny, Star-Project; their conditions are Standing /
+  Walking / Slow walk / Ducking / Air / Crouching air, e.g. Formal Yaw: moving jitter 71 desync 88-94 %, air 65 / 69-80 %,
+  crouched air 62 / 60 %): standing and crouched-still hold a side with a near full body yaw, moving and the air flip the
+  desync with the yaw jitter. `resolver.STATE_PRIOR[state]` adds a small bonus (0.01-0.06) per hypothesis (stand: side hint +
+  feet model, moving / crouch walk / air: half size + jitter pattern); the results overrule it. States: stand, slow, move,
+  duck, cmove, air, airduck (new: in the air crouched), "state fs" and "jitter" keep their own memory. Prior only: the
+  workshop luas are not what the enemies on the real servers run, judge it by the per state stats.
+- Movement forecast (the owners' fixed file, Oct 2026, `resolver.advanced`, inside the pm-resolver block; `resolver.track` is
+  wrapped to feed `observe`): per target the last 64 records (origin, velocity, acceleration, yaw, state) and a per state yaw
+  predictor (static / linear / alternating by the least error); `forecast(p, ent, ticks)` walks the origin ahead (fading
+  acceleration, gravity in the air, `trace_line` 0x400B stops it, cached per record, nil on a stale / shifted / garbage
+  record). The advanced prediction (peek check) aims its look-ahead trace at that point instead of velocity x time; the beta
+  stub has no `resolver.advanced`, so the call site checks it. The lag break limit of `track` stays 32 ticks (their 64 would
+  call a runner's normal 250 u/s a teleport).
+- Safe head (owners, Oct 2026: "add safehead to the aa"): Features "Safe head" has Air knife / Air zeus (crouched in the air with
+  that weapon out), Height advantage (`builder.height_safe`, the gamesense lua's trace: an enemy 5+ units below us whose bullet
+  reaches the head; every 4 ticks, 2 enemies at most) and Allow defensive; the safe head sets pitch down, yaw add 0, no jitter /
+  desync. All four are on in default.cfg. The new options are at the END of the list (saved configs load).
 - Backtrack: Primordial's (its records, the tick count of its shot). The old "Improve backtrack" wrote cmd.tick_count on
   every command from the enemy nearest the crosshair minus "dynamic ticks": the server rewound to a time the aimbot did
-  not aim at. Now Improve backtrack sets Primordial's fake ping amount (100 ms, Extended backtrack 200 ms; the server takes
+  not aim at. Now Improve backtrack sets Primordial's fake ping amount (100 ms, Extended backtrack 500 ms (owners, Oct 2026: "nagyon nagyra, legalabb 40 tick"; `backtrack.cap` remembers what the slider really took and never asks for more); the server takes
   records within 0.2 s of real + fake latency) while an enemy is alive, 0 with a knife / grenade / bomb, the own value back
   when it goes off or on unload; the fake ping key itself stays the user's. Advanced prediction: each moving enemy's head
   after our latency + 4 ticks (stopped by walls); shootable there but not now = about to peek -> `ctx:prioritize_target`
   in TARGET_SELECTION (every 2 ticks, at most 5 enemies, trace_bullet).
-- Anti-aim (owners: "nagyon nehéz legyen ellőni"): the desync side is a fresh coin flip per sent packet through
-  `ctx:set_invert_desync`, not tied to the yaw side (it followed it 100%: the azura resolver hit 0.81, now 0.50); the
-  switch-every-packet modes use their own switch; anti bruteforce (enemy bullet within 50 units of the head or a hit: yaw
-  6-14 deg off for 0.5-0.85 s; the old check measured from our own eye, every bullet counted); the yaw add is kept apart
-  from the shift / crouch correction (it grew every tick). Menu: Settings "Random desync side", "Anti bruteforce".
+- FPS (owners, Oct 2026: "az FPS nagyon gatya van 70 fpsem"): `menu_find` is memoized (menu.find walked the whole menu
+  for the same items every frame / tick); the double tap speed cvar (set every frame, 15 with Better DT off), the console
+  colour materials and the jumpshot autostrafer / in-air autostop are written only on change. Profiler (dev build):
+  Utils "Profile 10 s (dev)" times every callback (`perf.add` instead of callbacks.add) and the PAINT parts (`perf.span`)
+  with QueryPerformanceCounter, prints ms per frame and sends a `kind` "perf" line to shotlogs/primordial/. Find the
+  next FPS problem with it, not by guessing. DT lag (owners, Oct 2026: "lagging only in mid mirage with dt"): Primordial
+  runs ANTIAIM / HITSCAN once per command and double tap runs many commands in one frame; on an open map every enemy is
+  in view and the bullet traces are long. The on peek defensive check (`builder.peek_visible`) traces an enemy at most
+  once per 4 ticks and 2 enemies per frame; Multipoint correction (`dmg_prediction_pick`) and `resolver.body_damage`
+  trace once per tick and target. Any new per-command trace needs the same.
+- Circles: Primordial's `render_circle_filled` / `render_circle` take an int radius (a fraction stopped the PAINT
+  callback in `sky`); the script wraps both and rounds the radius.
 - Menu (owners, Oct 2026, chose the "buttons" mock-up): four main buttons (Config, Ragebot, Anti-Aim, Misc), under them
   the "› " page buttons of the active one (`nav_pages`; the page is still `ui.nav.slider`: 1-9 kept, 10-14 new: Aimbot,
   Tickbase, Yaw / Jitter, Desync, Defensive). The builder's items use `aa_page` (any anti-aim page), the Settings group
@@ -156,7 +325,200 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   `libs.tools.js`, image `file://{images}/icons/specter_moon.png`, downloaded once from `GET /moon.png` into
   csgo/materials/panorama/images/icons/), a row "name ~ version" in Specter Revealer, a notification once per name,
   `esp.sync_user` (talk back / chat mention). With Shared ESP on our own row gets the moon too (owners: "ha csak én vagyok
-  fent ... nem jelzi"; our hash goes into `q` as well, icon only, no list row / notification). The dead azura sync socket is gone.
+  fent ... nem jelzi"; our hash goes into `q` as well; our row is also the first Revealer row, "name (you) ~ version" (owners: "my name didn't
+  appear"), never announced, not in `esp.sync_user`). The dead azura sync socket is gone.
+  Shared ESP is this user detection only (the old azura's was too: no positions are shared). "Refresh players" (only the
+  button: `on_shared_players(true)`; the round start / connect refreshes say nothing) says why nothing shows (owners, Oct
+  2026: "a shared esp nem működik"): no answer from the server / nobody else in the game (N players asked, whether we
+  are visible).
+- Prim <-> GS user detection (owners, Oct 2026: "jelezze primen belül ha valaki a gs luát használja ... prim user vagy gs specter user"):
+  the gamesense lua sends the same heartbeat as the Primordial one (`miscellaneous.presence` in specter_cloud.lua, checkbox
+  "Show as Specter user", on in `settings.recommended()`, `GET /presence?t=gs&q=&me=<hash>` every 30 s, only with the server url
+  and gamesense/http): the same hash ("specter|" .. the 17 digit steam64 as TEXT, a double would lose digits) and tag `gs` (server.js
+  accepts it). The Primordial lua lists such a player as "name ~ gs user" (moon on the scoreboard, Revealer row, notification
+  "(gs)"), its own kind as "name ~ prim user (dev|nightly|beta)". The gamesense lua asks too (owners: "ugyanilyen boxot
+  gs-be is"): its heartbeat carries `q=` the hashes of the players here (64 at most) and the list box under the checkbox
+  ("name ~ gs user" / "name ~ prim user (version)", "you" for ourselves, "nobody found here"; not saved in configs). If
+  `entity.get_steam64` does not give the 17 digit text, the gamesense lua sends nothing (not confirmed in game).
+- Zeus vs rushers (owners, Oct 2026: "ha valaki jön felém késsel akkor zeust vesz elő és lezeusolja, ha valaki zeussal akkor is,
+  ha egy helyben állsz hamarabb lő a zeus"): Misc "Zeus vs rushers" (on in default.cfg), `zeus_rush` in the setup command next
+  to the knifebot helper. An enemy with a knife (450 units) or a zeus (520) that runs at us (closing > 40 u/s, or within 220)
+  makes us `use weapon_taser` ONLY with a scout or an awp in hand (owners, Oct 2026: "csak akkor valtson ha scout vagy awp van a kezembe"; `zeus.SNIPERS`) (every 0.6 s; if no zeus came out the try waits 4 s); with the zeus out the lua aims at the
+  enemy's chest (cmd.viewangles) and presses attack when the enemy is inside the zeus range (182) with a clear wall trace:
+  standing the edge is 180, moving 170 (the "sooner" when still). The zeus WE took out is put away with `lastinv` after the
+  shot (clip 0) or 1.5 s without a threat; one we took ourselves is left alone. Misc "Disable DT with zeus" (on in default.cfg; owners, Oct 2026: "ha zeusz van nálam automatikusan kikapcsolja a dt-t"): `zeus_dt`
+  (RUN_COMMAND after `safe_recharge`, which would give the recharge back) empties the charge and blocks the recharge while `taser`
+  is the active weapon (`exploits.force_uncharge` + `block_recharge`, the knifebot helper's calls), `allow_recharge` once when another
+  weapon is out; the DT key itself is not touched. The decision is the pure `zeus.decide`
+  (tested). Not proven in game: the server checks the range on the lag compensated enemy, so firing "earlier" than the range
+  edge would only miss.
+- Fake ping set by hand (owners, Oct 2026: "beallitom 400 fakepinget es ahogy elindul a kor leesik"): the lua wrote 0 / 100 / its own value
+  over it at the round change (no enemy alive, knife out). `backtrack.update` now treats a slider value it did not write as the user's
+  (`backtrack.saved`) and never goes below it (except in the high ping guard).
+- default.cfg (owners' tester, Oct 2026: "kifagy a default confignal", "safe head nem jo zeusnal"): Safe head "Air zeus" is off in it (the
+  crouched zeus air pose is hit easily; the option stays in the menu), and the error paths of `configs.load_named` print with `tostring`
+  (`decoded_data` was an undefined name: a config that did not decode errored the Use callback = unloaded the script). The cause of
+  the freeze itself is not found: ask for the console line.
+- Resolver value held (owners, Oct 2026: "nem jol meri fel a szoget ... jitternel", a miss with `∠ 0°`): in the real shot logs of Oct 15-17
+  59 % of our shots had NO value (`cd` missing, `vl` 0: `resolver.update` writes only when the target's newest record is under
+  0.12 s old, a choking target updates every 8-15 ticks and a defensive shift is no record) and hit 63 % against 84 % with one.
+  Now the last value (`prev.held`, with its hypothesis) stays for 0.6 s and is written again; a target with no choke for 8 updates
+  (no desync possible) still gets 0. Watch `cd` None / `vl` 0 in the next logs.
+- Shared ESP in the lobby (owners, Oct 2026: "a shared esp ne csak meccsben mukodjon hanem lobbyba is"): outside a game `presence.update`
+  calls `presence.lobby` (PAINT polls it): the party members (`PartyListAPI`, up to 10, steam id from the xuid, our own from
+  `MyPersonaAPI`) are asked with the same `/presence` hashes every 30 s, our own badge goes out with `me=` when Shared ESP is on, the
+  found ones are listed by name ("name ~ prim user (v)" / "gs user") and announced once; no scoreboard moon (no entity). Needs
+  PAINT to run in the menu: not confirmed in game.
+- Users in the watermark row (owners, Oct 2026: "minden scoreboard cucc abba a sorba felul kene irnia", screenshot of the scoreboard with
+  no moon / flag change): the found Specter users (the Shared ESP list `shared_data`, lobby ones too, not ourselves) are a segment of the
+  watermark row: "Swify, EXC +1 specter" (2 names, then +N), shown only while somebody is found, no menu item.
+- Cloud config Use (owners, Oct 2026: "mas is be tudja tolteni mondjuk az enyemet mert nem tudjak"): `/configs/upload_part` decodes the uploaded
+  base64 parts and stores the config as JSON TEXT, `/configs/get` returns that text, but Use base64-decoded it again = "Unable to import"
+  for every shared config. Use now imports text that starts with `{` as it is (an old base64 one is still decoded).
+- Jumpshot helper (owners, Oct 2026: "ne stuckoljunk airbe ha lat valaki hanem tovabb bhoppolhat"): it switched Primordial's In-Air autostop
+  on while we were in the air, which stopped us the moment an enemy was in view. The autostrafer follows the air state; the in-air autostop is on
+  its own keybind ("Air stop keybind" under the Jumpshot helper, owners: "azt bindelhetore kene tenni"): held / toggled on = on, else off.
+- Cloud config time (owners, Oct 2026: "a cloud confighoz betehetnel olyat hogy mikor lett frissitve hany orakor"): the list rows are
+  "author ~ name  10-17 14:05 (3h ago)" (`cloud.stamp`: the server's upload time `ts` in ms, shown in OUR local time: the time zone is
+  the difference between `client_get_local_time` and the UTC time of `client_get_unix_time`; the age is now / Nm / Nh / Nd ago).
+- Anti-aim audit (owners, Oct 2026: "az antiaim nagyon hittelheto"; 1290 `kind:"aa"` rows of Oct 14-17): enemies hit 80 % of the events
+  (hit / hit + evaded) in EVERY state, yaw mode, jitter modifier, desync mode, profile, with / without defensive and anti brute phase
+  (77-88 %), so no setting of ours separates from another in those logs: judge a change by the per state head share, not by that ratio.
+  70 % of the hits are body (stomach 308, chest 158, head 302 of 1034), the head share is 26 % moving, 39 % in Air duck, 13-18 %
+  standing / ducked / Freestand, 20 % on de_mirage and 36-47 % on the aurorahvh maps. It also rises with the total ping (12 % under 40 ms,
+  21 / 29 / 30 % above, inside every day too): the total ping is mostly the fake ping of Improve backtrack (it fills up to 100 / 200 ms, `fp`
+  100 / 200 in the shot rows), so the fake ping may cost head hits. The AA rows now carry `fp` (the fake ping amount) and `spd` to tell it.
+  The anti-aim callback no longer rethrows (`builder.aa_failed`: the tick is skipped, a console line at most every 3 s); an error used to unload
+  the script = no anti-aim at all. `direct_base` is nil guarded (view angles / eye / render origin).
+- Resolver learning slider (owners, Oct 2026: "a lovesekbol mennyire tanul a resolver? ... csuszkat hogy hany %ban tanuljon"): the resolver learns from every
+  counted result (`resolver.on_result`: a hit = +1 good, a resolver miss = +1 bad for the hypothesis used, plus the 3 % pull back toward the start). Resolver page
+  "Resolver learning" (0-100 %, set to 100 at the start; new item at the END of the group): the weight of a result, 100 = as before, 50 = half a point and half the
+  pull, 0 = the hypotheses never change (the miss counters and the stats still run). Not a model-fitting rate in the AI sense: there is no network, only these counts.
+- Resolver taxonomy prompt (owners, Oct 2026, the "Desync misclassification" text): most of it was already in (9 hypotheses per state, Beta feedback per hypothesis,
+  feet model envelope, jitter detector with small-jitter returns and a persistence rule, high ping fallback, jitter / after-miss safe points). Added: (1)
+  `resolver.jit_levels`: the last 12 eye yaws grouped into levels within 3 deg, 2-3 recurring levels = `p.jit_kind` "cyclic" (the next-side hypotheses 8 / 9 get
+  +0.04), 6+ scattered levels = "random" (8 / 9 skipped: no next side to read); (2) idle fade: a situation unused for `K.idle` 2 s fades toward the start by
+  exp(-(unused - 2) / `K.idle_tau` 8), so a standing target that suddenly peeks does not keep a stale bias; (3) the jitter hold grows with the ping (+ ping / 2000 s, up to
+  250 ms). NOT done: the skeletal hitbox cross check (a bone setup per enemy per update, an FPS cost the owners complained about) and a low confidence ->
+  body aim / safe point rule (the "body aim when the head is unsure" version was reverted by the owners; the jitter / after-miss head safe point and Smart body
+  aim stay). Judge it by `cd` 8 / 9 hit rates and the jitter share of the misses in the next logs.
+- LBY / layers / lag comp prompt (owners, Oct 2026, the Hungarian "Klasszikus LBY Megtori Mintak" text): mostly in already. The feet model reads the REAL
+  `m_flLowerBodyYawTarget` of every record (so the 1.1 s / 0.22 s updates arrive as they happen, no timer to guess), the -58 / 0 / +58 weighting is the hypotheses 1-5
+  (full, half, none; `resolver.max_desync` 58 shrunk by speed / duck), layer 6 is read for the shot log (`l6` / `l6w`, not adopted without proof), the movement forecast
+  (`resolver.advanced`) is the linear extrapolation, the backtrack window is Primordial's, a miss lowers the failed hypothesis (`last_failed` -0.25) and the mirrored
+  ones take over, jitter / after-miss head safe points and Smart body aim exist. New: `p.lby_at` (when the LBY target last changed) and the shot log field `lbt` (its age
+  at the shot, s): check whether misses cluster right at an LBY update before building a predictor on it. NOT possible in the Primordial lua api: layer 3,
+  sequence activity, `InvalidateBoneCache` (no ffi / bone control).
+  The owners sent the same text again ("make it"), so two small rules went in: after a resolver miss the MIRRORED hypothesis of the failed one (`resolver.MIRROR`)
+  gets +0.08 before the next shot, and a standing target (speed < 5, on the ground) gets +0.06 on "no desync" (hypothesis 5) within `K.lby_window` 0.1 s of the
+  LBY update clock (`p.lby_at` + n x `K.lby_period` 1.1 s). Both unproven in game: compare `cd` 5 hit rate by `lbt` and hit rate after a miss in the next logs, and
+  take them out if they cost hits.
+- Prediction prompt (owners, Oct 2026: an engine prediction rewrite with CPrediction / SetupMove / curtime sync; answer: "primordial"): first answered WRONG that the Primordial
+  lua has no ffi (owners: "miaz hogy nincs ffi nezd meg ujra"): it has ffi and `memory_create_interface` / `memory_find_pattern` / `memory_get_vfunc` (the servers list,
+  the animation layers, the entity list and the chat already use them). The peek prediction (`backtrack.predict`, "Advanced prediction") moves OUR eye by our own velocity over the look-ahead
+  horizon (`own_velocity`). Tickbase shifts: an enemy rewind = `defensive_until` 0.25 s, no scan.
+  Tickbase page "Engine prediction (experimental)" (default OFF, not in default.cfg): `engine_prediction` (before `backtrack`) links `VClientPrediction001` (SetupMove vfunc 20,
+  FinishMove 21), `GameMovement001` (ProcessMovement 1) and the IMoveHelper (signature `8B 0D ? ? ? ? 8B 46 08 68`), runs `ticks` commands of our own `specter_usercmd_t` (the
+  input of the current command, `engine_prediction.capture` in SETUP_COMMAND) and reads the origin after them; the player's m_fFlags / m_vecVelocity / m_vecOrigin / m_aimPunchAngle / m_nTickBase are backed up and
+  restored every run. The 2018 netvar offsets (flags 0x104, velocity 0x114, origin 0x138, punch 0x303C, tickbase 0x3430) are checked against `get_prop` before the first call; a
+  difference or a missing interface = state "bad", one console line, nothing is called. NOT done: curtime / frametime sync (the globals pointer is not linked), `m_pCurrentCommand`, the predicted
+  random seed / spread. NOT confirmed in game: a wrong vtable index is a native crash that pcall can not catch, so it stays off until the owners try it ("Engine prediction" on, then
+  look at the console for "engine prediction off: ...").
+- Things that needed ffi and were skipped as "not possible" (owners, Oct 2026: "akkor az osszes olyan dolgot add amihez eddig ffi kellett"): the Primordial lua HAS ffi, so
+  (1) layer 3 (stop / adjust) and the layer sequences are read at every shot like layer 6, logged as `l3` / `l3w` / `l3c` (rate, weight, cycle), `l3s` / `l6s` (sequence), read only; compare
+  them with the LBY updates (`lbt`) and the side before they decide anything; (2) the engine prediction also syncs g_pGlobals curtime / frametime to the predicted tick (the pointer from
+  `A1 ? ? ? ? 5F 8B 40 10`, used only when its tick count and interval read back what the lua api says) and restores them. NOT built, on purpose: `m_pCurrentCommand` and the predicted random seed /
+  weapon spread (an offset that can not be verified against a netvar = a blind memory write), `InvalidateBoneCache` / a skeletal cross check (a bone setup per enemy per update, the FPS cost,
+  and Primordial's own hitboxes are what the aimbot shoots), pelvis / spine rotation and slow walk animation overrides (client side animation only: the server hitboxes do not change, so no
+  anti-aim gain), a faked LBY update (a game mechanic, not a memory write).
+- Engine prediction crash (owners, Oct 2026, console: "failed to run callback SETUP_COMMAND ... bad argument into 'float(const api::vec2_t&, int)'" in `verify`): `get_prop("m_vecOrigin")`
+  / `("m_vecVelocity")` are 2D vectors in Primordial, `.z` raises and an error in a callback UNLOADS the script. `engine_prediction.vector(ent, name)` reads x / y and takes z from
+  `name[2]` or 0 (also `no_fall`, which indexed `.z` the same way); the whole engine prediction call in `backtrack.predict` is in a `pcall`, `capture` runs only with the option on. Never index
+  `.z` of an origin / velocity netvar, use that helper.
+- "Complete rewrite of the resolver and anti-aim" prompt (owners, Oct 19 2026, a generic Primordial prompt): almost everything it lists is in already (per state hypotheses with
+  good / bad weights, learn rate, forget, defensive / lag break penalty, Smart body aim with the lethal check, latency guard, fast peek, HITSCAN safe points, TARGET_SELECTION
+  peek priority, shot snapshots, stats panels, adaptive AA bandit, anti brute Phases / Shift, X-Way / Distort / Random hold, micro noise per packet, own freestand, direct control).
+  Not a rewrite: the owners' rule is to extend. Part of the prompt does not fit the api: `antiaim.get_desync_side` / `get_body_lean` / `is_inverting_*` describe OUR OWN antiaim, not an
+  enemy's. Added: Resolver page "Body only on defensive" (default off, `ui.ragebot.def_hold`, used in `resolver.hitscan`): while the target's tickbase shift is on
+  (`p.defensive_until`, 0.25 s after its sim time went back) the head group is off and the body is forced, like Smart body aim does. Logs (Oct 16 / 17): shots at a shifted
+  target (`df`) are 26 % of the shots and hit 0.39 against 0.79; compare with the option on.
+- "Systems that do not exist yet" prompt (owners, Oct 19 2026, 6 resolver + 6 anti-aim + a PlayerState cache): taken in part. Added: (1) Resolver page "Defensive lock ticks" (1-64, 16 at
+  the start, shown with "Body only on defensive"): the body-only window after the target's shift (`p.defensive_at`) is now this many ticks instead of a fixed 0.25 s; (2) the
+  Switch noise is scaled by the state (`builder.NOISE_SCALE`: Stand / Duck 0.6, Slow walk 0.8, Air / Air duck 1.5) and the AA shot log rows carry it as `nz`.
+  NOT built, on purpose: confidence -> head / body forcing ("Min confidence for head" / "Force body below confidence": the "body aim when the head is unsure" versions were REVERTED by the
+  owners, see the Oct 16 list); a pose parameter / layer fusion side detector (the owners' old pose resolver and the logs `l3` / `l6` have to show a correlation first); a PlayerState cache
+  rewrite (every reader would change at once: against the "extend, no rewrite" rule); predictive anti brute (the Phases anti brute + the bandit already rotate on a hit / near miss);
+  the live max desync controller (`ctx:set_desync` takes a fraction of the engine's own limit, `antiaim.get_max_desync_range` is for our own AA); a choked-only micro jitter (the
+  per packet noise already is that); a standing LBY breaker (Primordial's desync does it; a body lean flip without proof is a guess); a low charge defensive trigger (a defensive needs the
+  charge: with it low there is nothing to shift). `antiaim.*` getters describe OUR OWN antiaim, they say nothing about an enemy.
+  Owners asked why the confidence options were left out ("Miert nem epitetted bele"): they are in now as SEPARATE options that are 0 = off by default, so the reverted behaviour only exists if
+  somebody switches it on. Resolver page "Min confidence for head" (a head safe point below it) and "Force body below confidence" (body only below it); the confidence is
+  `resolver.confidence(idx)` = the Beta mean (good / (good + bad), 0-100) of the hypothesis in use for that target and situation, nil while nothing is learned; shot logs carry it as `cf`.
+  Judge them by the hit rate per `cf` band in the logs before using a value.
+- Pattern snippets the owners pasted (PlayerState cache, defensive detector, dual rate learning, confidence -> hitscan, dynamic max desync, choked micro jitter): the detector, the learning
+  (weight = Resolver learning), the confidence feedback and the micro noise were in already (`resolver.track` events, `resolver.on_result`, `resolver.confidence`, `builder.noise`).
+  New: a resolver miss at a low hit chance counts less (`on_result`: 0.5 at hc 0 up to 1 at hc 100 of a point), the spread is more likely there than the resolver. Not built: the cache (one
+  more copy of `resolver.data`), dynamic desync (the builder amounts are fractions of the engine limit; `antiaim_get_max_desync_range` is imported and unused).
+- Native resolver check (owners pasted an analysis claiming `native=true` shots and a `resolver.native` bug, Oct 19 2026): checked against the logs in `shotlogs/primordial`: `native` true on
+  Oct 14 (357 of 490) and Oct 15 (161 of 338), the days before the "no fallback" fix, and 0 of 331 on Oct 16 / 17. The only path to Primordial's resolver left is the disabler mode "Disable"
+  (`resolver.active` false -> `resolver.native(false, false)` gives back the user's OWN "Resolve Antiaim" setting, `auto_cfg.resolve_antiaim`): intended, the owners chose "Disable".
+  What the logs (Oct 16 / 17, 331 shots) do show: in the air 27 of 62 shots have NO value (`vl` 0, `cd` None) and hit 0.48 against 0.66 with one (ground: 0.66 without, 0.72 with); the
+  fake ping 400 (the user's own slider) 121 shots, non-defensive hit 0.73 against 0.78 at fp 0 (not significant). New shot log field `vw` = why there is no fresh value: "few" records,
+  "nochoke" (no desync possible), "stale" (no record under 0.12 s and the held value older than 0.6 s), "held" (the last value written again); read it before changing the hold.
+- "Fix the resolver + anti-aim, evidence driven" prompt (owners' file `primordial_resolver_aa_fix_prompt.md`, Oct 19 2026), checked against the logs with the new
+  `python3 tests/primordial_resolver.py [dump.txt] [--since DAY]` (all the tables; reads `origin/shotlogs` without a file; exit 1 when a shot row after `--since` lacks `r`, `native`, `ping`, `hc`,
+  `fp` or `sx`). What was WRONG in the prompt: (1) "44 % of the shots are `native:true`": 518 of 1159, all of them on Oct 14 / 15, before the "no fallback" fix; 0 of 331 on Oct 16 / 17;
+  (2) "`dead:true` inflates the hit rate": `dead` is `hp <= 0` after the shot = a KILL, always a hit (461 of the 780 hits); the 67.3 % over all shots is the real rate; (3) "`sp` is missing on most rows":
+  `sp` is nil (left out of the JSON) when no safe point was set, so absent = none; the safe point rows score lower because they are the hard shots (jitterers, after misses, low HP), not because
+  the safe point costs hits; (4) the AA list was read backwards: the numbers are the ENEMY's hit rate on us, so LOWER IS BETTER for us: Duck 76.2, Move 77.4, Random hold 64.6, Static 68.0, Packet coin 77.7 are
+  our best, Air 86.6, Duck move 85.9, Stand 84.8, X-Way 83.2, Delay tied 82.8 our worst; (5) the only enemy-defensive number that matters is `df` (116 shots, hit 0.37 against 0.71).
+  Changed: the shot log `cm` is the miss streak AT FIRE time now (`s.misses` in `capture`; it was read after the result was counted). Left alone (no number supports a change): the resolver
+  hypotheses, the safe point layer, Smart body aim, the AA modes. Open from the numbers: X-Way (83.2 %, 524 rows, the mode default.cfg uses in Stand / Duck / Air) against Distort 79.8 % and Random hold
+  64.6 % (48 rows only): not proven, states are mixed in; the air shots without a resolver value are logged with `vw` now.
+- Measured fix task, Oct 16 / 17 logs ONLY (owners' long Hungarian spec, Oct 19 2026). Baseline reproduced exactly: 331 shots (Oct 16: 99, 73 hit; Oct 17: 232, 151 hit), 490 AA rows, native false 331 / 331,
+  df / lb free shots 180 / 220, df or lb 44 / 111, 114 shots without `cd` (113 with `vl` 0), 9 identical extra lines (all AA rows inside one batch: 4 of the groups are hitgroup 0 damage 8 = fire ticks, so they are NOT proven
+  duplicates and are not deleted), 383 AA hits of which 83 have hitgroup 0. Findings: (1) 83 of 383 AA "hits" (21.7 %) are hitgroup 0 with 1-24 damage, gaps of 0-1 s = fire / grenade damage, not shots: the enemy hit rate on us is 78.2 %
+  raw, 73.7 % (300 of 407) without them; `player_hurt` fed `aa_record` AND `builder.anti_brute_trigger()` with any damage of an enemy: now only bullets (`builder.is_bullet_damage`, `NON_BULLET` = inferno / hegrenade /
+  incgrenade / molotov / flashbang / smokegrenade / decoy); (2) the missing `cd` is NOT what costs hits: free of df / lb, no `cd` 44 / 50, with `cd` 136 / 170; the low hit rate of valueless shots (air 0.48) came from the
+  df / lb shots (they have no fresh value); (3) a hit counted a full point for the hypothesis even when the aimed group was the body (172 of 331 shots aimed the head, 155 the body): body hits count 0.5 now (`on_result`);
+  (4) shot log `sp` / `hd` are the policy AT FIRE time (`capture`), `hd` = hp_body / lethal_body / defensive_policy / confidence_body / confidence_safe / jitter_safe / safe_head / normal_head. NOT changed (no number backs it):
+  hypothesis weights, the safe point layer, the AA profiles. Not proven in game: the effect of (1) and (3); watch the AA table without hg 0 and `cd` hit rates in the next logs.
+- hvh.gg servers (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg"; then "crashes the game after i refresh hvh.gg"):
+  Misc > Servers has a second list "HvH servers (hvh.gg)" + "Connect to the selected hvh.gg server" / "Refresh hvh.gg" (`servers.hvh_*`). The lua
+  does NOT ask hvh.gg itself (the first version did, through the steam http library, and a big page crashed the game): server.js `GET /hvhgg`
+  reads `HVH_SOURCES` (fixed urls, 8 s, at most 1.5 MB, cached 60 s, 60 requests / IP / 10 min) and answers a clean list `{ srv, name, map, players }`
+  (at most 100), the lua asks it every 60 s while the page is open and checks each row again (`servers.hvh_rows`, `servers.valid`). hvh.gg could not
+  be reached from the build container, so the shape of its answer is NOT known: `hvh_parse` reads JSON objects (an ip:port in addr / address /
+  connect / server, or ip + port, with name / map / players) at any depth, else every ip:port of the text. If the list stays empty (Oct 2026: "hvh.gg: no server found"), open `<server>/hvhgg?debug=1` in a browser: it lists per source the status, size, content type
+  and the first 1500 characters of what hvh.gg / hvh.cat (the browser built on hvh.gg's data, `/csgo`) answered, send that and fix `HVH_SOURCES` from it.
+- hvh.gg list filter (owners, Oct 2026: "change only to eu servers and dont scroll just show the name and ip ... showing cs2 2018 and every server only csgo
+  2023"): the list works now, the rows are `name  ip:port` (no map / players), at most 20 (the list shows 20 rows, no scrolling). The fields of a hvh.gg row
+  are NOT known (the build container can not reach it), so `hvh_wanted` (server.js) judges a row by what its own scalar fields say: a value naming CS2
+  or the year 2018 drops it, and when a region / country / continent / location field exists it has to be a European one (`HVH_EU`); a row that says
+  nothing of a kind stays. If it still shows the wrong ones, `/hvhgg?debug=1` now lists per source the first 8 rows with all their fields and
+  whether they were kept (`rows`): send that and the filter is made exact.
+- Server list (owners, Oct 2026: "ha valaki elérhető egy külön tabban mutatja melyik szerveren van és lehet hozzá csatlakozni";
+  Primordial only, the gamesense lua has no user detection to build on): Misc > "Servers" (page 15). "Share my server" (default
+  OFF, a RAW `menu_add_checkbox`, not an eui item: eui exports every checkbox into the configs, and an imported / cloud config must
+  never switch sharing on) sends our `ip:port` (read from the net channel, `INetChannelInfo::GetAddress` = vfunc 1 of
+  `VEngineClient014` vfunc 78), name, map and player count to `GET /servers` every 20 s; the list "Specter users on servers" shows the
+  others, "Connect to the selected" runs `connect <ip:port>`. The list is polled only while the page is open or sharing is on;
+  unchecking the box / unloading sends `off=1` (the entry also dies after `SERVERS_TTL` 60 s). A row's address is checked on the
+  server (`public_srv`: public ipv4:port only, no private / loopback / multicast) and again before `connect` (`servers.valid`):
+  it is somebody else's text, never a console command. server.js keeps it in memory, 120 requests / IP / 10 minutes.
+- Steam http lib (`libs.httpcreator`, minified): its passes run on `global_vars_real_time()` (curtime starts again on every
+  server: after a switch to a younger map no request was answered); a finished request leaves the list before its
+  callback and is not timed out in the same pass (its callback ran twice, the request after it was dropped).
+- Cloud configs (owners, Oct 2026: "a cloud cfg ... nem működik"; it was the dead azura.uno socket): the `cloud` module
+  talks to OUR license server like the gamesense lua, `lua=pm` keeps the two apart (server.js `config_lua`: the gs list /
+  dedup / delete never see a pm config and the other way round). `GET /configs?lua=pm` = the list without the data
+  (rows "author ~ name", newest first, loaded at start and by Refresh), `GET /configs/get?lua=pm&name&author` = one config
+  (Use imports it). Upload (Configs: the selected local cfg) / Update (the selected cloud row's name) send the eui export
+  in base64 through `/configs/upload_part` (3000 char parts, part 0 first: it starts the upload), Delete only the own ones.
+  Listing and Use need nothing; sharing needs the key the Primordial loader saved in csgo/specter/key.txt and the
+  loader's HWID (`cloud.hwid` = the loader's `get_hwid`, keep them the same), else a "log in once with the loader" note.
+  The dev build (`info.plan == "dev"`, no key) shares and deletes too (owners, Oct 2026: "fix that dev can upload to cloud too"): `cloud.auth`
+  gives `&dev=1&who=<user>` instead of key + hwid (see the server note under Cloud loadouts).
 - Loader + versions (owners, Oct 2026: "beta és nightly ... a bétaba nincs resolver, a ragebot Helper maradhat"):
   `specter_primordial_loader.lua` (key text input + Login, the key saved in csgo/specter/key.txt and used at the next
   start, HWID = hash of the C: volume serial + computer name, steam http + filesystem libs copied from the script):
@@ -169,7 +531,16 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   "a beta külön fájlt kapjon"): `primordial_builds` / `make_primordial_beta` in the bot cut everything between
   `-- [pm-resolver:begin]` and `-- [pm-resolver:end]` (the whole resolver logic) and put `PM_BETA_STUB` (same names, does
   nothing) there, before the comments are stripped. Keep the markers; nothing outside them may use the resolver's
-  internals (res_*, RES_*, resolver.update / freestand / ...). The script has no auth gate (it is also the #staff dev build).
+  internals (res_*, RES_*, resolver.update / freestand / ...).
+- Auth gate (owners, Oct 2026: "amint alapból a cloud scriptet töltik be ... kicrashel ... külön béta és nightlyra"):
+  the repo file `specter_primordial.lua` has NO gate (it is the #staff dev build, runs without a key). The bot prepends
+  `PM_AUTH_GATE` (`-- [pm-auth:begin]` / `-- [pm-auth:end]`) to the CUSTOMER builds in `primordial_builds` (pm_nightly +
+  pm_beta, after the comment stripping), so only the script on the server carries it. Like the gamesense gate: `server.js`
+  `/script` prepends the auth globals (for a pm plan `_auth_ts` reads the clock with `client.get_unix_time`, not
+  gamesense's `client.unix_time`), the gate checks `_auth_ok` / `_auth_alive` and a fresh `_auth_ts` (±30 s), wipes every
+  `_auth_*` / `_server_url` (keeps BUILD_VERSION, `info.plan` reads it) and else returns at the top so the chunk never
+  runs. Loaded standalone (no loader, the globals missing) or with a stale token the cloud file does not run. Obfuscate
+  the customer builds on top of this; `is_primordial_script` is checked on the RAW repo file (before the gate is added).
 - Primordial API: docs.primordial.dev is blocked from the cloud container; the leaked workshop luas
   (github.com/DuckOpenSourceFoundation/femordial-workshop-luas) show the calls. ANTIAIM ctx: set_yaw, set_pitch,
   set_desync (-1..1), set_invert_desync, set_fakelag, set_body_lean; desync side items: none, left, right, jitter, peek
@@ -385,6 +756,12 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   the loadout named in the box (else the current config under that name) through `/configs/upload_part`; "☁ Refresh cloud".
   The author is the key's note, else `user-` + 6 hex of its SHA-256 (`config_author` in server.js; it was the key's last
   6 chars, public). `_server_url` is `PUBLIC_URL`, else the host the script was downloaded from.
+  The dev build (no key) shares / deletes too (owners, Oct 2026: "fix that dev can upload to cloud too"; before: "sharing / deleting needs
+  a key + HWID, so not from the dev build"): `cloud_auth()` sends `dev=1&who=<player name>` (or `dev`) instead of key + hwid, both luas.
+  server.js (`dev_request` / `dev_license` / `dev_rate_ok` / `dev_cap`, `/configs/upload_part` and `/configs/delete`): author
+  `dev-<who>` (A-Za-z0-9_ .- , 16 chars), plan `dev`, 200 requests per IP in 10 minutes, at most 40 dev configs on the list (the oldest
+  DEV ones go first, never a customer's), a dev request deletes only plan `dev` configs. The repo is public, so this is an open door by
+  design: `who` is not proof of anybody.
   `python3 tests/cloud_loadouts.py` (mock http; `tests/perf/mock.lua` takes `opts.libs`)
 
 ## Recommended config
@@ -505,3 +882,71 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   Fails when the best attacker hits a preset / state above 0.60 (a forced side guess is ~0.47). Reworked AA (Oct 2026): 0.37-0.52,
   mean 0.46 (the 7 old presets 0.39-0.53, mean 0.48; was 0.63 before the coin flip body side).
   It models the angles only, not the animation layers a real cheat also reads.
+- Load freeze report (owners, Oct 19 2026: "primo mindig egybol fagy, tegnap meg mukodott"): the diff of that day touches no load-time native code (no ffi, no signature, no panorama); the only
+  change that runs while the menu is open at the start was `menu_handle` writing the "Resolver learning" and "Defensive lock ticks" sliders (`.ref:set`) on EVERY frame. They are set once now
+  (`ui.slider_defaults_set`), which also lets the user move them. Not confirmed as the freeze cause: if it stays, the known good file is the Oct 17 version (`git show 8a97498:specter_primordial.lua`).
+- Load trace (owners, Oct 19 2026: "primo mindig egybol fagy ... nem latjuk hany szazalek, elhomalyosodik a kep"): the load freezes before the console can be read and
+  the diff of the day has no load-time native code. `load_step(name)` (a global, the tests extract blocks without it: every call is `if (load_step) then ... end`) writes the current step to `csgo/specter/load_trace.txt` (settings.json's folder, overwritten, one line) BEFORE the
+  step runs: at every `--- @region:` (col 0, from "useful codes" on), the three native signature groups at the top (hud / chat, fs_tesla, clipboard vtable), every `setup()` stage, every
+  `execute_tasks` callback registration and the three `finish_up` parts; the last line "loaded" = the load went through. After a freeze the file says which step never finished. Keep a new
+  top-level region marked with a `load_step` line, and remove the trace only when the freeze is found.
+- Oct 19 2026 REVERT (owners: "csinald vissza az osszes mai updatet", the load froze and the cause was not found): `specter_primordial.lua`, `tests/primordial_regress.py` and `tests/primordial_advanced.lua` are back to the
+  Oct 17 state (merge 8a97498, the last build the owners ran). Gone with it: the Oct 19 resolver / AA changes of this file (learning weights by aimed group / hit chance, the confidence / def_hold options, fire / grenade damage
+  filter, per attacker near miss, `vw` / `cm` / `sp` / `hd` shot log fields, delay profile coin flip, state scaled noise), the other session's commits of that day (fault log, resolver context, no random animation) and the
+  load trace. Their git history stays (PRs #165 - #179); the files they added (`.github/workflows/primordial-*.yml`, `tools/apply_primordial_*.py`, `tests/primordial_*_regress.py`) were left alone and fail against this file.
+- Safe load rewrite (owners, Oct 20 2026: "mindent csinald ujra nagyon safebe, csak Primo lua apival ... 0 hibaval"; the game froze at the load and the Oct 17 build, the last one with hitlogs, froze too: nothing in the repo changed
+  between, so the suspect is native code that runs at the load against a game / Primordial build that moved): base = the Oct 17 build (8a97498; its fields `l3` / `lbt` are in the last shot logs of Oct 17 21:28). Taken out: the
+  winsock block (`get_extension`, GetProcAddress, ws2_32: dead since the offline rewrite), the CHudChat signature + the call into client.dll at the load (`chat_print` is a console line now, the {colour} tags are dropped),
+  the vfunc based coloured console print (`color_print`: the logger goes through Primordial's own `print`, kept as `libs.print` before the script replaces `print`), `console_is_visible` (the console colour follows the checkbox only),
+  `find_sig`, and the Tesla effect (native FX_Tesla call at every shot: "Tesla on shoot" and its sliders are gone, saved configs just ignore them). Lazy, in a `pcall`, on the first use: the vgui2 clipboard (`clipboard_bind`),
+  the "Open folder" button (`configs.open_folder`: current directory + shell execute). `libs.filesystem`, `libs.httpcreator` and `libs.panorama` are created by `libs.native(create, stub)`: when one fails the script gets
+  `libs.nothing` stubs (no files / no http / no panorama) and still loads; `libs.safe_js` does the same for the scoreboard JS and `libs.tools.js.create` runs in a pcall. The moon icon is handed to panorama only when the file in
+  the image folder is a whole PNG (`presence.icon_valid`: signature, IEND trailer, size). What still touches game memory at the load without calling it: the entity list interface (`get_entity_address`, `raw_entity_list`, animstate /
+  layers, needed by the resolver) and the libs above. NOT possible with the Primordial api alone: files, http, the animstate the resolver writes. Not proven in game.
+- Oct 20 2026 (owners: the uploaded file `specter_primordial.lua` "works": it is byte for byte the comment stripped Oct 17 build, merge 8a97498, so the freeze of Oct 19 was not in the script): the safe load rewrite above is NOT on `main` any more, `main`'s
+  `specter_primordial.lua` is the Oct 17 build again. The rewrite is kept on the branch `safe-load` (merge 0a29546, PR #181); it was never tried in game, and it drops the Tesla effect and the native chat lines, so it comes back only when the owners ask.
+- Random numbers in the enemy animstate (owners, Oct 20 2026: "valoszinuleg a math.random miatt"): the only code that wrote random numbers into enemies was `team_animation` ("Cool team animation", an old azura cosmetic: 25 animstate fields of every enemy
+  from `client_random_float` on every NET_UPDATE, feet yaw 549 / -256, positions in the tens of thousands). It was off in default.cfg and skipped while `resolver.active`, but a user with the box on and "Disable" as resolver mode fought
+  our own resolver with it: the function, the checkbox and the call are gone. No `math.random` / `client_random_*` is in the resolver block (`-- [pm-resolver:begin]` .. `end`): the other uses are our own anti-aim (side flips, noise, phases),
+  the killsay lines, the console colour and the shot log salt. Logs Oct 14 - 17 (1159 shots, 67 %): the miss reasons are Primordial's `jitter` 164 + `resolver` 72 (62 % of the 379 misses), `ping (local death)` 39, `spread` 58, `occlusion` 29;
+  shots at a target in a defensive / lag break (`df`) hit 37 % (116 shots) against 71 %; hit chance 100 shots hit 72 % against 51 - 62 % at 75 - 93.
+- Resolver + prediction pass (owners, Oct 20 2026: "resolver still missing so much ... fix resolver and better prediction"), from the logs of Oct 16 / 17 (331 shots, 68 %): (1) head shots at a target that shifted its tickbase / broke its lag
+  compensation (`df` / `lb`, classified at the RESULT) hit 13 of 63 (21 %), the same shots at the body groups 31 of 47, outside a defensive the head hits 82 of 109 (75 %), chest 83 %, stomach 92 %: 37 % of all head shots are at such
+  targets and they are 47 % of all misses. Resolver page "Body only on defensive" (default ON, `ui.ragebot.def_hold`) + "Defensive lock ticks" (1-128, 48 at the start = 0.75 s, `def_ticks`): while the target's last shift / lag break event
+  (`p.events`, seen by `resolver.track`) is younger than that the head group is off in `resolver.hitscan` (`resolver.enforce_body`), only when a body bullet can hurt it (`resolver.body_damage` > 0, else the head stays); `resolver.safe[idx]` = 4
+  (3 = smart body aim; the three readers of "3" take >= 3). The events are seen one latency late and a shift can start after the shot, so only part of those shots can be avoided: the shot log now carries, from the moment of the shot,
+  `sp` (policy, 4 = this lock), `cm` (miss streak) and `ea` (age in seconds of the target's last shift / lag break event at the shot; no `ea` = none seen): the hit rate by `ea` and `sp` 4 tells how long the lock must be (the shots with
+  `df` and `ea` None are the ones nobody could have avoided). (2) `on_result`: a hit with an aim group other than the head counts half for the hypothesis (a body hit says little about the angle), a resolver miss at hit chance 0..100 counts
+  0.5..1 (spread). (3) Peek prediction (`backtrack.predict`, now with `backtrack.hurts`): a target that can be hurt only at the chest after its move is a peeker too (it was the head only), a head we can already hit ends the check (fewer
+  traces than before). (4) The "Resolver learning" (100) and "Defensive lock ticks" (48) start values are set ONCE with the other sliders after the ui table (`menu_handle` used to write learn_rate every frame: the slider could not be moved).
+  Not proven in game: judge them by `sp` 4 / `ea` / `df` in the next logs (`python3 tests/primordial_resolver.py`).
+- Files written at every start (owners, Oct 20 2026: "irja felul a default.cfgt, meg a cvar_dump.txt"): `csgo/specter/default.cfg` (the embedded owner config, `configs.reload_configs`) and `csgo/specter/cvar_dump.txt` (`cvar_dump`,
+  called with `pcall` after `fps_boost`: one line per cvar the script changes = "name, value before the script (`auto_cfg`, given back on unload), value now"). Both are overwritten, never read back.
+- Cheat revealer: taken out again (owners, Oct 21 2026: "szedd ki a cheat revealert"); the embedded bytecode, its menu item and `revealer.update` are in git history (PR #186).
+- Anti-aim (owners, Oct 21 2026: "írd át az egész aa részét ilyen simple antiaimra de profi kódolású"): the WHOLE old engine is gone (advanced builder with X-Way / Distort / Random hold, lua jitter modifiers, Smart defensive, Phases anti brute, Adaptive AA bandit, Direct
+  control recorders, Apply advanced preset, Fakelag variance, Random desync side, Switch noise, the warmup spin and the crouch correction); it is in git history (PRs up to #188), so older notes on those in this file are history. `run_antiaim` is ONE engine in the `-- Anti-aim` block (`builder.adv` pure maths, `builder.step`,
+  `builder.defensive_run`, `builder.safe_head`, `builder.knife_yaw`), only the lua api (`ctx:set_yaw` / `set_pitch` / `set_desync`); Primordial keeps the fakelag and the tickbase shift. NO random number anywhere in it (the regress checks that). Per state
+  (`ui.antiaim.builder[i]`, i = 1..11 as `states`; a state without "Override" uses Global, labels "S | Ways" ...): Ways 2-7 with one yaw slider per way ("Way 1..7"), Way order (Skip = the fixed permutations `builder.adv.WAY_ORDER`, Linear), Hold (+ extra on odd steps) in sent
+  packets, Desync side (Thue-Morse = `builder.adv.tm_side` of the packet counter, no period; Alternate; Left; Right) and amount, Brute shift, and a basic defensive: trigger (Off / On peek = `builder.peek_visible` unsafe peek / Shot at / both / Always via `defensive:trigger`),
+  pitch (Down / Up / Zero / Sweep triangle wave), yaw (Static / Sideways / Flick = Thue-Morse +- value / Spin) and a value. Anti brute (`builder.anti_brute_trigger`: a hit or a bullet past the head, 0.15 s debounce): the phase goes up, the ways start one step further, the desync side
+  flips on odd phases, the yaw gets +- Brute shift for 0.7 s. Manual keys (`builder.own_manual`), the Freestand key (`builder.own_freestand`, 2 traces every 4 ticks), the knife behind us (Anti backstab) and Safe head (Air knife / Air zeus / Height advantage, "Allow defensive") override the
+  way. Menu labels of the defensive are "Def trigger / Def pitch / Def yaw / Def value" (the old "Defensive pitch" etc. had other value lists and an old saved config would set them out of range). The AA stats / shot log rows (`kind:"aa"`) carry the state and `wy` (ways). The old
+  logs (Oct 14-17: enemies hit ~80 % of the events in every setting) are the baseline: judge the new one by the head share per state and ways. Not proven in game.
+- Scoreboard row of a Specter user (owners, Oct 21 2026: the mock-ups they picked, "csak a mi sorunkat változtassa meg a többi maradjon", "GS zöld, prim lila", the moon after the label): replaces the old badge beside the rank / over the country flag
+  (the flag code `find_flag` is gone). In the Panorama JS (`libs.tools.js`, `get_panel`): the ROW of a Specter user gets an inline tinted gradient background, a 1 px border and a 2 px stripe on its left (`LOOKS`: gs green, pm lilac), restored when the user goes (`destroy_panel`);
+  a badge panel "SPECTER GS" / "SPECTER PRIM" + the moon is inserted before the money cell (`data-stat` money / cash; no such cell = only the row look, the badge stays hidden: Home > "Dump scoreboard row" prints the cells). The other rows are untouched, the star / MVP column stays.
+  `presence.refresh_icons` passes the kind (`gs` for the gamesense lua's heartbeat, else pm); the moons are `specter_moon_pm.png` (lilac) and `specter_moon_gs.png` (green), 64 x 64, the detailed crater moon from the owners' reference image, downloaded one after the other from server.js
+  `GET /moon_pm.png` / `/moon_gs.png` (`/moon.png` = pm, for older scripts) into csgo/materials/panorama/images/icons/. NOT confirmed in game: the earlier badge never showed on the owners' scoreboard either; the first thing to check is the "Dump scoreboard row" output (cell ids / data-stat) and the row style being accepted.
+  `node tests/primordial_scoreboard.js`, `python3 tests/...` presence: `tests/primordial_presence.lua` via lupa (both are run by hand).
+- Menu symbols + Information page (owners, Oct 21 2026: "szimbólumokat a menübe meg egy külön tab information, oda dc link"): the five main buttons carry a symbol (`NAV_SYMBOLS`: ☾ Config, ◎ Ragebot, ✦ Anti-Aim, ❖ Misc, ℹ Info); the Primordial menu draws text only, so a symbol is a character of the menu
+  font: one that shows as a box in game is swapped in that table (not confirmed which ones the font has). New main button "Info" with the page "Information" (page 16, group `groups.about`, `ui.about`): version / plan, the Discord (`PM_DISCORD`), "Copy the Discord invite" (clipboard) and
+  "Open the Discord" (`SteamOverlayAPI.OpenExternalBrowserURL` through panorama in a pcall, the invite is copied when that fails). The regress covers the page / group mapping.
+- Enemy AA type (owners, Oct 21 2026: the "Extended AA detection - PEEKING and STACKING" of other luas, chosen from the list; the lists came from an UnknownCheats-style paste, the site itself is behind a Cloudflare challenge the cloud container can not pass): `resolver.aa_type(p)` in the pm-resolver block:
+  "static" (no jitter), "jitter" (random looking), "stack" (the jitter recurs on 2-3 yaw levels = `p.jit_kind` cyclic), "peek" (jitters < 25 % of the records while it stands / ducks and > 60 % while it moves, 8+ records of each, `resolver.aa_note` keeps the decayed
+  counts per class in `p.aa`, over the state changes that wipe the jitter history). INFO ONLY: it is the shot log field `aat` (and the `enemy AA type (aat)` table of `tests/primordial_resolver.py`); no resolver rule uses it until the logs show how the hit rate differs by type. The other items of those lists
+  (modes Auto / Static / Smart / Jitter, patterns, stance, head vs body desync = our feet model, anti brute, backtrack, occlusion) are in already under other names; not built: manual resolver modes, the 3D prediction box.
+- Primordial loader builds + the dev key (owners, Oct 21 2026: "dev kulcs: mind a 3 megjelenik, beta: csak beta, nightly: beta és nightly"): a key's plan decides which BUILDS it loads, `PM_BUILDS` in server.js: `pm_dev` -> pm_dev / pm_nightly / pm_beta, `pm_nightly` -> pm_nightly / pm_beta, `pm_beta` -> pm_beta.
+  `/verify` answers `builds` (the list); `/script` takes `build` (default = the key's plan: the gamesense loader and an older Primordial loader send none) and answers `wrong_build` for one the plan does not allow; the ticket is still signed with the key's plan, the delivered script is `get_script(build)` and
+  `BUILD_VERSION` is the build (so `info.plan` = dev / nightly / beta: a dev key runs the DEV build, shot logs included). New plan `pm_dev` (server `VALID_PLANS`, bot `PM_DEV_PLAN` / `KEY_PLANS`, role Primordial): the bot's `sync_primordial_dev` (release loop + /release_check) uploads specter_primordial.lua of SCRIPT_BRANCH (main) with
+  the auth gate and the comments stripped as `pm_dev` (ETag poll, uploaded when the server's hash differs); nightly / beta still come from CLOUD_BRANCH. `specter_primordial_loader.lua` (LOADER_VERSION 3): with one build it loads it as before; with several it shows one button per allowed build ("Load dev" / "Load nightly" /
+  "Load beta") and remembers the last pick in csgo/specter/build.txt (the next start loads it at once); a button press logs in again (the ticket lives 20 s). Create a dev key with /key_create plan `pm_dev`. NOT tried against a live server / game: the regress checks the plan table, the loader's list parsing and the source strings.
