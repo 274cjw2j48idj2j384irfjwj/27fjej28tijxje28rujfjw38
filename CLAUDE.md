@@ -281,13 +281,6 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   record). The advanced prediction (peek check) aims its look-ahead trace at that point instead of velocity x time; the beta
   stub has no `resolver.advanced`, so the call site checks it. The lag break limit of `track` stays 32 ticks (their 64 would
   call a runner's normal 250 u/s a teleport).
-- AA hardening (the owners' "combined" file, Oct 2026, taken in part): `builder.rnd` / `builder.adv.norm` give a number for NaN /
-  inf / nil, `builder.own_freestand` returns nil on a missing player / origin / eye / trace instead of an error, and the
-  defensive "Jitter flick" flips every SENT packet (`builder.yaw_flip`) instead of the game tick's parity (an even choke sent
-  every packet on the same parity = one side). NOT taken: their `arm_group` (one group per state split the bandit's learning
-  over 11 groups instead of 4), their `brain_learn` (body hits taught the profiles, the design says they teach nothing) and
-  the wrappers around `builder.adv.*` at the end of the file (a second copy of the logic that the tests do not see); their
-  simpler forecast duplicated the module that is already in.
 - Safe head (owners, Oct 2026: "add safehead to the aa"): Features "Safe head" has Air knife / Air zeus (crouched in the air with
   that weapon out), Height advantage (`builder.height_safe`, the gamesense lua's trace: an enemy 5+ units below us whose bullet
   reaches the head; every 4 ticks, 2 enemies at most) and Allow defensive; the safe head sets pitch down, yaw add 0, no jitter /
@@ -299,61 +292,6 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   when it goes off or on unload; the fake ping key itself stays the user's. Advanced prediction: each moving enemy's head
   after our latency + 4 ticks (stopped by walls); shootable there but not now = about to peek -> `ctx:prioritize_target`
   in TARGET_SELECTION (every 2 ticks, at most 5 enemies, trace_bullet).
-- Anti-aim (owners: "nagyon nehéz legyen ellőni"): the desync side is a fresh coin flip per sent packet through
-  `ctx:set_invert_desync`, not tied to the yaw side (it followed it 100%: the azura resolver hit 0.81, now 0.50); the
-  switch-every-packet modes use their own switch; anti bruteforce (enemy bullet within 50 units of the head or a hit: yaw
-  6-14 deg off for 0.5-0.85 s; the old check measured from our own eye, every bullet counted); the yaw add is kept apart
-  from the shift / crouch correction (it grew every tick). Menu: Settings "Random desync side", "Anti bruteforce".
-- Advanced anti-aim (owners, Oct 2026: "nagyon advanced aa sok új funkcióval ... nagyon nehezen eltalalhato ... próbáljuk ki
-  először a nagyon komolyat"): a new engine NEXT TO the old builder (the old items / list indices stay, so every saved config
-  and default.cfg still load; new options are at the END of the lists, new items default off). The deciding parts are
-  pure functions in `builder.adv` (no game api; `tests/primordial_regress.py` runs them with a seeded math.random), every value
-  decided once per sent packet (`builder.fresh` from `new_packet`):
-  * Yaw mode 4 X-Way (Ways 3-7 over "Yaw" +- Range, a shuffled bag: each position once a round, never twice in a row, held
-    1..Hold packets), 5 Distort (creeps to random targets in +- Range at Sway speed %, Snap chance % jumps), 6 Random hold
-    (left / right + randomization, each side held 1..Hold packets).
-  * Modifier 6 Random / 7 Switch random: the lua's own jitter (`builder.jit_off`, added in `yaw_now`), Primordial's off.
-  * Desync 5 Random: side = a coin flip per packet even without "Random desync side" (`desync_side` -> left + invert).
-  * Defensive 6 Smart + "Smart triggers" (Peek = the old on-peek trace, Shot at = HP dropped in the last 1.5 s, Air, Threat
-    aim = an enemy's eye yaw within 20 deg of us, Random = 30 % per 8 ticks); pitch 11 Random up/down (per defensive start)
-    / 12 Sway (between the two values); yaw 9 Opposite / 10 Random side (90-150, per start) / 11 Jitter flick / 12 Distort.
-  * Anti brute mode "Phases": each trigger starts a 4-7 s phase with its own yaw centre shift (8-22), spread / jitter scale
-    (0.7-1.4) and flipped desync side, the X-Way order restarts. "Shift" = the old 6-14 deg for 0.5-0.85 s.
-  * Fakelag variance (no DT / HS): choke 10-15, a new one each cycle.
-  * "Apply advanced preset" (Settings): every state 1-8 on these modes (`builder.apply_preset`, X-Way stand / duck / air,
-    Distort move, Random hold slow walk, Random desync 58, Smart defensive). Untested in game: the owners judge it there.
-- Direct control (owners, Oct 2026: "teljesen saját antiaimot ... csak a luaba", "csak a devbe"): Settings "Direct control
-  (dev)" (default on, only `info.plan == "dev"`, i.e. no key; nightly / beta keep the old menu writes). The AA code is
-  unchanged: during the ANTIAIM callback `builder.direct_begin` swaps the `DIRECT_REFS` menu refs for recorders and the
-  ctx for a proxy, `direct_restore` puts them back, then `direct_apply` sends the result itself: the real menu is held
-  neutral (yaw add 0, no jitter / rotate, pitch off, desync side left at 100 %), `ctx:set_yaw` (base + 180 + add + own
-  spin / `adv.native_jitter` = Offset / Center / 3Way / 5Way per packet), `set_pitch`, `set_desync` (left negative,
-  invert held off so they never cancel). An own `set_yaw` / `set_pitch` / `set_invert_desync` of the old code wins.
-  Peek fake / peek real desync stay on the menu (no ctx equivalent). Own manual and freestand (owners, Oct 2026: "teljesen
-  saját aa defensive jitter minden"): Primordial's manual keys (`refs.left/right/back`) give view + 90 / - 90 / 180
-  (`builder.own_manual`; with direct control Primordial's own manual was overridden, and the lua's "manual" state
-  tested an undefined global, it never came); the Freestand key uses `builder.own_freestand` (the threat = the enemy
-  nearest the crosshair, two traces from its eye to our head moved 24 units left / right, walls only 0x400B, every 4
-  ticks; `adv.fs_pick`: one side covered = the head there (yaw = toward it + / - 90), both = keep, none = the normal AA).
-  Primordial's auto direction is not used any more (the shot logs had 41 hits in 51 shots at the Freestand state when
-  an own set_yaw overrode it). The "Sideways" defensive yaw takes our last desync side (`direct.last_left`), Primordial's
-  menu side is always left. What stays Primordial's: making the desync / fakelag (the lua api has no send packet
-  control) and the tickbase shift of defensive (its double tap). The Freestand state of default.cfg / "Apply advanced
-  preset" was a static yaw with the desync always "Right" and no defensive: now Random desync and a small lua jitter (8),
-  still no defensive (it is Off there).
-- Adaptive AA (Settings "Adaptive AA", default.cfg + "Apply advanced preset" on; owners, Oct 2026: "az aa sokkal jobb
-  volt [the old azura] ... nagyon advanced aa improve ami tényleg unhittable"). The old azura (the owner's asd.cfg) played
-  "delay jitter": left / right every Delay (+ fluctuation) ticks with the DESYNC ON THE YAW SIDE; ours made the desync a
-  coin flip (Random desync side) everywhere. No fixed AA beats every resolver, so a Thompson sampling bandit
-  (`builder.adv.ARMS` / `brain_*`, pure, tested) plays profiles per state group (`arm_group`: still / moving / air /
-  rest): Packet coin (the state's own yaw mode + coin flip side), Delay tied (the old azura), Delay inverse, Delay coin,
-  Packet tied. Beliefs Beta(a, b): a bullet past the head (aa_record "evaded") = a + 1, a head hit = b + 1 and an other
-  profile at once; body hits teach nothing; every result decays all toward the prior (0.9, resolvers adapt); a profile
-  is held 6-10 s; Delay tied starts one evade ahead. Draws are mean + sd x Irwin-Hall (no math.log). `builder.brain_apply`
-  runs after random_side in run_antiaim: not on a static yaw (manual / fakelag) and the side only where random_side
-  would set it; direct control records it like the rest. default.cfg's Left / Right / randomization per state are the
-  owner's old values (the delay profiles use them). The AA stats / shot log lines carry `arm` (the stats key is
-  "state · profile" while it runs): tune the profile list by those, not by guesses.
 - FPS (owners, Oct 2026: "az FPS nagyon gatya van 70 fpsem"): `menu_find` is memoized (menu.find walked the whole menu
   for the same items every frame / tick); the double tap speed cvar (set every frame, 15 with Better DT off), the console
   colour materials and the jumpshot autostrafer / in-air autostop are written only on change. Profiler (dev build):
@@ -461,15 +399,6 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   100 / 200 in the shot rows), so the fake ping may cost head hits. The AA rows now carry `fp` (the fake ping amount) and `spd` to tell it.
   The anti-aim callback no longer rethrows (`builder.aa_failed`: the tick is skipped, a console line at most every 3 s); an error used to unload
   the script = no anti-aim at all. `direct_base` is nil guarded (view angles / eye / render origin).
-- Less hittable (owners, Oct 2026: "fix antiaim to be less hittable"), two changes from the 1290 AA rows (see the audit above): (1) the Defensive is
-  OFF in every state of default.cfg / "Apply advanced preset" (its events: head share 28 % against 22 % without it, and the shift costs the double
-  tap; the Smart triggers stay set, switch it on per state in the menu); (2) "Fake ping only in sight" (Tickbase page, default OFF since Oct 17 2026, see below): the fake ping of
-  Improve backtrack delays what WE see, so running all the time we walked into enemies aiming at the corner; it now runs while an enemy is not dormant
-  and 1 s after (`backtrack.seen_until`), 0 before. A fake ping slider set by hand still wins as the floor. The desync / yaw settings are untouched: the
-  logs do not separate them (every setting 77-88 %). Judge by the head share per state and by `fp` in the next AA rows; to go back: untick the option.
-  Default off (owners, Oct 2026: "eddig legalabb predict jo volt mostmar az se a resolver szar"): the logs of Oct 16 / 17 (278 shots) had the hit rate of shots that were
-  not spoiled by an enemy defensive at 0.92 on Oct 16 and 0.75-0.77 on Oct 17 (the day it came in); the fake ping then starts only when an enemy shows, so the first
-  shots have no old records to hit. 26 % of the shots are `df` (enemy defensive / lag break) and hit 0.39: that is the target's, not the resolver's.
 - Resolver learning slider (owners, Oct 2026: "a lovesekbol mennyire tanul a resolver? ... csuszkat hogy hany %ban tanuljon"): the resolver learns from every
   counted result (`resolver.on_result`: a hit = +1 good, a resolver miss = +1 bad for the hypothesis used, plus the 3 % pull back toward the start). Resolver page
   "Resolver learning" (0-100 %, set to 100 at the start; new item at the END of the group): the weight of a result, 100 = as before, 50 = half a point and half the
@@ -493,12 +422,6 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   gets +0.08 before the next shot, and a standing target (speed < 5, on the ground) gets +0.06 on "no desync" (hypothesis 5) within `K.lby_window` 0.1 s of the
   LBY update clock (`p.lby_at` + n x `K.lby_period` 1.1 s). Both unproven in game: compare `cd` 5 hit rate by `lbt` and hit rate after a miss in the next logs, and
   take them out if they cost hits.
-- Anti-aim prompt ("Eliminating Structural Desync Predictability", owners, Oct 2026): X-Way / Distort / Random hold / 3-5 way native jitter, the Adaptive AA bandit,
-  the anti brute Phases (flipped desync side, own centre shift) on a bullet past the head or a hit, Smart defensive, the air states and the own freestand
-  (2 traces) were in already. Added: Settings "Switch noise" (default on, `builder.noise`: +-3..7 deg on the yaw at every sent packet, in `builder.yaw_now`, so
-  every yaw mode and direct control get it). NOT possible in the Primordial lua api: bone / pelvis / spine rotation, a faked LBY update, animation layer
-  overrides (slow walk), a tick shift guard other than Primordial's own. The 3-point (head / shoulder / hip) freestand trace is not built: the head trace
-  decides it, a shoulder trace would only cover a wall the head is already behind. Judge the noise by the AA rows (`kind:"aa"`) head share.
 - Prediction prompt (owners, Oct 2026: an engine prediction rewrite with CPrediction / SetupMove / curtime sync; answer: "primordial"): first answered WRONG that the Primordial
   lua has no ffi (owners: "miaz hogy nincs ffi nezd meg ujra"): it has ffi and `memory_create_interface` / `memory_find_pattern` / `memory_get_vfunc` (the servers list,
   the animation layers, the entity list and the chat already use them). The peek prediction (`backtrack.predict`, "Advanced prediction") moves OUR eye by our own velocity over the look-ahead
@@ -569,12 +492,6 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   df / lb shots (they have no fresh value); (3) a hit counted a full point for the hypothesis even when the aimed group was the body (172 of 331 shots aimed the head, 155 the body): body hits count 0.5 now (`on_result`);
   (4) shot log `sp` / `hd` are the policy AT FIRE time (`capture`), `hd` = hp_body / lethal_body / defensive_policy / confidence_body / confidence_safe / jitter_safe / safe_head / normal_head. NOT changed (no number backs it):
   hypothesis weights, the safe point layer, the AA profiles. Not proven in game: the effect of (1) and (3); watch the AA table without hg 0 and `cd` hit rates in the next logs.
-- AA weakness list checked against the code (owners pasted an outside analysis, Oct 19 2026). Confirmed and fixed: (1) `on_miss` kept ONE shared list of impacts (`misstable`) for every enemy, so a second enemy's
-  bullet inside the 0.15 s made the first one's check fail (its near miss was never counted / never reached the anti brute and the bandit), and it measured the distance from OUR eye 0.15 s later (37 units at 250 u/s, the
-  limit is 50): now one pending check per attacker (`builder.miss_claim` / `miss_current`) and our eye as it was at the impact; (2) after a state change the delay profile always started with the same side (nil -> true): a coin flip
-  now; (3) the AA rows carry `eff` = "delay" when a delay profile (Delay tied / inverse / coin) replaced the yaw of the configured mode `ym`. By design, NOT bugs: the Adaptive AA delay profiles set their own yaw and
-  the tied / inverse ones the desync side (that is what a profile is; the stats key already shows the profile name), body hits teach the bandit nothing (a body hit does not depend on the desync), and `ctx:set_desync`
-  in the direct control proxy has no caller outside `direct_apply` (nothing to fix). Not proven in game: how many more near misses reach the anti brute now.
 - hvh.gg servers (owners, Oct 2026: "add to the lua like server connectors, must get ips from hvh.gg"; then "crashes the game after i refresh hvh.gg"):
   Misc > Servers has a second list "HvH servers (hvh.gg)" + "Connect to the selected hvh.gg server" / "Refresh hvh.gg" (`servers.hvh_*`). The lua
   does NOT ask hvh.gg itself (the first version did, through the steam http library, and a big page crashed the game): server.js `GET /hvhgg`
@@ -1021,12 +938,12 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   "incompatible bytecode"). `revealer.update` (called every frame next to the presence) loads it with `loadstring(libs.base64.decode(blob))` ONLY when the raw menu item "Cheat revealer (scoreboard)" (Misc > Servers, off at every start, not an eui item:
   no config can switch it on) is ticked, in a game, 5 s after the start, inside a `pcall`, once per session (the script has no unload of its own: untick + reload Specter to stop it). Nothing of it runs at the load. Its own native calls
   (V8 / steam networking signatures) are not catchable if they crash: the owners' reason it is safe is that CS:GO (2018) gets no more updates. The file grew from 0.55 to 0.93 MB (0.87 MB without comments): a phone download may cut it, take it on a PC.
-- Simple AA (owners, Oct 21 2026: "nagyon basic ... csak lua apival ... 2,3,4,5,7 yaw mindegyik külön állítható ... defensive nagyon alap de különleges ... semmi random"): Settings "Simple AA" (default ON, `ui.antiaim.simple`), when on the
-  ANTIAIM callback runs `builder.simple_run` instead of `run_antiaim` (the old engine, its pages and Direct control are untouched and hidden; untick to get them back; `run_exploit` / `run_edgeyaw` still run). Lua api only: `ctx:set_yaw` (view / nearest enemy
-  base from the Settings "Yaw base" + 180 + the way), `set_pitch` (the Settings pitch), `set_desync` (+ `refs.desyncside` 2, amounts 100, invert false), Primordial keeps the fakelag and the tickbase shift. Per state (1-8, the Global one when a state has no override, the same
-  condition / override boxes as the old builder): Ways 2-7 (one slider per way, "Way 1..7", each its own yaw), Way order (Skip = a fixed permutation `builder.adv.SIMPLE_ORDER` that never plays neighbours in a row, Linear), Hold (sent packets per step)
-  + "Hold on odd steps", Desync side (Thue-Morse = `builder.adv.tm_side` of the packet counter: no period, so nothing to read; Alternate; Left; Right) and amount, Brute shift. NO random number anywhere in it (everything is a fixed sequence).
-  Anti brute (`builder.anti_brute_trigger` -> `builder.simple_brute`: a hit or a bullet past the head): the phase goes up (the order starts one step further, the Thue-Morse side flips on odd phases) and the yaw gets +- Brute shift for 0.7 s (sign alternates by phase).
-  Manual keys / Freestand key (own traces) / knife behind us (Anti backstab) override the way like in the old code. Simple defensive per state: trigger Off / On peek (`builder.peek_visible`, the unsafe peek) / Shot at (HP dropped, 1.5 s) / both / Always
-  (`defensive:trigger`), pitch Down / Up / Zero / Sweep (triangle wave over 24 ticks), yaw Static / Sideways (away from the desync side) / Flick (Thue-Morse +- value per defensive tick) / Spin, value slider. The AA stats / shot log rows carry `sm` (ways).
-  Not proven in game: judge it by the AA rows (`kind:"aa"`) head share per state and ways; the old logs (80 % of the shots at us hit) are the baseline.
+- Anti-aim (owners, Oct 21 2026: "írd át az egész aa részét ilyen simple antiaimra de profi kódolású"): the WHOLE old engine is gone (advanced builder with X-Way / Distort / Random hold, lua jitter modifiers, Smart defensive, Phases anti brute, Adaptive AA bandit, Direct
+  control recorders, Apply advanced preset, Fakelag variance, Random desync side, Switch noise, the warmup spin and the crouch correction); it is in git history (PRs up to #188), so older notes on those in this file are history. `run_antiaim` is ONE engine in the `-- Anti-aim` block (`builder.adv` pure maths, `builder.step`,
+  `builder.defensive_run`, `builder.safe_head`, `builder.knife_yaw`), only the lua api (`ctx:set_yaw` / `set_pitch` / `set_desync`); Primordial keeps the fakelag and the tickbase shift. NO random number anywhere in it (the regress checks that). Per state
+  (`ui.antiaim.builder[i]`, i = 1..11 as `states`; a state without "Override" uses Global, labels "S | Ways" ...): Ways 2-7 with one yaw slider per way ("Way 1..7"), Way order (Skip = the fixed permutations `builder.adv.WAY_ORDER`, Linear), Hold (+ extra on odd steps) in sent
+  packets, Desync side (Thue-Morse = `builder.adv.tm_side` of the packet counter, no period; Alternate; Left; Right) and amount, Brute shift, and a basic defensive: trigger (Off / On peek = `builder.peek_visible` unsafe peek / Shot at / both / Always via `defensive:trigger`),
+  pitch (Down / Up / Zero / Sweep triangle wave), yaw (Static / Sideways / Flick = Thue-Morse +- value / Spin) and a value. Anti brute (`builder.anti_brute_trigger`: a hit or a bullet past the head, 0.15 s debounce): the phase goes up, the ways start one step further, the desync side
+  flips on odd phases, the yaw gets +- Brute shift for 0.7 s. Manual keys (`builder.own_manual`), the Freestand key (`builder.own_freestand`, 2 traces every 4 ticks), the knife behind us (Anti backstab) and Safe head (Air knife / Air zeus / Height advantage, "Allow defensive") override the
+  way. Menu labels of the defensive are "Def trigger / Def pitch / Def yaw / Def value" (the old "Defensive pitch" etc. had other value lists and an old saved config would set them out of range). The AA stats / shot log rows (`kind:"aa"`) carry the state and `wy` (ways). The old
+  logs (Oct 14-17: enemies hit ~80 % of the events in every setting) are the baseline: judge the new one by the head share per state and ways. Not proven in game.
