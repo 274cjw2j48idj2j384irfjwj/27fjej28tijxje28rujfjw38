@@ -83,6 +83,7 @@ def main(argv):
     table("hypothesis (cd)", shots, lambda r: r.get("cd"), is_hit, 5)
     table("value missing reason (vw)", shots, lambda r: r.get("vw"), is_hit)
     table("enemy defensive (df)", shots, lambda r: bool(r.get("df")), is_hit)
+    table("enemy AA type (aat)", shots, lambda r: r.get("aat"), is_hit)
     table("fake ping (fp)", shots, lambda r: r.get("fp"), is_hit, 10)
     table("hit chance (hc)", shots, lambda r: r.get("hc"), is_hit, 20)
     table("confidence band (cf)", shots, lambda r: None if r.get("cf") is None else int(r["cf"]) // 20 * 20, is_hit)
