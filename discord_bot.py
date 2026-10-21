@@ -83,7 +83,10 @@ SCRIPT_TOKEN      = _env("SCRIPT_TOKEN", "")
 VALID_PLANS     = ["beta", "nightly", "specter", "debug"]
 # Specter for Primordial (specter_primordial_loader.lua): nightly = everything, beta = no resolver page
 PM_PLANS        = ["pm_nightly", "pm_beta"]
-KEY_PLANS       = VALID_PLANS + PM_PLANS
+# the dev key (owners, Oct 21 2026): it loads all three Primordial builds (dev = specter_primordial.lua of SCRIPT_BRANCH, nightly, beta);
+# a nightly key loads nightly + beta, a beta key beta only (server.js PM_BUILDS)
+PM_DEV_PLAN     = "pm_dev"
+KEY_PLANS       = VALID_PLANS + PM_PLANS + [PM_DEV_PLAN]
 PRIMORDIAL_FILE = "specter_primordial.lua"
 # the Primordial changelog in #updates (with its logo, like the gamesense one; owners, Oct 2026: it goes out even before
 # the Primordial lua is released); PRIMORDIAL_UPDATES=0 turns it off
@@ -119,6 +122,7 @@ PLAN_TO_ROLE = {
     "beta":     "Beta",
     "pm_nightly": "Primordial",
     "pm_beta":    "Primordial",
+    "pm_dev":     "Primordial",
 }
 
 # ── Prices (edit these to match your pricing) ────────────────────────
@@ -1927,6 +1931,36 @@ async def sync_primordial(force: bool = False) -> list[str]:
     return report
 
 
+_pm_dev_seen = {"etag": ""}
+
+
+async def sync_primordial_dev(force: bool = False) -> list[str]:
+    """specter_primordial.lua of SCRIPT_BRANCH (main, the dev build) -> the license server as `pm_dev`, with the auth gate like the
+    customer builds: only a dev key (the Primordial loader's third build) gets it. Polled with its ETag, uploaded when the server
+    has another one."""
+    try:
+        raw, etag = await gh_get_file(PRIMORDIAL_FILE, SCRIPT_BRANCH, "" if force else _pm_dev_seen["etag"])
+    except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError) as e:
+        return [f"`{PRIMORDIAL_FILE}` of `{SCRIPT_BRANCH}` (pm_dev): {e}"]
+    if raw is None:
+        return []
+    try:
+        raw_text = raw.decode("utf-8")
+    except UnicodeDecodeError as e:
+        return [f"`{PRIMORDIAL_FILE}` of `{SCRIPT_BRANCH}` (pm_dev): {e}, not uploaded"]
+    if not is_primordial_script(raw_text):
+        return [f"`{PRIMORDIAL_FILE}` of `{SCRIPT_BRANCH}`: not the primordial script, pm_dev not uploaded"]
+    script = PM_AUTH_GATE + strip_lua_comments(raw_text)
+    have = await server_script_hashes()
+    if not force and have is not None and have.get(PM_DEV_PLAN) == hashlib.sha256(script.encode("utf-8")).hexdigest():
+        _pm_dev_seen["etag"] = etag
+        return []
+    lines, done = await upload_script(script, [PM_DEV_PLAN])
+    if done:
+        _pm_dev_seen["etag"] = etag
+    return [f"primordial dev build to the server: " + " ".join(lines)] if lines else []
+
+
 @tree.command(name="post_changelog", description="Post the changelog of the newest cloud release again (with its lua's logo)")
 @app_commands.describe(lua="Which lua's changelog", here="Post it in this channel (a preview) instead of #updates",
                        text="Own text instead of the release's: title | point | point ...")
@@ -1970,6 +2004,7 @@ async def release_loop():
             if AUTO_UPLOAD:
                 report += await sync_cloud()
                 report += await sync_primordial()
+                report += await sync_primordial_dev()
                 report += await sync_loader_versions()
             if AUTO_PANELS:
                 report += await sync_loader()
@@ -1997,6 +2032,7 @@ async def release_check(interaction: discord.Interaction, force: bool = False):
     if AUTO_UPLOAD:
         report += await sync_cloud(force)
         report += await sync_primordial(force)
+        report += await sync_primordial_dev(force)
         report += await sync_loader_versions(force)
     if AUTO_PANELS:
         report += await sync_loader(force)

@@ -386,6 +386,33 @@ check("/verify?key=" in LOADER and "/script?key=" in LOADER and 'plan:find("^pm_
       "loader: verify -> script, only pm_ keys")
 check("[resolver:begin]" not in LOADER and "shotlog" not in LOADER, "loader carries no script code")
 
+# the builds of a key (owners, Oct 21 2026: "dev kulcs mind a 3, nightly: beta + nightly, beta: csak beta"): the server lists them, the loader reads the list
+SERVER = open(os.path.join(ROOT, "server.js"), encoding="utf-8").read()
+import subprocess
+_m = re.search(r"const PM_BUILDS = (\{.*?\n\})", SERVER, re.S)
+_js = subprocess.run(["node", "-e", "const PM_BUILDS = %s; console.log(JSON.stringify(PM_BUILDS))" % _m.group(1)], capture_output=True, text=True).stdout
+_b = json.loads(_js) if _js else {}
+check(_b == {"pm_dev": ["pm_dev", "pm_nightly", "pm_beta"], "pm_nightly": ["pm_nightly", "pm_beta"], "pm_beta": ["pm_beta"]}
+      and "'pm_dev'" in re.search(r"const VALID_PLANS = \[(.*?)\]", SERVER).group(1)
+      and "builds: PM_BUILDS[license.plan]" in SERVER and "(PM_BUILDS[plan] || [plan]).includes(build)" in SERVER
+      and 'BUILD_VERSION",    ${JSON.stringify(build)}' in SERVER,
+      "server: a dev key loads pm_dev / pm_nightly / pm_beta, a nightly key nightly / beta, a beta key beta; BUILD_VERSION is the build")
+_lc = lambda a, b: LOADER[LOADER.index(a):LOADER.index(b)]
+_pb = L.LuaRuntime(unpack_returned_tuples=True)
+r = _pb.eval("(function()\n" + _lc("local BUILD_ORDER = ", "local login\n")
+             + "\nreturn #BUILD_ORDER, build_name('pm_dev'), build_name('pm_nightly')\nend)()")
+check(tuple(r) == (3, "dev", "nightly"), "loader: the three builds, named dev / nightly / beta (%s)" % (tuple(r),))
+_pl = L.LuaRuntime(unpack_returned_tuples=True)
+r = _pl.eval("(function()\n" + _lc("local function parse_builds(body)", "login = function(chosen)") + """
+    local a = parse_builds('{"valid":true,"plan":"pm_dev","builds":["pm_dev","pm_nightly","pm_beta"],"user":"x"}')
+    local b = parse_builds('{"valid":true,"plan":"pm_beta","builds":["pm_beta"]}')
+    local c = parse_builds('{"valid":true,"plan":"pm_beta","user":"x"}')
+    return table.concat(a, ","), table.concat(b, ","), #c
+end)()""")
+check(tuple(r) == ("pm_dev,pm_nightly,pm_beta", "pm_beta", 0), "loader: reads the builds the server lists (none = the key's own plan) (%s)" % (tuple(r),))
+check("&build=" in LOADER and 'menu.add_button(GROUP, "Load "' in LOADER and "read_build()" in LOADER,
+      "loader: asks /script for the chosen build, one button per build, remembers the last one")
+
 # default.cfg (owners: "csináld meg a legjobb configot ezzel"): it decodes (the items it names that are gone are ignored by the import)
 import base64, json
 cfg = json.loads(base64.b64decode(re.search(r'configs\.default_config\s*=\s*"([^"]+)"', SRC).group(1)))
