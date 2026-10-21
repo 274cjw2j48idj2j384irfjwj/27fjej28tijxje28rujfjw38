@@ -70,6 +70,8 @@ function row(xuid, withRank = true) {
         const rank = new Panel("rank", row);
         rank.attrs["data-stat"] = "rank";
         new Panel("original-rank-image", rank);
+        const money = new Panel("money", row);
+        money.attrs["data-stat"] = "money";
     }
     return row;
 }
@@ -86,35 +88,28 @@ check(badge.FindChild("specter-image").writes === 1, "unchanged image is not rel
 let mine = row(xuids[1], false);
 api.update(1, "moon", true, xuids[1]);
 check(mine.FindChild("specter-presence-" + xuids[1]), "rankless scoreboard rows receive a badge");
-// the country flag: the badge takes its place and the flag comes back with it
-const flagged = new Panel("row-" + xuids[3], board);
-flagged.cls = "sb-row"; flagged.attrs.xuid = xuids[3];
-const cell = new Panel("flag-cell", flagged);
-const flag = new Panel("FlagImg", cell);
-api.update(3, "reveal", true, xuids[3]);
-const flag_badge = cell.FindChild("specter-presence-" + xuids[3]);
-check(flag_badge && flag.visible === false && cell.moved === 1,
-    "the badge replaces the country flag (flag hidden, badge in its cell)");
+// the row of a Specter user: tinted background, border and stripe on the row, the badge before the money cell; the others are untouched
+check(other.style.border && other.style.borderLeft && other.style.backgroundColor.includes("gradient") && other.moved === 1,
+    "a Specter user's row gets its own look and the badge goes before the money cell");
+check(badge.FindChild("specter-tag").text === "SPECTER PRIM", "a Primordial user is tagged SPECTER PRIM (lilac look)");
+const plain = row("76561197960399999");
+api.apply();
+check(!plain.style.border && !plain.style.backgroundColor && plain.children.length === 2, "rows of other players are not touched");
+xuids[3] = "76561197960301234";
+const gs_row = row(xuids[3]);
+api.update(3, "moon_gs", true, xuids[3], "gs");
+const gs_badge = gs_row.FindChild("specter-presence-" + xuids[3]);
+check(gs_badge.FindChild("specter-tag").text === "SPECTER GS" && gs_row.style.border !== other.style.border
+    && gs_badge.FindChild("specter-image").image === "moon_gs", "a gamesense user is tagged SPECTER GS with the green look and its own moon");
 delete xuids[3];
 api.apply();
-check(!flag_badge.IsValid() && flag.visible === true, "a badge that goes away gives the country flag back");
-flagged.DeleteAsync();
-// a flag whose id only says "flag" / "country" (the CS:GO scoreboard ids are "id-sb-name__*"), deeper in the row: found by the id walk
-xuids[3] = "76561197960301234";
-const deep = new Panel("row-deep", board);
-deep.cls = "sb-row"; deep.attrs.xuid = xuids[3];
-const name_cell = new Panel("id-sb-name", deep);
-const avatar = new Panel("id-sb-name__avatar", name_cell);
-const country = new Panel("id-sb-name__Country-Flag", name_cell);
-api.update(3, "reveal", true, xuids[3]);
-check(country.visible === false && avatar.visible === true && name_cell.FindChild("specter-presence-" + xuids[3]),
-    "a flag found by its id (flag / country, any depth): hidden, the badge in its cell");
+check(!gs_badge.IsValid() && gs_row.style.border === null && gs_row.style.backgroundColor === null,
+    "a badge that goes away gives the row its own look back");
+gs_row.DeleteAsync();
+check(mine.FindChild("specter-presence-" + xuids[1]).visible === false,
+    "no money cell found: only the row look, the badge stays hidden");
 const text = api.dump();
 check(typeof text === "string" && text.length > 0 && text.includes("<?>"), "the dump lists the first row (id, type) as text");
-delete xuids[3];
-api.apply();
-check(country.visible === true, "the deep flag comes back too");
-deep.DeleteAsync();
 board.DeleteAsync();
 board = new Panel("Scoreboard", container);
 other = row(xuids[2]);

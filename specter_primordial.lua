@@ -171,10 +171,14 @@ const valid = function(panel) {
 const destroy_panel = function(xuid) {
     const panel = entity_panels[xuid];
     if (valid(panel)) {
-        // the country flag we covered comes back
-        if (valid(panel.specter_flag)) {
-            panel.specter_flag.visible = true;
-            try { panel.specter_flag.style.width = null; panel.specter_flag.style.opacity = null; } catch (_) {}
+        // the row gets its own look back
+        const row = panel.specter_row;
+        if (valid(row)) {
+            try {
+                row.style.backgroundColor = null;
+                row.style.border = null;
+                row.style.borderLeft = null;
+            } catch (_) {}
         }
         panel.DeleteAsync(0);
     }
@@ -194,40 +198,6 @@ const scoreboard = function() {
     }
     const board = context.FindChildTraverse("Scoreboard");
     return valid(board) ? board : null;
-};
-// the country flag of a row (owners, Oct 2026: on some servers the flag is all a row has and our icon beside it looked bad: the
-// icon takes the flag's place). The ids / classes are the ones of the CS:GO scoreboard; none found = the icon stays beside the rank
-const find_flag = function(row) {
-    const ids = ["FlagImg", "Flag", "CountryFlag"];
-    for (let i = 0; i < ids.length; i++) {
-        const found = row.FindChildTraverse(ids[i]);
-        if (valid(found)) return found;
-    }
-    const classes = ["sb-row__cell__flag", "sb-row__flag", "sb-flag"];
-    for (let i = 0; i < classes.length; i++) {
-        const list = row.FindChildrenWithClassTraverse(classes[i]) || [];
-        if (list.length > 0 && valid(list[0])) return list[0];
-    }
-    // the ids of the CS:GO scoreboard rows are "id-sb-name__*", "id-sb-skillgroup-image" ...: the flag is the panel whose id says flag / country
-    // (owners, Oct 2026: the flags stayed, the guesses above found nothing)
-    let found = null;
-    walk(row, 0, function(panel) {
-        if (found != null) return;
-        const id = String(panel.id || "").toLowerCase();
-        if (id.indexOf("specter") === 0) return;
-        if (id.indexOf("flag") >= 0 || id.indexOf("country") >= 0) found = panel;
-    });
-    if (found != null) return found;
-    // the flag is an image whose file lives in a flags folder, whatever its panel is called
-    walk(row, 0, function(panel) {
-        if (found != null) return;
-        const id = String(panel.id || "");
-        if (id.indexOf("specter") === 0) return;
-        let src = "";
-        try { src = String(panel.GetImageSrc ? panel.GetImageSrc() : (panel.src || "")).toLowerCase(); } catch (_) {}
-        if (src.indexOf("flag") >= 0 || src.indexOf("countr") >= 0) found = panel;
-    });
-    return found;
 };
 // every panel under `panel` (depth 7 at most), parents first
 const walk = function(panel, depth, visit) {
@@ -258,7 +228,21 @@ const player_xuid = function(index) {
         return /^\d{17}$/.test(value) ? value : null;
     } catch (_) { return null; }
 };
-const get_panel = function(xuid) {
+// a Specter user's row (owners, Oct 21 2026): the row itself gets a tinted background, a thin border and a bright stripe on its left
+// (green for the gamesense lua, lilac for this one); a small badge "SPECTER GS / PRIM" + the moon sits right before the money column,
+// where the row has room. The other rows are not touched
+const LOOKS = {
+    gs: { tag: "SPECTER GS", text: "#bff0b8", from: "#2f4a34", to: "#232b25", border: "#46963f", stripe: "#8ce182" },
+    pm: { tag: "SPECTER PRIM", text: "#cdc0ff", from: "#3c3659", to: "#26242f", border: "#6e5ab8", stripe: "#bea6ff" },
+};
+const money_cell = function(row) {
+    const cells = row.Children() || [];
+    for (let i = 0; i < cells.length; i++) {
+        if (valid(cells[i]) && ["money", "cash"].indexOf(String(cells[i].GetAttributeString("data-stat", ""))) >= 0) return cells[i];
+    }
+    return null;
+};
+const get_panel = function(xuid, kind) {
     const board = scoreboard();
     if (!valid(board)) return null;
     const rows = board.FindChildrenWithClassTraverse("sb-row") || [];
@@ -271,36 +255,46 @@ const get_panel = function(xuid) {
     }
     if (!valid(row)) return null;
     const current = entity_panels[xuid];
-    if (valid(current) && current.specter_row === row) return current;
+    if (valid(current) && current.specter_row === row && current.specter_kind === kind) return current;
     destroy_panel(xuid);
-    const cells = row.Children() || [];
-    let parent = row;
-    for (let i = 0; i < cells.length; i++) {
-        if (valid(cells[i]) && cells[i].GetAttributeString("data-stat", "") === "rank") {
-            parent = cells[i];
-            break;
-        }
-    }
-    const flag = find_flag(row);
-    if (flag != null && typeof flag.GetParent === "function" && valid(flag.GetParent())) parent = flag.GetParent();
-    const panel = $.CreatePanel("Panel", parent, "specter-presence-" + xuid);
+    const look = LOOKS[kind] || LOOKS.pm;
+    try {
+        row.style.backgroundColor = "gradient(linear, 0% 0%, 100% 0%, from(" + look.from + "), to(" + look.to + "))";
+        row.style.border = "1px solid " + look.border;
+        row.style.borderLeft = "2px solid " + look.stripe;
+    } catch (_) {}
+    const money = money_cell(row);
+    const panel = $.CreatePanel("Panel", row, "specter-presence-" + xuid);
     panel.specter_row = row;
-    if (flag != null) {
-        flag.visible = false;
-        try { flag.style.width = "0px"; flag.style.opacity = "0"; } catch (_) {}
-        panel.specter_flag = flag;
-        try { if (typeof parent.MoveChildBefore === "function") parent.MoveChildBefore(panel, flag); } catch (_) {}
-    }
+    panel.specter_kind = kind;
     panel.style.flowChildren = "right";
-    panel.style.marginLeft = "4px";
+    panel.style.width = "fit-children";
+    panel.style.height = "100%";
     panel.style.verticalAlign = "center";
+    panel.style.marginRight = "6px";
+    if (money != null) {
+        try { row.MoveChildBefore(panel, money); } catch (_) {}
+    } else {
+        panel.visible = false;   // no money cell found: only the row look (Home > "Dump scoreboard row" prints the cells)
+    }
+    const tag = $.CreatePanel("Label", panel, "specter-tag");
+    tag.text = look.tag;
+    tag.style.color = look.text;
+    tag.style.fontSize = "10px";
+    tag.style.fontWeight = "bold";
+    tag.style.letterSpacing = "1px";
+    tag.style.verticalAlign = "center";
     const image = $.CreatePanel("Image", panel, "specter-image");
-    image.style.width = "18px";
-    image.style.height = "18px";
+    image.style.width = "17px";
+    image.style.height = "17px";
+    image.style.marginLeft = "5px";
+    image.style.verticalAlign = "center";
     const fallback = $.CreatePanel("Label", panel, "specter-fallback");
     fallback.text = "S";
-    fallback.style.color = "#b4a0ff";
-    fallback.style.fontSize = "16px";
+    fallback.style.color = look.stripe;
+    fallback.style.fontSize = "14px";
+    fallback.style.marginLeft = "5px";
+    fallback.style.verticalAlign = "center";
     entity_panels[xuid] = panel;
     return panel;
 };
@@ -317,7 +311,7 @@ const apply_data = function() {
             delete entity_data[key];
             return;
         }
-        const panel = get_panel(xuid);
+        const panel = get_panel(xuid, data.kind);
         if (!valid(panel)) return;
         const image = panel.FindChild("specter-image");
         const fallback = panel.FindChild("specter-fallback");
@@ -330,9 +324,9 @@ const apply_data = function() {
         }
     });
 };
-const update = function(index, path, ready, expected_xuid) {
+const update = function(index, path, ready, expected_xuid, kind) {
     if (!index || index < 1 || index > 64) return false;
-    entity_data[index] = { path: path, ready: ready === true, xuid: expected_xuid || player_xuid(index) };
+    entity_data[index] = { path: path, ready: ready === true, xuid: expected_xuid || player_xuid(index), kind: kind === "gs" ? "gs" : "pm" };
     apply_data();
     return true;
 };
@@ -878,7 +872,6 @@ local on_predict = {}
 local player_pose = {}
 local shared_data = {}
 local presence = { server = "https://specter-license-mh111-production.up.railway.app", next = 0, shown = {}, announced = {},
-                   icon = "file://{images}/icons/specter_moon.png",
                    version = info.plan, epoch = 0, sequence = 0, failures = 0,
                    icon_ready = false, icon_next = 0, last_success = nil }
 local animlayer_average_t = {}
@@ -3182,33 +3175,44 @@ presence.is_user = function(player)
     end
     return false
 end
+-- the two moons (owners, Oct 21 2026): lilac for a Specter user of this lua, green for one of the gamesense lua; the scoreboard row
+-- of a user gets the one of its kind
+presence.ICONS = { "pm", "gs" }
+presence.icon_path = function(kind)
+    return "file://{images}/icons/specter_moon_" .. kind .. ".png"
+end
 presence.refresh_icons = function()
     for idx, row in pairs(presence.shown) do
-        pcall(libs.tools.js.update, idx, presence.icon, presence.icon_ready, row.sid)
+        local kind = row.version == "gs" and "gs" or "pm"
+        pcall(libs.tools.js.update, idx, presence.icon_path(kind), presence.icon_ready, row.sid, kind)
     end
 end
--- An "S" badge remains visible while the moon is unavailable; retry image failures.
+-- An "S" badge remains visible while the moons are unavailable; one file after the other, retry image failures.
 presence.install_icon = function()
     local now = globals.real_time()
     if (now < presence.icon_next - 60) then presence.icon_next = 0 end
     if (presence.icon_ready or presence.icon_busy or now < presence.icon_next) then return end
-    local path = "materials/panorama/images/icons/specter_moon.png"
-    local ok, exists = pcall(libs.filesystem.exists, path, "MOD")
-    if (ok and exists) then
-        presence.icon_ready = true
-        presence.refresh_icons()
-        return
+    for _, kind in ipairs(presence.ICONS) do
+        local path = "materials/panorama/images/icons/specter_moon_" .. kind .. ".png"
+        local ok, exists = pcall(libs.filesystem.exists, path, "MOD")
+        if (not (ok and exists)) then
+            pcall(libs.filesystem.create_directory, "materials/panorama/images/icons", "MOD")
+            presence.icon_busy, presence.icon_next = now, now + 30
+            local sent = pcall(libs.tools.http.download_image, libs.tools.http, presence.server .. "/moon_" .. kind .. ".png", path,
+                function(success)
+                    presence.icon_busy = nil
+                    local checked, saved = pcall(libs.filesystem.exists, path, "MOD")
+                    if (success == true and checked and saved == true) then
+                        presence.icon_next = 0
+                        presence.install_icon()
+                    end
+                end)
+            if (not sent) then presence.icon_busy = nil end
+            return
+        end
     end
-    pcall(libs.filesystem.create_directory, "materials/panorama/images/icons", "MOD")
-    presence.icon_busy, presence.icon_next = now, now + 30
-    local sent = pcall(libs.tools.http.download_image, libs.tools.http, presence.server .. "/moon.png", path,
-        function(success)
-            presence.icon_busy = nil
-            local checked, saved = pcall(libs.filesystem.exists, path, "MOD")
-            presence.icon_ready = success == true and checked and saved == true
-            if (presence.icon_ready) then presence.refresh_icons() end
-        end)
-    if (not sent) then presence.icon_busy = nil end
+    presence.icon_ready = true
+    presence.refresh_icons()
 end
 presence.clear_view = function()
     presence.shown, esp.sync_user, shared_data = {}, {}, {}

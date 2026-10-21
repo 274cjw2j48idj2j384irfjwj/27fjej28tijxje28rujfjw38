@@ -27,10 +27,10 @@ local env = setmetatable({
             if type(body) ~= "table" then error("malformed") end
             return body
         end },
-        filesystem = { exists = function() return saved_image end, create_directory = function() end },
+        filesystem = { exists = function(path) if type(saved_image) == "table" then return saved_image[path] == true end return saved_image end, create_directory = function() end },
         tools = {
-            js = { update = function(idx, path, ready, sid)
-                icons[idx] = { path = path, ready = ready, sid = sid }
+            js = { update = function(idx, path, ready, sid, kind)
+                icons[idx] = { path = path, ready = ready, sid = sid, kind = kind }
             end, clear = function() icons = {} end },
             js2 = { GameStateAPI = { GetPlayerXuidStringFromEntIndex = function(idx)
                 return entities[idx] and entities[idx].fallback
@@ -46,7 +46,7 @@ local env = setmetatable({
                     requests[#requests + 1] = { url = url, callback = callback }
                 end,
                 download_image = function(_, url, path, callback)
-                    downloads[#downloads + 1] = { callback = callback }
+                    downloads[#downloads + 1] = { callback = callback, url = url, path = path }
                 end,
             },
         },
@@ -130,9 +130,11 @@ p.apply({ [p.hash(other_sid)] = "gs" }, {
     [p.hash(other_sid)] = { idx = 2, sid = other_sid, canonical = true },
 })
 check(list[1] == "renamed ~ gs user", "a player running the gamesense lua (tag gs) is listed as a gs user")
+check(icons[2].kind == "gs" and icons[2].path:match("specter_moon_gs%.png$"), "a gs user gets the green moon (kind gs)")
 p.apply({ [p.hash(other_sid)] = "beta" }, {
     [p.hash(other_sid)] = { idx = 2, sid = other_sid, canonical = true },
 })
+check(icons[2].kind == "pm" and icons[2].path:match("specter_moon_pm%.png$"), "a Primordial user gets the lilac moon (kind pm)")
 local note_count = #notes
 p.apply({ [p.hash(other_sid)] = "beta" }, {
     [p.hash(other_sid)] = { idx = 2, sid = other_sid, canonical = true },
@@ -202,6 +204,20 @@ p.install_icon()
 saved_image = true
 downloads[#downloads].callback(true)
 check(p.icon_ready, "retried icon download becomes ready only after saved file exists")
+-- the two moons come one after the other: lilac (this lua) first, then green (gamesense), ready only with both saved
+restart()
+saved_image = {}
+p.icon_ready, p.icon_busy, p.icon_next = false, nil, 0
+local first = #downloads
+p.install_icon()
+check(#downloads == first + 1 and downloads[#downloads].url:match("/moon_pm%.png$"), "the lilac moon is downloaded first")
+saved_image[downloads[#downloads].path] = true
+downloads[#downloads].callback(true)
+check(#downloads == first + 2 and downloads[#downloads].url:match("/moon_gs%.png$") and not p.icon_ready, "then the green one, not ready yet")
+saved_image[downloads[#downloads].path] = true
+downloads[#downloads].callback(true)
+check(p.icon_ready, "ready once both moons are saved")
+saved_image = true
 restart()
 for i = 2, 64 do player(i, 10000 + i) end
 p.update(true)
