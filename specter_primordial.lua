@@ -5607,6 +5607,7 @@ resolver.capture = function(shot)
     end)
     if (ok3) then s.l3, s.l3w, s.l3c, s.l3s, s.l6s = rate3, weight3, cycle3, seq3, seq6 end
     s.state = resolver.state_of(shot.player)
+    s.aat = resolver.aa_type(p)
     -- what the shot log carries from the moment of the shot (it read these after the result was counted): the policy of the scan
     -- (`sp`), the miss streak and how long ago the target's last tickbase shift / lag break was seen (the data that tells
     -- how long "Defensive lock ticks" has to be)
@@ -5967,6 +5968,38 @@ resolver.jit_record = function(p, delta, sim, min, eye)
     end
 end
 
+-- the enemy's anti-aim TYPE (owners, Oct 21 2026: the "Extended AA detection" of other luas, "peeking" and "stacking"): how often the target
+-- jitters while it stands against while it moves (a decayed count per class, kept over the state changes that wipe the jitter history).
+-- Types: "static" (no jitter), "jitter" (a random-looking jitter), "stack" (the jitter recurs on 2-3 fixed yaw positions = stacked), "peek" (still
+-- on a fixed yaw while it stands, jitters once it moves = the AA that switches when it peeks). Info for the shot log first: no resolver rule
+-- uses it until the logs say how the hit rate differs by type
+resolver.aa_note = function(p, state)
+    local aa = p.aa
+    if (aa == nil) then
+        aa = { still = { 0, 0 }, moving = { 0, 0 } }
+        p.aa = aa
+    end
+    local class = (state == "stand" or state == "duck") and aa.still
+        or ((state == "move" or state == "slow" or state == "cmove") and aa.moving or nil)
+    if (class ~= nil) then
+        class[1], class[2] = class[1] * 0.985 + 1, class[2] * 0.985 + (p.jitter and 1 or 0)
+    end
+end
+resolver.aa_type = function(p)
+    if (p == nil) then
+        return nil
+    end
+    local aa = p.aa
+    if (aa ~= nil and aa.still[1] >= 8 and aa.moving[1] >= 8
+        and aa.still[2] / aa.still[1] <= 0.25 and aa.moving[2] / aa.moving[1] >= 0.6) then
+        return "peek"
+    end
+    if (p.jitter) then
+        return p.jit_kind == "cyclic" and "stack" or "jitter"
+    end
+    return "static"
+end
+
 -- every enemy, every net update, whichever resolver is on (also none): choke count and the jitter detector
 resolver.track = function(ent, eye)
     local idx = ent:get_index()
@@ -6036,6 +6069,7 @@ resolver.track = function(ent, eye)
         p.nochoke = (ticks == 1) and (p.nochoke + 1) or 0
         local min = res_custom() and res_clamp(ui.ragebot.resolver.shot_pred:get(), 15, 65) or RES_JIT_MIN
         resolver.jit_record(p, res_norm(eye - p.eye), sim, min, eye)
+        resolver.aa_note(p, state)
         p.sim, p.eye = sim, eye
         p.updated = now
     end
@@ -6770,6 +6804,7 @@ shotlog.result = function(shot, hit)
         row.l3, row.l3w, row.l3c = shotlog.num(snap.l3, 6), shotlog.num(snap.l3w, 4), shotlog.num(snap.l3c, 3)
         row.l3s, row.l6s = shotlog.num(snap.l3s), shotlog.num(snap.l6s)
         row.sp, row.cm, row.ea = snap.sp, snap.misses, shotlog.num(snap.evage, 2)
+        row.aat = snap.aat
     end
     if (hit) then
         row.hg, row.dmg = shot.hitgroup, shotlog.num(shot.damage)

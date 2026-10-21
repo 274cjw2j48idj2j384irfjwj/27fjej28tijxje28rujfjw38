@@ -286,6 +286,24 @@ test("anti-aim: defensive pitch is a fixed value or a triangle wave", function()
     assert(builder.adv.def_pitch(5, 0) == -89 and builder.adv.def_pitch(5, 12) == 89)
     for t = 0, 47 do local v = builder.adv.def_pitch(5, t) assert(v >= -89 and v <= 89) end
 end)
+test("enemy AA type: static, jitter, stack, and the AA that jitters only when it moves", function()
+    local p = { jitter = false }
+    assert(resolver.aa_type(nil) == nil and resolver.aa_type(p) == "static")
+    p.jitter, p.jit_kind = true, "random"
+    assert(resolver.aa_type(p) == "jitter")
+    p.jit_kind = "cyclic"
+    assert(resolver.aa_type(p) == "stack")
+    local q = { jitter = false }
+    for _ = 1, 12 do q.jitter = false resolver.aa_note(q, "stand") end
+    for _ = 1, 12 do q.jitter = true resolver.aa_note(q, "move") end
+    q.jit_kind = "random"
+    assert(resolver.aa_type(q) == "peek")
+    resolver.aa_note(q, "air")                       -- the air has no class: nothing changes
+    assert(q.aa.still[1] > 11 and q.aa.moving[1] > 10)
+    local r = { jitter = true, jit_kind = "random" }
+    for _ = 1, 12 do resolver.aa_note(r, "stand") resolver.aa_note(r, "move") end
+    assert(resolver.aa_type(r) == "jitter")          -- jitters standing too: no peek AA
+end)
 test("angle normalization and finite desync bounds", function()
     assert(builder.adv.norm(181) == -179)
     assert(builder.adv.norm(-181) == 179)
