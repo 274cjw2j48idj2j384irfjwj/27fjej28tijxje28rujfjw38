@@ -1637,6 +1637,38 @@ for i = 1, #states do
     }
 end
 
+-- Simple AA (owners, Oct 21 2026: "nagyon basic ... csak lua apival ... 2,3,4,5,7 yaw mindegyik külön állítható ... semmi random"):
+-- one yaw per way (2-7 ways), set apart per state; the order, the hold and the desync side come from fixed sequences, not from a random number
+ui.antiaim.simple = { enable = groups.settings:checkbox("Simple AA", true) }
+local simple_defaults = { -30, 20, -10, 30, -20, 10, 0 }
+for i = 1, 8 do
+    local n = shortstates[i]
+    local s = {
+        ways = groups.yaw:slider(n .. " | Ways", 2, 7, 1, 0, ""),
+        order = groups.yaw:selection(n .. " | Way order", {"Skip", "Linear"}),
+        hold = groups.yaw:slider(n .. " | Hold", 1, 8, 1, 0, "p"),
+        hold_alt = groups.yaw:slider(n .. " | Hold on odd steps", 0, 8, 1, 0, "p"),
+        brute = groups.yaw:slider(n .. " | Brute shift", 0, 30, 1, 0, "°"),
+        side = groups.desync:selection(n .. " | Desync side", {"Thue-Morse", "Alternate", "Left", "Right"}),
+        amount = groups.desync:slider(n .. " | Desync amount", 0, 60, 1, 0, "°"),
+        def_trigger = groups.defensive:selection(n .. " | Simple defensive", {"Off", "On peek", "Shot at", "Peek + shot at", "Always"}),
+        def_pitch = groups.defensive:selection(n .. " | Simple def pitch", {"Off", "Down", "Up", "Zero", "Sweep"}),
+        def_yaw = groups.defensive:selection(n .. " | Simple def yaw", {"Off", "Static", "Sideways", "Flick", "Spin"}),
+        def_val = groups.defensive:slider(n .. " | Simple def value", -180, 180, 1, 0, "°"),
+    }
+    for k = 1, 7 do
+        s["yaw" .. k] = groups.yaw:slider(n .. " | Way " .. k, -90, 90, 1, 0, "°")
+        s["yaw" .. k].ref:set(simple_defaults[k])
+    end
+    s.ways.ref:set(3)
+    s.hold.ref:set(2)
+    s.hold_alt.ref:set(1)
+    s.brute.ref:set(10)
+    s.amount.ref:set(58)
+    s.def_val.ref:set(90)
+    ui.antiaim.simple[i] = s
+end
+
 local global = {
     velocity = 0,
     
@@ -7008,6 +7040,10 @@ builder.anti_brute_trigger = function()
         return
     end
     builder.ab_trigger_tick = tick
+    if (ui.antiaim.simple.enable:get() and builder.simple_brute ~= nil) then
+        builder.simple_brute()
+        return
+    end
     builder.target_delay = 0
     builder.yaw_flip = not builder.yaw_flip
     builder.brain_d.until_t = 0      -- Adaptive AA's delay profiles switch at the next packet too
@@ -7197,6 +7233,38 @@ builder.adv.def_yaw = function(st, mode, value, yaw, fresh, tick, rnd)
     return builder.adv.norm(st.dcur)
 end
 
+-- Simple AA, the deciding parts (pure): the order the ways are played in is a fixed permutation that never steps to a neighbour, the hold
+-- is the same for every step plus a fixed extra on the odd ones, the desync side follows the Thue-Morse sequence (it never repeats a
+-- period, so a resolver that looks for one finds none)
+builder.adv.SIMPLE_ORDER = { [2] = {1, 2}, [3] = {1, 3, 2}, [4] = {1, 3, 2, 4}, [5] = {1, 3, 5, 2, 4}, [6] = {1, 4, 2, 5, 3, 6}, [7] = {1, 4, 7, 3, 6, 2, 5} }
+builder.adv.simple_pos = function(ways, linear, phase, k)
+    ways = math.max(2, math.min(7, math.floor(tonumber(ways) or 3)))
+    local idx = ((k or 0) + (phase or 0)) % ways + 1
+    return linear and idx or builder.adv.SIMPLE_ORDER[ways][idx]
+end
+builder.adv.simple_hold = function(hold, alt, k)
+    return math.max(1, hold + ((k % 2 == 1) and alt or 0))
+end
+builder.adv.tm_side = function(n)
+    n = tonumber(n) or 0
+    if (n ~= n or n < 0 or n > 2147483647) then
+        n = 0
+    end
+    n = math.floor(n)
+    local ones = 0
+    while (n > 0) do
+        ones = ones + n % 2
+        n = math.floor(n / 2)
+    end
+    return ones % 2 == 1
+end
+-- defensive pitch / yaw of the Simple AA: pitch 2 down 3 up 4 zero 5 sweep (a triangle wave over 24 ticks)
+builder.adv.simple_def_pitch = function(mode, tick)
+    if (mode == 2) then return 89 elseif (mode == 3) then return -89 elseif (mode == 4) then return 0 end
+    local t = (tick % 24) / 24
+    return -89 + 178 * (t < 0.5 and 2 * t or 2 - 2 * t)
+end
+
 -- does an enemy look at us: its eye yaw within `tol` degrees of the direction from it to us
 -- can this enemy fire a gun within `tol` seconds: a gun (no knife / grenade / bomb), a round in it, the next shot not further away
 builder.adv.armed = function(held, clip, ready_in, tol)
@@ -7377,6 +7445,7 @@ builder.aa_snapshot = function()
         def = builder.old_defensive == true,
         ab = builder.ab_active(),
         dc = builder.direct_on(),
+        sm = ui.antiaim.simple.enable:get() and ui.antiaim.simple[cs <= 8 and cs or 1].ways:get() or nil,
         arm = builder.brain_now,
         arm_index = builder.brain_index,
         speed = (function()
@@ -9695,6 +9764,7 @@ menu_handle = function()
 
         local page = ui.nav.slider:get()
         local aa_page = page == 4 or (page >= 12 and page <= 14)
+        local old_page = aa_page and not ui.antiaim.simple.enable:get()
         for _, nav_sub in ipairs(ui.nav.subs) do
             nav_sub.button:depend({nav_main_of[page] == nav_sub.main})
         end
@@ -9750,6 +9820,7 @@ menu_handle = function()
     
         -- builder (antiaim)
         ui.antiaim.builder.enable:depend({aa_page})
+        ui.antiaim.simple.enable:depend({aa_page}, {ui.antiaim.builder.enable, true})
         ui.antiaim.builder.condition:depend({aa_page}, {ui.antiaim.builder.enable, true})
         ui.antiaim.builder.ab_mode:depend({aa_page}, {ui.antiaim.builder.enable, true}, {ui.antiaim.builder.anti_brute, true})
         ui.antiaim.builder.direct:depend({aa_page}, {ui.antiaim.builder.enable, true}, {info.plan == "dev"})
@@ -9767,48 +9838,73 @@ menu_handle = function()
         for i = 1, #states do
             local state = ui.antiaim.builder[i]
             if (i == 1) then
-                state.override:depend({aa_page}, {ui.antiaim.builder.enable, true}, {ui.antiaim.builder.condition, -1})
+                state.override:depend({old_page}, {ui.antiaim.builder.enable, true}, {ui.antiaim.builder.condition, -1})
                 state.override.ref:set(true)
             else
-                state.override:depend({aa_page}, {ui.antiaim.builder.enable, true}, {ui.antiaim.builder.condition, i})
+                state.override:depend({old_page}, {ui.antiaim.builder.enable, true}, {ui.antiaim.builder.condition, i})
             end
     
-            state.yaw_mode:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
+            state.yaw_mode:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
             local ym = state.yaw_mode:get()
-            state.yaw_val:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(ym == 1 or ym == 4 or ym == 5)})
-            state.yaw_left:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(ym == 2 or ym == 3 or ym == 6)})
-            state.yaw_right:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(ym == 2 or ym == 3 or ym == 6)})
-            state.yaw_meta_left:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(ym == 3 or ym == 6)})
-            state.yaw_meta_right:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(ym == 3 or ym == 6)})
-            state.yaw_delay:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(ym == 2 or ym == 3)})
-            state.meta_delay:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(ym == 3)})
-            state.yaw_ways:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(ym == 4)})
-            state.yaw_range:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(ym == 4 or ym == 5)})
-            state.yaw_hold:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(ym == 4 or ym == 6)})
-            state.sway_speed:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(ym == 5)})
-            state.snap_chance:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(ym == 5)})
-            state.yaw_modifier:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
-            state.modifier_degree:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_modifier:get() ~= 1)})
-            state.modifier_random:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_modifier:get() ~= 1)})
-            state.desync:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
-            state.desync_left:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
-            state.desync_right:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
-            state.desync_meta_left:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
-            state.desync_meta_right:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
-            state.trigger_defensive:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
+            state.yaw_val:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(ym == 1 or ym == 4 or ym == 5)})
+            state.yaw_left:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(ym == 2 or ym == 3 or ym == 6)})
+            state.yaw_right:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(ym == 2 or ym == 3 or ym == 6)})
+            state.yaw_meta_left:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(ym == 3 or ym == 6)})
+            state.yaw_meta_right:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(ym == 3 or ym == 6)})
+            state.yaw_delay:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(ym == 2 or ym == 3)})
+            state.meta_delay:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(ym == 3)})
+            state.yaw_ways:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(ym == 4)})
+            state.yaw_range:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(ym == 4 or ym == 5)})
+            state.yaw_hold:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(ym == 4 or ym == 6)})
+            state.sway_speed:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(ym == 5)})
+            state.snap_chance:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(ym == 5)})
+            state.yaw_modifier:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
+            state.modifier_degree:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_modifier:get() ~= 1)})
+            state.modifier_random:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(state.yaw_modifier:get() ~= 1)})
+            state.desync:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
+            state.desync_left:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
+            state.desync_right:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
+            state.desync_meta_left:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
+            state.desync_meta_right:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
+            state.trigger_defensive:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i})
             local td = state.trigger_defensive:get()
             local def_angles = td == 2 or td == 4 or td == 6
-            state.smart_triggers:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(td == 6)})
+            state.smart_triggers:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(td == 6)})
             local dp, dy = state.defensive_pitch:get(), state.defensive_yaw:get()
-            state.defensive_pitch:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {def_angles})
-            state.defensive_pitch_val:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(dp == 8 or dp == 9 or dp == 12)}, {def_angles})
-            state.defensive_pitch_val2:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(dp == 9 or dp == 12)}, {def_angles})
-            state.defensive_yaw:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {def_angles})
-            state.defensive_yaw_val:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(dy == 2 or dy == 3 or dy == 4 or dy == 11 or dy == 12)}, {def_angles})
-            state.defensive_speed:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(dy == 5)}, {def_angles})
-            state.defensive_range:depend({aa_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(dy == 5)}, {def_angles})
+            state.defensive_pitch:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {def_angles})
+            state.defensive_pitch_val:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(dp == 8 or dp == 9 or dp == 12)}, {def_angles})
+            state.defensive_pitch_val2:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(dp == 9 or dp == 12)}, {def_angles})
+            state.defensive_yaw:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {def_angles})
+            state.defensive_yaw_val:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(dy == 2 or dy == 3 or dy == 4 or dy == 11 or dy == 12)}, {def_angles})
+            state.defensive_speed:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(dy == 5)}, {def_angles})
+            state.defensive_range:depend({old_page}, {ui.antiaim.builder.enable, true}, {state.override, true}, {ui.antiaim.builder.condition, i}, {(dy == 5)}, {def_angles})
         end
     
+
+        for i = 1, 8 do
+            local sc = ui.antiaim.simple[i]
+            local own = ui.antiaim.builder[i]
+            local cond = {ui.antiaim.builder.condition, i == 1 and -1 or i}
+            local ways = tonumber(sc.ways:get()) or 7
+            local function put(item, extra)
+                if (extra ~= nil) then
+                    item:depend({aa_page}, {ui.antiaim.builder.enable, true}, {ui.antiaim.simple.enable, true}, {own.override, true}, cond, extra)
+                else
+                    item:depend({aa_page}, {ui.antiaim.builder.enable, true}, {ui.antiaim.simple.enable, true}, {own.override, true}, cond)
+                end
+            end
+            for _, name in ipairs({"ways", "order", "hold", "hold_alt", "brute", "side", "amount", "def_trigger"}) do
+                put(sc[name])
+            end
+            for k = 1, 7 do
+                put(sc["yaw" .. k], {(k <= ways)})
+            end
+            local on = sc.def_trigger:get() ~= 1
+            put(sc.def_pitch, {on})
+            put(sc.def_yaw, {on})
+            put(sc.def_val, {on and sc.def_yaw:get() ~= 1})
+        end
+
         groups.nav:depend({(true)})
     
         groups.configs:depend({page == 1})
@@ -10010,6 +10106,156 @@ do_aimmiss = function()
     end)
 end
 
+-- Simple AA (owners, Oct 21 2026): the whole anti-aim of the lua in one function, only with the lua api (set_yaw / set_pitch / set_desync);
+-- Primordial keeps the fakelag and the tickbase shift of the defensive. No random number anywhere
+builder.simple = { phase = 0, shift_until = 0, tick = -1, packets = 0, st = {}, hp = nil, shot_at = -100000, def_ticks = 0 }
+builder.simple_brute = function()
+    local sm = builder.simple
+    sm.phase = sm.phase + 1
+    sm.shift_until = globals.tick_count() + time_to_ticks(0.7)
+    sm.st = {}
+end
+builder.simple_cfg = function()
+    local n = global.current_state_number
+    local own = ui.antiaim.builder[n]
+    local i = (n <= 8 and own ~= nil and own.override:get()) and n or 1
+    return ui.antiaim.simple[i], i
+end
+builder.simple_run = function(ctx, cmd)
+    local sm = builder.simple
+    local me = entity_list_get_local_player()
+    local round_end = game_rules_get_prop("m_gamePhase") == 4 or game_rules_get_prop("m_gamePhase") == 5
+    refs.overridemove:set(false)
+    refs.overridemovesw:set(false)
+    refs.yawadd:set(0)
+    refs.jittermode:set(1)
+    refs.rotate:set(false)
+    refs.pitch:set(1)
+    if (round_end or me == nil) then
+        return
+    end
+    for k = 1, 3 do
+        refs.fsstate:set(k, true)
+    end
+
+    local cfg, index = builder.simple_cfg()
+    local tick = globals.tick_count()
+    local base = builder.direct_base(me, ui.antiaim.builder.yaw:get() + 1)
+    if (base == nil) then
+        return
+    end
+
+    -- one decision per sent packet
+    local st = sm.st[index]
+    if (st == nil) then
+        st = { k = 0, left = 0, yaw = 0, side = true }
+        sm.st[index] = st
+    end
+    if (engine_get_choked_commands() == 0 and sm.tick ~= tick) then
+        sm.tick = tick
+        sm.packets = sm.packets + 1
+        if (st.left <= 0) then
+            st.k = st.k + 1
+            st.left = builder.adv.simple_hold(cfg.hold:get(), cfg.hold_alt:get(), st.k)
+            local pos = builder.adv.simple_pos(cfg.ways:get(), cfg.order:get() == 2, sm.phase, st.k)
+            st.yaw = cfg["yaw" .. pos]:get()
+        end
+        st.left = st.left - 1
+        local mode = cfg.side:get()
+        if (mode == 1) then st.side = builder.adv.tm_side(sm.packets)
+        elseif (mode == 2) then st.side = not st.side
+        else st.side = mode == 3 end
+        if (sm.phase % 2 == 1) then st.side = not st.side end
+    end
+    local yaw = st.yaw
+    if (sm.shift_until > tick) then
+        yaw = yaw + (sm.phase % 2 == 1 and 1 or -1) * cfg.brute:get()
+    end
+
+    -- the angle: manual keys, the freestand key, the knife behind us, else the way
+    local out
+    local manual = builder.own_manual()
+    if (manual ~= nil) then
+        out = engine_get_view_angles().y + manual
+    elseif (refs.freestand ~= nil and refs.freestand:get() == true) then
+        out = builder.own_freestand(me)
+    end
+    if (out == nil and ui.antiaim.features.antibackstab:get()) then
+        for _, enemy in pairs(entity_list_get_players(true) or {}) do
+            if (enemy:is_alive() and not enemy:is_dormant()) then
+                local weapon = enemy:get_active_weapon()
+                if (weapon ~= nil and weapon:get_class_name() == "CKnife" and me:get_render_origin():dist(enemy:get_render_origin()) < 250) then
+                    out = math.yaw_to_player(enemy, true)
+                    break
+                end
+            end
+        end
+    end
+    out = out or base + 180 + yaw
+
+    -- pitch of the menu: 1 off, 2 down, 3 up, 4 zero
+    local pitch = ({ [2] = 89, [3] = -89, [4] = 0 })[ui.antiaim.builder.pitch:get()]
+
+    -- the defensive: the trigger asks for the shift, the angles apply while the shift lasts
+    local trigger = cfg.def_trigger:get()
+    if (trigger > 1) then
+        local hp = me:get_prop("m_iHealth")
+        if (sm.hp ~= nil and hp ~= nil and hp < sm.hp) then
+            sm.shot_at = tick
+        end
+        sm.hp = hp
+        local shot_at = trigger >= 3 and tick - sm.shot_at < time_to_ticks(1.5)
+        local peek = false
+        if (trigger == 2 or trigger == 4) then
+            local vel = me:get_prop("m_vecVelocity")
+            local localmod = vec3_t(vel.x / 2, vel.y / 2, vel.z / 2)
+            local origin = me:get_prop("m_vecAbsOrigin")
+            for _, enemy in pairs(entity_list_get_players(true) or {}) do
+                if (enemy:is_alive() and not enemy:is_dormant() and builder.peek_visible(me, enemy, origin, localmod)) then
+                    peek = true
+                    break
+                end
+            end
+        end
+        if (trigger == 5 or shot_at or peek) then
+            defensive:trigger(shot_at, cmd:has_button(e_cmd_buttons.ATTACK))
+        end
+    end
+    local charged = refs.double_tap:get() and exploits_get_charge() == exploits_get_max_charge() and not refs.fake_duck:get()
+    local shifting = trigger > 1 and charged and defensive:is_active(me, ui.antiaim.builder.defensive_ping:get() == 1)
+    if (shifting) then
+        sm.def_ticks = sm.def_ticks + 1
+        local value = cfg.def_val:get()
+        local mode = cfg.def_yaw:get()
+        if (mode == 2) then
+            out = base + 180 + value
+        elseif (mode == 3) then
+            out = base + 180 + (st.side and -1 or 1) * value
+        elseif (mode == 4) then
+            out = base + 180 + yaw + (builder.adv.tm_side(sm.def_ticks) and value or -value)
+        elseif (mode == 5) then
+            out = base + 180 + (sm.def_ticks * value / 2) % 360
+        end
+        if (cfg.def_pitch:get() > 1) then
+            pitch = builder.adv.simple_def_pitch(cfg.def_pitch:get(), tick)
+        end
+    else
+        sm.def_ticks = 0
+    end
+
+    ctx:set_yaw(builder.adv.norm(out))
+    if (pitch ~= nil) then
+        ctx:set_pitch(pitch)
+    end
+    local amount = math.max(0, math.min(60, cfg.amount:get())) / 60
+    refs.desyncside:set(2)
+    refs.leftamount:set(100)
+    refs.rightamount:set(100)
+    ctx:set_invert_desync(false)
+    ctx:set_desync(st.side and -amount or amount)
+    builder.direct.last_left = st.side
+end
+
 -- An error in the anti-aim code UNLOADS the whole script in Primordial and the anti-aim is gone for the rest of the game (the shot logs:
 -- the enemies hit 80 % of what they shoot at us even with it running). So the error is caught here: that tick Primordial's own anti-aim
 -- stays, the message goes to the console (at most one per 3 s) and the next tick tries again
@@ -10029,7 +10275,16 @@ do_antiaim = function()
             local on_land = bit.band(entity_list_get_local_player():get_prop("m_fFlags"), bit.lshift(1, 0)) ~= 0
             local state = get_state(get_velocity())
         
-            if (builder.direct_on()) then
+            if (ui.antiaim.builder.enable:get() and ui.antiaim.simple.enable:get()) then
+                local ok, err = pcall(function()
+                    builder.simple_run(ctx, cmd)
+                    run_exploit(ctx, cmd, unpredicted)
+                    run_edgeyaw(ctx, cmd, unpredicted)
+                end)
+                if (not ok) then
+                    builder.aa_failed(err)
+                end
+            elseif (builder.direct_on()) then
                 -- direct control: the anti-aim code writes into recorders, then the lua sends the angles itself
                 builder.direct_begin()
                 local dctx = builder.direct_ctx(ctx)

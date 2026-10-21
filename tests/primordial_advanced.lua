@@ -287,6 +287,38 @@ test("negative UI randomization does not create an empty interval", function()
         assert(value >= -30 and value <= 0)
     end
 end)
+test("Simple AA: every way is played once a round in a fixed order, no random", function()
+    for ways = 2, 7 do
+        local seen, last = {}, nil
+        for k = 0, ways - 1 do
+            local pos = builder.adv.simple_pos(ways, false, 0, k)
+            assert(pos >= 1 and pos <= ways and not seen[pos])
+            seen[pos] = true
+            if (ways >= 3 and last ~= nil) then assert(pos ~= last) end
+            last = pos
+        end
+        assert(builder.adv.simple_pos(ways, true, 0, 0) == 1 and builder.adv.simple_pos(ways, true, 1, 0) == 2)
+        assert(builder.adv.simple_pos(ways, false, 0, 0) == builder.adv.simple_pos(ways, false, 0, ways))
+    end
+    assert(builder.adv.simple_hold(2, 3, 1) == 5 and builder.adv.simple_hold(2, 3, 2) == 2 and builder.adv.simple_hold(0, 0, 2) == 1)
+end)
+test("Simple AA: Thue-Morse side has no period and is bounded on garbage", function()
+    local expect = { false, true, true, false, true, false, false, true }
+    for n = 0, 7 do assert(builder.adv.tm_side(n) == expect[n + 1]) end
+    assert(builder.adv.tm_side(0 / 0) == false and builder.adv.tm_side(math.huge) == false and builder.adv.tm_side(-5) == false)
+    local seq = {}
+    for n = 0, 63 do seq[n] = builder.adv.tm_side(n) end
+    for period = 1, 16 do
+        local same = true
+        for n = 0, 63 - period do if seq[n] ~= seq[n + period] then same = false break end end
+        assert(not same)
+    end
+end)
+test("Simple AA: defensive pitch is a fixed value or a triangle wave", function()
+    assert(builder.adv.simple_def_pitch(2, 5) == 89 and builder.adv.simple_def_pitch(3, 5) == -89 and builder.adv.simple_def_pitch(4, 5) == 0)
+    assert(builder.adv.simple_def_pitch(5, 0) == -89 and builder.adv.simple_def_pitch(5, 12) == 89)
+    for t = 0, 47 do local v = builder.adv.simple_def_pitch(5, t) assert(v >= -89 and v <= 89) end
+end)
 test("X-Way stays bounded and refreshes changed parameters", function()
     local st = {}
     for _ = 1, 100 do
