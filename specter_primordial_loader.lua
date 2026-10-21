@@ -2,7 +2,7 @@
 --  SPECTER for Primordial | Loader
 --  Key + HWID checked by the license server, the script downloaded from it at every login
 --  (nightly = everything, beta = no resolver, dev = the newest build). A key loads its own build and the ones below it:
---  a dev key dev / nightly / beta (a button each), a nightly key nightly / beta, a beta key beta. Put this file into primordial/scripts once.
+--  a dev key dev / nightly / beta (double-click one in the list), a nightly key nightly / beta, a beta key beta. Put this file into primordial/scripts once.
 -- ======================================================================
 
 if (rawget(_G, "_specter_pm_loader_loaded")) then
@@ -13,7 +13,7 @@ rawset(_G, "_specter_pm_loader_loaded", true)
 local SERVER_URL = "https://specter-license-mh111-production.up.railway.app"
 -- bump whenever this file changes: the server hands out the number of the newest loader (the bot reads it from the cloud
 -- branch) and an older one tells its user to download the new one
-local LOADER_VERSION = 4
+local LOADER_VERSION = 5
 local KEY_FILE = "specter/key.txt"             -- csgo/specter/key.txt
 local BUILD_FILE = "specter/build.txt"         -- the build a multi build key loaded last (csgo/specter/build.txt)
 local GROUP = "Specter loader"
@@ -169,24 +169,83 @@ end
 
 local login
 
--- one button per build, shown only for the builds the key allows (more than one)
-ui.builds = {}
-for _, build in ipairs(BUILD_ORDER) do
-    ui.builds[build] = menu.add_button(GROUP, "Load " .. build_name(build), function()
-        login(build)
-    end)
-    pcall(ui.builds[build].set_visible, ui.builds[build], false)
-end
+-- the builds of a key (more than one) are a list, a build is loaded with a DOUBLE CLICK on it (owners, Oct 21 2026: "ne ugy lehessen
+-- kivalasztani, hogy ramesz es load, hanem dupla kattal"); every build has the same double star in front
+local STAR = "★★"
+local BUILD_LABEL = { pm_dev = STAR .. "  dev  (newest)", pm_nightly = STAR .. "  nightly  (everything)", pm_beta = STAR .. "  beta  (no resolver)" }
+local PLACEHOLDER = "-- double-click a build to load it --"
+ui.hint = menu.add_text(GROUP, STAR .. "  Double-click a build in the list to load it.")
+ui.list = menu.add_list(GROUP, "Builds", { PLACEHOLDER }, 4)
+pcall(ui.hint.set_visible, ui.hint, false)
+pcall(ui.list.set_visible, ui.list, false)
+local list_shown, list_builds = false, {}
 
 local function show_builds(allowed)
+    local items = { PLACEHOLDER }
+    list_builds = {}
     for _, build in ipairs(BUILD_ORDER) do
-        local on = false
         for _, name in ipairs(allowed) do
-            on = on or name == build
+            if (name == build) then
+                items[#items + 1] = BUILD_LABEL[build]
+                list_builds[BUILD_LABEL[build]] = build
+            end
         end
-        pcall(ui.builds[build].set_visible, ui.builds[build], on)
     end
+    pcall(ui.list.set_items, ui.list, items)
+    pcall(ui.hint.set_visible, ui.hint, true)
+    pcall(ui.list.set_visible, ui.list, true)
+    list_shown = true
 end
+
+-- the list gives no click events, so a double click is read from the presses: two presses within CLICK_WINDOW seconds and CLICK_NEAR pixels of
+-- each other, inside the list's area (CLICK_ZONE pixels around where the selection last changed = where an item was clicked). One call per frame:
+-- `press` = {x, y, t} on the frame the left button went down (else nil), `label` = the active item; returns the label to load, else nil
+local CLICK_WINDOW, CLICK_NEAR, CLICK_ZONE = 0.5, 6, 80
+local function distance(a, b)
+    return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
+end
+local function click_step(st, press, label, now)
+    local fire = nil
+    if (press ~= nil) then
+        local second = st.prev ~= nil and press.t - st.prev.t <= CLICK_WINDOW and distance(press, st.prev) <= CLICK_NEAR
+        if (second and st.anchor ~= nil and distance(press, st.anchor) <= CLICK_ZONE and label ~= nil and label ~= PLACEHOLDER) then
+            fire = label
+            st.prev = nil
+        else
+            st.prev = press
+        end
+    end
+    if (label ~= st.label) then
+        -- the selection changed: the press just before it was the click on that item
+        st.label = label
+        if (st.prev ~= nil and now - st.prev.t <= 0.3) then
+            st.anchor = st.prev
+        end
+    end
+    return fire
+end
+
+local clicks, was_down = {}, false
+pcall(callbacks.add, e_callbacks.PAINT, function()
+    if (not list_shown) then
+        return
+    end
+    pcall(function()
+        local down = input.is_key_held(e_keys.MOUSE_LEFT)
+        local now = global_vars_cur_time()
+        local press = nil
+        if (down and not was_down) then
+            local mouse = input.get_mouse_pos()
+            press = { x = mouse.x, y = mouse.y, t = now }
+        end
+        was_down = down
+        local ok, label = pcall(ui.list.get_active_item_name, ui.list)
+        local fire = click_step(clicks, press, ok and label or nil, now)
+        if (fire ~= nil and list_builds[fire] ~= nil) then
+            login(list_builds[fire])
+        end
+    end)
+end)
 
 -- the builds the server lists for the key ("builds":["pm_dev","pm_nightly","pm_beta"]); none listed = an older server: the key's own plan
 local function parse_builds(body)
@@ -242,11 +301,7 @@ login = function(chosen)
             if (build == nil) then
                 busy = false
                 show_builds(allowed)
-                status("Choose a build: " .. table.concat((function()
-                    local names = {}
-                    for _, name in ipairs(allowed) do names[#names + 1] = build_name(name) end
-                    return names
-                end)(), " / ") .. ".")
+                status("Double-click the build you want to load in the list below.")
                 return
             end
             show_builds(allowed)
