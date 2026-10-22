@@ -357,3 +357,14 @@ export async function addConfigImage(configId: string, ownerId: string, contentT
 export async function configImages(configId: string): Promise<string[]> {
   return (await query<{ blob_id: string }>("select blob_id from config_images where config_id = $1 order by sort, id", [configId])).map((r) => r.blob_id);
 }
+
+export async function removeConfigImage(configId: string, ownerId: string, blobId: string): Promise<void> {
+  const r = await tx(async (db) => {
+    const cfg = await one<{ owner_id: string }>("select owner_id from configs where id = $1", [configId], db);
+    if (!cfg || cfg.owner_id !== ownerId) return null;
+    const del = await query("delete from config_images where config_id = $1 and blob_id = $2 returning blob_id", [configId, blobId], db);
+    if (del.length) await query("delete from blobs where id = $1", [blobId], db);
+    return del.length;
+  });
+  if (!r) throw new ApiError(404, "not_found", "Image not found.");
+}

@@ -1,6 +1,7 @@
 import { assertSameOrigin, requireUser } from "@/lib/authz";
-import { ApiError, addConfigImage } from "@/lib/configs";
-import { api, json } from "@/lib/http";
+import { z } from "zod";
+import { ApiError, addConfigImage, removeConfigImage } from "@/lib/configs";
+import { api, body, json } from "@/lib/http";
 import { loadVisible } from "@/lib/config-api";
 import { LIMITS } from "@/config/site";
 import { rateLimit } from "@/lib/rate-limit";
@@ -20,4 +21,14 @@ export const POST = api<{ slug: string }>(async (req, { params }) => {
   const bytes = Buffer.from(await req.arrayBuffer());
   const id = await addConfigImage(cfg.id, user.id, type, bytes);
   return json({ url: `/api/media/${id}` }, 201);
+});
+
+export const DELETE = api<{ slug: string }>(async (req, { params }) => {
+  assertSameOrigin(req);
+  const user = await requireUser();
+  const cfg = await loadVisible(params.slug, { id: user.id, isAdmin: false });
+  if (cfg.owner_id !== user.id) throw new ApiError(404, "not_found", "Config not found.");
+  const input = await body(req, z.object({ id: z.string().uuid() }), 1024);
+  await removeConfigImage(cfg.id, user.id, input.id);
+  return json({ ok: true });
 });

@@ -110,7 +110,7 @@ describe("resolveAccess (database)", () => {
 
   it("a product suspension only hits that product", async () => {
     const u = await mkUser();
-    await query("insert into access_grants (user_id, product_id, source, expires_at) values ($1,'gamesense','admin',$2), ($1,'primordial','admin',$2)", [u.id, new Date(now.getTime() + 20 * day)]);
+    await query("insert into access_grants (user_id, product_id, source, starts_at, expires_at) values ($1,'gamesense','admin',$3,$2), ($1,'primordial','admin',$3,$2)", [u.id, new Date(now.getTime() + 20 * day), new Date(now.getTime() - day)]);
     await query("insert into suspensions (user_id, product_id) values ($1,'gamesense')", [u.id]);
     const f = async () => ({ inGuild: true, roles: [] });
     expect((await resolveAccess(u.id, "gamesense", f, now)).status).toBe("suspended");

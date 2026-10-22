@@ -113,6 +113,7 @@ export function ActionButton({
         </button>
       )}
       {r.error && <span role="alert" className="max-w-xs text-xs text-red-300">{r.error}</span>}
+      {r.done && !r.error && <span role="status" className="max-w-xs text-xs text-emerald-300">{r.done}</span>}
     </span>
   );
 }

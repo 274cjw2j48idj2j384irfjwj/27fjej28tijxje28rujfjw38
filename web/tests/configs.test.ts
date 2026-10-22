@@ -238,3 +238,20 @@ describe("config store", () => {
     await expect(reportConfig(v.id, c.id, "  ", "")).rejects.toBeInstanceOf(ApiError);
   });
 });
+
+describe("config images: removal", () => {
+  beforeEach(resetDb);
+  afterAll(done);
+  it("only the owner can remove an image, and the blob goes with it", async () => {
+    const { removeConfigImage } = await import("@/lib/configs");
+    const u = await mkUser();
+    const other = await mkUser();
+    const c = await createConfig({ ownerId: u.id, productId: "gamesense", name: "Imgs", payload: payload() });
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32)]);
+    const blob = await addConfigImage(c.id, u.id, "image/png", png);
+    await expect(removeConfigImage(c.id, other.id, blob)).rejects.toMatchObject({ status: 404 });
+    await removeConfigImage(c.id, u.id, blob);
+    expect(await query("select 1 from blobs where id = $1", [blob])).toHaveLength(0);
+    await expect(removeConfigImage(c.id, u.id, blob)).rejects.toMatchObject({ status: 404 });
+  });
+});

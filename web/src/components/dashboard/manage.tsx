@@ -118,14 +118,24 @@ export function ImagesPanel({ slug, images }: { slug: string; images: string[] }
     setMsg({ ok: true, text: "Image added." });
     router.refresh();
   }
+  async function remove(src: string) {
+    setMsg(null);
+    setBusy(true);
+    const res = await call(`/api/configs/${slug}/images`, { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: src.split("/").pop() }) });
+    setBusy(false);
+    if (!res.ok) return setMsg({ ok: false, text: res.message });
+    setMsg({ ok: true, text: "Image removed." });
+    router.refresh();
+  }
   return (
     <div>
       {images.length > 0 ? (
         <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {images.map((src) => (
-            <li key={src} className="aspect-video overflow-hidden rounded-xl border border-line bg-ink-900">
+            <li key={src} className="group relative aspect-video overflow-hidden rounded-xl border border-line bg-ink-900">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={src} alt="Config preview" loading="lazy" className="h-full w-full object-cover" />
+              <button type="button" disabled={busy} onClick={() => remove(src)} aria-label="Remove this image" className="absolute right-2 top-2 rounded-lg border border-line bg-ink-950/85 px-2 py-1 text-xs text-red-200 opacity-100 transition hover:border-red-400/50 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100">Remove</button>
             </li>
           ))}
         </ul>

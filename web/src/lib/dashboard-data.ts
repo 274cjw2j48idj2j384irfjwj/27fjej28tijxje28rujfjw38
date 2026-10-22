@@ -1,4 +1,5 @@
 // Server queries of the signed in area (/dashboard, /link). Read only; every change goes through the real API routes.
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getProducts, type ProductConfig, type ProductId } from "@/config/site";
 import type { AccessResult } from "./access";
@@ -10,7 +11,11 @@ import type { SessionUser } from "./sessions";
 // The page asks for its own path, so the sign in brings the visitor back to it.
 export async function requireDashboardUser(path = "/dashboard"): Promise<SessionUser> {
   const user = await currentUser();
-  if (!user) redirect(`/api/auth/login?next=${encodeURIComponent(path)}`);
+  if (!user) {
+    // the middleware passes the real path, so a deep link survives the sign in
+    const real = (await headers()).get("x-pathname");
+    redirect(`/api/auth/login?next=${encodeURIComponent(real && real.startsWith("/") ? real : path)}`);
+  }
   return user;
 }
 
