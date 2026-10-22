@@ -35,10 +35,10 @@ export function AuditTable({ rows }: { rows: AuditEntry[] }) {
               <tbody className="divide-y divide-[color:var(--line)]">
                 {filtered.slice(0, shown).map((r) => (
                   <tr key={r.id} className="align-top">
-                    <td className={`${td} whitespace-nowrap text-[color:var(--muted)]`}>{r.at}</td>
+                    <td className={`${td} whitespace-nowrap muted`}>{r.at}</td>
                     <td className={`${td} whitespace-nowrap font-mono text-violet-200`}>{r.action}</td>
                     <td className={td}>{r.actor}</td>
-                    <td className={`${td} max-w-[200px] break-all text-xs text-[color:var(--muted)]`}>{r.target || "-"}</td>
+                    <td className={`${td} max-w-[200px] break-all text-xs muted`}>{r.target || "-"}</td>
                     <td className={`${td} muted max-w-[320px] break-words text-xs`}>{r.meta || "-"}</td>
                   </tr>
                 ))}

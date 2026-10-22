@@ -17,7 +17,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       <SiteHeader />
       <main id="main" className="mx-auto max-w-6xl px-4 pt-10 sm:px-6 sm:pt-12">
         {allowed ? (
-          <div className="grid gap-8 lg:grid-cols-[220px_minmax(0,1fr)]">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[220px_minmax(0,1fr)]">
             <AdminNav />
             <div className="min-w-0">{children}</div>
           </div>

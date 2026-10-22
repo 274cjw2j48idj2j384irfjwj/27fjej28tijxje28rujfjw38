@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ConfigActions, ReportActions } from "@/components/admin/moderation";
-import { td, th } from "@/components/admin/kit";
+import { td, th } from "@/components/admin/styles";
 import { adminPageUser } from "@/components/admin/server";
 import { Badge, Card, EmptyState, PageHeader, SectionTitle, formatDate } from "@/components/ui";
 import { getProduct } from "@/config/site";
@@ -72,7 +72,7 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
                         <Link href={`/cloud/${c.slug}`} target="_blank" className="font-medium text-white hover:text-violet-200">{c.name}</Link>
                         <p className="mt-0.5 text-xs text-[color:var(--faint)]">{pname(c.product_id)} · <span className="font-mono">{c.slug}</span></p>
                       </td>
-                      <td className={`${td} text-[color:var(--muted)]`}>{c.owner_name}</td>
+                      <td className={`${td} muted`}>{c.owner_name}</td>
                       <td className={td}>
                         <span className="flex flex-wrap gap-1.5">
                           <Badge tone={c.visibility === "public" ? "gray" : "amber"}>{c.visibility}</Badge>
@@ -83,8 +83,8 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
                           {c.reports_open > 0 && <Badge tone="red">{c.reports_open} open report{c.reports_open === 1 ? "" : "s"}</Badge>}
                         </span>
                       </td>
-                      <td className={`${td} whitespace-nowrap text-[color:var(--muted)]`}>{c.likes_count} likes · {c.downloads_count} dl{c.reports_total ? ` · ${c.reports_total} reports` : ""}</td>
-                      <td className={`${td} whitespace-nowrap text-[color:var(--muted)]`}>{formatDate(c.updated_at)}</td>
+                      <td className={`${td} whitespace-nowrap muted`}>{c.likes_count} likes · {c.downloads_count} dl{c.reports_total ? ` · ${c.reports_total} reports` : ""}</td>
+                      <td className={`${td} whitespace-nowrap muted`}>{formatDate(c.updated_at)}</td>
                       <td className={td}><ConfigActions id={c.id} name={c.name} hidden={c.hidden} featured={c.is_featured} official={c.is_official} /></td>
                     </tr>
                   ))}

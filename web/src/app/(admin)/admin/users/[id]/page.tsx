@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { UserActions } from "@/components/admin/user-actions";
 import { adminPageUser } from "@/components/admin/server";
 import { Avatar, Badge, Card, PageHeader, SectionTitle, StatusBadge, daysLeft, formatDate } from "@/components/ui";
-import { td, th } from "@/components/admin/kit";
+import { td, th } from "@/components/admin/styles";
 import { getProducts } from "@/config/site";
 import { userDetail } from "@/lib/admin";
 import { accessOf } from "@/lib/authz";

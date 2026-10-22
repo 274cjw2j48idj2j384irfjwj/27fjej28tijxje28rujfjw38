@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { adminPageUser } from "@/components/admin/server";
 import { Avatar, Badge, EmptyState, PageHeader, formatDate } from "@/components/ui";
-import { td, th } from "@/components/admin/kit";
+import { td, th } from "@/components/admin/styles";
 import { searchUsers } from "@/lib/admin";
 import { avatarUrl } from "@/lib/discord";
 
@@ -53,9 +53,9 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                         <span className="font-medium text-white">{u.global_name || u.username}</span>
                       </span>
                     </td>
-                    <td className={`${td} font-mono text-xs text-[color:var(--muted)]`}>{u.discord_id}</td>
+                    <td className={`${td} font-mono text-xs muted`}>{u.discord_id}</td>
                     <td className={td}><span className="flex flex-wrap gap-1.5"><Flags u={u} /></span></td>
-                    <td className={`${td} text-[color:var(--muted)]`}>{formatDate(u.last_login_at, true)}</td>
+                    <td className={`${td} muted`}>{formatDate(u.last_login_at, true)}</td>
                     <td className={`${td} text-right`}><Link href={`/admin/users/${u.id}`} className="btn-ghost btn-sm">Manage</Link></td>
                   </tr>
                 ))}

@@ -1,4 +1,4 @@
-import { td, th } from "@/components/admin/kit";
+import { td, th } from "@/components/admin/styles";
 import { adminPageUser } from "@/components/admin/server";
 import { Badge, Card, EmptyState, Notice, PageHeader, SectionTitle, formatDate } from "@/components/ui";
 import { getProduct, site } from "@/config/site";
@@ -77,8 +77,8 @@ export default async function RewardsPage() {
                   <tr key={r.id}>
                     <td className={`${td} font-mono`}>{r.period}</td><td className={`${td} capitalize`}>{r.board_id}</td><td className={td}>#{r.rank}</td><td className={td}>{r.winner}</td>
                     <td className={`${td} whitespace-nowrap`}>{r.days} d {pname(r.product_id)}</td>
-                    <td className={`${td} whitespace-nowrap text-[color:var(--muted)]`}>{r.previous_expires_at ? formatDate(r.previous_expires_at) : "-"}</td>
-                    <td className={`${td} whitespace-nowrap text-[color:var(--muted)]`}>{r.new_expires_at ? formatDate(r.new_expires_at) : "-"}</td>
+                    <td className={`${td} whitespace-nowrap muted`}>{r.previous_expires_at ? formatDate(r.previous_expires_at) : "-"}</td>
+                    <td className={`${td} whitespace-nowrap muted`}>{r.new_expires_at ? formatDate(r.new_expires_at) : "-"}</td>
                     <td className={td}><Badge tone={r.note === "permanent_access" ? "amber" : "green"}>{NOTE[r.note] ?? r.note}</Badge></td>
                   </tr>
                 ))}

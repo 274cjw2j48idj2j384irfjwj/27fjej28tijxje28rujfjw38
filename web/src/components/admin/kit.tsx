@@ -162,5 +162,4 @@ export function TableWrap({ children, label }: { children: ReactNode; label: str
   );
 }
 
-export const th = "whitespace-nowrap px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider text-[color:var(--muted)]";
-export const td = "px-4 py-3 align-middle text-sm";
+export { th, td } from "./styles";

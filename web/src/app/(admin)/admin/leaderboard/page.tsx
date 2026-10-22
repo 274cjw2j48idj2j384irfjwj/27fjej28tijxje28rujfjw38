@@ -1,5 +1,5 @@
 import { BoardPanel, CloseMonth } from "@/components/admin/board-panel";
-import { td, th } from "@/components/admin/kit";
+import { td, th } from "@/components/admin/styles";
 import { adminPageUser } from "@/components/admin/server";
 import { Card, PageHeader, SectionTitle, formatDate } from "@/components/ui";
 import { getProducts } from "@/config/site";
