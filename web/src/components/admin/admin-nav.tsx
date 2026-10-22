@@ -9,6 +9,8 @@ export const ADMIN_LINKS = [
   { href: "/admin/users", label: "Users & Access" },
   { href: "/admin/roles", label: "Discord Roles" },
   { href: "/admin/products", label: "Products & Releases" },
+  { href: "/admin/plans", label: "Plans" },
+  { href: "/admin/orders", label: "Orders" },
   { href: "/admin/moderation", label: "Config Moderation" },
   { href: "/admin/leaderboard", label: "Leaderboard" },
   { href: "/admin/rewards", label: "Monthly Rewards" },

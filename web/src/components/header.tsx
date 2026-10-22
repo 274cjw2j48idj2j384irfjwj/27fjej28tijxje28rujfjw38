@@ -11,6 +11,7 @@ export type NavLink = { href: string; label: string };
 export function navLinks(): NavLink[] {
   return [
     { href: "/features", label: "Features" },
+    { href: "/pricing", label: "Pricing" },
     { href: "/previews", label: "Previews" },
     { href: "/cloud", label: "Cloud Configs" },
     { href: "/leaderboard", label: "Leaderboard" },
@@ -100,7 +101,7 @@ export function SiteFooter() {
           <p className="muted mt-4 max-w-xs text-sm leading-relaxed">Two Luas, one cloud. Sign in with Discord to manage your access and share configs.</p>
         </div>
         <FooterCol title="Products" links={products.map((p) => ({ href: `/luas/${p.slug}`, label: p.name }))} />
-        <FooterCol title="Platform" links={[{ href: "/cloud", label: "Cloud Configs" }, { href: "/leaderboard", label: "Leaderboard" }, { href: "/changelog", label: "Changelog" }, { href: "/status", label: "Status" }]} />
+        <FooterCol title="Platform" links={[{ href: "/pricing", label: "Pricing" }, { href: "/cloud", label: "Cloud Configs" }, { href: "/leaderboard", label: "Leaderboard" }, { href: "/changelog", label: "Changelog" }, { href: "/status", label: "Status" }]} />
         <FooterCol title="Help" links={[{ href: "/faq", label: "FAQ" }, { href: "/support", label: "Discord / Support" }]} />
       </div>
       <div className="border-t border-line py-5 text-center text-xs text-[color:var(--faint)]">© {new Date().getFullYear()} Specter. All rights reserved.</div>

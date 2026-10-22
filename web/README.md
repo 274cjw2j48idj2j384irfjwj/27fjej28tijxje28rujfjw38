@@ -17,14 +17,15 @@ a role-ok az admin felületen is (Discord Role Mapping).
 | Lua -> web -> Lua kapcsolat (eszközkód, token, feltöltés, böngészés, import, mentett könyvtár) | **A szerveroldal kész és tesztelt.** A Lua kliensekbe be kell építeni a hívásokat (lásd lent) |
 | Havi ranglista, lezárás, 30 / 14 / 7 napos jutalom, dupla kiosztás elleni védelem | **Működik**, tesztelve. A pontgyűjtés **alapból ki van kapcsolva** |
 | Pontozási szabály | **Nincs kitalálva.** Az admin adja meg (Leaderboard Management), addig a Luáktól jövő pont nem számít |
+| Fizetés (Stripe, NOWPayments) -> license kulcs | A szerveroldal kész, **mockokkal tesztelt**, valódi test kulccsal még nem próbált (lásd Fizetés) |
 | Demó adatok | Csak a `npm run seed` írja be őket, mindenhol **Demo data** címkével. Éles adatbázison ne futtasd |
 | Képek / Lua fájlok tárolása | Az adatbázisban (`blobs`). Nagyobb forgalomhoz külső objektumtár kell (nincs megírva) |
 
 ## Oldalak
 
-* Publikus: `/`, `/luas/[slug]` (két termékoldal), `/features`, `/previews`, `/cloud`, `/cloud/[lua]`, `/cloud/[lua]/[kód]`, `/leaderboard`, `/changelog`, `/faq`, `/support`, `/status`, `/u/[discord id]`, `/login`, `/link`.
-* Bejelentkezve (`/dashboard/...`): Overview, My Access, Downloads, My Configs (+ kezelés), Saved Configs, Leaderboard, Rewards, Connected Devices, Account Settings, Notifications.
-* Admin (`/admin/...`): Users & Access, Discord Role Mapping, Products & Releases (funkciók, letöltések, képek, kiadások), Config Moderation, Leaderboard Management, Monthly Rewards, Audit Log.
+* Publikus: `/`, `/pricing`, `/order/[id]`, `/luas/[slug]` (két termékoldal), `/features`, `/previews`, `/cloud`, `/cloud/[lua]`, `/cloud/[lua]/[kód]`, `/leaderboard`, `/changelog`, `/faq`, `/support`, `/status`, `/u/[discord id]`, `/login`, `/link`.
+* Bejelentkezve (`/dashboard/...`): Overview, My Access, Downloads, My Configs (+ kezelés), Saved Configs, Leaderboard, Rewards, Connected Devices, Orders, Account Settings, Notifications.
+* Admin (`/admin/...`): Users & Access, Discord Role Mapping, Products & Releases (funkciók, letöltések, képek, kiadások), Plans, Orders, Config Moderation, Leaderboard Management, Monthly Rewards, Audit Log.
 * Ctrl+K: gyorskereső (parancspaletta).
 
 ## Helyi futtatás
@@ -94,6 +95,47 @@ A weboldal a szerver oldalt adja, a Lua menübe a következő hívások kellenek
 A config **adat**: `meta` + `data`. A `data` lehet objektum vagy szöveg (pl. az exportált base64). A szerver nem futtat belőle semmit, és visszautasítja a
 tokent / kulcsot / webhookot / e-mailt / Windows user útvonalat / kódot tartalmazó configot, a túl nagyot (256 KB) és túl mélyet. A két Lua mostani
 exportja (gamesense: pui export, primordial: eui export) ebbe a borítékba csomagolható, a `format_version`-t az admin a Products oldalon állítja.
+
+## Fizetés (Stripe kártya + NOWPayments crypto)
+
+A vásárlás a `/pricing` oldalon történik, a státusz a `/order/<id>` oldalon látszik. **Fontos: a Stripe és a NOWPayments hívások csak mockokkal
+lettek tesztelve (36 teszt, `tests/payments.test.ts`), valódi test kulccsal / sandboxszal még nem futottak. Élesítés előtt végig kell próbálni.**
+
+### Hogyan megy
+
+1. Az admin a `/admin/plans` oldalon létrehozza a csomagokat (ár, időtartam, melyik license plan, kártya / crypto kapcsoló). **Nincs beégetett ár**, üres adatbázisnál a `/pricing` üres állapotot mutat.
+2. A vevő a `/pricing` oldalon a csomagra kattint: `POST /api/checkout {plan, provider: card|crypto, email?}`. Az összeget a szerver az adatbázisból veszi, a kliens nem küldhet árat. A válasz a fizetési oldal URL-je (Stripe Checkout / NOWPayments invoice). Rate limit: 10 / 10 perc IP-nként és felhasználónként.
+3. A rendelés (`orders`) `pending`. A csomag adatai a rendelésbe másolódnak (`plan_snapshot`), a későbbi ár- vagy névmódosítás nem érinti.
+4. Fizetés után a provider webhookot hív (Stripe: `/api/webhooks/stripe`, NOWPayments: `/api/webhooks/nowpayments`, csak az aláírás számít). A szerver ellenőrzi az összeget, a pénznemet, a session / invoice azonosítót, majd `paid` állapotot ír, és **a tranzakción kívül** meghívja a license szerver `POST /admin/create` végpontját `ref = order id` értékkel (idempotens, párhuzamos kézbesítésnél is egy kulcs). A kulcs az **Invoice ID**, az `issued` rendelésnél jelenik meg az order oldalon (előbb soha).
+5. A vevő Discordban `/register key:<Invoice ID>`, `/download`, majd a loaderben ugyanazt a kulcsot adja meg.
+
+Állapotok: `pending` -> `paid` -> `issued`; `expired` (24 óra fizetés nélkül, vagy a provider lejárt), `failed`, `review` (eltérő összeg / pénznem / session, alulfizetés, lejárt rendelésre érkező fizetés: **nem készül kulcs**, admin dönt), `refunded` (a kulcs visszavonva).
+Ha a license szerver nem elérhető: a rendelés `paid` marad, a webhook 500-at ad (a provider újrapróbálja), a cron (`/api/cron/close-month`, óránként érdemes hívni) 1 perc után 20 alkalomig újrapróbálja (`issued` a válaszban). Az admin a `/admin/orders` oldalon kézzel is kiadhatja (`Issue key`).
+
+### Környezeti változók (`.env.example`)
+
+`LICENSE_SERVER_URL`, `LICENSE_ADMIN_SECRET` (kell mindkét módhoz), `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NOWPAYMENTS_API_KEY`, `NOWPAYMENTS_IPN_SECRET`,
+opcionális `STRIPE_API_BASE`, `NOWPAYMENTS_API_BASE` (sandbox: `https://api-sandbox.nowpayments.io/v1`). Amelyik hiányzik, annak a gombja a `/pricing` oldalon le van tiltva, a checkout 503 `provider_not_configured`.
+
+### Stripe beállítás
+
+1. Teszt módban: Developers -> API keys -> `sk_test_...` a `STRIPE_SECRET_KEY`.
+2. Developers -> Webhooks -> endpoint: `PUBLIC_URL/api/webhooks/stripe`, események: `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `charge.refunded`, `charge.dispute.created`. A `whsec_...` a `STRIPE_WEBHOOK_SECRET`.
+3. Helyi próba: `stripe listen --forward-to localhost:3000/api/webhooks/stripe` (a CLI kiírja a helyi `whsec_`-et), kártya `4242 4242 4242 4242`.
+4. Részleges visszatérítés nem vonja vissza a kulcsot, a teljes és a vita (`dispute`) igen. A pénzt a Stripe felületén kell visszautalni, az admin `Refund` gomb csak a kulcsot vonja vissza.
+
+### NOWPayments beállítás
+
+1. Sandbox fiók (https://sandbox.nowpayments.io): API key -> `NOWPAYMENTS_API_KEY`, Store settings -> IPN secret key -> `NOWPAYMENTS_IPN_SECRET`, `NOWPAYMENTS_API_BASE=https://api-sandbox.nowpayments.io/v1`.
+2. Az IPN URL-t a szerver minden invoice-nál megadja: `PUBLIC_URL/api/webhooks/nowpayments`. Az aláírás (`x-nowpayments-sig`) a kulcs szerint rekurzívan rendezett JSON HMAC-SHA512-je.
+3. `finished` = fizetve (az összeg, pénznem és `actually_paid >= pay_amount` ellenőrizve), `partially_paid` -> `review`, `failed` / `expired` -> lezárt, `refunded` -> visszavonás. A többi státuszt (waiting, confirming ...) figyelmen kívül hagyja.
+
+### Amit valódi teszt kulccsal még ki kell próbálni
+
+* Stripe: a Checkout session létrehozása (a `expires_at` 31 perc, a Stripe minimuma 30), a webhook aláírás a valódi `whsec_`-kel, a `payment_intent` mező megérkezése, `charge.refunded` / `dispute` mezők, aszinkron fizetési módok.
+* NOWPayments: az invoice válasz mezői (`id`, `invoice_url`), hogy az IPN-ben jön-e `invoice_id`, az aláírás pontos előállítása a valódi test IPN-nel, alulfizetés / újrapróbált fizetés viselkedése (egy invoice-hoz több payment is tartozhat, itt csak az első `finished` számít).
+* A license szerver `/admin/create` és `/admin/revoke` szerződés (ref idempotencia, 409 busy) a valódi szerverrel.
+* A vevő nem bejelentkezve is vásárolhat; a rendelés azonosítója (uuid) a titok: aki ismeri, látja a kulcsot, ezért az order linket nem szabad megosztani.
 
 ## Biztonság
 

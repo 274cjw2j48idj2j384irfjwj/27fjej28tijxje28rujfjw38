@@ -18,6 +18,7 @@ const ITEMS: NavItem[] = [
   { href: "/dashboard/leaderboard", label: "Leaderboard", icon: "leaderboard" },
   { href: "/dashboard/rewards", label: "Rewards", icon: "rewards" },
   { href: "/dashboard/devices", label: "Connected Devices", icon: "devices" },
+  { href: "/dashboard/orders", label: "Orders", icon: "orders" },
   { href: "/dashboard/settings", label: "Account Settings", icon: "settings" },
 ];
 
