@@ -41,7 +41,7 @@ ENV VARS (set in Discord bot host or .env):
                         Empty: GITHUB_TOKEN, if that is set; neither: the logs stay on the server (the newest 400 batches)
   SITE_URL            — the website with the shop (e.g. https://specter.example.com): /download and the panels point to its /pricing
   LOADER_POSTS        — 1: the bot posts the loaders in #loader-download / #primordial-loader by itself again (default 0: the
-                        loader only comes by /download in a DM, /post_loader still works by hand)
+                        loader only comes by /download as a message only you can see, /post_loader still works by hand)
   ROLE_SYNC_MINUTES   — how often the plan roles of every registered key are checked (default 10, 0 = off): a key that ended
                         or was revoked loses its roles, a new key gives them
   SPECTER_LOGO_URL    — a lasting image link for the logo on the bot's posts (optional). Empty: assets/specter_icon.png /
@@ -101,7 +101,7 @@ LOADER_ONLY_FILES = {PRIMORDIAL_FILE}
 PRIMORDIAL_UPDATES = _env("PRIMORDIAL_UPDATES", "1").lower() in ("1", "true", "yes", "on")
 VALID_DURATIONS = ["lifetime", "1d", "7d", "14d", "30d", "90d"]
 # the website with the shop (owners, Oct 22 2026): a key is bought there (Stripe card / NOWPayments crypto); the Invoice ID it shows
-# IS the license key, `/register` binds it to ONE Discord account and `/download` sends the loader in a DM
+# IS the license key, `/register` binds it to ONE Discord account and `/download` shows the loader in a message only that member sees
 SITE_URL        = _env("SITE_URL", "").rstrip("/")
 # the old loader posts in #loader-download / #primordial-loader (owners, Oct 22 2026: the loader only comes by /download):
 # 1 = the bot posts them again by itself, default 0 (/post_loader still works by hand)
@@ -2064,7 +2064,7 @@ async def release_check(interaction: discord.Interaction, force: bool = False):
 # ── /register, /download, /mylicenses — a key belongs to ONE Discord account ─────────────────────
 # Flow (owners, Oct 22 2026): pay on the website -> the Invoice ID (= the license key) -> `/register key:<Invoice ID>` binds it
 # to the Discord account that typed it (another account can not take it: the license server answers bound_to_other) and gives
-# the plan roles (which open the private channels) -> `/download` sends the loader of the Luas the key unlocks in a DM -> the
+# the plan roles (which open the private channels) -> `/download` shows the loader of the Luas the key unlocks, visible only to the member -> the
 # loader logs in with the key. The cloud configs of the Luas need the linked Discord account (license server: discord_not_linked).
 
 MANAGED_ROLES = set(PLAN_TO_ROLE.values()) | {"Customer"}
@@ -2162,7 +2162,7 @@ async def do_register(interaction: discord.Interaction, key: str, target: discor
         embed.add_field(name="Roles given", value=", ".join(f"**{r}**" for r in added), inline=False)
     embed.add_field(
         name="Next",
-        value="Run **/download** in any channel: the bot sends you the loader in a DM. Load it and type this key (your Invoice ID) to log in.",
+        value="Run **/download** in any channel: the loader appears there and **only you can see it**. Load it and type this key (your Invoice ID) to log in.",
         inline=False,
     )
     embed.set_footer(text="The key is tied to this Discord account and, in game, to the first PC that logs in")
@@ -2232,9 +2232,12 @@ def loader_dm_embed(lua: str, raw: bytes) -> discord.Embed:
     return embed
 
 
-@tree.command(name="download", description="Get the Specter loader in a DM (needs a registered key)")
+@tree.command(name="download", description="Get the Specter loader (only you can see it; needs a registered key)")
+@app_commands.guild_only()
 @app_commands.checks.cooldown(1, 20.0, key=lambda i: i.user.id)
 async def download(interaction: discord.Interaction):
+    # Answered in the channel it was typed in, as an ephemeral message: only the member who ran it sees the loader file
+    # (owners, Oct 22 2026: "bármelyik channelbe beírja ... azt csak ő látja"). Without a running registered key nothing is sent.
     await interaction.response.defer(ephemeral=True)
     licenses = await licenses_of(interaction.user.id)
     if licenses is None:
@@ -2254,17 +2257,8 @@ async def download(interaction: discord.Interaction):
             await interaction.followup.send(f"The {lua} loader can not be fetched right now ({e}). Try again in a minute.", ephemeral=True)
             return
         payload.append((lua, raw))
-    try:
-        for lua, raw in payload:
-            await interaction.user.send(embed=loader_dm_embed(lua, raw), file=discord.File(io.BytesIO(raw), filename=LOADERS[lua]["file"]))
-    except discord.Forbidden:
-        # DMs from server members are off: the same files, visible only to this user in the reply
-        for lua, raw in payload:
-            await interaction.followup.send(content="Your DMs are closed, so the loader is here (only you can see this message).", embed=loader_dm_embed(lua, raw),
-                                            file=discord.File(io.BytesIO(raw), filename=LOADERS[lua]["file"]), ephemeral=True)
-        return
-    names = " and ".join("Primordial" if l == "primordial" else "Gamesense" for l in luas)
-    await interaction.followup.send(f"Sent the {names} loader in a DM. Your key is your Invoice ID.", ephemeral=True)
+    for lua, raw in payload:
+        await interaction.followup.send(embed=loader_dm_embed(lua, raw), file=discord.File(io.BytesIO(raw), filename=LOADERS[lua]["file"]), ephemeral=True)
 
 
 @tree.command(name="mylicenses", description="Show the keys registered to your Discord account")
@@ -2454,7 +2448,7 @@ def howto_embed() -> discord.Embed:
     )
     embed.add_field(
         name="Step 3 — Get the loader",
-        value="Run `/download`: the bot sends the loader of the Luas your key unlocks in a **DM** (turn on DMs from server members).",
+        value="Run `/download` in any channel: the bot shows the loader of the Luas your key unlocks, and **only you can see it** (nobody without a registered key gets it).",
         inline=False,
     )
     embed.add_field(
