@@ -146,3 +146,9 @@ opcionális `STRIPE_API_BASE`, `NOWPAYMENTS_API_BASE` (sandbox: `https://api-san
 * Feltöltési korlátok: config 256 KB, kép 2 MB (PNG/JPEG/WebP, a fájl eleje ellenőrizve, SVG tiltva), napi 20 feltöltés / felhasználó.
 * Minden admin művelet és minden kiosztás az audit naplóba kerül.
 * A titkok (`DISCORD_*`, `CRON_SECRET`) csak a szerveren vannak, a böngészőbe nem kerülnek.
+
+## Heti rulett
+
+`/dashboard/roulette`: heti 1 pörgetés (az utolsótól számított 7 nap). Esélyek: semmi 40 %, 5 óra 25 %, 12 óra 15 %, 1 nap 10 %, 7 nap 6 %, 14 nap 3 %, 30 nap 1 %.
+A nyeremény a Discordon regisztrált (`/register`) futó, nem lifetime kulcs lejáratát hosszabbítja a license serveren (`POST /admin/extend`), ezért **előbb a `server.js`-t kell frissíteni**, utána a webet.
+Az esélyeket a `src/lib/roulette.ts` `PRIZES` listája tartalmazza (ezrelék, az összeg 10000).

@@ -145,6 +145,20 @@ async function main() {
         assert.strictEqual((await get('/configs/delete?key=' + k + '&hwid=HX&name=cfg')).body.ok, true)
     })
 
+    await test('extend adds hours once per ref, only to the owner\'s running key', async () => {
+        const k = (await post('/admin/create', { plan: 'specter', duration: '1d' })).body.key
+        const before = (await post('/admin/bind', { key: k, discord_id: A })).body.expires_at
+        assert.strictEqual((await post('/admin/extend', { key: k, discord_id: B, hours: 5, ref: 's1' })).body.reason, 'not_your_key')
+        const a = await post('/admin/extend', { key: k, discord_id: A, hours: 5, ref: 's1' })
+        assert.strictEqual(a.body.expires_at, before + 5 * 3600000)
+        const again = await post('/admin/extend', { key: k, discord_id: A, hours: 5, ref: 's1' })
+        assert.strictEqual(again.body.already, true); assert.strictEqual(again.body.expires_at, a.body.expires_at)
+        assert.strictEqual((await post('/admin/extend', { key: k, discord_id: A, hours: 0, ref: 's2' })).status, 400)
+        const life = (await post('/admin/create', { plan: 'specter', duration: 'lifetime' })).body.key
+        await post('/admin/bind', { key: life, discord_id: A })
+        assert.strictEqual((await post('/admin/extend', { key: life, discord_id: A, hours: 5, ref: 's3' })).body.reason, 'lifetime')
+    })
+
     await test('listing configs stays open', async () => {
         assert.strictEqual((await get('/configs')).status, 200)
     })

@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
-import { Bookmark, Download, Gift, KeyRound, LayoutDashboard, MonitorSmartphone, Settings, ShieldCheck, ShoppingBag, SlidersHorizontal, Trophy } from "lucide-react";
+import { Bookmark, Download, Dices, Gift, KeyRound, LayoutDashboard, MonitorSmartphone, Settings, ShieldCheck, ShoppingBag, SlidersHorizontal, Trophy } from "lucide-react";
 import { cx } from "@/components/ui";
 
-const ICONS = { overview: LayoutDashboard, access: KeyRound, downloads: Download, configs: SlidersHorizontal, saved: Bookmark, leaderboard: Trophy, rewards: Gift, devices: MonitorSmartphone, orders: ShoppingBag, settings: Settings, admin: ShieldCheck } as const;
+const ICONS = { overview: LayoutDashboard, access: KeyRound, downloads: Download, configs: SlidersHorizontal, saved: Bookmark, leaderboard: Trophy, rewards: Gift, roulette: Dices, devices: MonitorSmartphone, orders: ShoppingBag, settings: Settings, admin: ShieldCheck } as const;
 
 export type NavItem = { href: string; label: string; icon: keyof typeof ICONS };
 

@@ -17,6 +17,7 @@ const ITEMS: NavItem[] = [
   { href: "/dashboard/saved", label: "Saved Configs", icon: "saved" },
   { href: "/dashboard/leaderboard", label: "Leaderboard", icon: "leaderboard" },
   { href: "/dashboard/rewards", label: "Rewards", icon: "rewards" },
+  { href: "/dashboard/roulette", label: "Roulette", icon: "roulette" },
   { href: "/dashboard/devices", label: "Connected Devices", icon: "devices" },
   { href: "/dashboard/orders", label: "Orders", icon: "orders" },
   { href: "/dashboard/settings", label: "Account Settings", icon: "settings" },
