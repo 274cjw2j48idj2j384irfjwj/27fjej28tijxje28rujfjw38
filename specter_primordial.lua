@@ -2706,7 +2706,9 @@ cloud.upload = function(name)
         end
         if (res.ok == false) then
             done = true
-            notifications.create("Specter", "The cloud refused the config (" .. tostring(res.reason) .. ").", notifications.types.failure)
+            notifications.create("Specter", res.reason == "discord_not_linked"
+                and "Link your Discord first: run /register in the Specter Discord (cloud configs need it)."
+                or "The cloud refused the config (" .. tostring(res.reason) .. ").", notifications.types.failure)
         elseif (res.done) then
             done = true
             notifications.create("Specter", "Config \"" .. name .. "\" shared to the cloud by " .. tostring(res.author) .. ".",
@@ -2760,6 +2762,9 @@ ui.delete_cloud_config = menu_add_button("Cloud configs", "Delete",
                 configs.reload_cloud_configs()
             elseif (res ~= nil and res.reason == "not_found") then
                 notifications.create("Specter", "You can only delete your own configs.", notifications.types.warning)
+            elseif (res ~= nil and res.reason == "discord_not_linked") then
+                notifications.create("Specter", "Link your Discord first: run /register in the Specter Discord (cloud configs need it).",
+                    notifications.types.warning)
             else
                 notifications.create("Specter", "The cloud refused it (" .. tostring(res and res.reason or "no answer") .. ").",
                     notifications.types.failure)

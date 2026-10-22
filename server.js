@@ -125,6 +125,32 @@ function gen_key() {
     return parts.join('-')
 }
 
+// which Lua a plan belongs to: pm_* = Specter for Primordial, the rest = Specter for Gamesense
+function lua_of(plan) { return String(plan).startsWith('pm_') ? 'primordial' : 'gamesense' }
+
+// The licenses are ONE json value in Redis, so every read-change-write has to run alone (this server is one process):
+// two creates at the same moment would otherwise lose one of the keys.
+let db_chain = Promise.resolve()
+function with_db(fn) {
+    const run = db_chain.then(fn, fn)
+    db_chain = run.catch(() => {})
+    return run
+}
+
+const DISCORD_ID_RE = /^\d{15,25}$/
+
+// the Luas a Discord account can use right now: every key bound to it that is neither revoked nor expired
+function access_of(db, discord_id, extra) {
+    const now = Date.now()
+    const list = []
+    for (const [key, v] of Object.entries(db)) {
+        const mine = key === extra || (discord_id && v.discord_id === discord_id)
+        if (!mine || v.revoked || (v.expires_at && now > v.expires_at)) continue
+        list.push({ lua: lua_of(v.plan), plan: v.plan, expires_at: v.expires_at || null })
+    }
+    return list
+}
+
 function sha256(text) {
     return crypto.createHash('sha256').update(String(text)).digest('hex')
 }
@@ -177,6 +203,10 @@ async function discord_post(license, key, kind, detail, count) {
 // replaying the request) can not flood the channel. Returns false when nothing was recorded.
 async function tamper_report(key, kind, detail) {
     if (!key || !TAMPER_KINDS[kind]) return false
+    return with_db(() => tamper_report_locked(key, kind, detail))
+}
+
+async function tamper_report_locked(key, kind, detail) {
     const db = await db_read()
     const license = db[key]
     if (!license) return false                       // unknown key: nothing to ban, nothing to report
@@ -229,21 +259,89 @@ app.post('/admin/create', async (req, res) => {
     if (req.headers['x-admin-secret'] !== ADMIN_SECRET)
         return res.status(403).json({ error: 'forbidden' })
     const { plan, duration, note } = req.body
+    // `ref` makes the call safe to repeat (a payment webhook is delivered more than once): the same ref always gives the same key
+    const ref = typeof req.body.ref === 'string' ? req.body.ref.trim().slice(0, 80) : ''
     if (!VALID_PLANS.includes(plan))
         return res.status(400).json({ error: 'invalid plan' })
     let expires_at
     try { expires_at = parse_duration(duration || 'lifetime') }
     catch(e) { return res.status(400).json({ error: e.message }) }
-    const key = gen_key()
-    const db  = await db_read()
-    db[key] = {
-        plan, expires_at, hwid: null, note: note||'',
-        created_at: Date.now(), revoked: false,
-        last_ticket: null, last_ticket_exp: null, last_nonce: null,
+
+    let lock = false
+    if (ref) {
+        const known = Object.entries(await db_read()).find(([, v]) => v.ref === ref)
+        if (known) return res.json({ key: known[0], plan: known[1].plan, expires_at: known[1].expires_at, note: known[1].note || '', existing: true })
+        try { lock = !!(await redis.set(`specter:ref:${ref}`, '1', { nx: true, ex: 30 })) } catch (e) { lock = true }
+        if (!lock) return res.status(409).json({ error: 'busy' })
     }
-    await db_write(db)
-    res.json({ key, plan, expires_at, note: note||'' })
-    console.log(`[CREATE] ${key}`)
+    const key = gen_key()
+    await with_db(async () => {
+        const db = await db_read()
+        db[key] = {
+            plan, expires_at, hwid: null, note: note||'',
+            created_at: Date.now(), revoked: false,
+            last_ticket: null, last_ticket_exp: null, last_nonce: null,
+            discord_id: null, ref: ref || null,
+        }
+        await db_write(db)
+    })
+    res.json({ key, plan, expires_at, note: note||'', existing: false })
+    console.log(`[CREATE] ${key}${ref ? ' ref=' + ref : ''}`)
+})
+
+// ── POST /admin/bind — a key belongs to ONE Discord account ───────────────
+// The bot calls it for /register. The first account that registers a key owns it; another account gets bound_to_other,
+// so the key can not be shared through Discord (the HWID lock covers the machine side).
+app.post('/admin/bind', async (req, res) => {
+    if (req.headers['x-admin-secret'] !== ADMIN_SECRET)
+        return res.status(403).json({ error: 'forbidden' })
+    const key = String(req.body.key || '').trim()
+    const discord_id = String(req.body.discord_id || '').trim()
+    if (!key || !DISCORD_ID_RE.test(discord_id)) return res.status(400).json({ ok: false, reason: 'missing_params' })
+    const out = await with_db(async () => {
+        const db = await db_read()
+        const l = db[key]
+        if (!l)         return { status: 404, body: { ok: false, reason: 'invalid_key' } }
+        if (l.revoked)  return { status: 403, body: { ok: false, reason: 'revoked' } }
+        if (l.expires_at && Date.now() > l.expires_at) return { status: 403, body: { ok: false, reason: 'expired' } }
+        if (l.discord_id && l.discord_id !== discord_id) return { status: 409, body: { ok: false, reason: 'bound_to_other' } }
+        const already = l.discord_id === discord_id
+        if (!already) { l.discord_id = discord_id; l.discord_at = Date.now(); await db_write(db) }
+        return { status: 200, body: { ok: true, already, key, plan: l.plan, lua: lua_of(l.plan), expires_at: l.expires_at, hwid_locked: !!l.hwid, note: l.note || '' } }
+    })
+    res.status(out.status).json(out.body)
+    if (out.status === 200 && !out.body.already) console.log(`[BIND] ${key} -> ${discord_id}`)
+})
+
+// ── POST /admin/unbind — support moves a key to another account ───────────
+app.post('/admin/unbind', async (req, res) => {
+    if (req.headers['x-admin-secret'] !== ADMIN_SECRET)
+        return res.status(403).json({ error: 'forbidden' })
+    const key = String(req.body.key || '').trim()
+    const found = await with_db(async () => {
+        const db = await db_read()
+        if (!db[key]) return null
+        const was = db[key].discord_id || null
+        db[key].discord_id = null; db[key].discord_at = null
+        await db_write(db)
+        return { was }
+    })
+    if (!found) return res.status(404).json({ error: 'key not found' })
+    res.json({ unbound: key, was: found.was })
+})
+
+// ── GET /admin/by_discord?discord_id= — the keys of one Discord account ───
+app.get('/admin/by_discord', async (req, res) => {
+    if (req.headers['x-admin-secret'] !== ADMIN_SECRET)
+        return res.status(403).json({ error: 'forbidden' })
+    const id = String(req.query.discord_id || '')
+    if (!DISCORD_ID_RE.test(id)) return res.status(400).json({ error: 'bad discord_id' })
+    const db = await db_read()
+    const now = Date.now()
+    res.json(Object.entries(db).filter(([, v]) => v.discord_id === id).map(([key, v]) => ({
+        key, plan: v.plan, lua: lua_of(v.plan), expires_at: v.expires_at,
+        expired: v.expires_at ? now > v.expires_at : false, revoked: !!v.revoked, hwid_locked: !!v.hwid,
+    })))
 })
 
 // ── POST /admin/revoke ────────────────────────────────────────────────────
@@ -251,10 +349,14 @@ app.post('/admin/revoke', async (req, res) => {
     if (req.headers['x-admin-secret'] !== ADMIN_SECRET)
         return res.status(403).json({ error: 'forbidden' })
     const { key } = req.body
-    const db = await db_read()
-    if (!db[key]) return res.status(404).json({ error: 'key not found' })
-    db[key].revoked = true; db[key].last_ticket = null
-    await db_write(db)
+    const found = await with_db(async () => {
+        const db = await db_read()
+        if (!db[key]) return false
+        db[key].revoked = true; db[key].last_ticket = null
+        await db_write(db)
+        return true
+    })
+    if (!found) return res.status(404).json({ error: 'key not found' })
     res.json({ revoked: key })
 })
 
@@ -263,10 +365,14 @@ app.post('/admin/reset_hwid', async (req, res) => {
     if (req.headers['x-admin-secret'] !== ADMIN_SECRET)
         return res.status(403).json({ error: 'forbidden' })
     const { key } = req.body
-    const db = await db_read()
-    if (!db[key]) return res.status(404).json({ error: 'key not found' })
-    db[key].hwid = null; db[key].last_ticket = null
-    await db_write(db)
+    const found = await with_db(async () => {
+        const db = await db_read()
+        if (!db[key]) return false
+        db[key].hwid = null; db[key].last_ticket = null
+        await db_write(db)
+        return true
+    })
+    if (!found) return res.status(404).json({ error: 'key not found' })
     res.json({ reset: key })
 })
 
@@ -280,7 +386,8 @@ app.get('/admin/list', async (req, res) => {
         key, plan: v.plan, expires_at: v.expires_at,
         expired: v.expires_at ? now > v.expires_at : false,
         hwid_locked: !!v.hwid, revoked: !!v.revoked, note: v.note||'',
-        tamper: Array.isArray(v.tamper) ? v.tamper : []
+        tamper: Array.isArray(v.tamper) ? v.tamper : [],
+        discord_id: v.discord_id || null,
     })))
 })
 
@@ -353,7 +460,7 @@ async function loader_versions() {
 }
 
 // ── GET /verify ───────────────────────────────────────────────────────────
-app.get('/verify', async (req, res) => {
+app.get('/verify', (req, res) => with_db(async () => {
     const { key, hwid } = req.query
     if (!key || !hwid) return res.json({ valid: false, reason: 'missing_params' })
     const db      = await db_read()
@@ -383,8 +490,12 @@ app.get('/verify', async (req, res) => {
         user: license.note||null, ticket, ticket_exp, nonce,
         builds: PM_BUILDS[license.plan] || null,
         loader_gs: loader.gs, loader_pm: loader.pm,
+        // the Luas this key (and the other keys of the same Discord account) unlock; the cloud needs a linked Discord account
+        lua: lua_of(license.plan),
+        discord_linked: !!license.discord_id,
+        access: access_of(db, license.discord_id, key),
     })
-})
+}).catch(e => { console.error('[VERIFY]', e.message); if (!res.headersSent) res.status(500).json({ valid: false, reason: 'server_error' }) }))
 
 // ── GET /report ───────────────────────────────────────────────────────────
 // The client says it caught something. Anything coming from a client can be faked or left out, so this is a nice-to-have
@@ -542,6 +653,7 @@ app.get('/configs/upload', async (req, res) => {
     if (!license || license.revoked) return res.status(403).json({ ok: false, reason: 'invalid_key' })
     if (license.expires_at && Date.now() > license.expires_at) return res.status(403).json({ ok: false, reason: 'expired' })
     if (license.hwid !== hwid) return res.status(403).json({ ok: false, reason: 'hwid_mismatch' })
+    if (!license.discord_id) return res.status(403).json({ ok: false, reason: 'discord_not_linked' })
     const author = config_author(license, key)
     try {
         let configs = await redis.get('specter:configs') || []
@@ -589,6 +701,7 @@ app.get('/configs/upload_part', async (req, res) => {
         if (!license || license.revoked) return res.status(403).json({ ok: false, reason: 'invalid_key' })
         if (license.expires_at && Date.now() > license.expires_at) return res.status(403).json({ ok: false, reason: 'expired' })
         if (license.hwid !== hwid) return res.status(403).json({ ok: false, reason: 'hwid_mismatch' })
+        if (!license.discord_id) return res.status(403).json({ ok: false, reason: 'discord_not_linked' })
     }
 
     // the first part always starts a fresh upload, so an abandoned one cannot mix into the next
@@ -643,6 +756,8 @@ app.post('/configs', async (req, res) => {
         return res.status(403).json({ ok: false, reason: 'expired' })
     if (license.hwid !== hwid)
         return res.status(403).json({ ok: false, reason: 'hwid_mismatch' })
+    if (!license.discord_id)
+        return res.status(403).json({ ok: false, reason: 'discord_not_linked' })
 
     const author   = config_author(license, key)
     const cfg_name = name.trim()
@@ -684,6 +799,7 @@ app.get('/configs/delete', async (req, res) => {
         license = db[key]
         if (!license || license.revoked) return res.status(403).json({ ok: false, reason: 'invalid_key' })
         if (license.hwid !== hwid) return res.status(403).json({ ok: false, reason: 'hwid_mismatch' })
+        if (!license.discord_id) return res.status(403).json({ ok: false, reason: 'discord_not_linked' })
     }
     const author = config_author(license, key)
     const lua = config_lua(req.query.lua)
@@ -1029,4 +1145,5 @@ app.delete('/configs', async (req, res) => {
     }
 })
 
-app.listen(PORT, () => console.log(`Specter License Server on :${PORT}`))
+if (require.main === module) app.listen(PORT, () => console.log(`Specter License Server on :${PORT}`))
+module.exports = { app }
