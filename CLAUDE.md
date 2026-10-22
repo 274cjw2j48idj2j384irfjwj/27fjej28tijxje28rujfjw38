@@ -956,3 +956,19 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
 - Primordial loader "Import key" (owners, Oct 21 2026: "a loaderbe adj hozzá import buttont a kulcsnak"; LOADER_VERSION 4): the menu text box takes no Ctrl+V, so the button reads the clipboard (vgui2 `VGUI_System010`, vfunc 7 count / 11 read, only when pressed, inside a pcall; at most 4096 bytes), takes the key out of
   whatever was copied (`key_from_text`: XXXXXX-XXXXXX-XXXXXX-XXXXXX in a Discord message / code block, else the first word) and puts it into the Key field; Login is still pressed by hand. Not tried in game.
 - Loader decoration (owners, Oct 21 2026: "𓆩☾𓆪 ezt hozza tudod?" ... "a loaderhez"): the Primordial loader's group title is "𓆩☾𓆪 Specter loader 𓆩☾𓆪" (`GROUP`, LOADER_VERSION 6). The hieroglyph characters (U+131A9 / U+131AA) may be missing from the Primordial menu font (a box in game): swap them in `GROUP` then.
+
+## Web platform (`web/`)
+- (owners, Oct 22 2026: a premium web app for the two Luas, Discord login, access, config cloud, monthly leaderboard) A separate Next.js 15 / TypeScript / Tailwind 3 / PostgreSQL app in `web/`
+  (own `package.json`, `Dockerfile`; Railway service with Root Directory `web`). It does not touch `server.js`, the bot or the Lua files: the existing license server / Redis / bot are unchanged, the web app has its OWN database
+  (`DATABASE_URL`). The root `Dockerfile` only copies `package.json` + `server.js`, so `web/` never ends up in the license server image. `web/README.md` (Hungarian) is the source of truth: setup, env (`web/.env.example`), Discord
+  steps, the Lua client API, cron, what works / what is demo / what needs Discord / what needs a Lua client change.
+- Products: `src/config/site.ts` (names, slugs, role ids from env `LUA1_*` / `LUA2_*`; ids `gamesense` / `primordial` are stable, never rename). Access (`src/lib/access.ts`): Discord roles (bot token, live, 5 min cache, `role_mappings` table or env fallback) +
+  `access_grants` (admin / leaderboard reward) -> `no_access | active | expiring_soon | expired | suspended`, and a Discord failure is `integrationError` / API 503 `discord_unavailable`, never "no access". Every protected route calls
+  `requireProductAccess` on the server. The two Luas are independent.
+- Config cloud (`src/lib/configs.ts`, `config-validate.ts`): a config is `{meta:{product,format_version,lua_version}, data}`, always for exactly one Lua (the other Lua gets 422 / 404), data only (secrets, keys, webhooks, e-mails, user paths and code are refused,
+  256 KB, depth limits), versions, compat by the product's format range, likes / library / reports / images (PNG, JPEG, WebP by magic bytes, in the database), counted downloads once per user and day. Lua link: device code flow
+  (`/api/device/code|token|approve`, revocable hashed tokens, scopes) and `/api/client/*` (upload, browse, info before import, payload, library, uploads, score). The Lua clients do NOT call it yet.
+- Leaderboard (`src/lib/leaderboard.ts`): boards gamesense / primordial / overall, UTC months, points only from admin rules (`boards.rules`, never from the client), point collection is OFF by default (`scoring_enabled`), no scoring rule was invented. Month close
+  `POST /api/cron/close-month` (Bearer `CRON_SECRET`, idempotent: `period_closures`, `reward_log` unique, advisory lock) stores the top 3 and pays 30 / 14 / 7 days (admin sets reward product and days). Tie-break: points, who reached them first, older account, id.
+- Demo data only through `npm run seed` (all marked demo, never rewarded). Tests: `cd web && npm test` (needs PostgreSQL, `TEST_DATABASE_URL`, WIPES that database); 114 tests cover access, config validation / compat / visibility, devices, leaderboard + rewards,
+  the API permission checks. `npm run typecheck` and `npm run build` must pass before a push.
