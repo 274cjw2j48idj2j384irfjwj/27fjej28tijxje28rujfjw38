@@ -213,30 +213,31 @@ class Download(unittest.TestCase):
         run(bot.download.callback(it))
         self.assertEqual(m.sent, [])
         self.assertIn("no running key", text(it))
+        self.assertTrue(all("file" not in x for x in it.followup.messages))
+        self.assertTrue(it.followup.messages[-1]["ephemeral"])
 
-    def test_each_unlocked_lua_gets_its_loader_in_a_dm(self):
+    def test_no_account_at_all_gets_no_loader(self):
+        self.lic = []
+        it = interaction(Member(111111111111111111), Guild())
+        run(bot.download.callback(it))
+        self.assertIn("/register", text(it))
+        self.assertTrue(all("file" not in x for x in it.followup.messages))
+
+    def test_the_loader_comes_in_the_channel_visible_only_to_the_member(self):
         self.lic = [{"key": "A", "plan": "specter"}, {"key": "B", "plan": "pm_nightly"}]
         m = Member(111111111111111111)
         it = interaction(m, Guild())
         run(bot.download.callback(it))
-        self.assertEqual(sorted(x["file"].filename for x in m.sent), ["specter_loader.lua", "specter_primordial_loader.lua"])
-        self.assertIn("DM", text(it))
+        sent = [x for x in it.followup.messages if "file" in x]
+        self.assertEqual(sorted(x["file"].filename for x in sent), ["specter_loader.lua", "specter_primordial_loader.lua"])
+        self.assertTrue(all(x["ephemeral"] for x in sent))
+        self.assertEqual(m.sent, [])                     # nothing goes to a DM any more
 
     def test_only_the_unlocked_lua(self):
         self.lic = [{"key": "A", "plan": "pm_beta"}]
-        m = Member(111111111111111111)
-        run(bot.download.callback(interaction(m, Guild())))
-        self.assertEqual([x["file"].filename for x in m.sent], ["specter_primordial_loader.lua"])
-
-    def test_closed_dms_fall_back_to_a_private_reply(self):
-        self.lic = [{"key": "A", "plan": "specter"}]
-        m = Member(111111111111111111, dm_ok=False)
-        it = interaction(m, Guild())
+        it = interaction(Member(111111111111111111), Guild())
         run(bot.download.callback(it))
-        msg = it.followup.messages[-1]
-        self.assertTrue(msg["ephemeral"])
-        self.assertEqual(msg["file"].filename, "specter_loader.lua")
-        self.assertIn("DMs are closed", msg["content"])
+        self.assertEqual([x["file"].filename for x in it.followup.messages if "file" in x], ["specter_primordial_loader.lua"])
 
     def test_license_server_down_says_so(self):
         async def none(uid):
@@ -245,6 +246,9 @@ class Download(unittest.TestCase):
         it = interaction(Member(111111111111111111), Guild())
         run(bot.download.callback(it))
         self.assertIn("can not be reached", text(it))
+
+    def test_the_command_works_in_a_server_only(self):
+        self.assertTrue(bot.download.guild_only)
 
 
 class RoleLoop(unittest.TestCase):
@@ -279,7 +283,7 @@ class RoleLoop(unittest.TestCase):
 class Panels(unittest.TestCase):
     def test_how_to_describes_the_new_flow(self):
         t = " ".join(f.value for f in bot.howto_embed().fields)
-        for needle in ("/register", "/download", "Invoice ID"):
+        for needle in ("/register", "/download", "Invoice ID", "only you can see it"):
             self.assertIn(needle, t)
 
     def test_loader_posts_are_off_by_default(self):
