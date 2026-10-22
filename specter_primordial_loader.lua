@@ -13,7 +13,7 @@ rawset(_G, "_specter_pm_loader_loaded", true)
 local SERVER_URL = "https://specter-license-mh111-production.up.railway.app"
 -- bump whenever this file changes: the server hands out the number of the newest loader (the bot reads it from the cloud
 -- branch) and an older one tells its user to download the new one
-local LOADER_VERSION = 7
+local LOADER_VERSION = 8
 local KEY_FILE = "specter/key.txt"             -- csgo/specter/key.txt
 local BUILD_FILE = "specter/build.txt"         -- the build a multi build key loaded last (csgo/specter/build.txt)
 local GROUP = "𓆩☾𓆪 Specter loader 𓆩☾𓆪"
@@ -140,6 +140,9 @@ ui.key = menu.add_text_input(GROUP, "Key")
 ui.status = menu.add_text(GROUP, "Enter your key and press Login.")
 ui.license = menu.add_text(GROUP, "Unlocked: log in to see which Luas your key opens")
 local busy = false
+-- the menu text box only takes 25 characters (a Primordial limit), a key has 27: the whole imported / saved key is kept here,
+-- the box just shows the start of it. Typing something else in the box drops it.
+local full_key = ""
 
 -- the builds a key can load, best first; the name the buttons / messages use
 local BUILD_ORDER = { "pm_dev", "pm_nightly", "pm_beta" }
@@ -285,6 +288,9 @@ login = function(chosen)
         return
     end
     local key = tostring(ui.key:get() or ""):match("^%s*(.-)%s*$")
+    if (full_key ~= "" and full_key:sub(1, #key) == key) then
+        key = full_key
+    end
     if (key == "") then
         status("Enter your key.")
         return
@@ -354,6 +360,7 @@ ui.import = menu.add_button(GROUP, "Import key", function()
         status("No key in the clipboard: copy it from the Discord message first.")
         return
     end
+    full_key = key
     pcall(ui.key.set, ui.key, key)
     status("Key imported (" .. key:sub(1, 6) .. "...). Press Login.")
 end)
@@ -361,6 +368,7 @@ ui.login = menu.add_button(GROUP, "Login", function() login() end)
 
 local saved = read_key()
 if (saved ~= "") then
+    full_key = saved
     pcall(ui.key.set, ui.key, saved)
     login()
 end
