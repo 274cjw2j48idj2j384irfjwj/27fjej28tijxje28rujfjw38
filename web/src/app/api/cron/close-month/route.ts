@@ -5,6 +5,7 @@ import { purgeSessions } from "@/lib/sessions";
 import { safeEqual } from "@/lib/crypto";
 import { ApiError } from "@/lib/configs";
 import { api, json } from "@/lib/http";
+import { expirePending, retryPaidOrders } from "@/lib/orders";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,9 @@ export const POST = api(async (req) => {
   const closed = await closeDuePeriods();
   const releaseNotices = await fanoutReleases();
   const expiryNotices = await warnExpiring();
+  const issued = await retryPaidOrders();
+  const expired = await expirePending();
   await purgeRateLimits();
   await purgeSessions();
-  return json({ closed, releaseNotices, expiryNotices });
+  return json({ closed, releaseNotices, expiryNotices, issued, expired });
 });

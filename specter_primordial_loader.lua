@@ -13,7 +13,7 @@ rawset(_G, "_specter_pm_loader_loaded", true)
 local SERVER_URL = "https://specter-license-mh111-production.up.railway.app"
 -- bump whenever this file changes: the server hands out the number of the newest loader (the bot reads it from the cloud
 -- branch) and an older one tells its user to download the new one
-local LOADER_VERSION = 6
+local LOADER_VERSION = 7
 local KEY_FILE = "specter/key.txt"             -- csgo/specter/key.txt
 local BUILD_FILE = "specter/build.txt"         -- the build a multi build key loaded last (csgo/specter/build.txt)
 local GROUP = "𓆩☾𓆪 Specter loader 𓆩☾𓆪"
@@ -138,6 +138,7 @@ local REASONS = {
 local ui = {}
 ui.key = menu.add_text_input(GROUP, "Key")
 ui.status = menu.add_text(GROUP, "Enter your key and press Login.")
+ui.license = menu.add_text(GROUP, "Unlocked: log in to see which Luas your key opens")
 local busy = false
 
 -- the builds a key can load, best first; the name the buttons / messages use
@@ -256,6 +257,29 @@ local function parse_builds(body)
     return list
 end
 
+local function licensed_names(body)
+    local seen, names = {}, {}
+    local list = body:match('"access"%s*:%s*%[(.-)%]') or ""
+    for lua in list:gmatch('"lua"%s*:%s*"(%a+)"') do
+        if (not seen[lua]) then
+            seen[lua] = true
+            names[#names + 1] = lua == "primordial" and "Primordial" or "Gamesense"
+        end
+    end
+    return table.concat(names, " + ")
+end
+
+local function show_license(body)
+    local names = licensed_names(body)
+    local linked = body:find('"discord_linked"%s*:%s*true') ~= nil
+    local text = "Unlocked: " .. (names ~= "" and names or "this Lua")
+        .. (linked and " | Discord linked" or " | Discord NOT linked: run /register in the Specter Discord (cloud configs need it)")
+    pcall(ui.license.set, ui.license, text)
+    if (not linked) then
+        say("Your key is not registered to a Discord account: run /register in the Specter Discord (cloud configs and your roles need it).")
+    end
+end
+
 login = function(chosen)
     if (busy) then
         return
@@ -278,7 +302,7 @@ login = function(chosen)
         local latest = tonumber(body:match('"loader_pm"%s*:%s*(%d+)'))
         if (latest ~= nil and latest > LOADER_VERSION) then
             local text = "A new Specter loader is out (v" .. latest .. ", you have v" .. LOADER_VERSION
-                .. "): download it from #primordial-loader and replace this file."
+                .. "): run /download in the Specter Discord and replace this file."
             say(text)
             pcall(menu.add_text, "Specter update", text)
         end
@@ -289,6 +313,7 @@ login = function(chosen)
             return
         end
         save_key(key)
+        show_license(body)
         local allowed = parse_builds(body)
         local build = plan
         if (#allowed > 1) then

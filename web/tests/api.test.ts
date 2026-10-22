@@ -249,7 +249,7 @@ describe("cron", () => {
     expect((await cronPost(req("/api/cron/close-month", { method: "POST", headers: { authorization: "Bearer wrong" } }), ctx({}))).status).toBe(401);
     const ok = await cronPost(req("/api/cron/close-month", { method: "POST", headers: { authorization: `Bearer ${"c".repeat(32)}` } }), ctx({}));
     expect(ok.status).toBe(200);
-    expect(await body(ok)).toEqual({ closed: [], releaseNotices: 0, expiryNotices: 0 });
+    expect(await body(ok)).toEqual({ closed: [], releaseNotices: 0, expiryNotices: 0, issued: 0, expired: 0 });
   });
 });
 

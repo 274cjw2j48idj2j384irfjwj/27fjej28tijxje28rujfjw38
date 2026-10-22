@@ -385,6 +385,10 @@ check(ok, "loader compiles under LuaJIT" + ("" if ok else ": " + str(err)))
 check("/verify?key=" in LOADER and "/script?key=" in LOADER and 'plan:find("^pm_")' in LOADER,
       "loader: verify -> script, only pm_ keys")
 check("[resolver:begin]" not in LOADER and "shotlog" not in LOADER, "loader carries no script code")
+check('"discord_linked"' in LOADER and "ui.license" in LOADER and "licensed_names" in LOADER and "/register" in LOADER,
+      "loader: shows the Luas the key unlocks and tells a key with no Discord account to /register")
+check("#primordial-loader" not in LOADER and "/download" in LOADER, "loader: the update notice points to /download, not to a loader channel")
+check('res.reason == "discord_not_linked"' in SRC, "cloud configs: a key with no Discord account is told to run /register")
 check("𓆩☾𓆪" in LOADER, "loader: the 𓆩☾𓆪 decoration is in the group title")
 
 # the builds of a key (owners, Oct 21 2026: "dev kulcs mind a 3, nightly: beta + nightly, beta: csak beta"): the server lists them, the loader reads the list

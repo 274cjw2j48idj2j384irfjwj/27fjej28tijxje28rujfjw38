@@ -13685,7 +13685,9 @@ LPH_NO_VIRTUALIZE(function ()
                         local answer = cloud_answer(ok, resp)
                         if not (answer and answer.ok) then
                             cloud_busy = false
-                            cloud_status("share failed: " .. tostring(answer and answer.reason or "server unreachable"))
+                            cloud_status(answer and answer.reason == "discord_not_linked"
+                                and "link your Discord first: /register in the Specter Discord"
+                                or "share failed: " .. tostring(answer and answer.reason or "server unreachable"))
                             return
                         end
                         if i < #parts then return send(i + 1) end
@@ -13722,6 +13724,7 @@ LPH_NO_VIRTUALIZE(function ()
                     if not (answer and answer.ok) then
                         local reason = answer and answer.reason
                         cloud_status(reason == "not_found" and "you can only delete your own loadouts"
+                            or reason == "discord_not_linked" and "link your Discord first: /register in the Specter Discord"
                             or "delete failed: " .. tostring(reason or "server unreachable"))
                         return
                     end

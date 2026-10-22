@@ -39,6 +39,11 @@ ENV VARS (set in Discord bot host or .env):
                         resolver shot logs of the dev build (license server /shotlog) go with it to SHOTLOG_BRANCH
                         (default: shotlogs) every RELEASE_MINUTES, one file per round: shotlogs/<day>/<time>-<shots>.jsonl.
                         Empty: GITHUB_TOKEN, if that is set; neither: the logs stay on the server (the newest 400 batches)
+  SITE_URL            — the website with the shop (e.g. https://specter.example.com): /download and the panels point to its /pricing
+  LOADER_POSTS        — 1: the bot posts the loaders in #loader-download / #primordial-loader by itself again (default 0: the
+                        loader only comes by /download in a DM, /post_loader still works by hand)
+  ROLE_SYNC_MINUTES   — how often the plan roles of every registered key are checked (default 10, 0 = off): a key that ended
+                        or was revoked loses its roles, a new key gives them
   SPECTER_LOGO_URL    — a lasting image link for the logo on the bot's posts (optional). Empty: assets/specter_icon.png /
                         specter_logo.png go with the messages. A Discord upload link expires in a day: it is ignored
 """

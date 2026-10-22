@@ -6,8 +6,8 @@
 
 local AUTH_VER   = 3
 -- bump whenever this file changes: the server hands out the number of the newest loader (the bot reads it from the cloud
--- branch) and an older one tells its user to download the new one from #loader-download
-local LOADER_VERSION = 1
+-- branch) and an older one tells its user to get the new one with /download in the Specter Discord
+local LOADER_VERSION = 2
 local DB_USERS   = "specter_users_v3"
 local DB_SESSION = "specter_session_v3"
 
@@ -149,7 +149,7 @@ end
 -- ── LOADER UPDATE NOTICE: console + 12 s on screen ───────────────────
 local function loader_update_notice(latest)
     local text = "A new Specter loader is out (v" .. latest .. ", you have v" .. LOADER_VERSION
-        .. "): download it from #loader-download and replace this file."
+        .. "): run /download in the Specter Discord and replace this file."
     warn(text)
     local until_t = globals.realtime() + 12
     local function paint()
@@ -163,6 +163,20 @@ local function loader_update_notice(latest)
         renderer.text(w / 2, 90, 255, 200, 80, a, "cb", 0, text)
     end
     client.set_event_callback("paint", paint)
+end
+
+-- the Luas the key (and the other keys of the same Discord account) unlock, from the verify answer
+local function licensed_names(data)
+    local seen, names = {}, {}
+    local list = type(data.access) == "table" and data.access or {}
+    for i = 1, #list do
+        local lua = type(list[i]) == "table" and list[i].lua or nil
+        if lua and not seen[lua] then
+            seen[lua] = true
+            names[#names + 1] = lua == "primordial" and "Primordial" or "Gamesense"
+        end
+    end
+    return table.concat(names, " + ")
 end
 
 -- ── SERVER AUTH: verify key → get ticket → fetch script ─────────────
@@ -207,6 +221,17 @@ local function load_from_server(key, hwid, on_plan)
         local latest = tonumber(data.loader_gs)
         if latest and latest > LOADER_VERSION then
             loader_update_notice(latest)
+        end
+
+        if data.lua == "primordial" then
+            set_status(255,60,60, "This key is for Specter for Primordial. Use the Primordial loader (/download in Discord).")
+            err("This key unlocks the Primordial Lua, not the Gamesense one.")
+            return
+        end
+        local unlocked = licensed_names(data)
+        if unlocked ~= "" then info("Your account unlocks: "..unlocked) end
+        if data.discord_linked == false then
+            warn("Your key is not registered to a Discord account: run /register in the Specter Discord (cloud configs and your roles need it).")
         end
 
         local plan    = data.plan or "beta"
@@ -276,7 +301,9 @@ local function load_from_server(key, hwid, on_plan)
             rawset(_G, "_specter_loader_loaded", true)
             script_running = true
             auth_plan = plan
-            set_status(100,255,160, "Specter loaded! ["..plan.."]")
+            set_status(100,255,160, "Specter loaded! ["..plan.."]"
+                .. (unlocked ~= "" and (" - unlocked: "..unlocked) or "")
+                .. (data.discord_linked == false and " - Discord not linked: /register" or ""))
             info("Specter loaded successfully! Plan: "..plan)
         end)
     end)
