@@ -18,6 +18,7 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
   const product = sp.product === "gamesense" || sp.product === "primordial" ? sp.product : "";
   const [reports, list] = await Promise.all([listOpenReports() as Promise<Report[]>, listAdminConfigs({ q, product, page: Number(sp.page ?? 1) })]);
   const pname = (id: string) => getProduct(id)?.platform ?? id;
+  const pslug = (id: string) => getProduct(id)?.slug ?? id;
   const href = (page: number) => `/admin/moderation?${new URLSearchParams({ ...(q && { q }), ...(product && { product }), page: String(page) })}`;
   return (
     <div className="space-y-12 pb-4">
@@ -34,7 +35,7 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
                     <div className="min-w-0 max-w-2xl">
                       <p className="flex flex-wrap items-center gap-2 font-medium text-white">
                         {r.name} <Badge>{pname(r.product_id)}</Badge> {r.hidden && <Badge tone="red">Hidden</Badge>}
-                        <Link href={`/cloud/${r.slug}`} className="text-xs font-normal text-violet-300 hover:text-white" target="_blank">View</Link>
+                        <Link href={`/cloud/${pslug(r.product_id)}/${r.slug}`} className="text-xs font-normal text-violet-300 hover:text-white" target="_blank">View</Link>
                       </p>
                       <p className="mt-2 text-sm"><span className="muted">Reason:</span> <span className="text-amber-200">{r.reason}</span></p>
                       {r.details && <p className="muted mt-1 whitespace-pre-wrap break-words text-sm">{r.details}</p>}
@@ -69,7 +70,7 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
                   {list.items.map((c) => (
                     <tr key={c.id} className="align-top">
                       <td className={td}>
-                        <Link href={`/cloud/${c.slug}`} target="_blank" className="font-medium text-white hover:text-violet-200">{c.name}</Link>
+                        <Link href={`/cloud/${pslug(c.product_id)}/${c.slug}`} target="_blank" className="font-medium text-white hover:text-violet-200">{c.name}</Link>
                         <p className="mt-0.5 text-xs text-[color:var(--faint)]">{pname(c.product_id)} · <span className="font-mono">{c.slug}</span></p>
                       </td>
                       <td className={`${td} muted`}>{c.owner_name}</td>

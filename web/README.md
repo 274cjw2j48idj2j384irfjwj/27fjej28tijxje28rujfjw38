@@ -20,6 +20,13 @@ a role-ok az admin felületen is (Discord Role Mapping).
 | Demó adatok | Csak a `npm run seed` írja be őket, mindenhol **Demo data** címkével. Éles adatbázison ne futtasd |
 | Képek / Lua fájlok tárolása | Az adatbázisban (`blobs`). Nagyobb forgalomhoz külső objektumtár kell (nincs megírva) |
 
+## Oldalak
+
+* Publikus: `/`, `/luas/[slug]` (két termékoldal), `/features`, `/previews`, `/cloud`, `/cloud/[lua]`, `/cloud/[lua]/[kód]`, `/leaderboard`, `/changelog`, `/faq`, `/support`, `/status`, `/u/[discord id]`, `/login`, `/link`.
+* Bejelentkezve (`/dashboard/...`): Overview, My Access, Downloads, My Configs (+ kezelés), Saved Configs, Leaderboard, Rewards, Connected Devices, Account Settings, Notifications.
+* Admin (`/admin/...`): Users & Access, Discord Role Mapping, Products & Releases (funkciók, letöltések, képek, kiadások), Config Moderation, Leaderboard Management, Monthly Rewards, Audit Log.
+* Ctrl+K: gyorskereső (parancspaletta).
+
 ## Helyi futtatás
 
 ```
