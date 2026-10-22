@@ -22,6 +22,7 @@ const ITEMS: Item[] = [
   { label: "My Configs", href: "/dashboard/configs" },
   { label: "Saved Configs", href: "/dashboard/saved" },
   { label: "Rewards", href: "/dashboard/rewards" },
+  { label: "Roulette", href: "/dashboard/roulette" },
   { label: "Orders", href: "/dashboard/orders", hint: "Invoice IDs" },
   { label: "Connected Devices", href: "/dashboard/devices" },
   { label: "Account Settings", href: "/dashboard/settings" },

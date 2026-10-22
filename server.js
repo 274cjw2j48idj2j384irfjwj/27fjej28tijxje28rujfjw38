@@ -344,6 +344,37 @@ app.get('/admin/by_discord', async (req, res) => {
     })))
 })
 
+// ── POST /admin/extend — add hours to a running key (the web roulette) ────
+// Only a key of that Discord account that is not revoked, not lifetime and not ended; `ref` makes a repeated call a no-op
+// (the same spin is never paid twice). Hours, because the roulette has 5 h and 12 h prizes (parse_duration knows d / w / m).
+app.post('/admin/extend', async (req, res) => {
+    if (req.headers['x-admin-secret'] !== ADMIN_SECRET)
+        return res.status(403).json({ error: 'forbidden' })
+    const key = String(req.body.key || '').trim()
+    const discord_id = String(req.body.discord_id || '').trim()
+    const ref = typeof req.body.ref === 'string' ? req.body.ref.trim().slice(0, 80) : ''
+    const hours = Number(req.body.hours)
+    if (!key || !ref || !DISCORD_ID_RE.test(discord_id) || !Number.isInteger(hours) || hours < 1 || hours > 24 * 90)
+        return res.status(400).json({ ok: false, reason: 'missing_params' })
+    const out = await with_db(async () => {
+        const db = await db_read()
+        const l = db[key]
+        if (!l)         return { status: 404, body: { ok: false, reason: 'invalid_key' } }
+        if (l.discord_id !== discord_id) return { status: 403, body: { ok: false, reason: 'not_your_key' } }
+        const refs = Array.isArray(l.ext_refs) ? l.ext_refs : []
+        if (refs.includes(ref)) return { status: 200, body: { ok: true, already: true, key, expires_at: l.expires_at } }
+        if (l.revoked)  return { status: 403, body: { ok: false, reason: 'revoked' } }
+        if (!l.expires_at) return { status: 409, body: { ok: false, reason: 'lifetime' } }
+        if (Date.now() > l.expires_at) return { status: 403, body: { ok: false, reason: 'expired' } }
+        l.expires_at += hours * 3600000
+        l.ext_refs = [...refs, ref].slice(-50)
+        await db_write(db)
+        return { status: 200, body: { ok: true, already: false, key, expires_at: l.expires_at } }
+    })
+    res.status(out.status).json(out.body)
+    if (out.status === 200 && !out.body.already) console.log(`[EXTEND] ${key} +${hours}h ref=${ref}`)
+})
+
 // ── POST /admin/revoke ────────────────────────────────────────────────────
 app.post('/admin/revoke', async (req, res) => {
     if (req.headers['x-admin-secret'] !== ADMIN_SECRET)
