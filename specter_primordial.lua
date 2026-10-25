@@ -215,6 +215,7 @@ libs.tools.js = libs.panorama.loadstring([[
 let entity_panels = {};
 let entity_data = {};
 let event_callbacks = {};
+let why = [];
 const valid = function(panel) {
     return panel != null && typeof panel.IsValid === "function" && panel.IsValid();
 };
@@ -259,7 +260,12 @@ const walk = function(panel, depth, visit) {
 // the first row of the scoreboard as text (id, type, classes of every panel): what the "Dump scoreboard row" button prints
 const dump = function() {
     const board = scoreboard();
-    if (!valid(board)) return "no scoreboard (open it first)";
+    if (!valid(board)) {
+        const found = [];
+        const context = $.GetContextPanel();
+        if (valid(context)) walk(context, 0, function(panel) { if (/coreboard/i.test(String(panel.id))) found.push(String(panel.id) + " <" + String(panel.paneltype) + ">"); });
+        return "no Scoreboard panel; context " + (valid(context) ? String(context.id) : "none") + "; ids with 'coreboard': " + (found.join(", ") || "none") + (why.length ? "\nwhy: " + why.join("; ") : "");
+    }
     const rows = board.FindChildrenWithClassTraverse("sb-row") || [];
     if (rows.length === 0) return "no rows";
     const lines = ["rows: " + rows.length + ", board id " + String(board.id)];
@@ -270,6 +276,7 @@ const dump = function() {
     }
     const shown = Object.keys(entity_panels).length;
     lines.push("our panels: " + shown + ", asked: " + Object.keys(entity_data).length);
+    why.forEach(function(w) { lines.push("why: " + w); });
     walk(rows[0], 0, function(panel) {
         let depth = 0;
         for (let p = panel; valid(p) && p !== rows[0] && depth < 12; p = p.GetParent()) depth++;
@@ -301,7 +308,7 @@ const money_cell = function(row) {
 };
 const get_panel = function(xuid, kind) {
     const board = scoreboard();
-    if (!valid(board)) return null;
+    if (!valid(board)) { why.push("no scoreboard panel"); return null; }
     const rows = board.FindChildrenWithClassTraverse("sb-row") || [];
     let row = null;
     for (let i = 0; i < rows.length; i++) {
@@ -310,7 +317,7 @@ const get_panel = function(xuid, kind) {
             break;
         }
     }
-    if (!valid(row)) return null;
+    if (!valid(row)) { why.push("no row for xuid " + xuid + " (" + rows.length + " rows)"); return null; }
     const current = entity_panels[xuid];
     if (valid(current) && current.specter_row === row && current.specter_kind === kind) return current;
     destroy_panel(xuid);
@@ -356,14 +363,17 @@ const get_panel = function(xuid, kind) {
     return panel;
 };
 const apply_data = function() {
+    why = [];
     Object.keys(entity_data).forEach(function(key) {
         const data = entity_data[key];
         const xuid = player_xuid(parseInt(key, 10));
         if (xuid == null) {
+            why.push("entity " + key + ": no xuid from the game");
             if (data.xuid) destroy_panel(data.xuid);
             return;
         }
         if (data.xuid && data.xuid !== xuid) {
+            why.push("entity " + key + ": xuid differs, lua " + data.xuid + " game " + xuid);
             destroy_panel(data.xuid);
             delete entity_data[key];
             return;
