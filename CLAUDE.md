@@ -10,7 +10,7 @@
   RELEASE ("mehet cloudra", "rakd ki az updatet") = a PR `main` -> `cloud`, merged with a merge commit: its title (or the merge
   message: a short title + "- " points) IS the public #updates changelog, short and for players: "Sponsor kill added",
   "Fixed ...". A point only about one lua is tagged "- [GS] ..." / "- [PM] ...": it goes only into that lua's changelog
-  (`commit_points(lua=)`), an untagged point into both. Never release without the owners asking. A PR into `main` (the dev build) is merged right away with a
+  (`commit_points(lua=)`), an untagged point into both. Release every change (owners, Oct 25 2026: "ne kuldd el ezt a fajlt, mindig toltsd fel cloudra, mar mi ownerek is azt hasznaljuk"): after a change is merged into `main`, open the PR `main` -> `cloud` and merge it the same session (merge commit, title + "- " points = the #updates changelog); never send the lua file to the owners in chat, the loader / bot get it from `cloud`. A PR into `main` (the dev build) is merged right away with a
   merge commit once its tests pass (owners, Oct 2026: "always merge it"): every session pushes, opens the PR and merges
   it itself, the bot only posts what is on `main` (owners: "mindig be kell olvasztani"); `cloud` still only when they ask. `server.js` deploys from `main` at once: keep it compatible with the
   loader / cloud script on `cloud` (an auth change is released together with them)
@@ -1023,3 +1023,4 @@ The owner speaks Hungarian. Respond in Hungarian when they write in Hungarian.
   `perf.add` now runs the first 300 calls of every callback in a pcall that writes "ERROR in callback <name>: <message>" to the trace and throws it on; the SHUTDOWN callback writes "shutdown: restoring" / "shutdown: done"; the voice state is read with `tonumber(...) or 1`.
 - Freeze solved by the Oct 25 2026 build (owners: "mukodik", plain file and loader): what that build changed were the angle loops (`wrap_180`), the type safe voice state read and the pcall trace of the callbacks. Which of them it was is NOT known (an inf in an angle loop is the best guess). The per frame trace parts (`perf.first`, the `perf.span` / `perf.add` first call writes and the callback pcall) are taken out again;
   the load steps (`load_step` at every region and init stage, the loader's steps, "shutdown: restoring / done") stay: they cost one file write per step at the load.
+- Discord button on every page (owners, Oct 25 2026: "a luaban nincs ott a DC gomb"): the Info > Information page already had the invite, copy and open buttons (`ui.about`), but nobody found it; `ui.nav.discord` is a button of the NAVIGATION group ("Discord  ·  <invite>"), visible on every page, and runs the same `discord_open` (the Steam overlay browser, else it copies the invite).

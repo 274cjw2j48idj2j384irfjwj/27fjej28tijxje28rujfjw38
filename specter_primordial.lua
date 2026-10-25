@@ -1759,23 +1759,27 @@ for i, main in ipairs(nav_pages) do
 end
 
 -- the Information page (owners, Oct 21 2026: "külön tab information és oda dc link"): what this is, the Discord, a copy / open button
+local discord_copy = function()
+    clipboard.set("https://" .. PM_DISCORD)
+    notifications.create("Specter", "Discord invite copied!", notifications.types.success)
+end
+local discord_open = function()
+    local api = libs.tools.js2 and libs.tools.js2.SteamOverlayAPI
+    if (not (api ~= nil and pcall(api.OpenExternalBrowserURL, "https://" .. PM_DISCORD))) then
+        clipboard.set("https://" .. PM_DISCORD)
+        notifications.create("Specter", "Could not open the browser, the invite was copied.", notifications.types.warning)
+    end
+end
 ui.about = {
     title = groups.about:text("☾  Specter v" .. client_version .. info.beta_text2 .. "  ·  " .. info.plan),
     sep = groups.about:separator(),
     discord = groups.about:text("◈  Discord  " .. PM_DISCORD),
     support = groups.about:text("✉  Support, configs and updates are on the Discord"),
-    copy = groups.about:button("⧉  Copy the Discord invite", function()
-        clipboard.set("https://" .. PM_DISCORD)
-        notifications.create("Specter", "Discord invite copied!", notifications.types.success)
-    end),
-    open = groups.about:button("➜  Open the Discord", function()
-        local api = libs.tools.js2 and libs.tools.js2.SteamOverlayAPI
-        if (not (api ~= nil and pcall(api.OpenExternalBrowserURL, "https://" .. PM_DISCORD))) then
-            clipboard.set("https://" .. PM_DISCORD)
-            notifications.create("Specter", "Could not open the browser, the invite was copied.", notifications.types.warning)
-        end
-    end),
+    copy = groups.about:button("⧉  Copy the Discord invite", discord_copy),
+    open = groups.about:button("➜  Open the Discord", discord_open),
 }
+-- the Discord is one click away on EVERY page too (owners, Oct 25 2026: "a luaban nincs ott a DC gomb"): a button in the navigation, under the page buttons
+ui.nav.discord = groups.nav:button("Discord  ·  " .. PM_DISCORD, discord_open)
 
 --- @endregion
 
