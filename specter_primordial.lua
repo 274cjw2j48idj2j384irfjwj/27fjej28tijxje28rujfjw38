@@ -160,6 +160,19 @@ load_step = function(name)
 end
 load_step("script start")
 
+-- one step instead of "minus 360 until": a loop on a value from the game (inf) never ended
+wrap_180 = function(yaw)
+    yaw = tonumber(yaw) or 0
+    if (yaw ~= yaw or yaw == math.huge or yaw == -math.huge) then
+        return 0
+    end
+    if (yaw > 180 or yaw < -180) then
+        yaw = (yaw + 180) % 360 - 180
+    end
+    return yaw
+end
+
+
 libs.eui = (function()
     local a={}a.__type={group=-1,button=0,keybind=1,text_input=2,text=3,separator=4,list=5,checkbox=6,color_picker=7,multi_selection=8,selection=9,slider=10}a.__spectersave=true;a.__data={}a.create=function(b,c)local d={group=b,column=c,id=a.__type.group}menu_set_group_column(b,c)a.__index=a;return setmetatable(d,a)end;function a:create_element(e,f,g)local h=nil;if e==a.__type.button then h=menu_add_button(self.group,f,g.fn)elseif e==a.__type.checkbox then h=menu_add_checkbox(self.group,f,g.default_value)elseif e==a.__type.color_picker then h=g.parent.ref:add_color_picker(f,g.default_value,g.alpha)elseif e==a.__type.keybind then h=g.parent.ref:add_keybind(f,g.default_value)elseif e==a.__type.list then h=menu_add_list(self.group,f,g.items,g.visible_count)elseif e==a.__type.multi_selection then h=menu_add_multi_selection(self.group,f,g.items,g.visible_count)elseif e==a.__type.selection then h=menu_add_selection(self.group,f,g.items,g.visible_count)elseif e==a.__type.slider then h=menu_add_slider(self.group,f,g.min,g.max,g.step,g.precision,g.suffix)elseif e==a.__type.text_input then h=menu_add_text_input(self.group,f)elseif e==a.__type.text then h=menu_add_text(self.group,f)elseif e==a.__type.separator then h=menu_add_separator(self.group)end;local d={name=f,id=e,ref=h,group=self.group,get=function(self,i)if self.id==a.__type.multi_selection then return self.ref:get(i)else return self.ref:get()end end}if not a.__data[self.group]then a.__data[self.group]={}end;a.__data[self.group][f]=d;if a.__spectersave then if not a[self.group]then a[self.group]={}end;a[self.group][f]=d;self[f]=d end;return setmetatable(d,a)end;function a:button(f,j)j=j or function()end;return self:create_element(a.__type.button,f,{fn=j})end;function a:checkbox(f,k)return self:create_element(a.__type.checkbox,f,{default_value=k})end;function a:color_picker(l,f,k,m)return self:create_element(a.__type.color_picker,f,{parent=l,default_value=k,alpha=m})end;function a:keybind(l,f,k)return self:create_element(a.__type.keybind,f,{parent=l,default_value=k})end;function a:list(f,n,o)return self:create_element(a.__type.list,f,{items=n,visible_count=o})end;function a:multi_selection(f,n,o)return self:create_element(a.__type.multi_selection,f,{items=n,visible_count=o})end;function a:selection(f,n,o)return self:create_element(a.__type.selection,f,{items=n,visible_count=o})end;function a:slider(f,p,q,r,s,t)return self:create_element(a.__type.slider,f,{min=p,max=q,step=r,precision=s,suffix=t})end;function a:text_input(f)return self:create_element(a.__type.text_input,f)end;function a:text(f,g)return self:create_element(a.__type.text,f,g)end;function a:separator()return self:create_element(a.__type.separator,"separator")end;a.export=function()local u={}for v,w in pairs(a.__data)do u[v]={}for x,y in pairs(w)do if not(y.id<a.__type.checkbox)then if y.id==a.__type.multi_selection then local z={}for A,B in pairs(y.ref:get_items())do table.insert(z,{B,y.ref:get(B)})end;table.insert(u[v],{y.name,z})elseif y.id==a.__type.color_picker then local C=y.ref:get()table.insert(u[v],{y.name,C.r,C.g,C.b,C.a})else table.insert(u[v],{y.name,y.ref:get()})end end end end;return libs.json.encode(u)end;a.import=function(d)local D=libs.json.parse(d)for v,w in pairs(D)do for x,y in pairs(w)do if not(a.__data[v]==nil or a.__data[v][y[1]]==nil)then if a.__data[v][y[1]].id==a.__type.multi_selection then for A,B in pairs(y[2])do a.__data[v][y[1]].ref:set(B[1],B[2])end elseif a.__data[v][y[1]].id==a.__type.color_picker then a.__data[v][y[1]].ref:set(color_t(y[2],y[3],y[4],y[5]))else a.__data[v][y[1]].ref:set(y[2])end end end end end;function a:depend(...)local E={...}local F=nil;for v,w in pairs(E)do local G=nil;if type(w[1])=="boolean"then G=w[1]else G=w[1].ref:get()==w[2]end;if F~=nil then F=F and G else F=G end end;if self.id==-1 then menu_set_group_visibility(self.group,F)else self.ref:set_visible(F)end end;return a
 end)()
@@ -3902,20 +3915,14 @@ super_toss = function(cmd)
                         local yaw_difference = toss.lastangles.y - vec_throw.y
                         local pitch_difference = toss.lastangles.x - vec_throw.x - 10
                         
-                        while (yaw_difference > 180) do
-                            yaw_difference = yaw_difference - 360
+                        yaw_difference = wrap_180(yaw_difference)
+                        if (pitch_difference ~= pitch_difference or pitch_difference == math.huge or pitch_difference == -math.huge) then
+                            pitch_difference = 0
                         end
-                    
-                        while (yaw_difference < -180) do
-                            yaw_difference = yaw_difference + 360
-                        end
-
-                        while (pitch_difference > 90) do
-                            pitch_difference = pitch_difference - 45
-                        end
-                    
-                        while (pitch_difference < -90) do
-                            pitch_difference = pitch_difference + 45
+                        if (pitch_difference > 90) then
+                            pitch_difference = pitch_difference - 45 * math.ceil((pitch_difference - 90) / 45)
+                        elseif (pitch_difference < -90) then
+                            pitch_difference = pitch_difference + 45 * math.ceil((-90 - pitch_difference) / 45)
                         end
                     
                         toss.target_angles.y = toss.lastangles.y + yaw_difference
@@ -7732,16 +7739,7 @@ end
 --- @region: edgeyaw
 if (load_step) then load_step("region: edgeyaw") end
 
-edgeyaw.fix_yaw = function(yaw)
-    while (yaw > 180) do
-        yaw = yaw - 360
-    end
-    
-    while (yaw < -180) do
-        yaw = yaw + 360
-    end
-    return yaw
-end
+edgeyaw.fix_yaw = wrap_180
 
 edgeyaw.multiply_vector = function(vec, mul)
     return vec3_t(vec.x * mul, vec.y * mul, vec.z * mul)
@@ -7759,17 +7757,7 @@ edgeyaw.vector_to_angle = function(vec)
     return angle_t(math.atan2(vec.y, vec.x), math.asin(vec.z), 0)
 end
 
-edgeyaw.normalize_yaw = function(yaw)
-    local result = yaw
-    while (result < -180) do
-        result = result + 360
-    end
-
-    while (result > 180) do
-        result = result - 360
-    end
-    return result
-end
+edgeyaw.normalize_yaw = wrap_180
 
 run_edgeyaw = function(ctx, cmd, unpredicted)
     if (ui.antiaim.builder.edge_yaw:get() and ui.edge_yaw:get()) then
