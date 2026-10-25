@@ -87,6 +87,11 @@ end
 -- the first three frames after the load write every callback / PAINT part they start to the load trace (one file write each, nothing after that):
 -- when the game freezes right after the load, the last line names the part that never came back
 perf.early, perf.early_frames = true, 0
+perf.mark = function(name)
+    if (perf.early and load_step) then
+        load_step("mark: " .. name)
+    end
+end
 perf.span = function(name, fn, ...)
     if (perf.early and load_step) then
         load_step("frame: " .. tostring(name))
@@ -3761,9 +3766,13 @@ servers.hvh_connect = function()
 end
 
 lets_sync = function()
+    perf.mark("presence")
     presence.update(false)
+    perf.mark("servers")
     servers.update(false)
+    perf.mark("hvh servers")
     servers.hvh_update(false)
+    perf.mark("sync done")
 end
 
 run_clantag = function()
@@ -9770,6 +9779,7 @@ do_paint = function()
                 end
             end
 
+            perf.mark("before voice")
             -- voice mute / unmute: only when it is set, and through pcall: the panorama GameStateAPI is nil at times
             -- (an index of it stopped the whole PAINT callback)
             local voice = tonumber(ui.player.voice_state:get()) or 1
@@ -9790,11 +9800,13 @@ do_paint = function()
             end
         end
 
+        perf.mark("before logo")
         if (logo ~= nil) then
             if (is_visible) then
                 render_push_alpha_modifier(alpha)
                 render_texture(logo.id, center_pos, logo.size)
                 render_pop_alpha_modifier()
+                perf.mark("logo drawn")
             end
     
             if (is_fading_in) then
