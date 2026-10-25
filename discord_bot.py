@@ -2233,9 +2233,11 @@ def loader_dm_embed(lua: str, raw: bytes) -> discord.Embed:
 
 
 @tree.command(name="download", description="Get the Specter loader (only you can see it; needs a registered key)")
+@app_commands.describe(lua="Which loader (default: every Lua your keys unlock)")
+@app_commands.choices(lua=[app_commands.Choice(name="Gamesense", value="gamesense"), app_commands.Choice(name="Primordial", value="primordial")])
 @app_commands.guild_only()
 @app_commands.checks.cooldown(1, 20.0, key=lambda i: i.user.id)
-async def download(interaction: discord.Interaction):
+async def download(interaction: discord.Interaction, lua: app_commands.Choice[str] | None = None):
     # Answered in the channel it was typed in, as an ephemeral message: only the member who ran it sees the loader file
     # (owners, Oct 22 2026: "bármelyik channelbe beírja ... azt csak ő látja"). Without a running registered key nothing is sent.
     await interaction.response.defer(ephemeral=True)
@@ -2249,6 +2251,11 @@ async def download(interaction: discord.Interaction):
         await interaction.followup.send(f"You have no running key registered to this Discord account.{hint} run `/register key:<your Invoice ID>`.", ephemeral=True)
         return
     luas = sorted({lua_of_plan(l["plan"]) for l in active})
+    if lua is not None:
+        if lua.value not in luas:
+            await interaction.followup.send(f"Your keys do not unlock {lua.name}. You can download: {', '.join(l.title() for l in luas)}.", ephemeral=True)
+            return
+        luas = [lua.value]
     payload = []
     for lua in luas:
         try:
@@ -2259,6 +2266,85 @@ async def download(interaction: discord.Interaction):
         payload.append((lua, raw))
     for lua, raw in payload:
         await interaction.followup.send(embed=loader_dm_embed(lua, raw), file=discord.File(io.BytesIO(raw), filename=LOADERS[lua]["file"]), ephemeral=True)
+
+
+def ban_problem(guild: discord.Guild, invoker, target) -> str:
+    """Why the invoker may not ban this account ('' = fine): never yourself, the bot, the server owner, or a member who is staff / above you."""
+    if target.id == invoker.id:
+        return "You can not ban yourself."
+    if client.user is not None and target.id == client.user.id:
+        return "I will not ban myself."
+    if target.id == guild.owner_id:
+        return "The server owner can not be banned."
+    member = guild.get_member(target.id)
+    if member is not None and invoker.id != guild.owner_id:
+        top = getattr(member, "top_role", None)
+        mine = getattr(invoker, "top_role", None)
+        if top is not None and mine is not None and top >= mine:
+            return "That member has the same or a higher role than you."
+    return ""
+
+
+@tree.command(name="ban", description="Ban an account from the server (staff)")
+@app_commands.describe(user="Who to ban (a member, or any user id)", reason="Why (kept in the audit log)", delete_days="Delete their messages of the last N days (0-7)")
+@app_commands.guild_only()
+async def ban(interaction: discord.Interaction, user: discord.User, reason: str = "No reason given", delete_days: app_commands.Range[int, 0, 7] = 0):
+    if not is_staff(interaction):
+        await interaction.response.send_message("No permission.", ephemeral=True)
+        return
+    problem = ban_problem(interaction.guild, interaction.user, user)
+    if problem:
+        await interaction.response.send_message(problem, ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    try:
+        await interaction.guild.ban(user, reason=f"{interaction.user} ({interaction.user.id}): {reason}"[:512], delete_message_seconds=delete_days * 86400)
+    except discord.Forbidden:
+        await interaction.followup.send("I can not ban that account: my role must be above theirs (Server settings > Roles).", ephemeral=True)
+        return
+    except discord.HTTPException as e:
+        await interaction.followup.send(f"Discord refused the ban: {e}", ephemeral=True)
+        return
+    await interaction.followup.send(f"Banned {user.mention} (`{user.id}`). Their key (if any) is not touched: use `/key_revoke` for that.", ephemeral=True)
+    log_embed = discord.Embed(title="Member banned", color=0xFF7878)
+    log_embed.add_field(name="By", value=interaction.user.mention, inline=True)
+    log_embed.add_field(name="User", value=f"{user.mention} `{user.id}`", inline=True)
+    log_embed.add_field(name="Reason", value=reason[:1000], inline=False)
+    await log_action(interaction.guild, log_embed)
+
+
+@tree.command(name="unban", description="Lift a ban (staff)")
+@app_commands.describe(user_id="The Discord user id of the banned account", reason="Why")
+@app_commands.guild_only()
+async def unban(interaction: discord.Interaction, user_id: str, reason: str = "No reason given"):
+    if not is_staff(interaction):
+        await interaction.response.send_message("No permission.", ephemeral=True)
+        return
+    user_id = user_id.strip().strip("<@>")
+    if not user_id.isdigit():
+        await interaction.response.send_message("Give the numeric Discord user id.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    target = discord.Object(id=int(user_id))
+    try:
+        await interaction.guild.fetch_ban(target)
+    except discord.NotFound:
+        await interaction.followup.send("That account is not banned here.", ephemeral=True)
+        return
+    except discord.HTTPException as e:
+        await interaction.followup.send(f"Could not look the ban up: {e}", ephemeral=True)
+        return
+    try:
+        await interaction.guild.unban(target, reason=f"{interaction.user} ({interaction.user.id}): {reason}"[:512])
+    except discord.HTTPException as e:
+        await interaction.followup.send(f"Discord refused the unban: {e}", ephemeral=True)
+        return
+    await interaction.followup.send(f"Unbanned `{user_id}`.", ephemeral=True)
+    log_embed = discord.Embed(title="Member unbanned", color=0x78FFB4)
+    log_embed.add_field(name="By", value=interaction.user.mention, inline=True)
+    log_embed.add_field(name="User", value=f"<@{user_id}> `{user_id}`", inline=True)
+    log_embed.add_field(name="Reason", value=reason[:1000], inline=False)
+    await log_action(interaction.guild, log_embed)
 
 
 @tree.command(name="mylicenses", description="Show the keys registered to your Discord account")

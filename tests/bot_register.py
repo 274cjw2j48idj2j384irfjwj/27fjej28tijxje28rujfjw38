@@ -239,6 +239,19 @@ class Download(unittest.TestCase):
         run(bot.download.callback(it))
         self.assertEqual([x["file"].filename for x in it.followup.messages if "file" in x], ["specter_primordial_loader.lua"])
 
+    def test_choosing_one_lua_sends_only_that_loader(self):
+        self.lic = [{"key": "A", "plan": "specter"}, {"key": "B", "plan": "pm_nightly"}]
+        it = interaction(Member(111111111111111111), Guild())
+        run(bot.download.callback(it, discord.app_commands.Choice(name="Primordial", value="primordial")))
+        self.assertEqual([x["file"].filename for x in it.followup.messages if "file" in x], ["specter_primordial_loader.lua"])
+
+    def test_choosing_a_lua_the_keys_do_not_unlock_sends_nothing(self):
+        self.lic = [{"key": "A", "plan": "specter"}]
+        it = interaction(Member(111111111111111111), Guild())
+        run(bot.download.callback(it, discord.app_commands.Choice(name="Primordial", value="primordial")))
+        self.assertTrue(all("file" not in x for x in it.followup.messages))
+        self.assertIn("do not unlock", text(it))
+
     def test_license_server_down_says_so(self):
         async def none(uid):
             return None
@@ -249,6 +262,41 @@ class Download(unittest.TestCase):
 
     def test_the_command_works_in_a_server_only(self):
         self.assertTrue(bot.download.guild_only)
+
+
+class Ban(unittest.TestCase):
+    def setUp(self):
+        self.me = types.SimpleNamespace(id=1, top_role=5)
+        self.guild = types.SimpleNamespace(owner_id=99, get_member=lambda uid: {2: types.SimpleNamespace(id=2, top_role=5), 3: types.SimpleNamespace(id=3, top_role=1)}.get(uid))
+        bot.client._connection.user = types.SimpleNamespace(id=777)
+
+    def test_the_rules(self):
+        t = lambda uid: types.SimpleNamespace(id=uid)
+        self.assertIn("yourself", bot.ban_problem(self.guild, self.me, t(1)))
+        self.assertIn("myself", bot.ban_problem(self.guild, self.me, t(777)))
+        self.assertIn("owner", bot.ban_problem(self.guild, self.me, t(99)))
+        self.assertIn("higher role", bot.ban_problem(self.guild, self.me, t(2)))      # same role = not allowed
+        self.assertEqual(bot.ban_problem(self.guild, self.me, t(3)), "")              # a lower member
+        self.assertEqual(bot.ban_problem(self.guild, self.me, t(555)), "")            # not in the server: a plain user id
+
+    def test_the_commands_are_staff_only(self):
+        for cmd in (bot.ban, bot.unban):
+            it = types.SimpleNamespace(user=Member(5), guild=Guild(), followup=Followup(), response=types.SimpleNamespace())
+            sent = []
+
+            async def send_message(content=None, **kw):
+                sent.append(content)
+            it.response.send_message = send_message
+            orig = bot.is_staff
+            bot.is_staff = lambda i: False
+            try:
+                if cmd is bot.ban:
+                    run(cmd.callback(it, types.SimpleNamespace(id=9, mention="<@9>")))
+                else:
+                    run(cmd.callback(it, "123"))
+            finally:
+                bot.is_staff = orig
+            self.assertEqual(sent, ["No permission."])
 
 
 class RoleLoop(unittest.TestCase):
