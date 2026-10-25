@@ -7,7 +7,7 @@ const app  = express()
 // a variable pasted as NAME=value or with quotes around it ("value") still works: both are cut off
 function env(name, fallback) {
     let v = String(process.env[name] || '').trim()
-    if (v.startsWith(name + '=')) v = v.slice(name.length + 1).trim()
+    if (v.startsWith(name)) v = v.slice(name.length).replace(/^[\s=:]+/, '')   // "NAME=value", "NAME value" or "NAME<newline>value" pasted into the value box
     if (v.length >= 2 && ((v[0] === '"' && v[v.length - 1] === '"') || (v[0] === "'" && v[v.length - 1] === "'"))) v = v.slice(1, -1).trim()
     return v || fallback
 }
