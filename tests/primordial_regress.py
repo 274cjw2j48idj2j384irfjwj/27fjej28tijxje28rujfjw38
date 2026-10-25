@@ -389,7 +389,7 @@ check('"discord_linked"' in LOADER and "ui.license" in LOADER and "licensed_name
       "loader: shows the Luas the key unlocks and tells a key with no Discord account to /register")
 check("#primordial-loader" not in LOADER and "/download" in LOADER, "loader: the update notice points to /download, not to a loader channel")
 check('res.reason == "discord_not_linked"' in SRC, "cloud configs: a key with no Discord account is told to run /register")
-check("𓆩☾𓆪" in LOADER, "loader: the 𓆩☾𓆪 decoration is in the group title")
+check('local GROUP = "[ Specter loader ]"' in LOADER and all(ord(c) < 128 for c in LOADER.split("local GROUP =")[1].split("\n")[0]), "loader: the group title is plain ASCII (the menu font has no hieroglyphs / moon: they showed as ??)")
 
 # the builds of a key (owners, Oct 21 2026: "dev kulcs mind a 3, nightly: beta + nightly, beta: csak beta"): the server lists them, the loader reads the list
 SERVER = open(os.path.join(ROOT, "server.js"), encoding="utf-8").read()
@@ -425,7 +425,7 @@ check('menu.add_button(GROUP, "Import key"' in LOADER and "clipboard_text()" in 
       "loader: an Import key button reads the clipboard inside a pcall, only when pressed")
 check("&build=" in LOADER and 'menu.add_list(GROUP, "Builds"' in LOADER and "read_build()" in LOADER and 'menu.add_button(GROUP, "Load "' not in LOADER,
       "loader: asks /script for the chosen build, the builds are a list (no Load buttons), remembers the last one")
-check(LOADER.count('local STAR = "★★"') == 1 and "STAR .. \"  dev" in LOADER and "STAR .. \"  nightly" in LOADER and "STAR .. \"  beta" in LOADER
+check(LOADER.count('local STAR = "**"') == 1 and "STAR .. \"  dev" in LOADER and "STAR .. \"  nightly" in LOADER and "STAR .. \"  beta" in LOADER
       and "Double-click a build in the list to load it" in LOADER,
       "loader: every build has the same double star and the menu says how to load it (double-click)")
 _cs = L.LuaRuntime(unpack_returned_tuples=True)

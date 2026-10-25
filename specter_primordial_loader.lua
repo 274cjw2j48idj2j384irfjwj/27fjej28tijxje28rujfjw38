@@ -13,10 +13,10 @@ rawset(_G, "_specter_pm_loader_loaded", true)
 local SERVER_URL = "https://specter-license-mh111-production.up.railway.app"
 -- bump whenever this file changes: the server hands out the number of the newest loader (the bot reads it from the cloud
 -- branch) and an older one tells its user to download the new one
-local LOADER_VERSION = 10
+local LOADER_VERSION = 11
 local KEY_FILE = "specter/key.txt"             -- csgo/specter/key.txt
 local BUILD_FILE = "specter/build.txt"         -- the build a multi build key loaded last (csgo/specter/build.txt)
-local GROUP = "𓆩☾𓆪 Specter loader 𓆩☾𓆪"
+local GROUP = "[ Specter loader ]"
 
 -- the Primordial calls the two libraries below use
 local client_log, global_vars_cur_time = client.log, global_vars.cur_time
@@ -212,7 +212,7 @@ local login
 
 -- the builds of a key (more than one) are a list, a build is loaded with a DOUBLE CLICK on it (owners, Oct 21 2026: "ne ugy lehessen
 -- kivalasztani, hogy ramesz es load, hanem dupla kattal"); every build has the same double star in front
-local STAR = "★★"
+local STAR = "**"
 local BUILD_LABEL = { pm_dev = STAR .. "  dev  (newest)", pm_nightly = STAR .. "  nightly  (everything)", pm_beta = STAR .. "  beta  (no resolver)" }
 local PLACEHOLDER = "-- double-click a build to load it --"
 ui.hint = menu.add_text(GROUP, STAR .. "  Double-click a build in the list to load it.")
