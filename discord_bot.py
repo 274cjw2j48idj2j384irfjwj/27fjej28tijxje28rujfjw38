@@ -2268,6 +2268,21 @@ async def download(interaction: discord.Interaction, lua: app_commands.Choice[st
         await interaction.followup.send(embed=loader_dm_embed(lua, raw), file=discord.File(io.BytesIO(raw), filename=LOADERS[lua]["file"]), ephemeral=True)
 
 
+async def revoke_keys_of(discord_id: int) -> tuple[list[str], list[str]]:
+    """Every key registered to the account that is not revoked yet is revoked (a ban takes the keys too). -> (revoked, failed)"""
+    revoked, failed = [], []
+    for lic in await licenses_of(discord_id) or []:
+        if lic.get("revoked"):
+            continue
+        try:
+            res = await api_post("/admin/revoke", {"key": lic["key"]})
+        except Exception:
+            failed.append(lic["key"])
+            continue
+        (revoked if res.get("revoked") else failed).append(lic["key"])
+    return revoked, failed
+
+
 def ban_problem(guild: discord.Guild, invoker, target) -> str:
     """Why the invoker may not ban this account ('' = fine): never yourself, the bot, the server owner, or a member who is staff / above you."""
     if target.id == invoker.id:
@@ -2305,8 +2320,13 @@ async def ban(interaction: discord.Interaction, user: discord.User, reason: str 
     except discord.HTTPException as e:
         await interaction.followup.send(f"Discord refused the ban: {e}", ephemeral=True)
         return
-    await interaction.followup.send(f"Banned {user.mention} (`{user.id}`). Their key (if any) is not touched: use `/key_revoke` for that.", ephemeral=True)
+    revoked, failed = await revoke_keys_of(user.id)
+    keys_note = (f" Revoked {len(revoked)} key{'s' if len(revoked) != 1 else ''}." if revoked else " They had no running key.") \
+        + (f" Could not revoke {len(failed)} (license server): use `/key_revoke`." if failed else "")
+    await interaction.followup.send(f"Banned {user.mention} (`{user.id}`).{keys_note}", ephemeral=True)
     log_embed = discord.Embed(title="Member banned", color=0xFF7878)
+    if revoked or failed:
+        log_embed.add_field(name="Keys revoked", value=", ".join(f"`{k[:6]}...`" for k in revoked) or "none", inline=False)
     log_embed.add_field(name="By", value=interaction.user.mention, inline=True)
     log_embed.add_field(name="User", value=f"{user.mention} `{user.id}`", inline=True)
     log_embed.add_field(name="Reason", value=reason[:1000], inline=False)
