@@ -14,6 +14,12 @@ function env(name, fallback) {
 
 const PORT = env('PORT', 3000)
 
+// A failed request (a Redis answer that errors, a bad body) must never take the whole server down: Express 4 does not catch a
+// rejected async handler, and since Node 15 an unhandled rejection ends the process = a crash loop on Railway ("502 Application
+// failed to respond" for every key check). Log it and keep serving.
+process.on('unhandledRejection', e => console.error('Unhandled rejection:', e && e.stack || e))
+process.on('uncaughtException', e => console.error('Uncaught exception:', e && e.stack || e))
+
 const ADMIN_SECRET  = env('ADMIN_SECRET', 'change_this_secret_now')
 const SCRIPT_SECRET = env('SCRIPT_SECRET', 'change_this_script_secret_now')
 
@@ -1174,6 +1180,11 @@ app.delete('/configs', async (req, res) => {
     } catch(e) {
         res.status(500).json({ ok: false })
     }
+})
+
+app.use((err, req, res, _next) => {
+    console.error('Request error:', req.method, req.path, err && err.message)
+    if (!res.headersSent) res.status(err && err.status === 413 ? 413 : 500).json({ error: 'server_error' })
 })
 
 if (require.main === module) app.listen(PORT, () => console.log(`Specter License Server on :${PORT}`))
