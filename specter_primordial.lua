@@ -262,7 +262,14 @@ const dump = function() {
     if (!valid(board)) return "no scoreboard (open it first)";
     const rows = board.FindChildrenWithClassTraverse("sb-row") || [];
     if (rows.length === 0) return "no rows";
-    const lines = [];
+    const lines = ["rows: " + rows.length + ", board id " + String(board.id)];
+    for (let i = 0; i < rows.length && i < 4; i++) {
+        let attr = "";
+        try { attr = String(rows[i].GetAttributeString("xuid", "")); } catch (_) {}
+        lines.push("row " + i + " xuid attr '" + attr + "' m_xuid '" + String(rows[i].m_xuid) + "' valid " + valid(rows[i]));
+    }
+    const shown = Object.keys(entity_panels).length;
+    lines.push("our panels: " + shown + ", asked: " + Object.keys(entity_data).length);
     walk(rows[0], 0, function(panel) {
         let depth = 0;
         for (let p = panel; valid(p) && p !== rows[0] && depth < 12; p = p.GetParent()) depth++;
