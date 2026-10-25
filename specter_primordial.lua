@@ -1014,7 +1014,6 @@ local groups = {
     settings = libs.eui.create("Settings", 1),
 
     yaw = libs.eui.create("Yaw", 2),
-    jitter = libs.eui.create("Jitter", 2),
     desync = libs.eui.create("Desync", 2),
 
     antiaim = libs.eui.create("Global", 3),
@@ -8989,7 +8988,6 @@ menu_handle = function()
         groups.antiaim:depend({page == 4}, {ui.antiaim.builder.enable, true})
         groups.features:depend({page == 4})
         groups.yaw:depend({page == 12})
-        groups.jitter:depend({page == 12})
         groups.desync:depend({page == 13})
         groups.defensive:depend({page == 14})
 
@@ -10089,7 +10087,6 @@ setup = function()
         groups.servers:depend({false})
         groups.about:depend({false})
         groups.yaw:depend({false})
-        groups.jitter:depend({false})
         groups.desync:depend({false})
         groups.visuals:depend({false})
         groups.tickbase:depend({false})
