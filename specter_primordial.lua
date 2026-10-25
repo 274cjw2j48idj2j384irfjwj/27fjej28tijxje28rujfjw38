@@ -84,7 +84,13 @@ do
     perf.usable = freq > 0
 end
 
+-- the first three frames after the load write every callback / PAINT part they start to the load trace (one file write each, nothing after that):
+-- when the game freezes right after the load, the last line names the part that never came back
+perf.early, perf.early_frames = true, 0
 perf.span = function(name, fn, ...)
+    if (perf.early and load_step) then
+        load_step("frame: " .. tostring(name))
+    end
     if (not perf.on) then
         return fn(...)
     end
@@ -96,6 +102,9 @@ end
 
 perf.add = function(id, name, fn)
     return callbacks.add(id, function(...)
+        if (perf.early and load_step) then
+            load_step("call: " .. name)
+        end
         if (not perf.on) then
             return fn(...)
         end
@@ -9665,6 +9674,12 @@ do_paint = function()
 
     perf.add(e_callbacks.PAINT, "PAINT", function()
         perf.tick()
+        if (perf.early) then
+            perf.early_frames = perf.early_frames + 1
+            if (perf.early_frames > 3) then
+                perf.early = false
+            end
+        end
         perf.span("notifications", notifications.render)
         if (ui.utils.watermark:get()) then
             perf.span("watermark", draw_watermark)
