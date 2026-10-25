@@ -8,7 +8,7 @@
 
 -- Advanced engineering revision. Native resolver remains the default.
 -- Hard-coded FFI offsets require the exact original game/client build.
-local client_version = "5.5-advanced.4"
+local client_version = "5.5-advanced.5"
 
 local config_version = "1.0"
 local config_build = "beta"
@@ -404,6 +404,9 @@ const apply_data = function() {
         }
     } catch (e) { why.push("entity " + key + " error: " + String(e)); } });
 };
+const status = function() {
+    return "badges " + Object.keys(entity_panels).length + " of " + Object.keys(entity_data).length + " asked" + (why.length ? "; " + why.join("; ") : "");
+};
 const update = function(index, path, ready, expected_xuid, kind) {
     if (!index || index < 1 || index > 64) return false;
     entity_data[index] = { path: path, ready: ready === true, xuid: expected_xuid || player_xuid(index), kind: kind === "gs" ? "gs" : "pm" };
@@ -429,7 +432,7 @@ const create = function() {
     apply_data();
 };
 return { create: create, destroy: destroy, clear: clear, update: update,
-    destroy_panel: destroy_panels, apply: apply_data, dump: dump };
+    destroy_panel: destroy_panels, apply: apply_data, dump: dump, status: status };
 ]], "CSGOHud")()
 
 --- @endregion
@@ -3303,6 +3306,13 @@ presence.refresh_icons = function()
     for idx, row in pairs(presence.shown) do
         local kind = row.version == "gs" and "gs" or "pm"
         pcall(libs.tools.js.update, idx, presence.icon_path(kind), presence.icon_ready, row.sid, kind)
+    end
+    -- what the scoreboard did with them, in the console without any button (owners, Oct 25 2026: "a holdat kene megoldani")
+    local ok, text = pcall(libs.tools.js.status)
+    text = ok and tostring(text) or "the scoreboard script did not answer"
+    if (next(presence.shown) ~= nil and text ~= presence.js_status) then
+        presence.js_status = text
+        print("scoreboard badge: " .. text)
     end
 end
 -- An "S" badge remains visible while the moons are unavailable; one file after the other, retry image failures.
