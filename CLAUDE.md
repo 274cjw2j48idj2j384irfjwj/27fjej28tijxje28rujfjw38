@@ -10,7 +10,7 @@
   RELEASE ("mehet cloudra", "rakd ki az updatet") = a PR `main` -> `cloud`, merged with a merge commit: its title (or the merge
   message: a short title + "- " points) IS the public #updates changelog, short and for players: "Sponsor kill added",
   "Fixed ...". A point only about one lua is tagged "- [GS] ..." / "- [PM] ...": it goes only into that lua's changelog
-  (`commit_points(lua=)`), an untagged point into both. Never release without the owners asking. A PR into `main` (the dev build) is merged right away with a
+  (`commit_points(lua=)`), an untagged point into both. Release every change (owners, Oct 25 2026: "ne kuldd el ezt a fajlt, mindig toltsd fel cloudra, mar mi ownerek is azt hasznaljuk"): after a change is merged into `main`, open the PR `main` -> `cloud` and merge it the same session (merge commit, title + "- " points = the #updates changelog); never send the lua file to the owners in chat, the loader / bot get it from `cloud`. A PR into `main` (the dev build) is merged right away with a
   merge commit once its tests pass (owners, Oct 2026: "always merge it"): every session pushes, opens the PR and merges
   it itself, the bot only posts what is on `main` (owners: "mindig be kell olvasztani"); `cloud` still only when they ask. `server.js` deploys from `main` at once: keep it compatible with the
   loader / cloud script on `cloud` (an auth change is released together with them)
