@@ -13,7 +13,7 @@ rawset(_G, "_specter_pm_loader_loaded", true)
 local SERVER_URL = "https://specter-license-mh111-production.up.railway.app"
 -- bump whenever this file changes: the server hands out the number of the newest loader (the bot reads it from the cloud
 -- branch) and an older one tells its user to download the new one
-local LOADER_VERSION = 13
+local LOADER_VERSION = 14
 local KEY_FILE = "specter/key.txt"             -- csgo/specter/key.txt
 local BUILD_FILE = "specter/build.txt"         -- the build a multi build key loaded last (csgo/specter/build.txt)
 local GROUP = "[ Specter loader ]"
@@ -44,20 +44,21 @@ end
 -- the last 14 steps are kept (the script goes on appending to the same file), "start" begins a new file
 local function trace(name)
     pcall(function()
-        local lines = {}
-        if (name ~= "start") then
-            local ok, text = pcall(libs.filesystem.read, "specter/load_trace.txt")
-            if (ok and type(text) == "string") then
-                for line in text:gmatch("[^\r\n]+") do
-                    lines[#lines + 1] = line
-                end
+        local lines, old_size = {}, 0
+        local ok, text = pcall(libs.filesystem.read, "specter/load_trace.txt")
+        old_size = (ok and type(text) == "string") and #text or 0
+        if (name ~= "start" and ok and type(text) == "string") then
+            for line in text:gmatch("[^\r\n]+") do
+                lines[#lines + 1] = line
             end
         end
         lines[#lines + 1] = "loader: " .. tostring(name)
         while (#lines > 14) do
             table.remove(lines, 1)
         end
-        libs.filesystem.write("specter/load_trace.txt", table.concat(lines, "\n"))
+        local out = table.concat(lines, "\n")
+        -- the write does not cut the file: the rest of a longer old text would stay, so the end is padded with line breaks
+        libs.filesystem.write("specter/load_trace.txt", out .. string.rep("\n", math.max(0, (old_size or 0) - #out)))
     end)
 end
 trace("start")
@@ -182,7 +183,35 @@ end
 -- The callback is added at the load of the loader, never from inside another callback.
 local watch = { build = nil, known = nil, told = false, next = 0 }
 local add_callback = callbacks ~= nil and callbacks.add or function() end
+
+-- Where the downloaded script runs (owners, Oct 25 2026: the trace ended at "the script returned" with no callback of the script after it = the game froze when the http
+-- callback returned): the steam http library calls the callback from a PAINT pass, and the script registers ALL its callbacks (PAINT among them) while Primordial is going through
+-- the PAINT list. So the script waits in `pending` and runs from an event the script itself never registers (DRAW_WATERMARK, FINISH_COMMAND, DRAW_MODEL: the first one that fires);
+-- if none fires within 3 seconds the PAINT pass below runs it as before.
+local pending = nil
+local function run_pending(source)
+    local job = pending
+    if (job == nil) then
+        return
+    end
+    pending = nil
+    trace("run from " .. source)
+    job.fn()
+end
+for _, name in ipairs({ "DRAW_WATERMARK", "FINISH_COMMAND", "DRAW_MODEL" }) do
+    local id = e_callbacks and e_callbacks[name]
+    if (id ~= nil) then
+        pcall(add_callback, id, function()
+            run_pending(name)
+        end)
+    end
+end
+
 pcall(add_callback, e_callbacks and e_callbacks.PAINT, function()
+    if (pending ~= nil and global_vars.real_time() - pending.since > 3) then
+        run_pending("PAINT")
+        return
+    end
     if (watch.build == nil or watch.told or global_vars.real_time() < watch.next) then
         return
     end
@@ -409,7 +438,8 @@ login = function(chosen)
                 status(REASONS[field(text, "reason") or ""] or "Download failed, try again.")
                 return
             end
-            run(text, key, hwid, build, user)
+            pending = { since = global_vars.real_time(), fn = function() run(text, key, hwid, build, user) end }
+            status("Starting Specter " .. build_name(build) .. "...")
         end)
     end)
 end
