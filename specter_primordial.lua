@@ -106,7 +106,22 @@ perf.span = function(name, fn, ...)
 end
 
 perf.add = function(id, name, fn)
-    local first = true
+    local first, calls, plain = true, 0, fn
+    -- the first 300 calls run inside a pcall that writes the error text to the load trace and throws it on (Primordial unloads the script
+    -- on an error, and the console is gone when the game freezes after it)
+    fn = function(...)
+        calls = calls + 1
+        if (calls > 300) then
+            fn = plain
+            return plain(...)
+        end
+        local res = { pcall(plain, ...) }
+        if (not res[1]) then
+            if (load_step) then load_step("ERROR in callback " .. name .. ": " .. tostring(res[2])) end
+            error(res[2], 0)
+        end
+        return unpack(res, 2)
+    end
     return callbacks.add(id, function(...)
         if (first) then
             first = false
@@ -9760,7 +9775,7 @@ do_paint = function()
             perf.first("before voice")
             -- voice mute / unmute: only when it is set, and through pcall: the panorama GameStateAPI is nil at times
             -- (an index of it stopped the whole PAINT callback)
-            local voice = ui.player.voice_state:get()
+            local voice = tonumber(ui.player.voice_state:get()) or 1
             if (voice >= 2 and globals.tick_count() - delay.last_tick > delay.tick_delay) then
                 local players = entity_list_get_players()
                 local api = libs.tools.js2 and libs.tools.js2.GameStateAPI
@@ -9814,6 +9829,7 @@ do_paint = function()
 end
 
 callbacks.add(e_callbacks.SHUTDOWN, function()
+    if (load_step) then load_step("shutdown: restoring") end
     print("restoring configuration..")
     servers.leave()
 
@@ -9913,6 +9929,7 @@ callbacks.add(e_callbacks.SHUTDOWN, function()
 
     on_shared_esp()
     print("goodbye, hope we can see you soon!", specter_color_t(131, 111, 255), " </3")
+    if (load_step) then load_step("shutdown: done") end
 end)
 
 --- @endregion
