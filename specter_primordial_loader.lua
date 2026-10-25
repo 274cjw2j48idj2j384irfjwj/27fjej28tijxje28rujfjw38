@@ -13,7 +13,7 @@ rawset(_G, "_specter_pm_loader_loaded", true)
 local SERVER_URL = "https://specter-license-mh111-production.up.railway.app"
 -- bump whenever this file changes: the server hands out the number of the newest loader (the bot reads it from the cloud
 -- branch) and an older one tells its user to download the new one
-local LOADER_VERSION = 12
+local LOADER_VERSION = 13
 local KEY_FILE = "specter/key.txt"             -- csgo/specter/key.txt
 local BUILD_FILE = "specter/build.txt"         -- the build a multi build key loaded last (csgo/specter/build.txt)
 local GROUP = "[ Specter loader ]"
@@ -41,8 +41,24 @@ local function say(text)
 end
 
 -- the last step reaches csgo/specter/load_trace.txt BEFORE the next one runs (the script goes on writing it): when the game freezes, the file names the step that never finished
+-- the last 14 steps are kept (the script goes on appending to the same file), "start" begins a new file
 local function trace(name)
-    pcall(libs.filesystem.write, "specter/load_trace.txt", "loader: " .. tostring(name))
+    pcall(function()
+        local lines = {}
+        if (name ~= "start") then
+            local ok, text = pcall(libs.filesystem.read, "specter/load_trace.txt")
+            if (ok and type(text) == "string") then
+                for line in text:gmatch("[^\r\n]+") do
+                    lines[#lines + 1] = line
+                end
+            end
+        end
+        lines[#lines + 1] = "loader: " .. tostring(name)
+        while (#lines > 14) do
+            table.remove(lines, 1)
+        end
+        libs.filesystem.write("specter/load_trace.txt", table.concat(lines, "\n"))
+    end)
 end
 trace("start")
 
