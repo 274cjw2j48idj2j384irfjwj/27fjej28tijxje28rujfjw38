@@ -444,7 +444,7 @@ app.post('/admin/upload_script', async (req, res) => {
         console.log(`[SCRIPT UPLOAD] plan=${plan} bytes=${script.length} parts=${parts}`)
     } catch(e) {
         console.error('Script upload error:', e.message)
-        res.status(500).json({ ok: false, error: 'redis: ' + e.message })
+        res.status(500).json({ ok: false, error: 'redis: ' + String(e.message).split(', command was')[0].slice(0, 200) })   // the Redis error repeats the command = the whole script
     }
 })
 
