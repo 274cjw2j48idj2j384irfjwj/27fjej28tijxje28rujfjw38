@@ -84,7 +84,12 @@ do
     perf.usable = freq > 0
 end
 
+perf.seen = {}
 perf.span = function(name, fn, ...)
+    if (not perf.seen[name]) then
+        perf.seen[name] = true
+        if (load_step) then load_step("first frame: " .. tostring(name)) end
+    end
     if (not perf.on) then
         return fn(...)
     end
@@ -95,7 +100,12 @@ perf.span = function(name, fn, ...)
 end
 
 perf.add = function(id, name, fn)
+    local first = true
     return callbacks.add(id, function(...)
+        if (first) then
+            first = false
+            if (load_step) then load_step("first call: " .. name) end
+        end
         if (not perf.on) then
             return fn(...)
         end
