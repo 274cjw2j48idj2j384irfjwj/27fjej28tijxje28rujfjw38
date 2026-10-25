@@ -64,6 +64,11 @@ return function(src, mode, clip)
       if n == "json" then return { parse = function(b)
         if b == "VERIFY" then return { valid = true, plan = "nightly", ticket = "t", nonce = "n", loader_gs = 1 } end
         if b == "VERIFY_OLD" then return { valid = true, plan = "nightly", ticket = "t", nonce = "n", loader_gs = 9 } end
+        if b == "VERIFY_PM" then return { valid = true, plan = "pm_nightly", lua = "primordial", ticket = "t", nonce = "n", loader_gs = 1 } end
+        if b == "VERIFY_BOTH" then return { valid = true, plan = "nightly", lua = "gamesense", discord_linked = true, ticket = "t", nonce = "n", loader_gs = 1,
+          access = { { lua = "gamesense", plan = "nightly" }, { lua = "primordial", plan = "pm_beta" } } } end
+        if b == "VERIFY_UNLINKED" then return { valid = true, plan = "nightly", lua = "gamesense", discord_linked = false, ticket = "t", nonce = "n", loader_gs = 1,
+          access = { { lua = "gamesense", plan = "nightly" } } } end
         if b == "BAD" then return { valid = false, reason = "invalid_key" } end
         return {} end } end
       if n == "gamesense/pui" then return pui end
@@ -162,11 +167,20 @@ drawn = len(w.drawn)
 w.t = 13
 w.cb.paint()
 check("older loader: console + on screen notice for 12 s, the script still loads",
-      ran == 1 and len(notice) == 1 and "#loader-download" in str(notice[0]) and drawn == 1 and w.cb.paint is None,
+      ran == 1 and len(notice) == 1 and "/download" in str(notice[0]) and drawn == 1 and w.cb.paint is None,
       (ran, notice, drawn))
 w, ran = login("BAD")
 hidden, total = w.hidden()
 check("wrong key: the menu stays", ran == 0 and hidden == 0 and "Invalid license key" in str(w.status()), f"{hidden} hidden")
+w, ran = login("VERIFY_PM")
+check("a Primordial key is refused by the gamesense loader", ran == 0 and "Primordial" in str(w.status()), (ran, w.status()))
+w, ran = login("VERIFY_BOTH")
+listed = [l for l in w.logs.values() if "Gamesense + Primordial" in str(l)]
+warned = [l for l in w.logs.values() if "/register" in str(l)]
+check("the loader lists the Luas the account unlocks", ran == 1 and len(listed) == 1 and not warned, (ran, listed, warned))
+w, ran = login("VERIFY_UNLINKED")
+warned = [l for l in w.logs.values() if "/register" in str(l)]
+check("a key with no Discord account is told to /register", ran == 1 and len(warned) == 1, (ran, warned))
 w, ran = login("VERIFY", clicks=2)
 check("two clicks while downloading: the script runs once", ran == 1, f"ran {ran}x")
 print("FAILED: " + ", ".join(fails) if fails else "ALL OK")

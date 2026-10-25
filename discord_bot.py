@@ -25,7 +25,7 @@ ENV VARS (set in Discord bot host or .env):
                         below also gets its own GitHub API limit (without it: 60 calls / hour per IP, shared on Railway)
   RELEASE_CHANNEL     — staff channel (name or id) new script versions are posted in (default: staff). Only posted when
                         neither @everyone nor a member / customer / plan role can read it
-  RELEASE_FILES       — files posted there when a new commit changes them (default: specter_dev.lua, specter_primordial.lua)
+  RELEASE_FILES       — files announced there when a new commit changes them (default: none: owners, Oct 25 2026, both Luas only with a loader, nothing in #staff)
   RELEASE_MINUTES     — how often GitHub is checked (default: 5, 0 = only /release_check)
   PRIMORDIAL_UPDATES  — 1 (default): the Primordial changelog goes to #updates too (with the Primordial logo); 0 = off
   AUTO_UPLOAD         — 1 (default): a new specter_cloud.lua of CLOUD_BRANCH goes to the license server by itself (every
@@ -39,6 +39,11 @@ ENV VARS (set in Discord bot host or .env):
                         resolver shot logs of the dev build (license server /shotlog) go with it to SHOTLOG_BRANCH
                         (default: shotlogs) every RELEASE_MINUTES, one file per round: shotlogs/<day>/<time>-<shots>.jsonl.
                         Empty: GITHUB_TOKEN, if that is set; neither: the logs stay on the server (the newest 400 batches)
+  SITE_URL            — the website with the shop (e.g. https://specter.example.com): /download and the panels point to its /pricing
+  LOADER_POSTS        — 1: the bot posts the loaders in #loader-download / #primordial-loader by itself again (default 0: the
+                        loader only comes by /download as a message only you can see, /post_loader still works by hand)
+  ROLE_SYNC_MINUTES   — how often the plan roles of every registered key are checked (default 10, 0 = off): a key that ended
+                        or was revoked loses its roles, a new key gives them
   SPECTER_LOGO_URL    — a lasting image link for the logo on the bot's posts (optional). Empty: assets/specter_icon.png /
                         specter_logo.png go with the messages. A Discord upload link expires in a day: it is ignored
 """
@@ -61,8 +66,8 @@ from discord import app_commands
 def _env(name: str, default: str = "") -> str:
     """A variable pasted as NAME=value or with quotes around it still works: both are cut off."""
     v = (os.environ.get(name) or "").strip()
-    if v.startswith(name + "="):
-        v = v[len(name) + 1:].strip()
+    if v.startswith(name):
+        v = v[len(name):].lstrip(" \t\r\n=:").strip()
     if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
         v = v[1:-1].strip()
     return v or default
@@ -88,10 +93,21 @@ PM_PLANS        = ["pm_nightly", "pm_beta"]
 PM_DEV_PLAN     = "pm_dev"
 KEY_PLANS       = VALID_PLANS + PM_PLANS + [PM_DEV_PLAN]
 PRIMORDIAL_FILE = "specter_primordial.lua"
+# files of RELEASE_FILES that are announced in #staff WITHOUT the file (owners, Oct 21 2026: "staffba is csak a loaderrel lehessen"):
+# the Primordial dev build is loaded with the loader and a dev key (the third build, `pm_dev`), never from a posted file
+LOADER_ONLY_FILES = {PRIMORDIAL_FILE}
 # the Primordial changelog in #updates (with its logo, like the gamesense one; owners, Oct 2026: it goes out even before
 # the Primordial lua is released); PRIMORDIAL_UPDATES=0 turns it off
 PRIMORDIAL_UPDATES = _env("PRIMORDIAL_UPDATES", "1").lower() in ("1", "true", "yes", "on")
 VALID_DURATIONS = ["lifetime", "1d", "7d", "14d", "30d", "90d"]
+# the website with the shop (owners, Oct 22 2026): a key is bought there (Stripe card / NOWPayments crypto); the Invoice ID it shows
+# IS the license key, `/register` binds it to ONE Discord account and `/download` shows the loader in a message only that member sees
+SITE_URL        = _env("SITE_URL", "").rstrip("/")
+# the old loader posts in #loader-download / #primordial-loader (owners, Oct 22 2026: the loader only comes by /download):
+# 1 = the bot posts them again by itself, default 0 (/post_loader still works by hand)
+LOADER_POSTS    = _env("LOADER_POSTS", "0").lower() in ("1", "true", "yes", "on")
+# how often the plan roles of every registered key are checked (a key that ended / was revoked loses its roles); 0 = off
+ROLE_SYNC_MINUTES = int(_env("ROLE_SYNC_MINUTES", "10") or "10")
 
 # what the Staff role may do on the server: moderation, not the server / roles / channels (those stay the owner's)
 STAFF_PERMISSIONS = discord.Permissions(
@@ -145,7 +161,7 @@ def price_lines() -> str:
             lines.append(f"○ `lifetime` — {p['lifetime']}")
         lines.append("")
     return "\n".join(lines)
-PAYMENT_METHODS = ["Crypto", "PayPal", "Revolut", "Other"]
+PAYMENT_METHODS = ["Card (Stripe), on the website", "Crypto, on the website"]
 
 # the "Features" field of the #prices embed (/post_prices and /setup_server); a Discord field holds 1024 characters
 FEATURES_TEXT = (
@@ -1025,6 +1041,7 @@ async def key_info(interaction: discord.Interaction, key: str):
     embed.add_field(name="Status",   value=status,          inline=True)
     embed.add_field(name="Expires",  value=exp_str,         inline=True)
     embed.add_field(name="HWID",     value="Locked" if found.get("hwid_locked") else "Not set", inline=True)
+    embed.add_field(name="Discord", value=f"<@{found['discord_id']}>" if found.get("discord_id") else "Not registered", inline=True)
     if found.get("note"):
         embed.add_field(name="Note", value=found["note"], inline=True)
     await interaction.followup.send(embed=embed, ephemeral=True)
@@ -1175,7 +1192,7 @@ async def upload_script(script: str, plans: list[str]) -> tuple[list[str], list[
         try:
             res = await api_post("/admin/upload_script", {"plan": p, "script": script})
             ok = res.get("ok") and res.get("status") == 200
-            lines.append(f"`{p}`: " + (f"ok ({res.get('bytes', 0) // 1024} KB, {res.get('parts', 1)} parts)" if ok else f"failed {res}"))
+            lines.append(f"`{p}`: " + (f"ok ({res.get('bytes', 0) // 1024} KB, {res.get('parts', 1)} parts)" if ok else f"failed {str(res)[:200]}"))
             if ok:
                 done.append(p)
         except Exception as e:
@@ -1528,7 +1545,7 @@ def _env_int(name: str, default: int) -> int:
 
 RELEASE_CHANNEL = _env("RELEASE_CHANNEL", "staff")
 UPDATES_CHANNEL = _env("UPDATES_CHANNEL", "updates")
-RELEASE_FILES   = [f.strip() for f in _env("RELEASE_FILES", "specter_dev.lua,specter_primordial.lua").split(",") if f.strip()]
+RELEASE_FILES   = [f.strip() for f in _env("RELEASE_FILES", "").split(",") if f.strip()]
 RELEASE_MINUTES = _env_int("RELEASE_MINUTES", 5)
 AUTO_UPLOAD     = _env("AUTO_UPLOAD", "1").lower() not in ("0", "false", "off", "no")
 AUTO_PANELS     = _env("AUTO_PANELS", "1").lower() not in ("0", "false", "off", "no")
@@ -1696,8 +1713,12 @@ def release_embed(path: str, ver: dict) -> discord.Embed:
             pass
     else:
         embed.description = f"New `{path}` on `{SCRIPT_BRANCH}` (no commit message: {ver['commit_err']})"
-    embed.add_field(name="Size", value=f"{len(ver['body']) // 1024} KB" + (" without comments" if ver["stripped"] else ""),
-                    inline=True)
+    if path in LOADER_ONLY_FILES:
+        embed.add_field(name="How to load", value="Only with the Primordial loader: log in with a dev key and press **Load dev**. "
+                        "The file is not posted here.", inline=False)
+    else:
+        embed.add_field(name="Size", value=f"{len(ver['body']) // 1024} KB" + (" without comments" if ver["stripped"] else ""),
+                        inline=True)
     embed.add_field(name="SHA-256", value=f"`{ver['hash']}`", inline=True)
     embed.set_footer(text=f"{path} @ {ver['hash']}")
     return embed
@@ -1756,8 +1777,8 @@ async def check_releases(force: bool = False) -> list[str]:
                     continue
                 try:
                     embed = release_embed(path, ver)
-                    msg = await ch.send(embed=embed, files=[discord.File(io.BytesIO(ver["body"]), filename=path.rsplit("/", 1)[-1])]
-                                        + lua_badge(embed, lua_of(path)))
+                    attach = [] if path in LOADER_ONLY_FILES else [discord.File(io.BytesIO(ver["body"]), filename=path.rsplit("/", 1)[-1])]
+                    msg = await ch.send(embed=embed, files=attach + lua_badge(embed, lua_of(path)))
                 except discord.HTTPException as e:
                     report.append(f"`{path}`: could not post in {ch.mention}: {e}")
                     continue
@@ -2006,7 +2027,7 @@ async def release_loop():
                 report += await sync_primordial()
                 report += await sync_primordial_dev()
                 report += await sync_loader_versions()
-            if AUTO_PANELS:
+            if AUTO_PANELS and LOADER_POSTS:
                 report += await sync_loader()
         except Exception as e:
             report = [f"version check failed: {e!r}"]
@@ -2040,87 +2061,396 @@ async def release_check(interaction: discord.Interaction, force: bool = False):
     await interaction.followup.send(text[:1900], ephemeral=True)
 
 
-# ── /redeem — user-facing key claim + auto role ──────────────────────
+# ── /register, /download, /mylicenses — a key belongs to ONE Discord account ─────────────────────
+# Flow (owners, Oct 22 2026): pay on the website -> the Invoice ID (= the license key) -> `/register key:<Invoice ID>` binds it
+# to the Discord account that typed it (another account can not take it: the license server answers bound_to_other) and gives
+# the plan roles (which open the private channels) -> `/download` shows the loader of the Luas the key unlocks, visible only to the member -> the
+# loader logs in with the key. The cloud configs of the Luas need the linked Discord account (license server: discord_not_linked).
 
-@tree.command(name="redeem", description="Claim your license key and get your role")
-@app_commands.describe(key="Your license key")
-async def redeem(interaction: discord.Interaction, key: str):
-    await interaction.response.defer(ephemeral=True)
-    try:
-        keys = await api_get("/admin/list")
-    except Exception as e:
-        await interaction.followup.send("Server unreachable. Try again later.", ephemeral=True)
-        return
+MANAGED_ROLES = set(PLAN_TO_ROLE.values()) | {"Customer"}
 
-    if isinstance(keys, dict):
-        await interaction.followup.send("Server error.", ephemeral=True)
-        return
 
-    found = next((k for k in keys if k["key"] == key), None)
-    if not found:
-        await interaction.followup.send("Invalid key.", ephemeral=True)
-        return
+def lua_of_plan(plan: str) -> str:
+    return "primordial" if str(plan).startswith("pm_") else "gamesense"
 
-    if found.get("revoked"):
-        await interaction.followup.send("This key has been revoked.", ephemeral=True)
-        return
-    if found.get("expired"):
-        await interaction.followup.send("This key has expired.", ephemeral=True)
-        return
 
-    plan = found["plan"]
-    exp  = found.get("expires_at")
-    exp_str = "Lifetime" if not exp else f"<t:{int(exp/1000)}:R>"
+def license_active(lic: dict) -> bool:
+    return not lic.get("revoked") and not lic.get("expired")
 
-    guild  = interaction.guild
-    member = interaction.user
 
-    assigned_roles = []
+def desired_roles(licenses: list[dict]) -> set[str]:
+    """The roles an account should have for its keys: nothing when no key runs, else Customer + the role of every running plan."""
+    active = [l for l in licenses if license_active(l)]
+    if not active:
+        return set()
+    names = {"Customer"}
+    for l in active:
+        role = PLAN_TO_ROLE.get(l.get("plan"))
+        if role:
+            names.add(role)
+    return names
 
-    customer_role = await find_or_create_role(guild, "Customer")
-    if customer_role and customer_role not in member.roles:
+
+REGISTER_ERRORS = {
+    "invalid_key":   "That key does not exist. Check the Invoice ID on your order page (it looks like `XXXXXX-XXXXXX-XXXXXX-XXXXXX`).",
+    "revoked":       "This key was revoked (a refund or a chargeback). Open a ticket if you think it is a mistake.",
+    "expired":       "This key has expired.",
+    "bound_to_other": "This key is already registered to **another Discord account**, so you can not use it here. If it is yours "
+                      "(you changed accounts), open a ticket and the staff will move it.",
+    "missing_params": "Send the key like this: `/register key:XXXXXX-XXXXXX-XXXXXX-XXXXXX`.",
+}
+
+
+async def sync_member_roles(guild: discord.Guild, member: discord.Member, licenses: list[dict], reason: str) -> tuple[list[str], list[str]]:
+    """Adds the roles the member's running keys give and takes the plan roles of keys that ended away. Only roles of
+    MANAGED_ROLES are touched (what staff gave by hand, like Staff, stays) -> (added, removed)."""
+    want = desired_roles(licenses)
+    have = {r.name for r in member.roles if r.name in MANAGED_ROLES and not r.managed}
+    added, removed = [], []
+    for name in sorted(want - have):
+        role = await find_or_create_role(guild, name)
+        if role is None:
+            continue
         try:
-            await member.add_roles(customer_role, reason=f"Redeemed key: {plan}")
-            assigned_roles.append("Customer")
-        except discord.Forbidden:
+            await member.add_roles(role, reason=reason)
+            added.append(name)
+        except discord.HTTPException:
             pass
+    for name in sorted(have - want):
+        role = guild_role(guild, name)
+        if role is None:
+            continue
+        try:
+            await member.remove_roles(role, reason=reason)
+            removed.append(name)
+        except discord.HTTPException:
+            pass
+    return added, removed
 
-    plan_role_name = PLAN_TO_ROLE.get(plan)
-    if plan_role_name:
-        plan_role = await find_or_create_role(guild, plan_role_name)
-        if plan_role and plan_role not in member.roles:
-            try:
-                await member.add_roles(plan_role, reason=f"Redeemed key: {plan}")
-                assigned_roles.append(plan_role_name)
-            except discord.Forbidden:
-                pass
 
-    embed = discord.Embed(title="Key Redeemed!", color=0x60FF90)
-    embed.add_field(name="Key",      value=f"||{key}||",  inline=False)
-    embed.add_field(name="Plan",     value=plan,           inline=True)
-    embed.add_field(name="Expires",  value=exp_str,        inline=True)
-    embed.add_field(name="Status",   value="Locked" if found.get("hwid_locked") else "Ready to activate", inline=True)
-    if assigned_roles:
-        embed.add_field(name="Roles given", value=", ".join(f"**{r}**" for r in assigned_roles), inline=False)
+async def licenses_of(discord_id: int) -> list[dict] | None:
+    """The keys of one Discord account from the license server; None when the server can not be asked."""
+    try:
+        res = await api_get(f"/admin/by_discord?discord_id={discord_id}")
+    except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
+        return None
+    return res if isinstance(res, list) else None
+
+
+async def do_register(interaction: discord.Interaction, key: str, target: discord.Member) -> None:
+    key = key.strip().strip("`").strip()
+    if not key:
+        await interaction.followup.send(REGISTER_ERRORS["missing_params"], ephemeral=True)
+        return
+    try:
+        res = await api_post("/admin/bind", {"key": key, "discord_id": str(target.id)})
+    except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
+        await interaction.followup.send("The license server can not be reached right now. Try again in a minute.", ephemeral=True)
+        return
+    if not res.get("ok"):
+        await interaction.followup.send(REGISTER_ERRORS.get(res.get("reason"), f"Could not register the key ({res.get('reason') or res.get('status')})."), ephemeral=True)
+        return
+
+    licenses = await licenses_of(target.id) or []
+    added, removed = await sync_member_roles(interaction.guild, target, licenses, f"Registered key ({res.get('plan')})")
+    exp = res.get("expires_at")
+    embed = discord.Embed(title="Key registered" if not res.get("already") else "Key already registered to you", color=0x60FF90)
+    embed.add_field(name="Plan", value=f"`{res.get('plan')}` ({'Primordial' if res.get('lua') == 'primordial' else 'Gamesense'})", inline=True)
+    embed.add_field(name="Expires", value="Lifetime" if not exp else f"<t:{int(exp / 1000)}:R>", inline=True)
+    embed.add_field(name="Account", value=target.mention, inline=True)
+    if added:
+        embed.add_field(name="Roles given", value=", ".join(f"**{r}**" for r in added), inline=False)
     embed.add_field(
-        name="How to use",
-        value=(
-            "1. Open gamesense and load the loader\n"
-            "2. Go to **AA > Anti-aimbot angles**\n"
-            "3. Copy your key, click **Paste key**, pick a username & password\n"
-            "4. Click **Register** (first time) or **Login**\n"
-            "5. Your HWID locks on first use"
-        ),
+        name="Next",
+        value="Run **/download** in any channel: the loader appears there and **only you can see it**. Load it and type this key (your Invoice ID) to log in.",
         inline=False,
     )
+    embed.set_footer(text="The key is tied to this Discord account and, in game, to the first PC that logs in")
     await interaction.followup.send(embed=embed, ephemeral=True)
 
-    log_embed = discord.Embed(title="Key Redeemed", color=0x60FF90)
-    log_embed.add_field(name="User", value=member.mention, inline=True)
-    log_embed.add_field(name="Plan", value=plan, inline=True)
-    if assigned_roles:
-        log_embed.add_field(name="Roles", value=", ".join(assigned_roles), inline=True)
-    await log_action(guild, log_embed)
+    log_embed = discord.Embed(title="Key registered", color=0x60FF90)
+    log_embed.add_field(name="User", value=target.mention, inline=True)
+    log_embed.add_field(name="Plan", value=str(res.get("plan")), inline=True)
+    if interaction.user.id != target.id:
+        log_embed.add_field(name="By staff", value=interaction.user.mention, inline=True)
+    await log_action(interaction.guild, log_embed)
+
+
+@tree.command(name="register", description="Register your Invoice ID (license key) to your Discord account and get your roles")
+@app_commands.describe(key="Your Invoice ID (the license key from your order page)", user="Staff only: register the key for another member")
+@app_commands.checks.cooldown(5, 60.0, key=lambda i: i.user.id)
+async def register(interaction: discord.Interaction, key: str, user: discord.Member = None):
+    await interaction.response.defer(ephemeral=True)
+    target = interaction.user
+    if user is not None and user.id != interaction.user.id:
+        if not is_staff(interaction):
+            await interaction.followup.send("Only staff can register a key for someone else.", ephemeral=True)
+            return
+        target = user
+    await do_register(interaction, key, target)
+
+
+@tree.command(name="redeem", description="Same as /register: bind your key to your Discord account")
+@app_commands.describe(key="Your Invoice ID (the license key)")
+@app_commands.checks.cooldown(5, 60.0, key=lambda i: i.user.id)
+async def redeem(interaction: discord.Interaction, key: str):
+    await interaction.response.defer(ephemeral=True)
+    await do_register(interaction, key, interaction.user)
+
+
+_loader_cache: dict[str, tuple[float, bytes]] = {}
+
+
+async def loader_bytes(lua: str) -> bytes:
+    """The customer loader of CLOUD_BRANCH for a Lua (cached 10 minutes). Only a file that passes the customer loader check is handed out."""
+    now = time.time()
+    hit = _loader_cache.get(lua)
+    if hit and now - hit[0] < 600:
+        return hit[1]
+    spec = LOADERS[lua]
+    ver = await newest_version(spec["file"], CLOUD_BRANCH)
+    raw = ver["raw"]
+    if not spec["check"](raw.decode("utf-8", "replace")):
+        raise GitHubFetchError(f"`{spec['file']}` of `{CLOUD_BRANCH}` is not the customer loader")
+    _loader_cache[lua] = (now, raw)
+    return raw
+
+
+def loader_dm_embed(lua: str, raw: bytes) -> discord.Embed:
+    spec = LOADERS[lua]
+    embed = discord.Embed(
+        title=spec["title"],
+        description=(
+            spec["steps"]
+            + "Your key is the **Invoice ID** you registered with `/register`. The script is downloaded from our server every "
+            "time you log in, so this file rarely changes. Do not share the key or the loader.\n"
+            "Problems? Open a ticket in the server."
+        ),
+        color=0xB4A0FF if lua == "primordial" else 0x82C3FF,
+    )
+    embed.add_field(name="SHA-256", value=f"`{loader_sha(raw)}`", inline=True)
+    return embed
+
+
+@tree.command(name="download", description="Get the Specter loader (only you can see it; needs a registered key)")
+@app_commands.describe(lua="Which loader (default: every Lua your keys unlock)")
+@app_commands.choices(lua=[app_commands.Choice(name="Gamesense", value="gamesense"), app_commands.Choice(name="Primordial", value="primordial")])
+@app_commands.guild_only()
+@app_commands.checks.cooldown(1, 20.0, key=lambda i: i.user.id)
+async def download(interaction: discord.Interaction, lua: app_commands.Choice[str] | None = None):
+    # Answered in the channel it was typed in, as an ephemeral message: only the member who ran it sees the loader file
+    # (owners, Oct 22 2026: "bármelyik channelbe beírja ... azt csak ő látja"). Without a running registered key nothing is sent.
+    await interaction.response.defer(ephemeral=True)
+    licenses = await licenses_of(interaction.user.id)
+    if licenses is None:
+        await interaction.followup.send("The license server can not be reached right now. Try again in a minute.", ephemeral=True)
+        return
+    active = [l for l in licenses if license_active(l)]
+    if not active:
+        hint = f" Buy a key at {SITE_URL}/pricing, then" if SITE_URL else " Buy a key, then"
+        await interaction.followup.send(f"You have no running key registered to this Discord account.{hint} run `/register key:<your Invoice ID>`.", ephemeral=True)
+        return
+    luas = sorted({lua_of_plan(l["plan"]) for l in active})
+    if lua is not None:
+        if lua.value not in luas:
+            await interaction.followup.send(f"Your keys do not unlock {lua.name}. You can download: {', '.join(l.title() for l in luas)}.", ephemeral=True)
+            return
+        luas = [lua.value]
+    payload = []
+    for lua in luas:
+        try:
+            raw = await loader_bytes(lua)
+        except (GitHubFetchError, aiohttp.ClientError, asyncio.TimeoutError) as e:
+            await interaction.followup.send(f"The {lua} loader can not be fetched right now ({e}). Try again in a minute.", ephemeral=True)
+            return
+        payload.append((lua, raw))
+    for lua, raw in payload:
+        await interaction.followup.send(embed=loader_dm_embed(lua, raw), file=discord.File(io.BytesIO(raw), filename=LOADERS[lua]["file"]), ephemeral=True)
+
+
+async def revoke_keys_of(discord_id: int) -> tuple[list[str], list[str]]:
+    """Every key registered to the account that is not revoked yet is revoked (a ban takes the keys too). -> (revoked, failed)"""
+    revoked, failed = [], []
+    for lic in await licenses_of(discord_id) or []:
+        if lic.get("revoked"):
+            continue
+        try:
+            res = await api_post("/admin/revoke", {"key": lic["key"]})
+        except Exception:
+            failed.append(lic["key"])
+            continue
+        (revoked if res.get("revoked") else failed).append(lic["key"])
+    return revoked, failed
+
+
+def ban_problem(guild: discord.Guild, invoker, target) -> str:
+    """Why the invoker may not ban this account ('' = fine): never yourself, the bot, the server owner, or a member who is staff / above you."""
+    if target.id == invoker.id:
+        return "You can not ban yourself."
+    if client.user is not None and target.id == client.user.id:
+        return "I will not ban myself."
+    if target.id == guild.owner_id:
+        return "The server owner can not be banned."
+    member = guild.get_member(target.id)
+    if member is not None and invoker.id != guild.owner_id:
+        top = getattr(member, "top_role", None)
+        mine = getattr(invoker, "top_role", None)
+        if top is not None and mine is not None and top >= mine:
+            return "That member has the same or a higher role than you."
+    return ""
+
+
+@tree.command(name="ban", description="Ban an account from the server (staff)")
+@app_commands.describe(user="Who to ban (a member, or any user id)", reason="Why (kept in the audit log)", delete_days="Delete their messages of the last N days (0-7)")
+@app_commands.guild_only()
+async def ban(interaction: discord.Interaction, user: discord.User, reason: str = "No reason given", delete_days: app_commands.Range[int, 0, 7] = 0):
+    if not is_staff(interaction):
+        await interaction.response.send_message("No permission.", ephemeral=True)
+        return
+    problem = ban_problem(interaction.guild, interaction.user, user)
+    if problem:
+        await interaction.response.send_message(problem, ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    try:
+        await interaction.guild.ban(user, reason=f"{interaction.user} ({interaction.user.id}): {reason}"[:512], delete_message_seconds=delete_days * 86400)
+    except discord.Forbidden:
+        await interaction.followup.send("I can not ban that account: my role must be above theirs (Server settings > Roles).", ephemeral=True)
+        return
+    except discord.HTTPException as e:
+        await interaction.followup.send(f"Discord refused the ban: {e}", ephemeral=True)
+        return
+    revoked, failed = await revoke_keys_of(user.id)
+    keys_note = (f" Revoked {len(revoked)} key{'s' if len(revoked) != 1 else ''}." if revoked else " They had no running key.") \
+        + (f" Could not revoke {len(failed)} (license server): use `/key_revoke`." if failed else "")
+    await interaction.followup.send(f"Banned {user.mention} (`{user.id}`).{keys_note}", ephemeral=True)
+    log_embed = discord.Embed(title="Member banned", color=0xFF7878)
+    if revoked or failed:
+        log_embed.add_field(name="Keys revoked", value=", ".join(f"`{k[:6]}...`" for k in revoked) or "none", inline=False)
+    log_embed.add_field(name="By", value=interaction.user.mention, inline=True)
+    log_embed.add_field(name="User", value=f"{user.mention} `{user.id}`", inline=True)
+    log_embed.add_field(name="Reason", value=reason[:1000], inline=False)
+    await log_action(interaction.guild, log_embed)
+
+
+@tree.command(name="unban", description="Lift a ban (staff)")
+@app_commands.describe(user_id="The Discord user id of the banned account", reason="Why")
+@app_commands.guild_only()
+async def unban(interaction: discord.Interaction, user_id: str, reason: str = "No reason given"):
+    if not is_staff(interaction):
+        await interaction.response.send_message("No permission.", ephemeral=True)
+        return
+    user_id = user_id.strip().strip("<@>")
+    if not user_id.isdigit():
+        await interaction.response.send_message("Give the numeric Discord user id.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    target = discord.Object(id=int(user_id))
+    try:
+        await interaction.guild.fetch_ban(target)
+    except discord.NotFound:
+        await interaction.followup.send("That account is not banned here.", ephemeral=True)
+        return
+    except discord.HTTPException as e:
+        await interaction.followup.send(f"Could not look the ban up: {e}", ephemeral=True)
+        return
+    try:
+        await interaction.guild.unban(target, reason=f"{interaction.user} ({interaction.user.id}): {reason}"[:512])
+    except discord.HTTPException as e:
+        await interaction.followup.send(f"Discord refused the unban: {e}", ephemeral=True)
+        return
+    await interaction.followup.send(f"Unbanned `{user_id}`.", ephemeral=True)
+    log_embed = discord.Embed(title="Member unbanned", color=0x78FFB4)
+    log_embed.add_field(name="By", value=interaction.user.mention, inline=True)
+    log_embed.add_field(name="User", value=f"<@{user_id}> `{user_id}`", inline=True)
+    log_embed.add_field(name="Reason", value=reason[:1000], inline=False)
+    await log_action(interaction.guild, log_embed)
+
+
+@tree.command(name="mylicenses", description="Show the keys registered to your Discord account")
+async def mylicenses(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    licenses = await licenses_of(interaction.user.id)
+    if licenses is None:
+        await interaction.followup.send("The license server can not be reached right now. Try again in a minute.", ephemeral=True)
+        return
+    if not licenses:
+        await interaction.followup.send("No key is registered to this Discord account. Use `/register key:<Invoice ID>`.", ephemeral=True)
+        return
+    lines = []
+    for l in licenses:
+        state = "revoked" if l.get("revoked") else "expired" if l.get("expired") else "active"
+        exp = l.get("expires_at")
+        lines.append(f"`{str(l['key'])[:6]}...` · {'Primordial' if l.get('lua') == 'primordial' else 'Gamesense'} `{l['plan']}` · {state} · "
+                     + ("lifetime" if not exp else f"<t:{int(exp / 1000)}:R>") + (" · PC locked" if l.get("hwid_locked") else ""))
+    await interaction.followup.send("\n".join(lines), ephemeral=True)
+
+
+@tree.command(name="key_unbind", description="Move a key to another Discord account (the old account loses it)")
+@app_commands.describe(key="The license key")
+async def key_unbind(interaction: discord.Interaction, key: str):
+    if not is_staff(interaction):
+        await interaction.response.send_message("No permission.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    res = await api_post("/admin/unbind", {"key": key.strip()})
+    if res.get("status") != 200:
+        await interaction.followup.send(f"Could not unbind: {res.get('error', res.get('status'))}", ephemeral=True)
+        return
+    was = res.get("was")
+    await interaction.followup.send(f"Key unbound{f' from <@{was}>' if was else ''}. The next account that runs `/register` with it owns it. The roles of the old account are taken away by the next role sync.", ephemeral=True)
+    log_embed = discord.Embed(title="Key unbound", color=0xFFC850)
+    log_embed.add_field(name="By", value=interaction.user.mention, inline=True)
+    log_embed.add_field(name="Key", value=f"`{key[:6]}...`", inline=True)
+    await log_action(interaction.guild, log_embed)
+
+
+async def sync_roles() -> list[str]:
+    """Every key bound to a Discord account: its roles follow the keys (a key that ended or was revoked loses them, a new key gives them)."""
+    report = []
+    keys = await api_get("/admin/list")
+    if not isinstance(keys, list):
+        return [f"role sync: the license server answered {keys}"]
+    by_member: dict[str, list[dict]] = {}
+    for k in keys:
+        if k.get("discord_id"):
+            by_member.setdefault(str(k["discord_id"]), []).append(k)
+    for guild in client.guilds:
+        for did, licenses in by_member.items():
+            member = guild.get_member(int(did))
+            if member is None:
+                continue
+            added, removed = await sync_member_roles(guild, member, licenses, "Key role sync")
+            if added or removed:
+                report.append(f"{guild.name}: {member} +{','.join(added) or '-'} -{','.join(removed) or '-'}")
+    return report
+
+
+async def role_loop():
+    await client.wait_until_ready()
+    while True:
+        try:
+            for line in await sync_roles():
+                print(f"[roles] {line}", flush=True)
+        except Exception as e:
+            print(f"[roles] failed: {e!r}", flush=True)
+        await asyncio.sleep(ROLE_SYNC_MINUTES * 60)
+
+
+@tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.CommandOnCooldown):
+        msg = f"Slow down: try again in {int(error.retry_after) + 1} s."
+    else:
+        print(f"[command] {interaction.command.name if interaction.command else '?'} failed: {error!r}", flush=True)
+        msg = "Something went wrong. Try again in a minute."
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send(msg, ephemeral=True)
+        else:
+            await interaction.response.send_message(msg, ephemeral=True)
+    except discord.HTTPException:
+        pass
 
 
 # ── /setup_tickets — post ticket panel ───────────────────────────────
@@ -2152,6 +2482,8 @@ def prices_embed() -> discord.Embed:
     pay_lines = [f"○ {m}" for m in PAYMENT_METHODS]
     if BUY_CONTACT:
         pay_lines.append(f"○ Tag to buy: **{BUY_CONTACT}**")
+    if SITE_URL:
+        pay_lines.append(f"○ Checkout and current prices: **{SITE_URL}/pricing**")
     embed.add_field(name="Payment Methods", value="\n".join(pay_lines), inline=False)
     embed.add_field(
         name="\U0001f319 Specter Info",
@@ -2175,7 +2507,7 @@ def prices_embed() -> discord.Embed:
         name="Still Have Questions?",
         value=(
             "• Open a ticket in #support-ticket\n"
-            "• Check #how-to-use for setup guide"
+            "• Check #how-to-use: pay -> `/register` -> `/download`"
         ),
         inline=False,
     )
@@ -2202,21 +2534,36 @@ def rules_embed() -> discord.Embed:
 
 def howto_embed() -> discord.Embed:
     embed = discord.Embed(title="\U0001f4d5 How to Use Specter", color=0x82C3FF)
+    site = f"{SITE_URL}/pricing" if SITE_URL else "the website"
     embed.add_field(
-        name="Step 1 — Get Your Key",
+        name="Step 1 — Buy a key",
         value=(
-            "Purchase a plan in #prices or from staff.\n"
-            "Use `/redeem <key>` in Discord to get your role."
+            f"Pay by **card** or **crypto** on {site} (or ask staff).\n"
+            "When the payment is done you get an **Invoice ID**: that is your license key. Save it and never share it."
         ),
         inline=False,
     )
     embed.add_field(
-        name="Step 2 — Register / Login",
+        name="Step 2 — Register it here",
         value=(
-            "1. Copy your **license key** and click **Paste key** (Ctrl+V does not work in gamesense)\n"
-            "2. Choose a **username** and **password**\n"
-            "3. Click **Register** (first time) or **Login**\n"
-            "4. Your HWID locks on first activation"
+            "Run `/register key:<Invoice ID>` in any channel.\n"
+            "The key is tied to **your Discord account** (nobody else can register it), you get your roles and the private "
+            "Gamesense / Primordial channels open for you."
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="Step 3 — Get the loader",
+        value="Run `/download` in any channel: the bot shows the loader of the Luas your key unlocks, and **only you can see it** (nobody without a registered key gets it).",
+        inline=False,
+    )
+    embed.add_field(
+        name="Step 4 — Load it in game",
+        value=(
+            "1. Put the loader into your Lua folder and load it\n"
+            "2. Enter your key (the Invoice ID) and log in\n"
+            "3. The loader shows the Luas your key unlocks; your HWID locks on first use\n"
+            "4. Cloud configs need your Discord linked with `/register`"
         ),
         inline=False,
     )
@@ -2580,6 +2927,7 @@ async def setup_server(interaction: discord.Interaction):
 _synced = False
 _release_task = None
 _panels_task = None
+_role_task = None
 
 
 async def startup_panels():
@@ -2594,7 +2942,7 @@ async def startup_panels():
 
 @client.event
 async def on_ready():
-    global _synced, _release_task, _panels_task
+    global _synced, _release_task, _panels_task, _role_task
     client.add_view(TicketCreateView())
     client.add_view(TicketCloseView())
     print(f"Bot online: {client.user}  |  Guilds: {len(client.guilds)}")
@@ -2608,9 +2956,12 @@ async def on_ready():
     print(f"Default role: {DEFAULT_ROLE_NAME}")
     if AUTO_PANELS and _panels_task is None:
         _panels_task = asyncio.create_task(startup_panels())
+    if ROLE_SYNC_MINUTES > 0 and (_role_task is None or _role_task.done()):
+        _role_task = asyncio.create_task(role_loop())
+        print(f"Role sync: every {ROLE_SYNC_MINUTES} min")
     if RELEASE_MINUTES > 0 and (_release_task is None or _release_task.done()):
         _release_task = asyncio.create_task(release_loop())
-        print(f"Version check: {', '.join(RELEASE_FILES)} -> #{RELEASE_CHANNEL}"
+        print(f"Version check: {', '.join(RELEASE_FILES) or 'no #staff posts'} -> #{RELEASE_CHANNEL}"
               + (f", {CLOUD_FILE} -> license server" if AUTO_UPLOAD else "") + f" every {RELEASE_MINUTES} min")
 
 

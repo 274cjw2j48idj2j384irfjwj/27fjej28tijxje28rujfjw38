@@ -2,7 +2,7 @@
 --  SPECTER for Primordial | Loader
 --  Key + HWID checked by the license server, the script downloaded from it at every login
 --  (nightly = everything, beta = no resolver, dev = the newest build). A key loads its own build and the ones below it:
---  a dev key dev / nightly / beta (a button each), a nightly key nightly / beta, a beta key beta. Put this file into primordial/scripts once.
+--  a dev key dev / nightly / beta (double-click one in the list), a nightly key nightly / beta, a beta key beta. Put this file into primordial/scripts once.
 -- ======================================================================
 
 if (rawget(_G, "_specter_pm_loader_loaded")) then
@@ -13,10 +13,10 @@ rawset(_G, "_specter_pm_loader_loaded", true)
 local SERVER_URL = "https://specter-license-mh111-production.up.railway.app"
 -- bump whenever this file changes: the server hands out the number of the newest loader (the bot reads it from the cloud
 -- branch) and an older one tells its user to download the new one
-local LOADER_VERSION = 3
+local LOADER_VERSION = 9
 local KEY_FILE = "specter/key.txt"             -- csgo/specter/key.txt
 local BUILD_FILE = "specter/build.txt"         -- the build a multi build key loaded last (csgo/specter/build.txt)
-local GROUP = "Specter loader"
+local GROUP = "𓆩☾𓆪 Specter loader 𓆩☾𓆪"
 
 -- the Primordial calls the two libraries below use
 local client_log, global_vars_cur_time = client.log, global_vars.cur_time
@@ -39,6 +39,12 @@ local http = libs.httpcreator.new({ task_interval = 0.3, enable_debug = false, t
 local function say(text)
     client_log("[Specter] " .. tostring(text))
 end
+
+-- the last step reaches csgo/specter/load_trace.txt BEFORE the next one runs (the script goes on writing it): when the game freezes, the file names the step that never finished
+local function trace(name)
+    pcall(libs.filesystem.write, "specter/load_trace.txt", "loader: " .. tostring(name))
+end
+trace("start")
 
 -- this machine: the volume serial of C:\ and the computer name, hashed (the server locks the key to it)
 local function get_hwid()
@@ -94,6 +100,33 @@ local function save_build(build)
     pcall(libs.filesystem.write, BUILD_FILE, build)
 end
 
+-- the key out of whatever was copied (a Discord message, ```key```, spaces / new lines around it): XXXXXX-XXXXXX-XXXXXX-XXXXXX
+local function key_from_text(text)
+    text = tostring(text or "")
+    local found = text:match("%w%w%w%w%w%w%-%w%w%w%w%w%w%-%w%w%w%w%w%w%-%w%w%w%w%w%w")
+    if (found ~= nil) then
+        return found
+    end
+    return (text:gsub("[`%c]", " "):match("^%s*(%S+)") or "")
+end
+
+-- the clipboard (the menu's text box takes no Ctrl+V), read only when the button is pressed, inside a pcall: nil when it can not be read
+local function clipboard_text()
+    local ok, text = pcall(function()
+        local sys = ffi.cast("void***", memory_create_interface("vgui2.dll", "VGUI_System010"))
+        local count = ffi.cast("int(__thiscall*)(void*)", sys[0][7])
+        local read = ffi.cast("int(__thiscall*)(void*, int, char*, int)", sys[0][11])
+        local n = count(sys)
+        if (n <= 0 or n > 4096) then
+            return nil
+        end
+        local buffer = ffi.new("char[?]", n + 1)
+        read(sys, 0, buffer, n + 1)
+        return ffi.string(buffer)
+    end)
+    return ok and text or nil
+end
+
 local function field(body, name)
     return body:match('"' .. name .. '"%s*:%s*"([^"]*)"')
 end
@@ -111,7 +144,11 @@ local REASONS = {
 local ui = {}
 ui.key = menu.add_text_input(GROUP, "Key")
 ui.status = menu.add_text(GROUP, "Enter your key and press Login.")
+ui.license = menu.add_text(GROUP, "Unlocked: log in to see which Luas your key opens")
 local busy = false
+-- the menu text box only takes 25 characters (a Primordial limit), a key has 27: the whole imported / saved key is kept here,
+-- the box just shows the start of it. Typing something else in the box drops it.
+local full_key = ""
 
 -- the builds a key can load, best first; the name the buttons / messages use
 local BUILD_ORDER = { "pm_dev", "pm_nightly", "pm_beta" }
@@ -125,6 +162,7 @@ local function status(text)
 end
 
 local function run(body, key, hwid, plan, user)
+    trace("compiling the script (" .. #body .. " bytes)")
     local fn, err = (loadstring or load)(body, "=specter")
     if (fn == nil) then
         status("The downloaded script does not compile: " .. tostring(err))
@@ -133,7 +171,9 @@ local function run(body, key, hwid, plan, user)
     rawset(_G, "loader", { username = (user ~= nil and user ~= "") and user or "user", id = "1", hwid = hwid })
     pcall(menu.set_group_visibility, GROUP, false)
     say("loaded Specter " .. plan:gsub("^pm_", "") .. ", have fun")
+    trace("running the script")
     local ok, run_err = pcall(fn)
+    trace(ok and "the script returned" or ("the script failed: " .. tostring(run_err)))
     if (not ok) then
         pcall(menu.set_group_visibility, GROUP, true)
         status("The script stopped with an error: " .. tostring(run_err))
@@ -142,24 +182,83 @@ end
 
 local login
 
--- one button per build, shown only for the builds the key allows (more than one)
-ui.builds = {}
-for _, build in ipairs(BUILD_ORDER) do
-    ui.builds[build] = menu.add_button(GROUP, "Load " .. build_name(build), function()
-        login(build)
-    end)
-    pcall(ui.builds[build].set_visible, ui.builds[build], false)
-end
+-- the builds of a key (more than one) are a list, a build is loaded with a DOUBLE CLICK on it (owners, Oct 21 2026: "ne ugy lehessen
+-- kivalasztani, hogy ramesz es load, hanem dupla kattal"); every build has the same double star in front
+local STAR = "★★"
+local BUILD_LABEL = { pm_dev = STAR .. "  dev  (newest)", pm_nightly = STAR .. "  nightly  (everything)", pm_beta = STAR .. "  beta  (no resolver)" }
+local PLACEHOLDER = "-- double-click a build to load it --"
+ui.hint = menu.add_text(GROUP, STAR .. "  Double-click a build in the list to load it.")
+ui.list = menu.add_list(GROUP, "Builds", { PLACEHOLDER }, 4)
+pcall(ui.hint.set_visible, ui.hint, false)
+pcall(ui.list.set_visible, ui.list, false)
+local list_shown, list_builds = false, {}
 
 local function show_builds(allowed)
+    local items = { PLACEHOLDER }
+    list_builds = {}
     for _, build in ipairs(BUILD_ORDER) do
-        local on = false
         for _, name in ipairs(allowed) do
-            on = on or name == build
+            if (name == build) then
+                items[#items + 1] = BUILD_LABEL[build]
+                list_builds[BUILD_LABEL[build]] = build
+            end
         end
-        pcall(ui.builds[build].set_visible, ui.builds[build], on)
     end
+    pcall(ui.list.set_items, ui.list, items)
+    pcall(ui.hint.set_visible, ui.hint, true)
+    pcall(ui.list.set_visible, ui.list, true)
+    list_shown = true
 end
+
+-- the list gives no click events, so a double click is read from the presses: two presses within CLICK_WINDOW seconds and CLICK_NEAR pixels of
+-- each other, inside the list's area (CLICK_ZONE pixels around where the selection last changed = where an item was clicked). One call per frame:
+-- `press` = {x, y, t} on the frame the left button went down (else nil), `label` = the active item; returns the label to load, else nil
+local CLICK_WINDOW, CLICK_NEAR, CLICK_ZONE = 0.5, 6, 80
+local function distance(a, b)
+    return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
+end
+local function click_step(st, press, label, now)
+    local fire = nil
+    if (press ~= nil) then
+        local second = st.prev ~= nil and press.t - st.prev.t <= CLICK_WINDOW and distance(press, st.prev) <= CLICK_NEAR
+        if (second and st.anchor ~= nil and distance(press, st.anchor) <= CLICK_ZONE and label ~= nil and label ~= PLACEHOLDER) then
+            fire = label
+            st.prev = nil
+        else
+            st.prev = press
+        end
+    end
+    if (label ~= st.label) then
+        -- the selection changed: the press just before it was the click on that item
+        st.label = label
+        if (st.prev ~= nil and now - st.prev.t <= 0.3) then
+            st.anchor = st.prev
+        end
+    end
+    return fire
+end
+
+local clicks, was_down = {}, false
+pcall(callbacks.add, e_callbacks.PAINT, function()
+    if (not list_shown) then
+        return
+    end
+    pcall(function()
+        local down = input.is_key_held(e_keys.MOUSE_LEFT)
+        local now = global_vars_cur_time()
+        local press = nil
+        if (down and not was_down) then
+            local mouse = input.get_mouse_pos()
+            press = { x = mouse.x, y = mouse.y, t = now }
+        end
+        was_down = down
+        local ok, label = pcall(ui.list.get_active_item_name, ui.list)
+        local fire = click_step(clicks, press, ok and label or nil, now)
+        if (fire ~= nil and list_builds[fire] ~= nil) then
+            login(list_builds[fire])
+        end
+    end)
+end)
 
 -- the builds the server lists for the key ("builds":["pm_dev","pm_nightly","pm_beta"]); none listed = an older server: the key's own plan
 local function parse_builds(body)
@@ -170,16 +269,43 @@ local function parse_builds(body)
     return list
 end
 
+local function licensed_names(body)
+    local seen, names = {}, {}
+    local list = body:match('"access"%s*:%s*%[(.-)%]') or ""
+    for lua in list:gmatch('"lua"%s*:%s*"(%a+)"') do
+        if (not seen[lua]) then
+            seen[lua] = true
+            names[#names + 1] = lua == "primordial" and "Primordial" or "Gamesense"
+        end
+    end
+    return table.concat(names, " + ")
+end
+
+local function show_license(body)
+    local names = licensed_names(body)
+    local linked = body:find('"discord_linked"%s*:%s*true') ~= nil
+    local text = "Unlocked: " .. (names ~= "" and names or "this Lua")
+        .. (linked and " | Discord linked" or " | Discord NOT linked: run /register in the Specter Discord (cloud configs need it)")
+    pcall(ui.license.set, ui.license, text)
+    if (not linked) then
+        say("Your key is not registered to a Discord account: run /register in the Specter Discord (cloud configs and your roles need it).")
+    end
+end
+
 login = function(chosen)
     if (busy) then
         return
     end
     local key = tostring(ui.key:get() or ""):match("^%s*(.-)%s*$")
+    if (full_key ~= "" and full_key:sub(1, #key) == key) then
+        key = full_key
+    end
     if (key == "") then
         status("Enter your key.")
         return
     end
     busy = true
+    trace("login")
     local hwid = get_hwid()
     status("Checking your key...")
     http:get(SERVER_URL .. "/verify?key=" .. encode(key) .. "&hwid=" .. encode(hwid), function(response)
@@ -189,10 +315,11 @@ login = function(chosen)
             status(REASONS[field(body, "reason") or ""] or (body == "" and "The server did not answer, try again." or "Login failed."))
             return
         end
+        trace("key checked")
         local latest = tonumber(body:match('"loader_pm"%s*:%s*(%d+)'))
         if (latest ~= nil and latest > LOADER_VERSION) then
             local text = "A new Specter loader is out (v" .. latest .. ", you have v" .. LOADER_VERSION
-                .. "): download it from #primordial-loader and replace this file."
+                .. "): run /download in the Specter Discord and replace this file."
             say(text)
             pcall(menu.add_text, "Specter update", text)
         end
@@ -203,6 +330,7 @@ login = function(chosen)
             return
         end
         save_key(key)
+        show_license(body)
         local allowed = parse_builds(body)
         local build = plan
         if (#allowed > 1) then
@@ -215,11 +343,7 @@ login = function(chosen)
             if (build == nil) then
                 busy = false
                 show_builds(allowed)
-                status("Choose a build: " .. table.concat((function()
-                    local names = {}
-                    for _, name in ipairs(allowed) do names[#names + 1] = build_name(name) end
-                    return names
-                end)(), " / ") .. ".")
+                status("Double-click the build you want to load in the list below.")
                 return
             end
             show_builds(allowed)
@@ -232,6 +356,7 @@ login = function(chosen)
             .. "&build=" .. encode(build) .. "&ticket=" .. encode(ticket or "") .. "&nonce=" .. encode(nonce or ""), function(script)
             busy = false
             local text = script.body or ""
+            trace("script downloaded (" .. #text .. " bytes)")
             if (#text < 1000 or text:find('^%s*{')) then
                 status(REASONS[field(text, "reason") or ""] or "Download failed, try again.")
                 return
@@ -241,10 +366,21 @@ login = function(chosen)
     end)
 end
 
+ui.import = menu.add_button(GROUP, "Import key", function()
+    local key = key_from_text(clipboard_text())
+    if (key == "") then
+        status("No key in the clipboard: copy it from the Discord message first.")
+        return
+    end
+    full_key = key
+    pcall(ui.key.set, ui.key, key)
+    status("Key imported (" .. key:sub(1, 6) .. "...). Press Login.")
+end)
 ui.login = menu.add_button(GROUP, "Login", function() login() end)
 
 local saved = read_key()
 if (saved ~= "") then
+    full_key = saved
     pcall(ui.key.set, ui.key, saved)
     login()
 end

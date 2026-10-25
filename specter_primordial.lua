@@ -137,6 +137,26 @@ libs.filesystem = (function()
     local a={}a.__index={}a.class=ffi.cast(ffi.typeof("void***"),memory_create_interface("filesystem_stdio.dll","VBaseFileSystem011"))a.v_table=a.class[0]a.full_class=ffi.cast("void***",memory_create_interface("filesystem_stdio.dll","VFileSystem017"))a.v_fltable=a.full_class[0]a.casts={read_file=ffi.cast("int (__thiscall*)(void*, void*, int, void*)",a.v_table[0]),write_file=ffi.cast("int (__thiscall*)(void*, void const*, int, void*)",a.v_table[1]),open_file=ffi.cast("void* (__thiscall*)(void*, const char*, const char*, const char*)",a.v_table[2]),close_file=ffi.cast("void (__thiscall*)(void*, void*)",a.v_table[3]),file_size=ffi.cast("unsigned int (__thiscall*)(void*, void*)",a.v_table[7]),file_exists=ffi.cast("bool (__thiscall*)(void*, const char*, const char*)",a.v_table[10]),delete_file=ffi.cast("void (__thiscall*)(void*, const char*, const char*)",a.v_fltable[20]),rename_file=ffi.cast("bool (__thiscall*)(void*, const char*, const char*, const char*)",a.v_fltable[21]),create_dir=ffi.cast("void (__thiscall*)(void*, const char*, const char*)",a.v_fltable[22]),is_dir=ffi.cast("bool (__thiscall*)(void*, const char*, const char*)",a.v_fltable[23])}local b=memory_create_interface("filesystem_stdio.dll","VFileSystem017")local c=ffi.cast(ffi.typeof("void***"),b)ffi.cdef([[ typedef void (__thiscall* AddSearchPath)(void*, const char*, const char*); typedef void (__thiscall* RemoveSearchPaths)(void*, const char*); typedef const char* (__thiscall* FindNext)(void*, int); typedef bool (__thiscall* FindIsDirectory)(void*, int); typedef void (__thiscall* FindClose)(void*, int); typedef const char* (__thiscall* FindFirstEx)(void*, const char*, const char*, int*); typedef long (__thiscall* GetFileTime)(void*, const char*, const char*); ]])local d=ffi.cast("AddSearchPath",c[0][11])local e=ffi.cast("RemoveSearchPaths",c[0][14])local f=ffi.cast("FindNext",c[0][33])local g=ffi.cast("FindIsDirectory",c[0][34])local h=ffi.cast("FindClose",c[0][35])local i=ffi.cast("FindFirstEx",c[0][36])a.modes={["r"]="r",["w"]="w",["a"]="a",["r+"]="r+",["w+"]="w+",["a+"]="a+",["rb"]="rb",["wb"]="wb",["ab"]="ab",["rb+"]="rb+",["wb+"]="wb+",["ab+"]="ab+"}a.open=function(j,k,l)if not a.modes[k]then error("File mode error!")end;local self=setmetatable({file=j,mode=k,path_id=l,handle=a.casts.open_file(a.class,j,k,l)},a)return self end;a.close=function(m)a.casts.close_file(a.class,m.handle)end;a.exists=function(j,l)return a.casts.file_exists(a.class,j,l)end;a.get_size=function(m)return a.casts.file_size(a.class,m.handle)end;a.write_binary=function(n,o)local m=a.open(n,"wb","MOD")a.casts.write_file(a.class,o,#o,m.handle)a.close(m)end;a.read_binary=function(n)local m=a.open(n,"rb","MOD")local p=a.get_size(m)local q=ffi.new("char[?]",p)a.casts.read_file(a.class,q,p,m.handle)a.close(m)return ffi.string(q,p)end;a.write=function(n,o)local m=a.open(n,"w","MOD")a.casts.write_file(a.class,o,#o,m.handle)a.close(m)end;a.append=function(n,o)local m=a.open(n,"a","MOD")a.casts.write_file(a.class,o,#o,m.handle)a.close(m)end;a.read=function(n)local m=a.open(n,"r","MOD")local p=a.get_size(m)local q=ffi.new("char[?]",p+1)a.casts.read_file(a.class,q,p,m.handle)a.close(m)return ffi.string(q)end;a.rename=function(r,s,l)return a.casts.rename_file(a.full_class,r,s,l)end;a.delete=function(j,l)a.casts.delete_file(a.full_class,j,l)end;a.create_directory=function(n,l)a.casts.create_dir(a.full_class,n,l)end;a.is_directory=function(n,l)return a.casts.is_dir(a.full_class,n,l)end;a.find_next=function(t)local j=a.casts.find_next(a.full_class,t)if j==0 then return nil end;return ffi.string(j)end;a.find_is_directory=function(t)return a.casts.find_is_dir(a.full_class,t)end;a.get_sec_files=function()local u=ffi.new("int[1]")e(c,"primordial")d(c,"././primordial/scripts","primordial")local v={}local j=i(c,"*","primordial",u)while j~=nil do local w=ffi.string(j)if g(c,u[0])==false and w:find("[.]lua")then table.insert(v,w)end;j=f(c,u[0])end;h(c,u[0])return v end;a.read_first_line=function(x)local y=x:match("^[^\r\n]+")return y end;a.get_files=function()local u=ffi.new("int[1]")e(c,"specter_configs")d(c,"./csgo/specter/","specter_configs")local v={}local j=i(c,"*","specter_configs",u)while j~=nil do local w=ffi.string(j)if g(c,u[0])==false and w:find("[.]cfg")then table.insert(v,w)end;j=f(c,u[0])end;h(c,u[0])return v end;return a
 end)()
 
+-- the last load step reaches csgo/specter/load_trace.txt BEFORE the next one runs (owners, Oct 25 2026: the game froze while the loader started the
+-- script): after a freeze the file names the part that never finished; "loaded" = the load went through
+load_step = function(name)
+    pcall(libs.filesystem.write, "specter/load_trace.txt", tostring(name))
+end
+load_step("script start")
+
+-- one step instead of "minus 360 until": a loop on a value from the game (inf) never ended
+wrap_180 = function(yaw)
+    yaw = tonumber(yaw) or 0
+    if (yaw ~= yaw or yaw == math.huge or yaw == -math.huge) then
+        return 0
+    end
+    if (yaw > 180 or yaw < -180) then
+        yaw = (yaw + 180) % 360 - 180
+    end
+    return yaw
+end
+
+
 libs.eui = (function()
     local a={}a.__type={group=-1,button=0,keybind=1,text_input=2,text=3,separator=4,list=5,checkbox=6,color_picker=7,multi_selection=8,selection=9,slider=10}a.__spectersave=true;a.__data={}a.create=function(b,c)local d={group=b,column=c,id=a.__type.group}menu_set_group_column(b,c)a.__index=a;return setmetatable(d,a)end;function a:create_element(e,f,g)local h=nil;if e==a.__type.button then h=menu_add_button(self.group,f,g.fn)elseif e==a.__type.checkbox then h=menu_add_checkbox(self.group,f,g.default_value)elseif e==a.__type.color_picker then h=g.parent.ref:add_color_picker(f,g.default_value,g.alpha)elseif e==a.__type.keybind then h=g.parent.ref:add_keybind(f,g.default_value)elseif e==a.__type.list then h=menu_add_list(self.group,f,g.items,g.visible_count)elseif e==a.__type.multi_selection then h=menu_add_multi_selection(self.group,f,g.items,g.visible_count)elseif e==a.__type.selection then h=menu_add_selection(self.group,f,g.items,g.visible_count)elseif e==a.__type.slider then h=menu_add_slider(self.group,f,g.min,g.max,g.step,g.precision,g.suffix)elseif e==a.__type.text_input then h=menu_add_text_input(self.group,f)elseif e==a.__type.text then h=menu_add_text(self.group,f)elseif e==a.__type.separator then h=menu_add_separator(self.group)end;local d={name=f,id=e,ref=h,group=self.group,get=function(self,i)if self.id==a.__type.multi_selection then return self.ref:get(i)else return self.ref:get()end end}if not a.__data[self.group]then a.__data[self.group]={}end;a.__data[self.group][f]=d;if a.__spectersave then if not a[self.group]then a[self.group]={}end;a[self.group][f]=d;self[f]=d end;return setmetatable(d,a)end;function a:button(f,j)j=j or function()end;return self:create_element(a.__type.button,f,{fn=j})end;function a:checkbox(f,k)return self:create_element(a.__type.checkbox,f,{default_value=k})end;function a:color_picker(l,f,k,m)return self:create_element(a.__type.color_picker,f,{parent=l,default_value=k,alpha=m})end;function a:keybind(l,f,k)return self:create_element(a.__type.keybind,f,{parent=l,default_value=k})end;function a:list(f,n,o)return self:create_element(a.__type.list,f,{items=n,visible_count=o})end;function a:multi_selection(f,n,o)return self:create_element(a.__type.multi_selection,f,{items=n,visible_count=o})end;function a:selection(f,n,o)return self:create_element(a.__type.selection,f,{items=n,visible_count=o})end;function a:slider(f,p,q,r,s,t)return self:create_element(a.__type.slider,f,{min=p,max=q,step=r,precision=s,suffix=t})end;function a:text_input(f)return self:create_element(a.__type.text_input,f)end;function a:text(f,g)return self:create_element(a.__type.text,f,g)end;function a:separator()return self:create_element(a.__type.separator,"separator")end;a.export=function()local u={}for v,w in pairs(a.__data)do u[v]={}for x,y in pairs(w)do if not(y.id<a.__type.checkbox)then if y.id==a.__type.multi_selection then local z={}for A,B in pairs(y.ref:get_items())do table.insert(z,{B,y.ref:get(B)})end;table.insert(u[v],{y.name,z})elseif y.id==a.__type.color_picker then local C=y.ref:get()table.insert(u[v],{y.name,C.r,C.g,C.b,C.a})else table.insert(u[v],{y.name,y.ref:get()})end end end end;return libs.json.encode(u)end;a.import=function(d)local D=libs.json.parse(d)for v,w in pairs(D)do for x,y in pairs(w)do if not(a.__data[v]==nil or a.__data[v][y[1]]==nil)then if a.__data[v][y[1]].id==a.__type.multi_selection then for A,B in pairs(y[2])do a.__data[v][y[1]].ref:set(B[1],B[2])end elseif a.__data[v][y[1]].id==a.__type.color_picker then a.__data[v][y[1]].ref:set(color_t(y[2],y[3],y[4],y[5]))else a.__data[v][y[1]].ref:set(y[2])end end end end end;function a:depend(...)local E={...}local F=nil;for v,w in pairs(E)do local G=nil;if type(w[1])=="boolean"then G=w[1]else G=w[1].ref:get()==w[2]end;if F~=nil then F=F and G else F=G end end;if self.id==-1 then menu_set_group_visibility(self.group,F)else self.ref:set_visible(F)end end;return a
 end)()
@@ -356,6 +376,7 @@ return { create: create, destroy: destroy, clear: clear, update: update,
 
 --- @info: shit codes
 --- @region: useful codes
+if (load_step) then load_step("region: useful codes") end
 
 ffi.cdef [[
     typedef struct {float x, y, z;}vec3_t;
@@ -709,6 +730,7 @@ end
 
 --- @info: authentication
 --- @region: main cloud
+if (load_step) then load_step("region: main cloud") end
 
 local loader = loader or {}
 
@@ -799,6 +821,7 @@ end
 
 --- @info: default values, settings etc
 --- @region: variables
+if (load_step) then load_step("region: variables") end
 
 local settings_file = "settings.json"
 local function read_settings()
@@ -1030,6 +1053,7 @@ end
 
 --- @info: ui management
 --- @region: menu style(s)
+if (load_step) then load_step("region: menu style(s)") end
 
 local states = {"Global", "Stand", "Move", "Slow walk", "Duck", "Duck move", "Air", "Air duck", "Fakelag", "Manual", "Freestand"}
 local shortstates = {"G", "S", "M", "SW", "D", "DM", "A", "AD", "F", "MN", "FR"}
@@ -1757,6 +1781,7 @@ ui.about = {
 
 --- @info: advanced print
 --- @region: print
+if (load_step) then load_step("region: print") end
 
 print = function(...)
     local args = {...}
@@ -1884,6 +1909,7 @@ end
 
 --- @info: lua helpers
 --- @region: useful thing(s)
+if (load_step) then load_step("region: useful thing(s)") end
 
 -- configs funcs
 
@@ -2530,6 +2556,7 @@ end
 
 --- @info: config system
 --- @region: config
+if (load_step) then load_step("region: config") end
 
 -- cloud based
 
@@ -2706,7 +2733,9 @@ cloud.upload = function(name)
         end
         if (res.ok == false) then
             done = true
-            notifications.create("Specter", "The cloud refused the config (" .. tostring(res.reason) .. ").", notifications.types.failure)
+            notifications.create("Specter", res.reason == "discord_not_linked"
+                and "Link your Discord first: run /register in the Specter Discord (cloud configs need it)."
+                or "The cloud refused the config (" .. tostring(res.reason) .. ").", notifications.types.failure)
         elseif (res.done) then
             done = true
             notifications.create("Specter", "Config \"" .. name .. "\" shared to the cloud by " .. tostring(res.author) .. ".",
@@ -2760,6 +2789,9 @@ ui.delete_cloud_config = menu_add_button("Cloud configs", "Delete",
                 configs.reload_cloud_configs()
             elseif (res ~= nil and res.reason == "not_found") then
                 notifications.create("Specter", "You can only delete your own configs.", notifications.types.warning)
+            elseif (res ~= nil and res.reason == "discord_not_linked") then
+                notifications.create("Specter", "Link your Discord first: run /register in the Specter Discord (cloud configs need it).",
+                    notifications.types.warning)
             else
                 notifications.create("Specter", "The cloud refused it (" .. tostring(res and res.reason or "no answer") .. ").",
                     notifications.types.failure)
@@ -3119,6 +3151,7 @@ end)
 
 --- @info: lua network, clantag [sync]
 --- @region: clantag
+if (load_step) then load_step("region: clantag") end
 
 local clantag_prev
 clan_anim = function(indices)
@@ -3742,6 +3775,7 @@ end
 
 --- @info: advanced fast ladder with up and down selection
 --- @region: fastladder
+if (load_step) then load_step("region: fastladder") end
 
 fast_ladder = function(cmd)
     if (ui.player.fast_ladder:get(1) or ui.player.fast_ladder:get(2)) then
@@ -3832,6 +3866,7 @@ end
 
 --- @info: advanced super toss with multiple selection methods
 --- @region: super_toss
+if (load_step) then load_step("region: super_toss") end
 
 toss.ang_vec = function(ang)
     return vec3_t(math.cos(ang.x * math.pi / 180) * math.cos(ang.y * math.pi / 180), math.cos(ang.x * math.pi / 180) * math.sin(ang.y * math.pi / 180), -math.sin(ang.x * math.pi / 180))
@@ -3864,20 +3899,14 @@ super_toss = function(cmd)
                         local yaw_difference = toss.lastangles.y - vec_throw.y
                         local pitch_difference = toss.lastangles.x - vec_throw.x - 10
                         
-                        while (yaw_difference > 180) do
-                            yaw_difference = yaw_difference - 360
+                        yaw_difference = wrap_180(yaw_difference)
+                        if (pitch_difference ~= pitch_difference or pitch_difference == math.huge or pitch_difference == -math.huge) then
+                            pitch_difference = 0
                         end
-                    
-                        while (yaw_difference < -180) do
-                            yaw_difference = yaw_difference + 360
-                        end
-
-                        while (pitch_difference > 90) do
-                            pitch_difference = pitch_difference - 45
-                        end
-                    
-                        while (pitch_difference < -90) do
-                            pitch_difference = pitch_difference + 45
+                        if (pitch_difference > 90) then
+                            pitch_difference = pitch_difference - 45 * math.ceil((pitch_difference - 90) / 45)
+                        elseif (pitch_difference < -90) then
+                            pitch_difference = pitch_difference + 45 * math.ceil((-90 - pitch_difference) / 45)
                         end
                     
                         toss.target_angles.y = toss.lastangles.y + yaw_difference
@@ -3913,6 +3942,7 @@ end
 
 --- @info: nofall dmg when landing
 --- @region: nofall
+if (load_step) then load_step("region: nofall") end
 
 calculate_fall = function(length)
     local local_player = entity_list_get_local_player()
@@ -3969,6 +3999,7 @@ end
 
 --- @info: defensive safepoint
 --- @region: safe def
+if (load_step) then load_step("region: safe def") end
 
 -- Network budgets are measured in seconds; menu thresholds are milliseconds.
 resolver.network = function()
@@ -4012,6 +4043,7 @@ end
 
 --- @info: multipoint correction
 --- @region: dmg pred
+if (load_step) then load_step("region: dmg pred") end
 
 local damage = {
     scale = {
@@ -4106,6 +4138,7 @@ end
 
 --- @info: boost the prediction time
 --- @region: accuracy boost
+if (load_step) then load_step("region: accuracy boost") end
 
 accuracy_boost = function(ctx, cmd, unpredicted_data)
     -- Preserve native accuracy requirements on latency-sensitive peeks.
@@ -4127,6 +4160,7 @@ end
 
 --- @info: anti afk
 --- @region: antiafk
+if (load_step) then load_step("region: antiafk") end
 
 antiafk = function(cmd)
     if (ui.misc.antiafk:get()) then
@@ -4167,6 +4201,7 @@ end
 
 --- @info: it will defuse at 5.1 or 10.1 sec
 --- @region: defuse bot
+if (load_step) then load_step("region: defuse bot") end
 
 enemies_dead = function()
     for _, enemy in pairs(entity_list_get_players(true)) do
@@ -4224,6 +4259,7 @@ end
 
 --- @info: knifebot helper
 --- @region: knifebot
+if (load_step) then load_step("region: knifebot") end
 
 knifebot_helper = function(cmd)
     if (ui.misc.knifebot_helper:get()) then
@@ -4250,6 +4286,7 @@ end
 
 --- @info: zeus vs rushers
 --- @region: zeus rush
+if (load_step) then load_step("region: zeus rush") end
 
 -- (owners, Oct 2026: "ha valaki jön felém késsel akkor zeust vesz elő és lezeusolja, és ha valaki zeussal akkor is zeust, ha
 -- egy helyben állsz hamarabb lő a zeus"): an enemy that runs at us with a knife or a zeus makes us take our own zeus out, and the
@@ -4413,6 +4450,7 @@ end
 
 --- @info: evade message
 --- @region: antibrute
+if (load_step) then load_step("region: antibrute") end
 
 for i = 1, 28 do
     evades.backtrack_poses[i] = vec3_t.new(0, 0, 0)
@@ -4763,6 +4801,7 @@ end
 
 --- @info: repeats everyone's message
 --- @region: talkback
+if (load_step) then load_step("region: talkback") end
 
 on_talkback = function(event)
     if (ui.player.talk_back:get()) then
@@ -4804,6 +4843,7 @@ end
 
 --- @info: trash talk
 --- @region: killsay
+if (load_step) then load_step("region: killsay") end
 
 local old_phrase = ""
 on_killsay = function(event)
@@ -4904,6 +4944,7 @@ end
 
 --- @info: fast weapon switch
 --- @region: fast switch
+if (load_step) then load_step("region: fast switch") end
 
 on_zeus = function(shot)
     if (ui.misc.fast_switch:get()) then
@@ -4946,6 +4987,7 @@ end
 
 --- @info: optimized backtrack
 --- @region: backtrack system
+if (load_step) then load_step("region: backtrack system") end
 
 -- Backtracking itself is Primordial's: its records, and the tick count it sends with the shot (the server rewinds the
 -- players to that tick). The old code here wrote cmd.tick_count on every command from a record of the enemy nearest the
@@ -4953,6 +4995,7 @@ end
 -- What a lua can add: more fake latency (the server takes records within 0.2 s of our real + fake latency, so older
 -- records become hittable) and the order the aimbot picks targets in.
 --- @region: engine prediction
+if (load_step) then load_step("region: engine prediction") end
 -- Our own movement run through the game's prediction (owners, Oct 2026: "miaz hogy nincs ffi nezd meg ujra"): the Primordial lua has ffi,
 -- memory_create_interface / memory_find_pattern / memory_get_vfunc, so CPrediction::SetupMove, CGameMovement::ProcessMovement and
 -- CPrediction::FinishMove can be called with a user command of our own. EXPERIMENTAL and off by default: the vtable indexes and
@@ -5356,6 +5399,7 @@ resolver.stat_lines = function()
 end
 --- @info: resolver: side from freestanding / jitter, learned per player and state from hits and misses
 --- @region: resolver
+if (load_step) then load_step("region: resolver") end
 -- [pm-resolver:begin] the loader's beta version is built without this part (make_primordial_beta in discord_bot.py)
 
 -- Primordial's own resolver does the resolving (its animation fix and records; no workshop lua writes an enemy's feet
@@ -6637,6 +6681,7 @@ end
 --- (/shotlog, base64 parts) every 40 shots and at round start; the bot writes them to the "shotlogs" branch, folder
 --- shotlogs/primordial (the batch ids start with "pm"). No names: the target is a hash of its steam id with a salt of this load
 --- @region: shot logs
+if (load_step) then load_step("region: shot logs") end
 
 local shotlog = { server = presence.server, buf = {}, sending = false,
                   salt = tostring(client_get_unix_time()) .. tostring(math.random(1000000)) }
@@ -6829,6 +6874,7 @@ end
 
 --- @info: advanced antiaim (pasted from metaset)
 --- @region: antiaim
+if (load_step) then load_step("region: antiaim") end
 
 run_exploit = function(ctx, cmd, unpredicted)
     local weapon = entity_list_get_local_player():get_active_weapon()
@@ -7509,6 +7555,7 @@ end
 
 --- @info: rubberbang | no recharge until safe place | teleport back after shot | doubletap optimizer
 --- @region: quickfall | safe recharge | better hideshots | better doubletap
+if (load_step) then load_step("region: quickfall | safe recharge | better hideshots | better doubletap") end
 
 quick_fall = function(cmd, unpredicted_data)
     if (ui.exploits.quick_fall:get() and ui.quick_fall:get()) then
@@ -7674,17 +7721,9 @@ end
 
 --- @info: edge-yaw antiaim
 --- @region: edgeyaw
+if (load_step) then load_step("region: edgeyaw") end
 
-edgeyaw.fix_yaw = function(yaw)
-    while (yaw > 180) do
-        yaw = yaw - 360
-    end
-    
-    while (yaw < -180) do
-        yaw = yaw + 360
-    end
-    return yaw
-end
+edgeyaw.fix_yaw = wrap_180
 
 edgeyaw.multiply_vector = function(vec, mul)
     return vec3_t(vec.x * mul, vec.y * mul, vec.z * mul)
@@ -7702,17 +7741,7 @@ edgeyaw.vector_to_angle = function(vec)
     return angle_t(math.atan2(vec.y, vec.x), math.asin(vec.z), 0)
 end
 
-edgeyaw.normalize_yaw = function(yaw)
-    local result = yaw
-    while (result < -180) do
-        result = result + 360
-    end
-
-    while (result > 180) do
-        result = result - 360
-    end
-    return result
-end
+edgeyaw.normalize_yaw = wrap_180
 
 run_edgeyaw = function(ctx, cmd, unpredicted)
     if (ui.antiaim.builder.edge_yaw:get() and ui.edge_yaw:get()) then
@@ -7840,6 +7869,7 @@ end
 
 --- @info: hit and miss indicator
 --- @region: log indicator
+if (load_step) then load_step("region: log indicator") end
 
 handle_dragging = function()
     if (ui.utils.event_logs:get(1)) then
@@ -7893,6 +7923,7 @@ end
 
 --- @info: menu effect, watermark, keybinds spectator, crosshair indicator, gs indicator, china hat
 --- @region: visuals
+if (load_step) then load_step("region: visuals") end
 
 lerp = function(time, a, b)
     return a * (1 - time) + b * time
@@ -8745,6 +8776,7 @@ end
 
 --- @info: handle menu
 --- @region: menu
+if (load_step) then load_step("region: menu") end
 
 materials_for_each(function(mat)
     for material = 1, #console_material do
@@ -9007,6 +9039,7 @@ end
 
 --- @info: main code
 --- @region: callbacks
+if (load_step) then load_step("region: callbacks") end
 
 do_player = function()
     perf.add(e_callbacks.PLAYER_ESP, "PLAYER_ESP", function(ctx)
@@ -9706,7 +9739,7 @@ do_paint = function()
 
             -- voice mute / unmute: only when it is set, and through pcall: the panorama GameStateAPI is nil at times
             -- (an index of it stopped the whole PAINT callback)
-            local voice = ui.player.voice_state:get()
+            local voice = tonumber(ui.player.voice_state:get()) or 1
             if (voice >= 2 and globals.tick_count() - delay.last_tick > delay.tick_delay) then
                 local players = entity_list_get_players()
                 local api = libs.tools.js2 and libs.tools.js2.GameStateAPI
@@ -9759,6 +9792,7 @@ do_paint = function()
 end
 
 callbacks.add(e_callbacks.SHUTDOWN, function()
+    if (load_step) then load_step("shutdown: restoring") end
     print("restoring configuration..")
     servers.leave()
 
@@ -9858,12 +9892,14 @@ callbacks.add(e_callbacks.SHUTDOWN, function()
 
     on_shared_esp()
     print("goodbye, hope we can see you soon!", specter_color_t(131, 111, 255), " </3")
+    if (load_step) then load_step("shutdown: done") end
 end)
 
 --- @endregion
 
 --- @info: initialization of everything (so you wont crash)
 --- @region: init
+if (load_step) then load_step("region: init") end
 
 print("preparing lua..")
 setup = function()
@@ -10107,16 +10143,24 @@ setup = function()
         print("preparing lua..", get_text_color(), " (stage 100%%)")
     end
 
+    if (load_step) then load_step("init: imports_setup()") end
     imports_setup()
+    if (load_step) then load_step("init: save_cfg()") end
     save_cfg()
+    if (load_step) then load_step("init: fps_boost()") end
     fps_boost()
+    if (load_step) then load_step("init: pcall(cvar_dump)") end
     pcall(cvar_dump)
+    if (load_step) then load_step("init: configure_groups()") end
     configure_groups()
+    if (load_step) then load_step("init: execute_tasks()") end
     execute_tasks()
+    if (load_step) then load_step("init: finish_up()") end
     finish_up()
 
     collectgarbage("collect")
 
+    if (load_step) then load_step("loaded") end
     notifications.create("Specter", "Welcome to Specter, " .. info.user .. "!", notifications.types.information)
     print("welcome on Specter!", get_text_color(), " <3")
 end
@@ -10126,6 +10170,7 @@ setup()
 
 --- @info: helper
 --- @region: search table(s)
+if (load_step) then load_step("region: search table(s)") end
 
 table.insert(on_predict, false)
 table.contains = function(tbl, value)
