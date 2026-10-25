@@ -8,7 +8,7 @@
 
 -- Advanced engineering revision. Native resolver remains the default.
 -- Hard-coded FFI offsets require the exact original game/client build.
-local client_version = "5.5-advanced.7"
+local client_version = "5.5-advanced.8"
 
 local config_version = "1.0"
 local config_build = "beta"
@@ -10178,6 +10178,8 @@ setup = function()
     if (load_step) then load_step("loaded") end
     notifications.create("Specter", "Welcome to Specter, " .. info.user .. "!", notifications.types.information)
     print("welcome on Specter!", get_text_color(), " <3")
+    -- the Lua memory at the end of the load (owners, Oct 25 2026: "not enough memory" in NET_UPDATE): compare it between loads and with the number a minute into a game
+    print("lua memory: " .. string.format("%.1f", collectgarbage("count") / 1024) .. " MB")
 end
 setup()
 
