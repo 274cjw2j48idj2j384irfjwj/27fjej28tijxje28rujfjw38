@@ -1192,7 +1192,7 @@ async def upload_script(script: str, plans: list[str]) -> tuple[list[str], list[
         try:
             res = await api_post("/admin/upload_script", {"plan": p, "script": script})
             ok = res.get("ok") and res.get("status") == 200
-            lines.append(f"`{p}`: " + (f"ok ({res.get('bytes', 0) // 1024} KB, {res.get('parts', 1)} parts)" if ok else f"failed {res}"))
+            lines.append(f"`{p}`: " + (f"ok ({res.get('bytes', 0) // 1024} KB, {res.get('parts', 1)} parts)" if ok else f"failed {str(res)[:200]}"))
             if ok:
                 done.append(p)
         except Exception as e:
