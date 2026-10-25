@@ -84,18 +84,7 @@ do
     perf.usable = freq > 0
 end
 
-perf.seen = {}
-perf.first = function(name)
-    if (not perf.seen[name]) then
-        perf.seen[name] = true
-        if (load_step) then load_step("first frame: " .. name) end
-    end
-end
 perf.span = function(name, fn, ...)
-    if (not perf.seen[name]) then
-        perf.seen[name] = true
-        if (load_step) then load_step("first frame: " .. tostring(name)) end
-    end
     if (not perf.on) then
         return fn(...)
     end
@@ -106,27 +95,7 @@ perf.span = function(name, fn, ...)
 end
 
 perf.add = function(id, name, fn)
-    local first, calls, plain = true, 0, fn
-    -- the first 300 calls run inside a pcall that writes the error text to the load trace and throws it on (Primordial unloads the script
-    -- on an error, and the console is gone when the game freezes after it)
-    fn = function(...)
-        calls = calls + 1
-        if (calls > 300) then
-            fn = plain
-            return plain(...)
-        end
-        local res = { pcall(plain, ...) }
-        if (not res[1]) then
-            if (load_step) then load_step("ERROR in callback " .. name .. ": " .. tostring(res[2])) end
-            error(res[2], 0)
-        end
-        return unpack(res, 2)
-    end
     return callbacks.add(id, function(...)
-        if (first) then
-            first = false
-            if (load_step) then load_step("first call: " .. name) end
-        end
         if (not perf.on) then
             return fn(...)
         end
@@ -7837,9 +7806,7 @@ run_edgeyaw = function(ctx, cmd, unpredicted)
 end
 
 edge_yaw = function()
-    perf.first("edge yaw: entered")
     if (ui.antiaim.builder.edge_yaw:get() and ui.edge_yaw:get()) then
-        perf.first("edge yaw: active")
         local local_player = entity_list_get_local_player()
         local viewangles = engine_get_view_angles()
 
@@ -9746,7 +9713,6 @@ do_paint = function()
     
                 perf.span("better dt", custom_dt)
                 perf.span("edge yaw", edge_yaw)
-                perf.first("after edge yaw")
 
                 if (ui.visuals.china_hat.enable_hat:get()) then
                     perf.span("china hat", draw_hat)
@@ -9760,7 +9726,6 @@ do_paint = function()
                     perf.span("spectators", draw_spectators)
                 end
 
-                perf.first("before indicators")
                 if (not menu_is_open()) then
                     if (ui.visuals.crosshair_indc.binds:get(1) or ui.visuals.crosshair_indc.binds:get(2) or ui.visuals.crosshair_indc.binds:get(3) or ui.visuals.crosshair_indc.binds:get(4) or ui.visuals.crosshair_indc.binds:get(5) or ui.visuals.crosshair_indc.binds:get(6) or ui.visuals.crosshair_indc.binds:get(7) or ui.visuals.crosshair_indc.binds:get(8) or ui.visuals.crosshair_indc.binds:get(9) or ui.visuals.crosshair_indc.binds:get(10)) then
                         perf.span("crosshair ind", draw_indicator)
@@ -9772,7 +9737,6 @@ do_paint = function()
                 end
             end
 
-            perf.first("before voice")
             -- voice mute / unmute: only when it is set, and through pcall: the panorama GameStateAPI is nil at times
             -- (an index of it stopped the whole PAINT callback)
             local voice = tonumber(ui.player.voice_state:get()) or 1
@@ -9793,7 +9757,6 @@ do_paint = function()
             end
         end
 
-        perf.first("before logo")
         if (logo ~= nil) then
             if (is_visible) then
                 render_push_alpha_modifier(alpha)
