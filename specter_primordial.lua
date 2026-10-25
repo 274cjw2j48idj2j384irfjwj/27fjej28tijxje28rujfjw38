@@ -8,7 +8,7 @@
 
 -- Advanced engineering revision. Native resolver remains the default.
 -- Hard-coded FFI offsets require the exact original game/client build.
-local client_version = "5.5-advanced.8"
+local client_version = "5.5-advanced.9"
 
 local config_version = "1.0"
 local config_build = "beta"
@@ -346,8 +346,10 @@ const get_panel = function(xuid, kind) {
     panel.style.verticalAlign = "center";
     panel.style.marginRight = "6px";
     if (name != null) {
-        // inside the name cell, behind its first child, the place the working scoreboard luas use
-        try { const second = name.GetChild(1); if (valid(second) && second !== panel) name.MoveChildBefore(panel, second); } catch (_) {}
+        // inside the name cell but at its right end, the name keeps its place (owners, Oct 25 2026, screenshot: the badge sat
+        // where the name is and pushed it out)
+        panel.style.horizontalAlign = "right";
+        panel.style.marginRight = "10px";
     } else if (money != null) {
         try { row.MoveChildBefore(panel, money); } catch (_) {}
     } else {
