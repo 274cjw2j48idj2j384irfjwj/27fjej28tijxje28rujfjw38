@@ -149,7 +149,20 @@ end)()
 -- the last load step reaches csgo/specter/load_trace.txt BEFORE the next one runs (owners, Oct 25 2026: the game froze while the loader started the
 -- script): after a freeze the file names the part that never finished; "loaded" = the load went through
 load_step = function(name)
-    pcall(libs.filesystem.write, "specter/load_trace.txt", tostring(name))
+    pcall(function()
+        local lines = {}
+        local ok, text = pcall(libs.filesystem.read, "specter/load_trace.txt")
+        if (ok and type(text) == "string") then
+            for line in text:gmatch("[^\r\n]+") do
+                lines[#lines + 1] = line
+            end
+        end
+        lines[#lines + 1] = tostring(name)
+        while (#lines > 14) do
+            table.remove(lines, 1)
+        end
+        libs.filesystem.write("specter/load_trace.txt", table.concat(lines, "\n"))
+    end)
 end
 load_step("script start")
 
