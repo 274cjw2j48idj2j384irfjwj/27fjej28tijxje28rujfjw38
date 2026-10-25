@@ -1321,7 +1321,7 @@ local ui = {
 
     antiaim = {
         builder = {
-            enable = groups.settings:checkbox("Custom antiaim"),
+            enable = groups.settings:checkbox("Custom antiaim", true),
             edge_yaw = groups.settings:checkbox("Edge yaw"),
             anti_brute = groups.settings:checkbox("Anti bruteforce", true),
 
