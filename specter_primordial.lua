@@ -8,7 +8,7 @@
 
 -- Advanced engineering revision. Native resolver remains the default.
 -- Hard-coded FFI offsets require the exact original game/client build.
-local client_version = "5.5-advanced.3"
+local client_version = "5.5-advanced.4"
 
 local config_version = "1.0"
 local config_build = "beta"
@@ -1216,7 +1216,7 @@ local defensive = {
 
 local ui = {
     nav = {
-        slider = groups.nav:slider("Specter | tee hee!<3", 0, 15),
+        slider = groups.nav:slider("Specter | tee hee!<3", 0, 16),
 
         text = groups.nav:text("Welcome, " .. info.user .. "!"),
         sep0 = menu_add_separator("Home | Specter v" .. client_version .. "" .. info.beta_text2),
