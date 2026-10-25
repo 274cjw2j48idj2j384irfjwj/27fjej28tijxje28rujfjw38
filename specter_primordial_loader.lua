@@ -13,7 +13,7 @@ rawset(_G, "_specter_pm_loader_loaded", true)
 local SERVER_URL = "https://specter-license-mh111-production.up.railway.app"
 -- bump whenever this file changes: the server hands out the number of the newest loader (the bot reads it from the cloud
 -- branch) and an older one tells its user to download the new one
-local LOADER_VERSION = 11
+local LOADER_VERSION = 12
 local KEY_FILE = "specter/key.txt"             -- csgo/specter/key.txt
 local BUILD_FILE = "specter/build.txt"         -- the build a multi build key loaded last (csgo/specter/build.txt)
 local GROUP = "[ Specter loader ]"
@@ -171,6 +171,10 @@ pcall(add_callback, e_callbacks and e_callbacks.PAINT, function()
         return
     end
     watch.next = global_vars.real_time() + 300
+    if (not watch.traced) then
+        watch.traced = true
+        trace("update check")
+    end
     pcall(http.get, http, SERVER_URL .. "/version?build=" .. encode(watch.build), function(response)
         local hash = tostring(response.body or ""):match('"hash"%s*:%s*"(%x+)"')
         if (hash == nil) then
