@@ -25,7 +25,7 @@ ENV VARS (set in Discord bot host or .env):
                         below also gets its own GitHub API limit (without it: 60 calls / hour per IP, shared on Railway)
   RELEASE_CHANNEL     — staff channel (name or id) new script versions are posted in (default: staff). Only posted when
                         neither @everyone nor a member / customer / plan role can read it
-  RELEASE_FILES       — files posted there when a new commit changes them (default: specter_dev.lua, specter_primordial.lua)
+  RELEASE_FILES       — files announced there when a new commit changes them (default: none: owners, Oct 25 2026, both Luas only with a loader, nothing in #staff)
   RELEASE_MINUTES     — how often GitHub is checked (default: 5, 0 = only /release_check)
   PRIMORDIAL_UPDATES  — 1 (default): the Primordial changelog goes to #updates too (with the Primordial logo); 0 = off
   AUTO_UPLOAD         — 1 (default): a new specter_cloud.lua of CLOUD_BRANCH goes to the license server by itself (every
@@ -1545,7 +1545,7 @@ def _env_int(name: str, default: int) -> int:
 
 RELEASE_CHANNEL = _env("RELEASE_CHANNEL", "staff")
 UPDATES_CHANNEL = _env("UPDATES_CHANNEL", "updates")
-RELEASE_FILES   = [f.strip() for f in _env("RELEASE_FILES", "specter_dev.lua,specter_primordial.lua").split(",") if f.strip()]
+RELEASE_FILES   = [f.strip() for f in _env("RELEASE_FILES", "").split(",") if f.strip()]
 RELEASE_MINUTES = _env_int("RELEASE_MINUTES", 5)
 AUTO_UPLOAD     = _env("AUTO_UPLOAD", "1").lower() not in ("0", "false", "off", "no")
 AUTO_PANELS     = _env("AUTO_PANELS", "1").lower() not in ("0", "false", "off", "no")
@@ -2855,7 +2855,7 @@ async def on_ready():
         print(f"Role sync: every {ROLE_SYNC_MINUTES} min")
     if RELEASE_MINUTES > 0 and (_release_task is None or _release_task.done()):
         _release_task = asyncio.create_task(release_loop())
-        print(f"Version check: {', '.join(RELEASE_FILES)} -> #{RELEASE_CHANNEL}"
+        print(f"Version check: {', '.join(RELEASE_FILES) or 'no #staff posts'} -> #{RELEASE_CHANNEL}"
               + (f", {CLOUD_FILE} -> license server" if AUTO_UPLOAD else "") + f" every {RELEASE_MINUTES} min")
 
 
