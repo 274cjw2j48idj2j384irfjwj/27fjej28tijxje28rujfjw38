@@ -66,8 +66,8 @@ from discord import app_commands
 def _env(name: str, default: str = "") -> str:
     """A variable pasted as NAME=value or with quotes around it still works: both are cut off."""
     v = (os.environ.get(name) or "").strip()
-    if v.startswith(name + "="):
-        v = v[len(name) + 1:].strip()
+    if v.startswith(name):
+        v = v[len(name):].lstrip(" \t\r\n=:").strip()
     if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
         v = v[1:-1].strip()
     return v or default
