@@ -306,6 +306,13 @@ const money_cell = function(row) {
     }
     return null;
 };
+const name_cell = function(row) {
+    const cells = row.Children() || [];
+    for (let i = 0; i < cells.length; i++) {
+        if (valid(cells[i]) && String(cells[i].GetAttributeString("data-stat", "")) === "name") return cells[i];
+    }
+    return null;
+};
 const get_panel = function(xuid, kind) {
     const board = scoreboard();
     if (!valid(board)) { why.push("no scoreboard panel"); return null; }
@@ -328,7 +335,9 @@ const get_panel = function(xuid, kind) {
         row.style.borderLeft = "2px solid " + look.stripe;
     } catch (_) {}
     const money = money_cell(row);
-    const panel = $.CreatePanel("Panel", row, "specter-presence-" + xuid);
+    const name = name_cell(row);
+    const host = name != null ? name : row;
+    const panel = $.CreatePanel("Panel", host, "specter-presence-" + xuid);
     panel.specter_row = row;
     panel.specter_kind = kind;
     panel.style.flowChildren = "right";
@@ -336,10 +345,14 @@ const get_panel = function(xuid, kind) {
     panel.style.height = "100%";
     panel.style.verticalAlign = "center";
     panel.style.marginRight = "6px";
-    if (money != null) {
+    if (name != null) {
+        // inside the name cell, behind its first child, the place the working scoreboard luas use
+        try { const second = name.GetChild(1); if (valid(second) && second !== panel) name.MoveChildBefore(panel, second); } catch (_) {}
+    } else if (money != null) {
         try { row.MoveChildBefore(panel, money); } catch (_) {}
     } else {
-        panel.visible = false;   // no money cell found: only the row look (Home > "Dump scoreboard row" prints the cells)
+        panel.visible = false;   // no name / money cell: only the row look
+        why.push("no name / money cell in the row");
     }
     const tag = $.CreatePanel("Label", panel, "specter-tag");
     tag.text = look.tag;
@@ -364,7 +377,7 @@ const get_panel = function(xuid, kind) {
 };
 const apply_data = function() {
     why = [];
-    Object.keys(entity_data).forEach(function(key) {
+    Object.keys(entity_data).forEach(function(key) { try {
         const data = entity_data[key];
         const xuid = player_xuid(parseInt(key, 10));
         if (xuid == null) {
@@ -389,7 +402,7 @@ const apply_data = function() {
             image.SetImage(data.path);
             image.specter_path = data.path;
         }
-    });
+    } catch (e) { why.push("entity " + key + " error: " + String(e)); } });
 };
 const update = function(index, path, ready, expected_xuid, kind) {
     if (!index || index < 1 || index > 64) return false;
