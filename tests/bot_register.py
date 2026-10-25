@@ -279,6 +279,24 @@ class Ban(unittest.TestCase):
         self.assertEqual(bot.ban_problem(self.guild, self.me, t(3)), "")              # a lower member
         self.assertEqual(bot.ban_problem(self.guild, self.me, t(555)), "")            # not in the server: a plain user id
 
+    def test_a_ban_revokes_the_keys_of_the_account(self):
+        calls = []
+
+        async def licenses_of(uid):
+            return [{"key": "AAAAAAA", "plan": "specter"}, {"key": "BBBBBBB", "plan": "beta", "revoked": True}, {"key": "CCCCCCC", "plan": "pm_beta"}]
+
+        async def api_post(path, data):
+            calls.append((path, data["key"]))
+            return {"status": 200, "revoked": data["key"]}
+
+        orig = (bot.licenses_of, bot.api_post)
+        bot.licenses_of, bot.api_post = licenses_of, api_post
+        try:
+            self.assertEqual(run(bot.revoke_keys_of(5)), (["AAAAAAA", "CCCCCCC"], []))
+        finally:
+            bot.licenses_of, bot.api_post = orig
+        self.assertEqual(calls, [("/admin/revoke", "AAAAAAA"), ("/admin/revoke", "CCCCCCC")])     # the revoked one is left alone
+
     def test_the_commands_are_staff_only(self):
         for cmd in (bot.ban, bot.unban):
             it = types.SimpleNamespace(user=Member(5), guild=Guild(), followup=Followup(), response=types.SimpleNamespace())
