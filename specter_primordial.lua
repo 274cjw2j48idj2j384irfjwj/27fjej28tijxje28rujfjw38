@@ -8,7 +8,7 @@
 
 -- Advanced engineering revision. Native resolver remains the default.
 -- Hard-coded FFI offsets require the exact original game/client build.
-local client_version = "5.5-advanced.5"
+local client_version = "5.5-advanced.6"
 
 local config_version = "1.0"
 local config_build = "beta"
@@ -9032,7 +9032,6 @@ menu_handle = function()
         menu_set_group_column("Visuals", 2)
         menu_set_group_column("Customization", 3)
         menu_set_group_column("Yaw", 2)
-        menu_set_group_column("Jitter", 2)
         menu_set_group_column("Desync", 2)
         menu_set_group_column("Defensive", 2)
         menu_set_group_column("Features", 3)
