@@ -144,7 +144,7 @@ EXPECT = {  # page -> (main point, groups that show)
     1: ("Config", {"configs", "cloud_configs"}), 2: ("Config", {"statistics"}),
     3: ("Ragebot", {"resolver", "resolver_beta", "reso_cfg"}), 10: ("Ragebot", {"ragebot"}), 11: ("Ragebot", {"tickbase"}),
     5: ("Ragebot", {"exploits", "helpers"}),
-    4: ("Anti-Aim", {"settings", "antiaim", "features"}), 12: ("Anti-Aim", {"settings", "yaw", "jitter"}),
+    4: ("Anti-Aim", {"settings", "antiaim", "features"}), 12: ("Anti-Aim", {"settings", "yaw"}),
     13: ("Anti-Aim", {"settings", "desync"}), 14: ("Anti-Aim", {"settings", "defensive"}),
     6: ("Misc", {"visuals", "customization"}), 7: ("Misc", {"player", "communication"}), 8: ("Misc", {"misc", "movement"}),
     9: ("Misc", {"utils", "sync"}), 15: ("Misc", {"servers"}), 16: ("Info", {"about"}),
