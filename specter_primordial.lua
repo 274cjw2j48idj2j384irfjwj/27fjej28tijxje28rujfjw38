@@ -1756,9 +1756,7 @@ local nav_pages = {
     { name = "Misc", subs = { { "Visuals", 6 }, { "Player", 7 }, { "Movement", 8 }, { "Utils", 9 }, { "Servers", 15 } } },
     { name = "Info", subs = { { "Information", 16 } } },
 }
--- the symbol in front of every main button (owners, Oct 21 2026: "csinálj ugyan úgy szimbólumokat a menübe"); the menu draws text only, so these are
--- characters of the menu font: one that shows as a box in game is swapped here
-local NAV_SYMBOLS = { Config = "☾", Ragebot = "◎", ["Anti-Aim"] = "✦", Misc = "❖", Info = "ℹ" }
+-- no symbols in the menu text (owners, Oct 25 2026, screenshot): the Primordial menu font draws other characters than the unicode symbols that were here (a moon showed as ">", a star as "9")
 if (info.plan == "beta") then
     table.remove(nav_pages[2].subs, 1)
 end
@@ -1767,7 +1765,7 @@ ui.nav.mains = {}
 ui.nav.subs = {}
 
 for i, main in ipairs(nav_pages) do
-    ui.nav.mains[i] = groups.nav:button((NAV_SYMBOLS[main.name] or "•") .. "  " .. main.name,
+    ui.nav.mains[i] = groups.nav:button(main.name,
         function()
             ui.nav.slider.ref:set(main.subs[1][2])
         end
@@ -1779,7 +1777,7 @@ ui.nav.sep2 = menu_add_separator("Home | Specter v" .. client_version .. "" .. i
 for i, main in ipairs(nav_pages) do
     for _, page in ipairs(main.subs) do
         nav_main_of[page[2]] = i
-        table.insert(ui.nav.subs, { main = i, button = groups.nav:button("› " .. page[1],
+        table.insert(ui.nav.subs, { main = i, button = groups.nav:button("- " .. page[1],
             function()
                 ui.nav.slider.ref:set(page[2])
             end
@@ -1800,15 +1798,15 @@ local discord_open = function()
     end
 end
 ui.about = {
-    title = groups.about:text("☾  Specter v" .. client_version .. info.beta_text2 .. "  ·  " .. info.plan),
+    title = groups.about:text("Specter v" .. client_version .. info.beta_text2 .. "  |  " .. info.plan),
     sep = groups.about:separator(),
-    discord = groups.about:text("◈  Discord  " .. PM_DISCORD),
-    support = groups.about:text("✉  Support, configs and updates are on the Discord"),
-    copy = groups.about:button("⧉  Copy the Discord invite", discord_copy),
-    open = groups.about:button("➜  Open the Discord", discord_open),
+    discord = groups.about:text("Discord  " .. PM_DISCORD),
+    support = groups.about:text("Support, configs and updates are on the Discord"),
+    copy = groups.about:button("Copy the Discord invite", discord_copy),
+    open = groups.about:button("Open the Discord", discord_open),
 }
 -- the Discord is one click away on EVERY page too (owners, Oct 25 2026: "a luaban nincs ott a DC gomb"): a button in the navigation, under the page buttons
-ui.nav.discord = groups.nav:button("Discord  ·  " .. PM_DISCORD, discord_open)
+ui.nav.discord = groups.nav:button("Discord  -  " .. PM_DISCORD, discord_open)
 
 --- @endregion
 

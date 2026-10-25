@@ -155,7 +155,7 @@ for page, (main, want) in sorted(EXPECT.items()):
     lua.execute("PAGE = %d; SHOWN = {}; menu_handle()" % page)
     shown = {k.split(":", 1)[1] for k, v in dict(lua.globals().SHOWN).items() if v}
     groups_shown = {g for g in shown if g in {n for _, gs in EXPECT.values() for n in gs}}
-    buttons = {b[2:] for b in shown if b.startswith("› ")}
+    buttons = {b[2:] for b in shown if b.startswith("- ")}
     check(groups_shown == want and buttons == SUBS[main],
           "menu page %2d (%s): groups %s, pages %s" % (page, main, sorted(groups_shown), sorted(buttons)))
 
@@ -373,7 +373,7 @@ for page, want in ((3, set()), (10, {"ragebot"}), (5, {"exploits", "helpers"})):
     beta.execute("PAGE = %d; SHOWN = {}; menu_handle()" % page)
     shown = {k.split(":", 1)[1] for k, v in dict(beta.globals().SHOWN).items() if v}
     groups_shown = shown & {"resolver", "resolver_beta", "reso_cfg", "ragebot", "exploits", "helpers"}
-    buttons = {b[2:] for b in shown if b.startswith("› ")}
+    buttons = {b[2:] for b in shown if b.startswith("- ")}
     check(groups_shown == want and (page == 3 or buttons == {"Aimbot", "Tickbase", "Exploits"}),
           "beta page %2d: groups %s, pages %s" % (page, sorted(groups_shown), sorted(buttons)))
 check('info.plan ~= "dev"' in SRC.split("shotlog.result = function")[1][:300], "beta / nightly (a key) send no shot logs")
