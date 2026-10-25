@@ -13,7 +13,7 @@ rawset(_G, "_specter_pm_loader_loaded", true)
 local SERVER_URL = "https://specter-license-mh111-production.up.railway.app"
 -- bump whenever this file changes: the server hands out the number of the newest loader (the bot reads it from the cloud
 -- branch) and an older one tells its user to download the new one
-local LOADER_VERSION = 9
+local LOADER_VERSION = 10
 local KEY_FILE = "specter/key.txt"             -- csgo/specter/key.txt
 local BUILD_FILE = "specter/build.txt"         -- the build a multi build key loaded last (csgo/specter/build.txt)
 local GROUP = "𓆩☾𓆪 Specter loader 𓆩☾𓆪"
@@ -161,6 +161,31 @@ local function status(text)
     pcall(ui.status.set, ui.status, text)
 end
 
+-- an update notice (owners, Oct 25 2026: "ne kelljen ujratolteni, alapbol updateli"): a Primordial lua can not reload itself (its callbacks and menu items can not be removed),
+-- so every 5 minutes the loader asks the server for the hash of the build it loaded and says in the console and on the screen when a newer one is out.
+-- The callback is added at the load of the loader, never from inside another callback.
+local watch = { build = nil, known = nil, told = false, next = 0 }
+local add_callback = callbacks ~= nil and callbacks.add or function() end
+pcall(add_callback, e_callbacks and e_callbacks.PAINT, function()
+    if (watch.build == nil or watch.told or global_vars.real_time() < watch.next) then
+        return
+    end
+    watch.next = global_vars.real_time() + 300
+    pcall(http.get, http, SERVER_URL .. "/version?build=" .. encode(watch.build), function(response)
+        local hash = tostring(response.body or ""):match('"hash"%s*:%s*"(%x+)"')
+        if (hash == nil) then
+            return
+        end
+        if (watch.known == nil) then
+            watch.known = hash
+        elseif (hash ~= watch.known and not watch.told) then
+            watch.told = true
+            say("A new Specter version is out: reload the lua to update.")
+            pcall(client.log_screen, "Specter: a new version is out, reload the lua")
+        end
+    end)
+end)
+
 local function run(body, key, hwid, plan, user)
     trace("compiling the script (" .. #body .. " bytes)")
     local fn, err = (loadstring or load)(body, "=specter")
@@ -174,6 +199,9 @@ local function run(body, key, hwid, plan, user)
     trace("running the script")
     local ok, run_err = pcall(fn)
     trace(ok and "the script returned" or ("the script failed: " .. tostring(run_err)))
+    if (ok) then
+        watch.build, watch.known, watch.told, watch.next = plan, nil, false, 0
+    end
     if (not ok) then
         pcall(menu.set_group_visibility, GROUP, true)
         status("The script stopped with an error: " .. tostring(run_err))
