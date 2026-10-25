@@ -13,7 +13,7 @@ rawset(_G, "_specter_pm_loader_loaded", true)
 local SERVER_URL = "https://specter-license-mh111-production.up.railway.app"
 -- bump whenever this file changes: the server hands out the number of the newest loader (the bot reads it from the cloud
 -- branch) and an older one tells its user to download the new one
-local LOADER_VERSION = 8
+local LOADER_VERSION = 9
 local KEY_FILE = "specter/key.txt"             -- csgo/specter/key.txt
 local BUILD_FILE = "specter/build.txt"         -- the build a multi build key loaded last (csgo/specter/build.txt)
 local GROUP = "𓆩☾𓆪 Specter loader 𓆩☾𓆪"
@@ -39,6 +39,12 @@ local http = libs.httpcreator.new({ task_interval = 0.3, enable_debug = false, t
 local function say(text)
     client_log("[Specter] " .. tostring(text))
 end
+
+-- the last step reaches csgo/specter/load_trace.txt BEFORE the next one runs (the script goes on writing it): when the game freezes, the file names the step that never finished
+local function trace(name)
+    pcall(libs.filesystem.write, "specter/load_trace.txt", "loader: " .. tostring(name))
+end
+trace("start")
 
 -- this machine: the volume serial of C:\ and the computer name, hashed (the server locks the key to it)
 local function get_hwid()
@@ -156,6 +162,7 @@ local function status(text)
 end
 
 local function run(body, key, hwid, plan, user)
+    trace("compiling the script (" .. #body .. " bytes)")
     local fn, err = (loadstring or load)(body, "=specter")
     if (fn == nil) then
         status("The downloaded script does not compile: " .. tostring(err))
@@ -164,7 +171,9 @@ local function run(body, key, hwid, plan, user)
     rawset(_G, "loader", { username = (user ~= nil and user ~= "") and user or "user", id = "1", hwid = hwid })
     pcall(menu.set_group_visibility, GROUP, false)
     say("loaded Specter " .. plan:gsub("^pm_", "") .. ", have fun")
+    trace("running the script")
     local ok, run_err = pcall(fn)
+    trace(ok and "the script returned" or ("the script failed: " .. tostring(run_err)))
     if (not ok) then
         pcall(menu.set_group_visibility, GROUP, true)
         status("The script stopped with an error: " .. tostring(run_err))
@@ -296,6 +305,7 @@ login = function(chosen)
         return
     end
     busy = true
+    trace("login")
     local hwid = get_hwid()
     status("Checking your key...")
     http:get(SERVER_URL .. "/verify?key=" .. encode(key) .. "&hwid=" .. encode(hwid), function(response)
@@ -305,6 +315,7 @@ login = function(chosen)
             status(REASONS[field(body, "reason") or ""] or (body == "" and "The server did not answer, try again." or "Login failed."))
             return
         end
+        trace("key checked")
         local latest = tonumber(body:match('"loader_pm"%s*:%s*(%d+)'))
         if (latest ~= nil and latest > LOADER_VERSION) then
             local text = "A new Specter loader is out (v" .. latest .. ", you have v" .. LOADER_VERSION
@@ -345,6 +356,7 @@ login = function(chosen)
             .. "&build=" .. encode(build) .. "&ticket=" .. encode(ticket or "") .. "&nonce=" .. encode(nonce or ""), function(script)
             busy = false
             local text = script.body or ""
+            trace("script downloaded (" .. #text .. " bytes)")
             if (#text < 1000 or text:find('^%s*{')) then
                 status(REASONS[field(text, "reason") or ""] or "Download failed, try again.")
                 return
