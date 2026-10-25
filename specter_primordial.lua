@@ -3304,17 +3304,19 @@ presence.install_icon = function()
     presence.icon_ready = true
     presence.refresh_icons()
 end
-presence.clear_view = function()
+presence.clear_view = function(quiet)
     presence.shown, esp.sync_user, shared_data = {}, {}, {}
     pcall(ui.nav.shared_esp.ref.set_items, ui.nav.shared_esp.ref, {})
-    pcall(libs.tools.js.clear)
+    if (not quiet) then
+        pcall(libs.tools.js.clear)
+    end
 end
 -- Invalidates pending callbacks as well as clearing map-local UI state.
-presence.reset = function(announce)
+presence.reset = function(announce, quiet)
     presence.epoch, presence.sequence = presence.epoch + 1, presence.sequence + 1
     presence.busy, presence.next, presence.last_success = nil, 0, nil
     presence.announced, presence.failures = {}, 0
-    presence.clear_view()
+    presence.clear_view(quiet)
     if (announce) then
         notifications.create("Specter", "Shared data has been reset!", notifications.types.success)
         print("shared data has been reset.")
@@ -3421,13 +3423,18 @@ presence.lobby_own = function()
 end
 presence.lobby = function()
     local now, enabled = globals.real_time(), ui.utils.shared_esp:get()
+    -- the party list is read through panorama, which is not ready right after the start (the freeze above): only with Shared ESP on and 30 s after the first call
+    presence.lobby_since = presence.lobby_since or now
+    if (not enabled or now - presence.lobby_since < 30) then return end
     if (presence.lobby_busy ~= nil) then
         if (now >= presence.lobby_busy and now - presence.lobby_busy < 25) then return end
         presence.lobby_busy = nil
     end
     if (presence.lobby_next ~= nil and now < presence.lobby_next and now > presence.lobby_next - 60) then return end
     presence.lobby_next = now + 30
+    perf.mark("lobby own")
     local own = presence.lobby_own()
+    perf.mark("lobby members")
     local asked, list = {}, {}
     for _, member in ipairs(presence.lobby_members()) do
         if (member.sid ~= own) then
@@ -3472,7 +3479,8 @@ presence.update = function(force)
     -- PAINT also calls this outside a match so disconnects invalidate late replies.
     local connected = check_conditions()
     if (not connected) then
-        if (presence.connected ~= false) then presence.reset(false) end
+        -- outside a match there is no scoreboard: no panorama call for it (owners, Oct 25 2026: the game froze in this very call right after the load, in the main menu)
+        if (presence.connected ~= false) then presence.reset(false, true) end
         presence.connected = false
         presence.lobby()
         return
