@@ -462,6 +462,27 @@ app.get('/admin/script_info', async (req, res) => {
     }
 })
 
+// ── GET /version?build=<plan> — the short SHA-256 of the script a plan has on the server ──────────────────
+// No script and no secret: the loaders ask it every few minutes to tell a player that a newer version is out (Primordial can not
+// reload a script by itself: its callbacks and menu items can not be removed). A hash only moves when the bot uploads a new script.
+const version_cache = new Map()
+app.get('/version', async (req, res) => {
+    const plan = String(req.query.build || '')
+    if (!VALID_PLANS.includes(plan))
+        return res.status(400).json({ error: 'invalid build' })
+    const hit = version_cache.get(plan)
+    if (hit && Date.now() - hit.at < 30000)
+        return res.json({ hash: hit.hash })
+    try {
+        const h = await redis.get(`specter:script:${plan}:sha256`)
+        const hash = typeof h === 'string' ? h.slice(0, 16) : null
+        version_cache.set(plan, { at: Date.now(), hash })
+        res.json({ hash })
+    } catch(e) {
+        res.status(500).json({ error: 'redis' })
+    }
+})
+
 // ── POST /admin/loader_version ────────────────────────────────────────────
 // The LOADER_VERSION of the newest specter_loader.lua ("gs") / specter_primordial_loader.lua ("pm") of the cloud branch,
 // set by the bot. /verify hands it out, a loader with a lower number tells its user to download the new one
