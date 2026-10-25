@@ -8,7 +8,7 @@
 
 -- Advanced engineering revision. Native resolver remains the default.
 -- Hard-coded FFI offsets require the exact original game/client build.
-local client_version = "5.5-advanced.6"
+local client_version = "5.5-advanced.7"
 
 local config_version = "1.0"
 local config_build = "beta"
@@ -268,7 +268,9 @@ const dump = function() {
     }
     const rows = board.FindChildrenWithClassTraverse("sb-row") || [];
     if (rows.length === 0) return "no rows";
-    const lines = ["rows: " + rows.length + ", board id " + String(board.id)];
+    let first = rows[0];
+    for (let i = 0; i < rows.length; i++) { if (valid(rows[i]) && rows[i].m_xuid) { first = rows[i]; break; } }
+    const lines = ["rows: " + rows.length + ", board id " + String(board.id) + ", first player row " + String(first.m_xuid)];
     for (let i = 0; i < rows.length && i < 4; i++) {
         let attr = "";
         try { attr = String(rows[i].GetAttributeString("xuid", "")); } catch (_) {}
@@ -277,9 +279,9 @@ const dump = function() {
     const shown = Object.keys(entity_panels).length;
     lines.push("our panels: " + shown + ", asked: " + Object.keys(entity_data).length);
     why.forEach(function(w) { lines.push("why: " + w); });
-    walk(rows[0], 0, function(panel) {
+    walk(first, 0, function(panel) {
         let depth = 0;
-        for (let p = panel; valid(p) && p !== rows[0] && depth < 12; p = p.GetParent()) depth++;
+        for (let p = panel; valid(p) && p !== first && depth < 12; p = p.GetParent()) depth++;
         let stat = "";
         try { stat = String(panel.GetAttributeString("data-stat", "")); } catch (_) {}
         lines.push("  ".repeat(depth) + String(panel.id || "-") + " <" + String(panel.paneltype || "?") + ">" + (stat ? " data-stat=" + stat : ""));
@@ -299,20 +301,18 @@ const LOOKS = {
     gs: { tag: "SPECTER GS", text: "#bff0b8", from: "#2f4a34", to: "#232b25", border: "#46963f", stripe: "#8ce182" },
     pm: { tag: "SPECTER PRIM", text: "#cdc0ff", from: "#3c3659", to: "#26242f", border: "#6e5ab8", stripe: "#bea6ff" },
 };
-const money_cell = function(row) {
+// the cells: by data-stat, else by their id (the header row of the real scoreboard has ids "id-sb-name" / "id-sb-money" and no data-stat;
+// the money cell sits deeper, in id-sb-row__sets > id-sb-labels-set-0)
+const cell_of = function(row, stats, id) {
     const cells = row.Children() || [];
     for (let i = 0; i < cells.length; i++) {
-        if (valid(cells[i]) && ["money", "cash"].indexOf(String(cells[i].GetAttributeString("data-stat", ""))) >= 0) return cells[i];
+        if (valid(cells[i]) && stats.indexOf(String(cells[i].GetAttributeString("data-stat", ""))) >= 0) return cells[i];
     }
-    return null;
+    const found = row.FindChildTraverse(id);
+    return valid(found) ? found : null;
 };
-const name_cell = function(row) {
-    const cells = row.Children() || [];
-    for (let i = 0; i < cells.length; i++) {
-        if (valid(cells[i]) && String(cells[i].GetAttributeString("data-stat", "")) === "name") return cells[i];
-    }
-    return null;
-};
+const money_cell = function(row) { return cell_of(row, ["money", "cash"], "id-sb-money"); };
+const name_cell = function(row) { return cell_of(row, ["name"], "id-sb-name"); };
 const get_panel = function(xuid, kind) {
     const board = scoreboard();
     if (!valid(board)) { why.push("no scoreboard panel"); return null; }
