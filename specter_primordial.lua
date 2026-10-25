@@ -85,6 +85,12 @@ do
 end
 
 perf.seen = {}
+perf.first = function(name)
+    if (not perf.seen[name]) then
+        perf.seen[name] = true
+        if (load_step) then load_step("first frame: " .. name) end
+    end
+end
 perf.span = function(name, fn, ...)
     if (not perf.seen[name]) then
         perf.seen[name] = true
@@ -7828,7 +7834,9 @@ run_edgeyaw = function(ctx, cmd, unpredicted)
 end
 
 edge_yaw = function()
+    perf.first("edge yaw: entered")
     if (ui.antiaim.builder.edge_yaw:get() and ui.edge_yaw:get()) then
+        perf.first("edge yaw: active")
         local local_player = entity_list_get_local_player()
         local viewangles = engine_get_view_angles()
 
@@ -9735,6 +9743,7 @@ do_paint = function()
     
                 perf.span("better dt", custom_dt)
                 perf.span("edge yaw", edge_yaw)
+                perf.first("after edge yaw")
 
                 if (ui.visuals.china_hat.enable_hat:get()) then
                     perf.span("china hat", draw_hat)
@@ -9748,6 +9757,7 @@ do_paint = function()
                     perf.span("spectators", draw_spectators)
                 end
 
+                perf.first("before indicators")
                 if (not menu_is_open()) then
                     if (ui.visuals.crosshair_indc.binds:get(1) or ui.visuals.crosshair_indc.binds:get(2) or ui.visuals.crosshair_indc.binds:get(3) or ui.visuals.crosshair_indc.binds:get(4) or ui.visuals.crosshair_indc.binds:get(5) or ui.visuals.crosshair_indc.binds:get(6) or ui.visuals.crosshair_indc.binds:get(7) or ui.visuals.crosshair_indc.binds:get(8) or ui.visuals.crosshair_indc.binds:get(9) or ui.visuals.crosshair_indc.binds:get(10)) then
                         perf.span("crosshair ind", draw_indicator)
@@ -9759,6 +9769,7 @@ do_paint = function()
                 end
             end
 
+            perf.first("before voice")
             -- voice mute / unmute: only when it is set, and through pcall: the panorama GameStateAPI is nil at times
             -- (an index of it stopped the whole PAINT callback)
             local voice = ui.player.voice_state:get()
@@ -9779,6 +9790,7 @@ do_paint = function()
             end
         end
 
+        perf.first("before logo")
         if (logo ~= nil) then
             if (is_visible) then
                 render_push_alpha_modifier(alpha)
