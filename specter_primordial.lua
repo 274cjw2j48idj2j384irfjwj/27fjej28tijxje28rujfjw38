@@ -8,7 +8,7 @@
 
 -- Advanced engineering revision. Native resolver remains the default.
 -- Hard-coded FFI offsets require the exact original game/client build.
-local client_version = "5.5-advanced.11"
+local client_version = "5.5-advanced.12"
 
 local config_version = "1.0"
 local config_build = "beta"
@@ -880,8 +880,23 @@ get_active_weapon = function()
 end
 
 
+-- the one way latencies in SECONDS, outgoing and incoming. The api lists engine.get_latency as an int without a unit; the shot logs show seconds
+-- (95 ms ping = 0.0475 per way), so a sum above 10 can only be milliseconds and is scaled down. Never NaN / negative, at most 1 s a way
+net_latency = function()
+    local function read(flow)
+        local value = tonumber(engine_get_latency(flow))
+        if (value == nil or value ~= value or value < 0) then return 0 end
+        return value
+    end
+    local outgoing, incoming = read(e_latency_flows.OUTGOING), read(e_latency_flows.INCOMING)
+    if (outgoing + incoming > 10) then
+        outgoing, incoming = outgoing / 1000, incoming / 1000
+    end
+    return math.min(outgoing, 1), math.min(incoming, 1)
+end
 get_user_ping = function()
-    return math.floor(1000 * (engine_get_latency(e_latency_flows.OUTGOING) + engine_get_latency(e_latency_flows.INCOMING)))
+    local outgoing, incoming = net_latency()
+    return math.floor(1000 * (outgoing + incoming))
 end
 
 --- @info: default values, settings etc
@@ -1191,7 +1206,7 @@ local defensive = {
         if (sim_diff < 0) then
             self.db[idx].defensive_until = tickcount + math.abs(sim_diff)
             if (safe) then
-                self.db[idx].defensive_until = self.db[idx].defensive_until - client_time_to_ticks(engine_get_latency())
+                self.db[idx].defensive_until = self.db[idx].defensive_until - client_time_to_ticks((net_latency()))
             end
         end
 
@@ -2179,7 +2194,7 @@ gradient = function(x, y, w, h, col1, col2)
 end
 
 is_point_visible = function(ent)
-    if (entity_list_get_local_player():is_point_visible(ent:get_hitbox_pos(e_hitgroups.GENERIC))) then
+    if (entity_list_get_local_player():is_point_visible(ent:get_hitbox_pos(e_hitboxes.HEAD))) then
         return true
     else
         return false
@@ -3224,7 +3239,8 @@ if (load_step) then load_step("region: clantag") end
 local clantag_prev
 clan_anim = function(indices)
     local tickinterval = globals.interval_per_tick()
-    local tickcount = globals.tick_count() + math.floor(engine_get_latency(e_latency_flows.INCOMING) + 0.21 / tickinterval + 0.5)
+    local _, incoming = net_latency()
+    local tickcount = globals.tick_count() + math.floor((incoming + 0.21) / tickinterval + 0.5)
 
     return clantag[indices[math.floor(tickcount / math.floor(0.25 / tickinterval + 0.45) % #indices) + 1] + 1]
 end
@@ -4016,13 +4032,7 @@ if (load_step) then load_step("region: safe def") end
 
 -- Network budgets are measured in seconds; menu thresholds are milliseconds.
 resolver.network = function()
-    local function finite(value, lo, hi)
-        value = tonumber(value)
-        if (value == nil or value ~= value or math.abs(value) == math.huge) then return lo end
-        return math.max(lo, math.min(hi, value))
-    end
-    local outgoing = finite(engine_get_latency(e_latency_flows.OUTGOING), 0, 1)
-    local incoming = finite(engine_get_latency(e_latency_flows.INCOMING), 0, 1)
+    local outgoing, incoming = net_latency()
     local ping = (outgoing + incoming) * 1000
     local guarded = ui.ragebot.latency_guard:get()
         and ping >= ui.ragebot.latency_limit:get()
