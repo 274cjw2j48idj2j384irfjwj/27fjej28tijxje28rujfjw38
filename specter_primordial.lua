@@ -8,7 +8,7 @@
 
 -- Advanced engineering revision. Native resolver remains the default.
 -- Hard-coded FFI offsets require the exact original game/client build.
-local client_version = "5.5-advanced.13"
+local client_version = "5.5-advanced.14"
 
 local config_version = "1.0"
 local config_build = "beta"
@@ -1361,6 +1361,7 @@ local ui = {
             ping_in_sight = groups.tickbase:checkbox("Fake ping only in sight", false),
         },
 
+        best_target = groups.ragebot:checkbox("Target by hit chance", true),
         safe_defensive = groups.ragebot:checkbox("Defensive safepoint"),
         multipoint_pred = groups.ragebot:checkbox("Multipoint correction"),
 
@@ -5312,8 +5313,54 @@ backtrack.predict = function(local_player)
     backtrack.peek_until = globals.real_time() + math.min(0.10, globals.interval_per_tick() * 3)
 end
 
+-- "Target by hit chance" (owners, Oct 26 2026: "a legnagyobb hitratu emberre lojon, ne a legkozelebbire ... ha van defensivel bizni kell abba
+-- hogy elmissel"): with two or more live enemies the one with the best estimated chance to HIT gets the priority, not the nearest. The estimate
+-- is the session hit rate of the target's state (resolver stats, 0.7 until 8 results), x 0.85 for a jitterer, x 0.4 while its defensive / lag break
+-- is on (those shots hit 38 % against 71 % in the logs), x 0.85 per resolver miss in a row (3 at most), times how much a body bullet can do from
+-- here (`resolver.body_damage`, no damage = 0.25). Worked out every 3 ticks for 4 enemies at most (the body damage is two traces per enemy)
+backtrack.hit_estimate = function(enemy)
+    local idx = enemy:get_index()
+    local row = resolver.stats ~= nil and resolver.state_of ~= nil and resolver.stats[resolver.state_of(enemy)] or nil
+    local rate = (row ~= nil and row.n >= 8) and row.hit / row.n or 0.7
+    local p = resolver.data ~= nil and resolver.data[idx] or nil
+    if (p ~= nil) then
+        if (p.jitter) then rate = rate * 0.85 end
+        local last = p.events ~= nil and p.events[#p.events] or nil
+        if (last ~= nil and globals.real_time() - last.obs < ui.ragebot.def_ticks:get() * globals.interval_per_tick()) then
+            rate = rate * 0.4
+        end
+    end
+    local misses = resolver.misses ~= nil and resolver.misses[idx] or 0
+    rate = rate * 0.85 ^ math.min(3, tonumber(misses) or 0)
+    local damage = resolver.body_damage ~= nil and resolver.body_damage(enemy) or 0
+    return rate * (damage > 0 and (0.5 + 0.5 * math.min(1, damage / 100)) or 0.25)
+end
+backtrack.best_target = function()
+    local tick = globals.tick_count()
+    local pick = backtrack.pick
+    if (pick ~= nil and tick >= pick.tick and tick - pick.tick < 3) then return pick.idx end
+    local me = entity_list_get_local_player()
+    local live = {}
+    for _, enemy in pairs(entity_list_get_players(true) or {}) do
+        if (#live < 4 and enemy:is_alive() and not enemy:is_dormant()) then live[#live + 1] = enemy end
+    end
+    local best, best_score = nil, -1
+    if (me ~= nil and #live >= 2) then
+        for _, enemy in ipairs(live) do
+            local score = backtrack.hit_estimate(enemy)
+            if (score > best_score) then best, best_score = enemy:get_index(), score end
+        end
+    end
+    backtrack.pick = { tick = tick, idx = best }
+    return best
+end
+
 backtrack.target_selection = function(ctx)
     local now = globals.real_time()
+    if (ui.ragebot.best_target:get() and info.plan ~= "beta") then
+        local best = backtrack.best_target()
+        if (best ~= nil) then ctx:prioritize_target(best, 1000) end
+    end
     if (now > (backtrack.peek_until or 0) or now < (backtrack.peek_until or 0) - 0.10) then return end
     for _, idx in ipairs(backtrack.peekers) do
         local enemy = entity_list_get_entity(idx)
