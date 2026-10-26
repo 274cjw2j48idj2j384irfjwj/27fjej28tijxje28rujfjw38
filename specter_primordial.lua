@@ -8,7 +8,7 @@
 
 -- Advanced engineering revision. Native resolver remains the default.
 -- Hard-coded FFI offsets require the exact original game/client build.
-local client_version = "5.5-advanced.10"
+local client_version = "5.5-advanced.11"
 
 local config_version = "1.0"
 local config_build = "beta"
@@ -7576,20 +7576,23 @@ end
 --- @region: quickfall | safe recharge | better hideshots | better doubletap
 if (load_step) then load_step("region: quickfall | safe recharge | better hideshots | better doubletap") end
 
+-- a LIVE enemy we can see: entity_list.get_players(true) also lists the dead ones (the api example checks is_alive), and a body lying in view
+-- kept the recharge blocked (owners, Oct 26 2026: "lassan lo ... dt nem tolt")
+local function enemy_in_view(enemies)
+    for _, enemy in pairs(enemies) do
+        if (enemy:is_alive() and not enemy:is_dormant() and is_point_visible(enemy)) then
+            return true
+        end
+    end
+    return false
+end
+
 quick_fall = function(cmd, unpredicted_data)
     if (ui.exploits.quick_fall:get() and ui.quick_fall:get()) then
         local enemies = entity_list_get_players(true)
         if (enemies ~= nil) then
             local in_air = entity_list_get_local_player():get_prop("m_vecVelocity[2]") ~= 0
-            local is_visible = false
-
-            for _, enemy in pairs(enemies) do
-                if (in_air) then
-                    if (is_point_visible(enemy)) then
-                        is_visible = true
-                    end
-                end
-            end
+            local is_visible = in_air and enemy_in_view(enemies)
 
             if (not is_visible and not in_air) then
                 exploits_allow_recharge()
@@ -7610,16 +7613,7 @@ safe_recharge = function(cmd, unpredicted_data)
     if (ui.exploits.safe_recharge:get()) then
         local enemies = entity_list_get_players(true)
         if (enemies ~= nil) then
-            local is_visible = false
-            for _, enemy in pairs(enemies) do
-                if (is_point_visible(enemy)) then
-                    is_visible = true
-                end
-            end
-
-            if (not is_visible and not entity_list_get_local_player():get_prop("m_vecVelocity[2]") ~= 0) then
-                exploits_allow_recharge()
-            end
+            local is_visible = enemy_in_view(enemies)
 
             if (is_visible) then
                 exploits_block_recharge()
