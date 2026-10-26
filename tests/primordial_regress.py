@@ -498,7 +498,7 @@ r = aa.eval("""(function()
         def_trigger = ctl(1), def_pitch = ctl(5), def_yaw = ctl(4), def_val = ctl(90) }
     for k = 1, 7 do cfg["yaw" .. k] = ctl(k * 5) end
     ui = { antiaim = { builder = { enable = ctl(true), anti_brute = ctl(true), yaw = ctl(1), pitch = ctl(2), defensive_ping = ctl(1), [3] = cfg, [1] = cfg },
-        features = { antibackstab = ctl(false), safehead = { get = function() return false end } } } }
+        features = { antibackstab = ctl(false), safehead = { get = function() return false end }, lean = ctl(0), lean_side = ctl(1) } } }
     local T = 100
     globals = { tick_count = function() return T end }
     time_to_ticks = function(x) return math.floor(x * 64) end
@@ -518,7 +518,7 @@ r = aa.eval("""(function()
     e_cmd_buttons = { ATTACK = 1 }
 """ + ANTI + """
     local ctx = { set_yaw = function(_, v) OUT.yaw = v end, set_pitch = function(_, v) OUT.pitch = v end,
-        set_desync = function(_, v) OUT.des = v end, set_invert_desync = function() end }
+        set_desync = function(_, v) OUT.des = v end, set_invert_desync = function() end, set_body_lean = function(_, v) OUT.lean = v end }
     local cmd = { has_button = function() return false end }
     local yaws, sides = {}, {}
     for i = 1, 5 do
