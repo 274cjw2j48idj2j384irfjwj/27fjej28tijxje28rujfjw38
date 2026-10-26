@@ -8,7 +8,7 @@
 
 -- Advanced engineering revision. Native resolver remains the default.
 -- Hard-coded FFI offsets require the exact original game/client build.
-local client_version = "5.5-advanced.9"
+local client_version = "5.5-advanced.10"
 
 local config_version = "1.0"
 local config_build = "beta"
@@ -1401,7 +1401,9 @@ local ui = {
                     "Air zeus",
                     "Height advantage"
                 }
-            )
+            ),
+            lean = groups.features:slider("Body lean", 0, 100, 1, 0, "%"),
+            lean_side = groups.features:selection("Body lean side", {"Same as desync", "Opposite"})
         }
     },
 
@@ -7500,6 +7502,12 @@ run_antiaim = function(ctx, cmd)
     refs.rightamount:set(100)
     ctx:set_invert_desync(false)
     ctx:set_desync(st.side and -amount or amount)
+    -- body lean (the api's ctx:set_body_lean, owners, Oct 26 2026: "nezd meg mi lehetseges API alapjan"): off at 0, the sign follows the desync side
+    local lean = safe and 0 or (tonumber(ui.antiaim.features.lean:get()) or 0) / 100
+    if (lean > 0) then
+        local sign = (st.side and -1 or 1) * (ui.antiaim.features.lean_side:get() == 2 and -1 or 1)
+        ctx:set_body_lean(sign * lean, false)
+    end
 end
 
 on_miss = function(event)
@@ -8950,6 +8958,8 @@ menu_handle = function()
         ui.antiaim.features.antibackstab:depend({aa_page}, {ui.antiaim.builder.enable, true})
         ui.antiaim.features.fakelag:depend({aa_page}, {ui.antiaim.builder.enable, true})
         ui.antiaim.features.safehead:depend({aa_page}, {ui.antiaim.builder.enable, true})
+        ui.antiaim.features.lean:depend({aa_page}, {ui.antiaim.builder.enable, true})
+        ui.antiaim.features.lean_side:depend({aa_page}, {ui.antiaim.builder.enable, true}, {(tonumber(ui.antiaim.features.lean:get()) or 0) > 0})
     
         for i = 1, #states do
             local cfg = ui.antiaim.builder[i]
