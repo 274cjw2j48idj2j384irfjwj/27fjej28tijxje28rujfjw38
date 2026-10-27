@@ -168,8 +168,7 @@ load_step = function(name)
             table.remove(lines, 1)
         end
         local out = table.concat(lines, "\n")
-        -- the write does not cut the file: the rest of a longer old text would stay, so the end is padded with line breaks
-        libs.filesystem.write("specter/load_trace.txt", out .. string.rep("\n", math.max(0, (old_size or 0) - #out)))
+        libs.filesystem.write("specter/load_trace.txt", out)
     end)
 end
 load_step("script start")
@@ -1681,6 +1680,9 @@ for i = 1, #states do
         def_pitch = groups.defensive:selection(n .. " | Def pitch", {"Off", "Down", "Up", "Zero", "Sweep"}),
         def_yaw = groups.defensive:selection(n .. " | Def yaw", {"Off", "Static", "Sideways", "Flick", "Spin"}),
         def_val = groups.defensive:slider(n .. " | Def value", -180, 180, 1, 0, "°"),
+        animlayer = groups.desync:selection(n .. " | Animlayer", {"Off", "Remove leg movement", "Freeze adjust layer", "Custom weight/cycle"}),
+        animlayer_weight = groups.desync:slider(n .. " | Animlayer weight", 0, 100, 1, 0, "%"),
+        animlayer_cycle = groups.desync:slider(n .. " | Animlayer cycle", 0, 100, 1, 0, "%"),
     }
     for k = 1, 7 do
         cfg["yaw" .. k] = groups.yaw:slider(n .. " | Way " .. k, -90, 90, 1, 0, "°")
@@ -7536,9 +7538,87 @@ run_antiaim = function(ctx, cmd)
     ctx:set_desync(st.side and -amount or amount)
     -- body lean (the api's ctx:set_body_lean, owners, Oct 26 2026: "nezd meg mi lehetseges API alapjan"): off at 0, the sign follows the desync side
     local lean = safe and 0 or (tonumber(ui.antiaim.features.lean:get()) or 0) / 100
+    local sign = (st.side and -1 or 1) * (ui.antiaim.features.lean_side:get() == 2 and -1 or 1)
     if (lean > 0) then
-        local sign = (st.side and -1 or 1) * (ui.antiaim.features.lean_side:get() == 2 and -1 or 1)
         ctx:set_body_lean(sign * lean, false)
+        -- invert body lean based on desync side for better anti-aim
+        ctx:set_invert_body_lean(st.side)
+    end
+
+    -- fakelag control via ANTIAIM callback (ctx:set_fakelag)
+    -- allows controlling whether current tick should be choked or sent
+    if (ui.antiaim.features.fakelag:get()) then
+        local choke = engine_get_choked_commands()
+        local max_choke = 14 -- Primordial's default max choke
+        -- choke on even ticks when not shifting, send on odd ticks for variance
+        local should_choke = (choke < max_choke) and (globals.tick_count() % 2 == 0) and not shifting
+        ctx:set_fakelag(should_choke)
+    end
+
+    -- render pose parameters for better animation control
+    -- BODY_YAW: controls the body yaw pose parameter (0-1, maps to -180 to 180)
+    -- LEAN_YAW: controls the lean yaw pose parameter
+    if (not safe) then
+        local body_yaw_value = st.side and 0.5 or -0.5 -- opposite to desync for better fake
+        ctx:set_render_pose(e_poses.BODY_YAW, body_yaw_value)
+        ctx:set_render_pose(e_poses.LEAN_YAW, sign * lean * 0.5)
+    else
+        ctx:set_render_pose(e_poses.BODY_YAW, 0)
+        ctx:set_render_pose(e_poses.LEAN_YAW, 0)
+    end
+
+    -- render animlayer overrides for movement layers
+    -- MOVEMENT_MOVE (layer 6): control movement animation
+    -- ADJUST (layer 3): control adjust layer
+    if (not safe and cfg.animlayer:get() ~= 1) then
+        local layer_mode = cfg.animlayer:get()
+        if (layer_mode == 2) then -- remove leg movement
+            ctx:set_render_animlayer(e_animlayers.MOVEMENT_MOVE, 0.0, 0.0)
+        elseif (layer_mode == 3) then -- freeze adjust layer
+            ctx:set_render_animlayer(e_animlayers.ADJUST, 0.0, 0.0)
+        elseif (layer_mode == 4) then -- custom weight/cycle
+            local weight = (cfg.animlayer_weight:get() or 0) / 100
+            local cycle = (cfg.animlayer_cycle:get() or 0) / 100
+            ctx:set_render_animlayer(e_animlayers.MOVEMENT_MOVE, weight, cycle)
+        end
+    end
+
+    -- use antiaim library getters for better decision making
+    -- get_max_desync_range() returns the engine's max desync range
+    -- get_desync_side() returns our current desync side (0=none, 1=left, 2=right)
+    -- get_real_angle() / get_fake_angle() for real/fake yaw
+    -- is_inverting_desync() / is_inverting_body_lean() for inversion state
+    local max_desync = antiaim.get_max_desync_range()
+    local current_desync_side = antiaim.get_desync_side()
+    local real_yaw = antiaim.get_real_angle()
+    local fake_yaw = antiaim.get_fake_angle()
+    local current_body_lean = antiaim.get_body_lean()
+    local is_desync_inverted = antiaim.is_inverting_desync()
+    local is_lean_inverted = antiaim.is_inverting_body_lean()
+    local is_fakeducking = antiaim.is_fakeducking()
+    local manual_override = antiaim.get_manual_override()
+
+    -- adjust desync amount based on engine's max desync range
+    if (max_desync and max_desync > 0 and not safe) then
+        local desync_factor = cfg.amount:get() / 60
+        local adjusted_amount = math.min(desync_factor, 1.0)
+        ctx:set_desync(st.side and -adjusted_amount or adjusted_amount)
+    end
+
+    -- handle manual override from Primordial's manual AA
+    if (manual_override and manual_override > 0) then
+        local manual_yaw = ({ [1] = 90, [2] = 180, [3] = -90 })[manual_override]
+        if (manual_yaw) then
+            ctx:set_yaw(builder.adv.norm(base + 180 + manual_yaw))
+        end
+    end
+
+    -- fakeduck handling: disable desync and body lean when fakeducking
+    if (is_fakeducking) then
+        ctx:set_desync(0)
+        ctx:set_body_lean(0, false)
+        ctx:set_invert_desync(false)
+        ctx:set_invert_body_lean(false)
     end
 end
 

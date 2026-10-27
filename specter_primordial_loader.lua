@@ -57,8 +57,7 @@ local function trace(name)
             table.remove(lines, 1)
         end
         local out = table.concat(lines, "\n")
-        -- the write does not cut the file: the rest of a longer old text would stay, so the end is padded with line breaks
-        libs.filesystem.write("specter/load_trace.txt", out .. string.rep("\n", math.max(0, (old_size or 0) - #out)))
+        libs.filesystem.write("specter/load_trace.txt", out)
     end)
 end
 trace("start")
