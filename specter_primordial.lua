@@ -312,6 +312,7 @@ const cell_of = function(row, stats, id) {
 };
 const money_cell = function(row) { return cell_of(row, ["money", "cash"], "id-sb-money"); };
 const name_cell = function(row) { return cell_of(row, ["name"], "id-sb-name"); };
+const avatar_cell = function(row) { return cell_of(row, ["avatar", "flag"], "id-sb-avatar"); };
 const get_panel = function(xuid, kind) {
     const board = scoreboard();
     if (!valid(board)) { why.push("no scoreboard panel"); return null; }
@@ -335,7 +336,8 @@ const get_panel = function(xuid, kind) {
     } catch (_) {}
     const money = money_cell(row);
     const name = name_cell(row);
-    const host = name != null ? name : row;
+    const avatar = avatar_cell(row);
+    const host = avatar != null ? avatar : (name != null ? name : row);
     const panel = $.CreatePanel("Panel", host, "specter-presence-" + xuid);
     panel.specter_row = row;
     panel.specter_kind = kind;
@@ -344,9 +346,13 @@ const get_panel = function(xuid, kind) {
     panel.style.height = "100%";
     panel.style.verticalAlign = "center";
     panel.style.marginRight = "6px";
-    if (name != null) {
-        // inside the name cell but at its right end, the name keeps its place (owners, Oct 25 2026, screenshot: the badge sat
-        // where the name is and pushed it out)
+    if (avatar != null) {
+        // place badge next to avatar/logo on the left side of the scoreboard row
+        panel.style.horizontalAlign = "left";
+        panel.style.marginLeft = "4px";
+        try { row.MoveChildBefore(panel, name != null ? name : (money != null ? money : null)); } catch (_) {}
+    } else if (name != null) {
+        // fallback: inside the name cell but at its right end
         panel.style.horizontalAlign = "right";
         panel.style.marginRight = "10px";
     } else if (money != null) {
